@@ -62,6 +62,7 @@ import PaywallModal from '../../components/common/PaywallModal';
 import { lightTap, mediumTap, successNotification } from '../../services/haptics';
 import { useLearningStore } from '../../store/learningStore';
 import { useT } from '../../i18n';
+import ScreenGuide from '../../components/common/ScreenGuide';
 import { Subscription } from '../../types';
 
 // ─── Constants ────────────────────────────────────────────
@@ -3618,6 +3619,17 @@ const SubscriptionList: React.FC = () => {
         visible={paywallVisible}
         onClose={() => setPaywallVisible(false)}
         feature="ai"
+      />
+
+      <ScreenGuide
+        id="guide_subscriptions"
+        title={t.guide.yourSubscriptions}
+        icon="refresh-cw"
+        description={t.guide.descSubscriptions}
+        points={[
+          { icon: 'plus', text: t.guide.subscriptionPoint1 },
+          { icon: 'bell', text: t.guide.subscriptionPoint2 },
+        ]}
       />
     </View>
   );

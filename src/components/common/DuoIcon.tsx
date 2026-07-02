@@ -25,7 +25,8 @@ export type DuoGlyph =
   | 'camera'
   | 'chat'
   | 'target'
-  | 'clock';
+  | 'clock'
+  | 'check';
 
 // Lets existing Feather call sites upgrade without churn:
 // look the name up here; render DuoIcon on a hit, Feather otherwise.
@@ -48,6 +49,7 @@ export const FEATHER_TO_GLYPH: Record<string, DuoGlyph> = {
   'message-circle': 'chat',
   target: 'target',
   clock: 'clock',
+  'check-circle': 'check',
 };
 
 interface LayerProps {
@@ -264,6 +266,14 @@ const GLYPHS: Record<DuoGlyph, (p: LayerProps) => React.ReactElement> = {
     <>
       <Circle cx={24} cy={24} r={15.5} fill={fc} stroke={sc} strokeWidth={sw} />
       <Path d="M24 15 V24 L30.5 28" stroke={sc} strokeWidth={sw * 0.85} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </>
+  ),
+
+  // done — a soft-filled circle with a bold tick (payoff / success moments)
+  check: ({ fc, sc, sw }) => (
+    <>
+      <Circle cx={24} cy={24} r={16} fill={fc} stroke={sc} strokeWidth={sw} />
+      <Path d="M16 24.5 L21.5 30 L32 18" stroke={sc} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </>
   ),
 };

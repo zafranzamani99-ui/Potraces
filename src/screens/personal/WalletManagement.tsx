@@ -38,7 +38,7 @@ import PaywallModal from '../../components/common/PaywallModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { lightTap } from '../../services/haptics';
-import ScreenGuide from '../../components/common/ScreenGuide';
+import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
 import EchoInlineChat from '../../components/common/EchoInlineChat';
 import { useT } from '../../i18n';
 import { reconcileWalletBalances } from '../../utils/walletReconcile';
@@ -1654,14 +1654,19 @@ const WalletManagement: React.FC = () => {
 
       <ScreenGuide
         id="guide_wallets"
-        title={t.guide.yourWallets}
-        icon="credit-card"
-        description={t.guide.descWallet}
-        points={[
-          { icon: 'plus', text: t.guide.walletPoint1 },
-          { icon: 'repeat', text: t.guide.walletPoint2 },
+        // Do-it-with-me: the hole over the real + is tappable, so the user makes
+        // their first wallet themselves; the guide waits (behind the add sheet)
+        // and advances to the payoff the moment a wallet is actually created.
+        steps={[
+          { kind: 'intro', title: t.guide.yourWallets, icon: 'credit-card', body: t.guide.descWallet },
+          {
+            kind: 'doWithMe',
+            targetRef: guideTargetRef,
+            label: t.guide.walletsWalk,
+            watch: whenStore(useWalletStore, (s) => s.wallets.length, (n, base) => n > base),
+          },
+          { kind: 'payoff', title: t.guide.walletsPayoffTitle, body: t.guide.walletsPayoffBody, icon: 'check-circle' },
         ]}
-        spotlight={{ targetRef: guideTargetRef, label: t.guide.walletPoint1, sublabel: t.guide.walletPoint2 }}
       />
     </View>
   );

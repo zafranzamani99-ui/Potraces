@@ -160,6 +160,7 @@ const AddEditWalletModal: React.FC<Props> = ({
   const t = useT();
   const { height: SCREEN_H } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const balanceInputRef = useRef<TextInput>(null);
 
   const isBottomSheet = addStep === 'details' || !!editingWallet;
 
@@ -246,6 +247,19 @@ const AddEditWalletModal: React.FC<Props> = ({
       ? <>card <Text style={styles.sheetTitleAccent}>network</Text></>
       : <>which <Text style={styles.sheetTitleAccent}>bank</Text></>)
     : <>wallet <Text style={styles.sheetTitleAccent}>details</Text></>;
+
+  // Formatted (thousand-separator) display value for the balance/credit-limit hero input.
+  // Precomputed here (rather than inline in the TextInput's `value` prop) so the same
+  // string is available in the onFocus handler for imperative select-all.
+  const heroAmountRaw = selectedType === 'credit' ? creditLimit : balance;
+  const heroAmountDisplay = (() => {
+    if (!heroAmountRaw) return '';
+    const dotIdx = heroAmountRaw.indexOf('.');
+    const intRaw = dotIdx === -1 ? heroAmountRaw : heroAmountRaw.slice(0, dotIdx);
+    const fracRaw = dotIdx === -1 ? null : heroAmountRaw.slice(dotIdx + 1);
+    const intFmt = intRaw ? Number(intRaw).toLocaleString('en-US') : '';
+    return fracRaw === null ? intFmt : `${intFmt}.${fracRaw}`;
+  })();
 
   const scrollContent = (
     <KeyboardAwareScrollView
@@ -497,16 +511,9 @@ const AddEditWalletModal: React.FC<Props> = ({
             <View style={styles.heroAmountRow}>
               <Text style={styles.heroCurrency} numberOfLines={1}>{currency}</Text>
               <TextInput
+                ref={balanceInputRef}
                 style={styles.heroAmountInput}
-                value={(() => {
-                  const raw = selectedType === 'credit' ? creditLimit : balance;
-                  if (!raw) return '';
-                  const dotIdx = raw.indexOf('.');
-                  const intRaw = dotIdx === -1 ? raw : raw.slice(0, dotIdx);
-                  const fracRaw = dotIdx === -1 ? null : raw.slice(dotIdx + 1);
-                  const intFmt = intRaw ? Number(intRaw).toLocaleString('en-US') : '';
-                  return fracRaw === null ? intFmt : `${intFmt}.${fracRaw}`;
-                })()}
+                value={heroAmountDisplay}
                 onChangeText={(raw: string) => {
                   const stripped = raw.replace(/,/g, '').replace(/[^\d.]/g, '');
                   const fd = stripped.indexOf('.');
@@ -518,10 +525,19 @@ const AddEditWalletModal: React.FC<Props> = ({
                   }
                   (selectedType === 'credit' ? setCreditLimit : setBalance)(normalized);
                 }}
+                onFocus={() => {
+                  // Select-all-on-focus, done imperatively (once per focus event) instead of via
+                  // the `selectTextOnFocus` prop — on Android, that prop reselects the whole
+                  // value after every keystroke (since `value` changes on each render while
+                  // still focused), so a second digit typed replaces the first instead of
+                  // appending to it.
+                  if (heroAmountDisplay) {
+                    balanceInputRef.current?.setNativeProps({ selection: { start: 0, end: heroAmountDisplay.length } });
+                  }
+                }}
                 placeholder="0.00"
                 placeholderTextColor={withAlpha(C.textPrimary, 0.12)}
                 keyboardType="decimal-pad"
-                selectTextOnFocus
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={withAlpha(C.accent, 0.25)}
                 accessibilityLabel={selectedType === 'credit' ? t.wallets.creditLimit.toLowerCase() : t.wallets.currentBalance.toLowerCase()}

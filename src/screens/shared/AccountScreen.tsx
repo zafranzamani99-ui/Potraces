@@ -92,6 +92,16 @@ export default function AccountScreen() {
   }, [isAuthenticated]);
 
   const enableBackup = useCallback(async () => {
+    // Demo-data guard: if the user explored with sample data and is now signing
+    // in for real, drop that sample data LOCALLY before enabling sync — so it
+    // never pushes into their real cloud account. localOnly keeps the real
+    // account's existing cloud rows intact for pullAll to bring down. Runs
+    // before setPersonalSyncEnabled(true) so no push (here or via
+    // PersonalSyncManager) can start while sample data is still present.
+    const settings = useSettingsStore.getState();
+    if (settings.sampleDataLoaded) {
+      await settings.clearSampleData({ localOnly: true });
+    }
     useSettingsStore.getState().setPersonalSyncEnabled(true);
     showToast(tr.auth.acctBackingUp, 'info');
     try {

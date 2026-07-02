@@ -19,6 +19,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNotesStore } from '../../store/notesStore';
+import ScreenGuide, { whenStore, type GuideStep } from '../../components/common/ScreenGuide';
 import { useWalletStore } from '../../store/walletStore';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
@@ -92,6 +93,10 @@ const NoteEditor: React.FC = () => {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<TextInput>(null);
+  // Measurable wrappers for the walk-through spotlight (the TextInput ref is
+  // taken by inputRef; these give the guide clean measureInWindow targets).
+  const guideTargetRef = useRef<any>(null);
+  const extractPillRef = useRef<any>(null);
   const hasUnsavedRef = useRef(false);
 
   const {
@@ -212,12 +217,63 @@ const NoteEditor: React.FC = () => {
     }
   }, [pendingExtractions.length, showExtractModal]);
 
-  // Auto-focus on mount for new (empty) notes
+  // Auto-focus on mount for new (empty) notes — but NOT while the first-visit
+  // walk-through is pending, so the greeting shows in full space instead of
+  // being shoved above the keyboard. The guide's "tap here to type" step brings
+  // the keyboard up when the user actually taps the input.
   useEffect(() => {
-    if (!page?.content) {
+    const guidePending = !useSettingsStore.getState().dismissedHints.includes('guide_note_editor');
+    if (!page?.content && !guidePending) {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, []);
+
+  // If the walk-through is skipped, the mount-only auto-focus above already ran
+  // (suppressed), so re-focus once the guide is dismissed and the note is still
+  // empty — otherwise a skipped first run lands on a blank note with no keyboard.
+  const editorGuideDismissed = useSettingsStore((s) => s.dismissedHints.includes('guide_note_editor'));
+  useEffect(() => {
+    if (editorGuideDismissed && !page?.content) {
+      const id = setTimeout(() => inputRef.current?.focus(), 100);
+      return () => clearTimeout(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorGuideDismissed]);
+
+  // Stable step list (memoized) so ScreenGuide's measure effect runs once per
+  // step, not on every keystroke — that churn flickered the step-1 hole and
+  // auto-dismissed step 2 when the extract pill unmounted during classification.
+  const editorGuideSteps = useMemo<GuideStep[]>(() => [
+    // No intro card here — the user was just greeted on the Notes landing, so
+    // go straight to the action instead of repeating the same greeting/copy.
+    {
+      kind: 'doWithMe',
+      targetRef: guideTargetRef,
+      label: t.guide.noteEditorStep,
+      keyboardAware: true,
+      // Advance only once the note holds a plausible amount (a digit + a few
+      // chars), not on the first debounced keystroke.
+      watch: whenStore(
+        useNotesStore,
+        (s) => { const pg = s.pages.find((p) => p.id === pageId); const c = pg?.content ?? ''; return (/\d/.test(c) && c.trim().length >= 4) ? c.trim().length : 0; },
+        (n, base) => n > base,
+      ),
+    },
+    {
+      kind: 'doWithMe',
+      targetRef: extractPillRef,
+      label: t.guide.noteEditorStep2,
+      keyboardAware: true,
+      dismissKeyboardOnEnter: true,
+      // Backstop only — handleExtract dismisses the guide on tap; this covers
+      // the case the user extracts some other way.
+      watch: whenStore(
+        useNotesStore,
+        (s) => { const pg = s.pages.find((p) => p.id === pageId); return pg ? pg.extractions.length : 0; },
+        (n, base) => n > base,
+      ),
+    },
+  ], [t, pageId]);
 
   // Track keyboard visibility
   useEffect(() => {
@@ -282,6 +338,10 @@ const NoteEditor: React.FC = () => {
 
   const handleExtract = useCallback(() => {
     lightTap();
+    // The walk-through's "tap extract" step is complete the instant the user
+    // taps here — bow the guide out now so it's robust to the pill unmounting
+    // during classification and to the confirmation modal opening on top.
+    useSettingsStore.getState().dismissHint('guide_note_editor');
     // Flush pending save so store is up to date
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -564,27 +624,37 @@ const NoteEditor: React.FC = () => {
           </View>
         )}
 
-        <TextInput
-          ref={inputRef}
-          style={styles.unifiedInput}
-          onChangeText={handleTextChange}
-          placeholder={t.notes.startWritingPlaceholder}
-          placeholderTextColor={C.textMuted}
-          multiline
-          textAlignVertical="top"
-          scrollEnabled={false}
-          autoCorrect={false}
-          autoCapitalize="none"
-          keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={withAlpha(C.accent, 0.25)}
-        >
-          <Text style={styles.titleLine}>{title}</Text>
-          {body !== '' && <Text style={styles.bodyLine}>{'\n' + body}</Text>}
-        </TextInput>
+        <View ref={guideTargetRef} collapsable={false}>
+          <TextInput
+            ref={inputRef}
+            style={styles.unifiedInput}
+            onChangeText={handleTextChange}
+            placeholder={t.notes.startWritingPlaceholder}
+            placeholderTextColor={C.textMuted}
+            multiline
+            textAlignVertical="top"
+            scrollEnabled={false}
+            autoCorrect={false}
+            autoCapitalize="none"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={withAlpha(C.accent, 0.25)}
+          >
+            <Text style={styles.titleLine}>{title}</Text>
+            {body !== '' && <Text style={styles.bodyLine}>{'\n' + body}</Text>}
+          </TextInput>
+        </View>
+
+        {/* First-visit walk-through, do-it-with-me:
+            1) type in the REAL input (advance once they've written something),
+            2) tap the REAL extract button through the hole (advance the instant
+               Echo pulls an amount out) — then the guide bows out so the app's
+               own confirmation card is the reveal. */}
+        <ScreenGuide id="guide_note_editor" steps={editorGuideSteps} />
 
         {/* Inline extract button — appears after text */}
         {text.trim().length > 0 && pendingExtractions.length === 0 && !isClassifying && (
           <TouchableOpacity
+            ref={extractPillRef}
             style={styles.extractBtn}
             onPress={handleExtract}
             activeOpacity={0.7}

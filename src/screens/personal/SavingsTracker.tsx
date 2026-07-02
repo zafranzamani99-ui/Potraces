@@ -40,6 +40,7 @@ import { CategoryOption } from '../../types';
 import { lightTap, selectionChanged } from '../../services/haptics';
 import { useT } from '../../i18n';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import ScreenGuide from '../../components/common/ScreenGuide';
 
 const MAX_ACCOUNTS = 5;
 const SCREEN_W = Dimensions.get('window').width;
@@ -1367,6 +1368,17 @@ const SavingsTracker: React.FC = () => {
         </Pressable>
         <ModalToastHost />
       </Modal>}
+
+      <ScreenGuide
+        id="guide_savings"
+        title={t.guide.yourSavings}
+        icon="archive"
+        description={t.guide.descSavings}
+        points={[
+          { icon: 'plus', text: t.guide.savingsPoint1 },
+          { icon: 'edit-3', text: t.guide.savingsPoint2 },
+        ]}
+      />
     </View>
   );
 };

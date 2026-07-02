@@ -3,17 +3,27 @@ import {
   View,
   Text,
   TextInput,
-  FlatList,
   StyleSheet,
   Dimensions,
   TouchableOpacity,
   Pressable,
-  ViewToken,
   Animated,
   Easing,
   LayoutChangeEvent,
   useWindowDimensions,
 } from 'react-native';
+import RAnimated, {
+  useSharedValue,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useAnimatedRef,
+  useAnimatedReaction,
+  interpolate,
+  interpolateColor,
+  Extrapolation,
+  runOnJS,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -24,6 +34,7 @@ import { useSettingsStore, ThemePreference } from '../../store/settingsStore';
 import { useAppStore } from '../../store/appStore';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
+import { loadDummyData } from '../../utils/dummyData';
 import { SkyBackdrop, FlyingWau } from '../../components/common/WauScene';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -44,11 +55,6 @@ interface OnboardingPage extends OnboardingSlideMeta {
   description: string;
 }
 
-type PageItem =
-  | { type: 'welcome' }
-  | { type: 'slide'; data: OnboardingPage }
-  | { type: 'mode' };
-
 // FIRSTRUN-C4 — cut 5 feature slides to 3. Removed: '3' split & '5' receipts/pulse.
 // Their value resurfaces as in-context FeatureHints when the user reaches those screens.
 const SLIDE_META: OnboardingSlideMeta[] = [
@@ -57,11 +63,12 @@ const SLIDE_META: OnboardingSlideMeta[] = [
   { id: '4', icon: 'edit-3', accentColor: '#8B7355' },
 ];
 
-type ModeChoice = 'personal' | 'business' | 'both';
-const MODE_OPTIONS: { id: ModeChoice; icon: keyof typeof Feather.glyphMap }[] = [
-  { id: 'personal', icon: 'user' },
-  { id: 'business', icon: 'briefcase' },
-  { id: 'both', icon: 'layers' },
+// Final page: how the user wants to begin. 'fresh' = empty stores;
+// 'demo' seeds the same sample dataset as Settings → Load Sample Data.
+type StartChoice = 'fresh' | 'demo';
+const START_OPTIONS: { id: StartChoice; icon: keyof typeof Feather.glyphMap }[] = [
+  { id: 'fresh', icon: 'sunrise' },
+  { id: 'demo', icon: 'play-circle' },
 ];
 
 // ─── Sky palettes ─────────────────────────────────────────
@@ -79,7 +86,7 @@ type SkyPalette = {
   fieldBgFocus: string;
   fieldBorder: string;
   focusBorder: string;
-  choiceBorder: string; // mode-card resting border
+  choiceBorder: string; // choice-card resting border
   segTrack: string;
   segThumb: string;
   segThumbBorder: string;
@@ -160,6 +167,9 @@ const NIGHT_ACCENT: Record<string, string> = {
 };
 const accentFor = (hex: string, dark: boolean) => (dark ? NIGHT_ACCENT[hex] ?? '#DEAB22' : hex);
 
+type Styles = ReturnType<typeof makeStyles>;
+type Translations = ReturnType<typeof useT>;
+
 // ─── Tiny animation primitives ────────────────────────────
 // Shared building blocks so every page can stage its entrance. All native-driver.
 
@@ -206,7 +216,9 @@ const Pop: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <Animated.View style={{ opacity: v, transform: [{ scale: v }] }}>{children}</Animated.View>;
 };
 
-/** Animated number that counts up while its slide is on screen. */
+/** Animated number that counts up the first time its slide settles on screen.
+ *  Plays once and keeps its final value — resetting on inactive re-ran the
+ *  JS-thread listener loop on every revisit and flickered mid-swipe. */
 const CountUp: React.FC<{ active: boolean; to: number; style?: object; prefix?: string }> = ({
   active,
   to,
@@ -214,15 +226,16 @@ const CountUp: React.FC<{ active: boolean; to: number; style?: object; prefix?: 
   prefix = 'RM ',
 }) => {
   const [val, setVal] = useState(0);
+  const startedRef = useRef(false);
   useEffect(() => {
-    if (!active) {
-      setVal(0);
-      return;
-    }
+    if (!active || startedRef.current) return;
+    startedRef.current = true;
     const v = new Animated.Value(0);
     const id = v.addListener(({ value }) => setVal(Math.round(value)));
-    Animated.timing(v, { toValue: to, duration: 1100, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
-    return () => v.removeListener(id);
+    Animated.timing(v, { toValue: to, duration: 1100, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start(() => {
+      v.removeListener(id);
+      setVal(to);
+    });
   }, [active, to]);
   return (
     <Text style={style}>
@@ -330,25 +343,28 @@ const MockupRow: React.FC<{ icon: string; label: string; accent: string; sky: Sk
 
 const NOTE_TEXT = 'makan rm12\ngrab rm8\nparking rm3\nteh tarik rm2.50';
 
-/** Notes mockup that TYPES its note live, then pops the Echo chip. */
+/** Notes mockup that TYPES its note live, then pops the Echo chip.
+ *  Types once on first settle and stays typed — see CountUp for why. */
 const NotesMockup: React.FC<{ accent: string; sky: SkyPalette; active: boolean; card: object }> = ({ accent, sky, active, card }) => {
   const [n, setN] = useState(0);
+  const startedRef = useRef(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const done = n >= NOTE_TEXT.length;
+  useEffect(() => () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+  }, []);
   useEffect(() => {
-    if (!active) {
-      setN(0);
-      return;
-    }
-    const id = setInterval(() => {
+    if (!active || startedRef.current) return;
+    startedRef.current = true;
+    intervalRef.current = setInterval(() => {
       setN((p) => {
         if (p >= NOTE_TEXT.length) {
-          clearInterval(id);
+          if (intervalRef.current) clearInterval(intervalRef.current);
           return p;
         }
         return p + 1;
       });
     }, 28);
-    return () => clearInterval(id);
   }, [active]);
 
   return (
@@ -356,7 +372,7 @@ const NotesMockup: React.FC<{ accent: string; sky: SkyPalette; active: boolean; 
       <Text style={{ fontSize: 10, color: sky.faint, marginBottom: 6 }}>Notes</Text>
       <Text style={{ fontSize: 12, color: sky.ink, lineHeight: 18, height: 72 }}>
         {NOTE_TEXT.slice(0, n)}
-        {!done && active ? '▍' : ''}
+        {!done && n > 0 ? '▍' : ''}
       </Text>
       <View style={{ marginTop: 10, height: 26, justifyContent: 'center' }}>
         {done && (
@@ -444,29 +460,261 @@ const SlideMockup: React.FC<{ slideId: string; accent: string; sky: SkyPalette; 
 };
 
 // ─── Pager dots that stretch into pills ───────────────────
-const Dots: React.FC<{ count: number; index: number; colors: string[]; inactive: string }> = ({ count, index, colors, inactive }) => {
-  const vals = useRef(Array.from({ length: count }, (_, i) => new Animated.Value(i === 0 ? 1 : 0))).current;
+// Driven directly by the pager's scroll position on the UI thread — the JS
+// thread does zero work while the dots stretch/tint mid-swipe.
+const PagerDot: React.FC<{
+  index: number;
+  scrollX: SharedValue<number>;
+  pageW: number;
+  color: string;
+  inactive: string;
+}> = ({ index, scrollX, pageW, color, inactive }) => {
+  const style = useAnimatedStyle(() => {
+    const pos = scrollX.value / Math.max(1, pageW);
+    return {
+      width: interpolate(pos, [index - 1, index, index + 1], [8, 26, 8], Extrapolation.CLAMP),
+      backgroundColor: interpolateColor(pos, [index - 1, index, index + 1], [inactive, color, inactive]),
+    };
+  }, [pageW, color, inactive, index]);
+  return <RAnimated.View style={[{ height: 8, borderRadius: RADIUS.full }, style]} />;
+};
+
+const Dots: React.FC<{
+  colors: string[];
+  inactive: string;
+  scrollX: SharedValue<number>;
+  pageW: number;
+}> = ({ colors, inactive, scrollX, pageW }) => (
+  <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+    {colors.map((c, i) => (
+      <PagerDot key={`dot-${i}`} index={i} scrollX={scrollX} pageW={pageW} color={c} inactive={inactive} />
+    ))}
+  </View>
+);
+
+// ─── Pages ────────────────────────────────────────────────
+// Each page is memoized so pager swipes, keystrokes on the welcome page, and
+// index flips never re-render the other pages — that full-list re-render was
+// what dropped the old FlatList pager to ~30fps mid-swipe.
+
+const WelcomePage = React.memo<{
+  listW: number;
+  sky: SkyPalette;
+  skyDark: boolean;
+  styles: Styles;
+  t: Translations;
+  pagerGesture: ReturnType<typeof Gesture.Native>;
+}>(({ listW, sky, skyDark, styles, t, pagerGesture }) => {
+  const setUserName = useSettingsStore((s) => s.setUserName);
+  const setLanguage = useSettingsStore((s) => s.setLanguage);
+  // Name/language live here (not in the pager parent) so typing re-renders
+  // only this page. Both persist on change (FIRSTRUN-H6), so swiping or
+  // skipping past welcome cannot lose them.
+  const [name, setName] = useState(() => useSettingsStore.getState().userName);
+  const [nameFocused, setNameFocused] = useState(false);
+  const [selectedLang, setSelectedLang] = useState<'en' | 'ms'>(() =>
+    useSettingsStore.getState().language === 'ms' ? 'ms' : 'en',
+  );
+
+  // Language segmented control — sliding thumb.
+  const [segW, setSegW] = useState(0);
+  const segAnim = useRef(new Animated.Value(selectedLang === 'ms' ? 1 : 0)).current;
   useEffect(() => {
-    vals.forEach((v, i) =>
-      Animated.spring(v, { toValue: i === index ? 1 : 0, friction: 8, tension: 90, useNativeDriver: false }).start(),
-    );
-  }, [index, vals]);
+    Animated.spring(segAnim, { toValue: selectedLang === 'ms' ? 1 : 0, friction: 8, tension: 90, useNativeDriver: true }).start();
+  }, [selectedLang, segAnim]);
+  const onSegLayout = useCallback((e: LayoutChangeEvent) => setSegW(e.nativeEvent.layout.width), []);
+
+  const handleNameChange = useCallback((next: string) => {
+    setName(next);
+    // setUserName accepts string; clear via empty string is fine here.
+    setUserName(next.trim());
+  }, [setUserName]);
+
+  const handleLangChange = useCallback((lang: 'en' | 'ms') => {
+    lightTap();
+    setSelectedLang(lang);
+    setLanguage(lang);
+  }, [setLanguage]);
+
+  // Warm, personal greeting — updates live as they type their name.
+  const firstName = name.trim().split(/\s+/)[0];
+  const greeting = firstName
+    ? t.onboarding.hiThere.replace(/!?$/, `, ${firstName}!`)
+    : t.onboarding.hiThere;
+
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-      {vals.map((v, i) => (
-        <Animated.View
-          key={`dot-${i}`}
-          style={{
-            height: 8,
-            borderRadius: RADIUS.full,
-            width: v.interpolate({ inputRange: [0, 1], outputRange: [8, 26] }),
-            backgroundColor: v.interpolate({ inputRange: [0, 1], outputRange: [inactive, colors[i]] }),
-          }}
-        />
-      ))}
+    <View style={[styles.welcomePage, { width: listW }]}>
+      <KeyboardAwareScrollView
+        style={styles.welcomeScroll}
+        contentContainerStyle={styles.welcomeScrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+        bounces={false}
+        bottomOffset={24}
+      >
+        <View style={styles.welcomeInner}>
+          {/* The wau in the open sky — drag it and it fights the wind,
+              release and it glides slowly home. The whole screen behind
+              is the sky (SkyBackdrop), so no frame here. */}
+          <View style={styles.heroArea}>
+            <FlyingWau
+              size={150}
+              panelW={HERO_SKY_W}
+              panelH={HERO_SKY_H}
+              dark={skyDark}
+              pagerGesture={pagerGesture}
+            />
+          </View>
+
+          <Text style={styles.welcomeTitle} accessibilityRole="header">{greeting}</Text>
+          <Text style={styles.description}>{t.onboarding.letsSetUp}</Text>
+
+          <View style={styles.welcomeForm}>
+            {/* Name — filled card input with focus ring */}
+            <View style={styles.sectionLabelRow}>
+              <Feather name="user" size={13} color={sky.sub} />
+              <Text style={styles.welcomeLabel}>{t.onboarding.whatCallYou}</Text>
+            </View>
+            <View style={[styles.inputCard, nameFocused && styles.inputCardFocused]}>
+              <TextInput
+                style={styles.inputCardField}
+                value={name}
+                onChangeText={handleNameChange}
+                onFocus={() => setNameFocused(true)}
+                onBlur={() => setNameFocused(false)}
+                placeholder={t.onboarding.nameOptional}
+                placeholderTextColor={sky.faint}
+                autoCapitalize="words"
+                returnKeyType="done"
+                accessibilityLabel={t.onboarding.whatCallYou}
+                keyboardAppearance={skyDark ? 'dark' : 'light'}
+                selectionColor={sky.accent}
+              />
+            </View>
+
+            {/* Language — sliding segmented control */}
+            <View style={[styles.sectionLabelRow, { marginTop: SPACING.xl }]}>
+              <Feather name="globe" size={13} color={sky.sub} />
+              <Text style={styles.welcomeLabel}>{t.onboarding.language}</Text>
+            </View>
+            <View style={styles.segTrack} onLayout={onSegLayout}>
+              {segW > 0 && (
+                <Animated.View
+                  style={[
+                    styles.segThumb,
+                    {
+                      width: (segW - 6) / 2,
+                      transform: [
+                        { translateX: segAnim.interpolate({ inputRange: [0, 1], outputRange: [3, 3 + (segW - 6) / 2] }) },
+                      ],
+                    },
+                  ]}
+                />
+              )}
+              <Pressable
+                style={styles.segItem}
+                onPress={() => handleLangChange('en')}
+                accessibilityRole="button"
+                accessibilityLabel="English"
+                accessibilityState={{ selected: selectedLang === 'en' }}
+              >
+                <Text style={[styles.segText, selectedLang === 'en' && styles.segTextActive]}>English</Text>
+              </Pressable>
+              <Pressable
+                style={styles.segItem}
+                onPress={() => handleLangChange('ms')}
+                accessibilityRole="button"
+                accessibilityLabel="Bahasa Melayu"
+                accessibilityState={{ selected: selectedLang === 'ms' }}
+              >
+                <Text style={[styles.segText, selectedLang === 'ms' && styles.segTextActive]}>Bahasa Melayu</Text>
+              </Pressable>
+            </View>
+
+          </View>
+        </View>
+      </KeyboardAwareScrollView>
     </View>
   );
-};
+});
+WelcomePage.displayName = 'WelcomePage';
+
+const SlidePage = React.memo<{
+  slide: OnboardingPage;
+  active: boolean;
+  listW: number;
+  sky: SkyPalette;
+  skyDark: boolean;
+  styles: Styles;
+}>(({ slide, active, listW, sky, skyDark, styles }) => (
+  <View style={[styles.page, { width: listW }]}>
+    <View style={styles.pageInner}>
+      <View style={styles.mockupContainer}>
+        <Reveal active={active} delay={40} from={20}>
+          <SlideMockup slideId={slide.id} accent={accentFor(slide.accentColor, skyDark)} sky={sky} isDark={skyDark} active={active} />
+        </Reveal>
+      </View>
+      <Reveal active={active} delay={140} from={14} style={{ alignSelf: 'stretch' }}>
+        <Text style={styles.title} accessibilityRole="header">{slide.title}</Text>
+        <Text style={styles.description}>{slide.description}</Text>
+      </Reveal>
+    </View>
+  </View>
+));
+SlidePage.displayName = 'SlidePage';
+
+const StartChoicePage = React.memo<{
+  active: boolean;
+  selected: StartChoice | null;
+  onPick: (choice: StartChoice) => void;
+  listW: number;
+  sky: SkyPalette;
+  styles: Styles;
+  t: Translations;
+}>(({ active, selected, onPick, listW, sky, styles, t }) => (
+  <View style={[styles.page, { width: listW }]}>
+    <View style={styles.pageInner}>
+      <Reveal active={active} delay={60} from={12} style={{ alignSelf: 'stretch' }}>
+        <Text style={styles.title} accessibilityRole="header">{t.onboarding.startPickTitle}</Text>
+      </Reveal>
+
+      <View style={styles.choiceList}>
+        {START_OPTIONS.map((opt, i) => {
+          const isActive = selected === opt.id;
+          const label = opt.id === 'fresh' ? t.onboarding.startFresh : t.onboarding.startDemo;
+          return (
+            <Reveal key={opt.id} active={active} delay={180 + i * 120} from={18}>
+              <TouchableOpacity
+                style={[styles.choiceCard, isActive && styles.choiceCardActive]}
+                onPress={() => onPick(opt.id)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                accessibilityState={{ selected: isActive }}
+              >
+                <View style={[styles.choiceIconWrap, isActive && styles.choiceIconWrapActive]}>
+                  <Feather name={opt.icon} size={20} color={isActive ? sky.accent : sky.sub} />
+                </View>
+                <Text style={[styles.choiceLabel, isActive && styles.choiceLabelActive]}>{label}</Text>
+                <View style={[styles.radioOuter, isActive && styles.radioOuterActive]}>
+                  {isActive && (
+                    <Pop>
+                      <View style={styles.radioInner}>
+                        <Feather name="check" size={12} color={sky.ctaInk} />
+                      </View>
+                    </Pop>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </Reveal>
+          );
+        })}
+      </View>
+    </View>
+  </View>
+));
+StartChoicePage.displayName = 'StartChoicePage';
 
 const Onboarding: React.FC = () => {
   const isDark = useIsDark();
@@ -474,23 +722,19 @@ const Onboarding: React.FC = () => {
   const insets = useSafeAreaInsets();
   // Android (SDK 54 edge-to-edge) can report a stale/too-wide module-load
   // Dimensions snapshot, which made the pager's pages wider than the real
-  // screen and clipped page content on the right. Measure the list's actual
-  // width instead and drive page width + getItemLayout from it.
+  // screen and clipped page content on the right. Measure the pager's actual
+  // width instead and drive page width + snap offsets from it.
   const { width: winW } = useWindowDimensions();
   const [listW, setListW] = useState(winW);
-  const flatListRef = useRef<FlatList>(null);
+  const scrollRef = useAnimatedRef<RAnimated.ScrollView>();
   // The pager's native scroll, exposed as an RNGH gesture so the wau kite drag
   // can be declared simultaneous with it — instead of a JS kill-switch that
   // froze paging a frame late on Android.
   const nativePager = useMemo(() => Gesture.Native(), []);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [name, setName] = useState('');
-  const [nameFocused, setNameFocused] = useState(false);
-  const [selectedLang, setSelectedLang] = useState<'en' | 'ms'>('en');
-  const [selectedMode, setSelectedMode] = useState<ModeChoice | null>(null);
+  const indexRef = useRef(0);
+  const [startChoice, setStartChoice] = useState<StartChoice | null>(null);
   const setHasCompletedOnboarding = useSettingsStore((s) => s.setHasCompletedOnboarding);
-  const setUserName = useSettingsStore((s) => s.setUserName);
-  const setLanguage = useSettingsStore((s) => s.setLanguage);
   const setDefaultMode = useSettingsStore((s) => s.setDefaultMode);
   const setMode = useAppStore((s) => s.setMode);
   const themePreference = useSettingsStore((s) => s.themePreference);
@@ -504,14 +748,6 @@ const Onboarding: React.FC = () => {
   // The onboarding's own WCAG-validated palette (see docs/DARK_MODE_READABILITY.md).
   const sky = skyDark ? SKY_NIGHT : SKY_DAY;
   const styles = useMemo(() => makeStyles(skyDark, sky), [skyDark, sky]);
-
-  // Language segmented control — sliding thumb.
-  const [segW, setSegW] = useState(0);
-  const segAnim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.spring(segAnim, { toValue: selectedLang === 'ms' ? 1 : 0, friction: 8, tension: 90, useNativeDriver: false }).start();
-  }, [selectedLang, segAnim]);
-  const onSegLayout = useCallback((e: LayoutChangeEvent) => setSegW(e.nativeEvent.layout.width), []);
 
   // CTA arrow nudge — a gentle "go on" gesture.
   const nudge = useRef(new Animated.Value(0)).current;
@@ -533,30 +769,42 @@ const Onboarding: React.FC = () => {
     { ...SLIDE_META[2], title: t.onboarding.notesEcho, description: t.onboarding.notesEchoDesc },
   ], [t]);
 
-  const ALL_PAGES: PageItem[] = useMemo(() => [
-    { type: 'welcome' },
-    ...PAGES.map(p => ({ type: 'slide' as const, data: p })),
-    { type: 'mode' as const },
-  ], [PAGES]);
+  // welcome + 3 slides + start-choice
+  const PAGE_COUNT = PAGES.length + 2;
 
   const DOT_COLORS = useMemo(
     () => [sky.accent, ...PAGES.map((p) => accentFor(p.accentColor, skyDark)), sky.accent],
     [sky, skyDark, PAGES],
   );
 
-  // FIRSTRUN-H6 — persist on every change so swiping past welcome cannot lose the name.
-  const handleNameChange = useCallback((next: string) => {
-    setName(next);
-    const trimmed = next.trim();
-    // setUserName accepts string; clear via empty string is fine here.
-    setUserName(trimmed);
-  }, [setUserName]);
+  // The pager's scroll position lives on the UI thread; dots read it directly.
+  // JS only hears about whole-page crossings (below), not every scroll frame.
+  const scrollX = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollX.value = e.contentOffset.x;
+    },
+  });
 
-  const handleLangChange = useCallback((lang: 'en' | 'ms') => {
-    lightTap();
-    setSelectedLang(lang);
-    setLanguage(lang);
-  }, [setLanguage]);
+  const settleIndex = useCallback((i: number) => {
+    const clamped = Math.max(0, Math.min(PAGE_COUNT - 1, i));
+    indexRef.current = clamped;
+    setCurrentIndex(clamped);
+  }, [PAGE_COUNT]);
+
+  // Flip `currentIndex` when the swipe crosses a page midpoint. Entrance
+  // animations play once and never reset (Reveal/CountUp/NotesMockup), so —
+  // unlike the old 80%-viewability FlatList — an early flip can't blank or
+  // restart the outgoing page mid-swipe.
+  useAnimatedReaction(
+    () => Math.round(scrollX.value / Math.max(1, listW)),
+    (index, previous) => {
+      if (previous === null || index !== previous) {
+        runOnJS(settleIndex)(index);
+      }
+    },
+    [listW, settleIndex],
+  );
 
   // Apply immediately — useCalm() is reactive, so the whole screen re-themes live.
   const handleThemeChange = useCallback((pref: ThemePreference) => {
@@ -564,238 +812,45 @@ const Onboarding: React.FC = () => {
     setThemePreference(pref);
   }, [setThemePreference]);
 
-  // FIRSTRUN-C2 — apply mode choice. Default 'personal' if user skips before picking.
-  const applyModeChoice = useCallback((choice: ModeChoice | null) => {
-    const resolved: ModeChoice = choice ?? 'personal';
-    if (resolved === 'business') {
-      setDefaultMode('business');
-      setMode('business');
-    } else {
-      // 'personal' and 'both' both land in personal first; 'both' just keeps business
-      // discoverable (user can flip in Settings).
-      setDefaultMode('personal');
-      setMode('personal');
-    }
-  }, [setDefaultMode, setMode]);
-
-  const handleComplete = useCallback(() => {
-    // Inputs are already persisted on change; this is a final safety net.
-    if (name.trim()) setUserName(name.trim());
-    setLanguage(selectedLang);
-    applyModeChoice(selectedMode);
+  const completedRef = useRef(false);
+  // Takes the choice explicitly rather than reading startChoice state — Skip
+  // must mean "start fresh" even if the user picked demo on the last page and
+  // then swiped back (the lingering pick must not seed on Skip).
+  const handleComplete = useCallback((choice: StartChoice | null) => {
+    // One-shot: a double-tap on the CTA (or CTA + skip racing) must not seed
+    // the demo dataset twice.
+    if (completedRef.current) return;
+    completedRef.current = true;
+    // The mode-pick page is gone — everyone lands in personal mode; business
+    // stays one Settings toggle away. Name/language persisted on change.
+    setDefaultMode('personal');
+    setMode('personal');
+    // Same dataset as Settings → Load Sample Data.
+    if (choice === 'demo') loadDummyData();
     setHasCompletedOnboarding(true);
-  }, [name, selectedLang, selectedMode, setUserName, setLanguage, applyModeChoice, setHasCompletedOnboarding]);
+  }, [setDefaultMode, setMode, setHasCompletedOnboarding]);
 
   const handleNext = useCallback(() => {
-    if (currentIndex < ALL_PAGES.length - 1) {
-      flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
+    if (indexRef.current < PAGE_COUNT - 1) {
+      const next = indexRef.current + 1;
+      // Programmatic scrolls don't reliably emit momentum events on Android —
+      // settle the index now; the scroll reaction is idempotent when it lands.
+      settleIndex(next);
+      scrollRef.current?.scrollTo({ x: next * listW, animated: true });
     } else {
-      handleComplete();
+      handleComplete(startChoice);
     }
-  }, [currentIndex, handleComplete, ALL_PAGES.length]);
+  }, [PAGE_COUNT, listW, settleIndex, handleComplete, scrollRef, startChoice]);
 
-  const handleModePick = useCallback((choice: ModeChoice) => {
+  const handleStartPick = useCallback((choice: StartChoice) => {
     lightTap();
-    setSelectedMode(choice);
+    setStartChoice(choice);
   }, []);
 
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      if (viewableItems.length > 0 && viewableItems[0].index != null) {
-        setCurrentIndex(viewableItems[0].index);
-      }
-    }
-  ).current;
-
-  // Flip `currentIndex` only once a page is mostly settled (not at 50% mid-swipe),
-  // so an outgoing page's content isn't reset/re-animated while still on screen.
-  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 80 }).current;
-
-  const renderPage = useCallback(({ item, index }: { item: PageItem; index: number }) => {
-    const active = currentIndex === index;
-
-    if (item.type === 'welcome') {
-      // Warm, personal greeting — updates live as they type their name.
-      const firstName = name.trim().split(/\s+/)[0];
-      const greeting = firstName
-        ? t.onboarding.hiThere.replace(/!?$/, `, ${firstName}!`)
-        : t.onboarding.hiThere;
-      return (
-        <View style={[styles.welcomePage, { width: listW }]}>
-          <KeyboardAwareScrollView
-            style={styles.welcomeScroll}
-            contentContainerStyle={styles.welcomeScrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-            bounces={false}
-            bottomOffset={24}
-          >
-            <View style={styles.welcomeInner}>
-              {/* The wau in the open sky — drag it and it fights the wind,
-                  release and it glides slowly home. The whole screen behind
-                  is the sky (SkyBackdrop), so no frame here. */}
-              <View style={styles.heroArea}>
-                <FlyingWau
-                  size={150}
-                  panelW={HERO_SKY_W}
-                  panelH={HERO_SKY_H}
-                  dark={skyDark}
-                  pagerGesture={nativePager}
-                />
-              </View>
-
-              <Text style={styles.welcomeTitle} accessibilityRole="header">{greeting}</Text>
-              <Text style={styles.description}>{t.onboarding.letsSetUp}</Text>
-
-              <View style={styles.welcomeForm}>
-                {/* Name — filled card input with focus ring */}
-                <View style={styles.sectionLabelRow}>
-                  <Feather name="user" size={13} color={sky.sub} />
-                  <Text style={styles.welcomeLabel}>{t.onboarding.whatCallYou}</Text>
-                </View>
-                <View style={[styles.inputCard, nameFocused && styles.inputCardFocused]}>
-                  <TextInput
-                    style={styles.inputCardField}
-                    value={name}
-                    onChangeText={handleNameChange}
-                    onFocus={() => setNameFocused(true)}
-                    onBlur={() => setNameFocused(false)}
-                    placeholder={t.onboarding.nameOptional}
-                    placeholderTextColor={sky.faint}
-                    autoCapitalize="words"
-                    returnKeyType="done"
-                    accessibilityLabel={t.onboarding.whatCallYou}
-                    keyboardAppearance={skyDark ? 'dark' : 'light'}
-                    selectionColor={sky.accent}
-                  />
-                </View>
-
-                {/* Language — sliding segmented control */}
-                <View style={[styles.sectionLabelRow, { marginTop: SPACING.xl }]}>
-                  <Feather name="globe" size={13} color={sky.sub} />
-                  <Text style={styles.welcomeLabel}>{t.onboarding.language}</Text>
-                </View>
-                <View style={styles.segTrack} onLayout={onSegLayout}>
-                  {segW > 0 && (
-                    <Animated.View
-                      style={[
-                        styles.segThumb,
-                        {
-                          width: (segW - 6) / 2,
-                          transform: [
-                            { translateX: segAnim.interpolate({ inputRange: [0, 1], outputRange: [3, 3 + (segW - 6) / 2] }) },
-                          ],
-                        },
-                      ]}
-                    />
-                  )}
-                  <Pressable
-                    style={styles.segItem}
-                    onPress={() => handleLangChange('en')}
-                    accessibilityRole="button"
-                    accessibilityLabel="English"
-                    accessibilityState={{ selected: selectedLang === 'en' }}
-                  >
-                    <Text style={[styles.segText, selectedLang === 'en' && styles.segTextActive]}>English</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.segItem}
-                    onPress={() => handleLangChange('ms')}
-                    accessibilityRole="button"
-                    accessibilityLabel="Bahasa Melayu"
-                    accessibilityState={{ selected: selectedLang === 'ms' }}
-                  >
-                    <Text style={[styles.segText, selectedLang === 'ms' && styles.segTextActive]}>Bahasa Melayu</Text>
-                  </Pressable>
-                </View>
-
-              </View>
-            </View>
-          </KeyboardAwareScrollView>
-        </View>
-      );
-    }
-
-    if (item.type === 'mode') {
-      return (
-        <View style={[styles.page, { width: listW }]}>
-          <View style={styles.pageInner}>
-            <Reveal active={active} delay={60} from={12} style={{ alignSelf: 'stretch' }}>
-              <Text style={styles.title} accessibilityRole="header">{t.onboarding.modePickTitle}</Text>
-              <Text style={styles.description}>{t.onboarding.modePickSubtitle}</Text>
-            </Reveal>
-
-            <View style={styles.modeList}>
-              {MODE_OPTIONS.map((opt, i) => {
-                const isActive = selectedMode === opt.id;
-                const label = t.onboarding[
-                  opt.id === 'personal' ? 'modeTrackMine'
-                  : opt.id === 'business' ? 'modeRunSomething'
-                  : 'modeBoth'
-                ];
-                const sub = t.onboarding[
-                  opt.id === 'personal' ? 'modeTrackMineSub'
-                  : opt.id === 'business' ? 'modeRunSomethingSub'
-                  : 'modeBothSub'
-                ];
-                return (
-                  <Reveal key={opt.id} active={active} delay={180 + i * 120} from={18}>
-                    <TouchableOpacity
-                      style={[styles.modeCard, isActive && styles.modeCardActive]}
-                      onPress={() => handleModePick(opt.id)}
-                      activeOpacity={0.7}
-                      accessibilityRole="button"
-                      accessibilityLabel={label}
-                      accessibilityState={{ selected: isActive }}
-                    >
-                      <View style={[styles.modeIconWrap, isActive && styles.modeIconWrapActive]}>
-                        <Feather name={opt.icon} size={20} color={isActive ? sky.accent : sky.sub} />
-                      </View>
-                      <View style={styles.modeTextWrap}>
-                        <Text style={[styles.modeLabel, isActive && styles.modeLabelActive]}>{label}</Text>
-                        <Text style={styles.modeSub}>{sub}</Text>
-                      </View>
-                      <View style={[styles.radioOuter, isActive && styles.radioOuterActive]}>
-                        {isActive && (
-                          <Pop>
-                            <View style={styles.radioInner}>
-                              <Feather name="check" size={12} color={sky.ctaInk} />
-                            </View>
-                          </Pop>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  </Reveal>
-                );
-              })}
-            </View>
-          </View>
-        </View>
-      );
-    }
-
-    const slide = item.data;
-    return (
-      <View style={[styles.page, { width: listW }]}>
-        <View style={styles.pageInner}>
-          <View style={styles.mockupContainer}>
-            <Reveal active={active} delay={40} from={20}>
-              <SlideMockup slideId={slide.id} accent={accentFor(slide.accentColor, skyDark)} sky={sky} isDark={skyDark} active={active} />
-            </Reveal>
-          </View>
-          <Reveal active={active} delay={140} from={14} style={{ alignSelf: 'stretch' }}>
-            <Text style={styles.title} accessibilityRole="header">{slide.title}</Text>
-            <Text style={styles.description}>{slide.description}</Text>
-          </Reveal>
-        </View>
-      </View>
-    );
-  }, [name, nameFocused, selectedLang, selectedMode, currentIndex, effectiveTheme, skyDark, sky, segW, segAnim, t, styles, listW, handleNameChange, handleLangChange, handleThemeChange, handleModePick, onSegLayout]);
-
-  const isLastPage = currentIndex === ALL_PAGES.length - 1;
-  // FIRSTRUN-C4 — skip available on every page except the final mode-pick (where the button
-  // IS the commit). Welcome inputs are persisted on change, so skipping from there is safe.
+  const isLastPage = currentIndex === PAGE_COUNT - 1;
+  // FIRSTRUN-C4 — skip available on every page except the final start-choice
+  // (where the button IS the commit). Welcome inputs are persisted on change,
+  // so skipping from there is safe; skipping means starting fresh.
   const canSkip = !isLastPage;
 
   return (
@@ -806,7 +861,7 @@ const Onboarding: React.FC = () => {
 
       {/* Header — day/night switch top-left (always reachable, no scrolling;
           flipping it plays sunrise/sunset across the whole screen), skip
-          top-right on every page except the final mode-pick. */}
+          top-right on every page except the final start-choice. */}
       <View style={styles.header}>
         <ThemeSwitch
           dark={effectiveTheme === 'dark'}
@@ -818,7 +873,7 @@ const Onboarding: React.FC = () => {
         />
         {canSkip ? (
           <TouchableOpacity
-            onPress={handleComplete}
+            onPress={() => handleComplete(null)}
             style={styles.skipButton}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
@@ -831,54 +886,69 @@ const Onboarding: React.FC = () => {
         )}
       </View>
 
-      {/* Pages — wrapped so the wau kite drag can run simultaneously with the
-          pager's native scroll (Gesture.Native) instead of blocking it. */}
+      {/* Pages — a Reanimated ScrollView pager: native paging + momentum, the
+          scroll position tracked on the UI thread, every page memoized. Wrapped
+          so the wau kite drag can run simultaneously with the pager's native
+          scroll (Gesture.Native) instead of blocking it. */}
       <GestureDetector gesture={nativePager}>
-        <FlatList
-          ref={flatListRef}
-          data={ALL_PAGES}
-          renderItem={renderPage}
-          keyExtractor={(_, index) => `page-${index}`}
+        <RAnimated.ScrollView
+          ref={scrollRef}
           horizontal
           pagingEnabled
-          showsHorizontalScrollIndicator={false}
           bounces={false}
-          // removeClippedSubviews unmounts/remounts pages on this 5-item list,
-          // restarting entrance animations and flickering on Android. They all
-          // fit in memory — keep them mounted.
-          removeClippedSubviews={false}
-          maxToRenderPerBatch={6}
-          windowSize={7}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
+          overScrollMode="never"
+          decelerationRate="fast"
+          disableIntervalMomentum
+          showsHorizontalScrollIndicator={false}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
           onLayout={(e) => {
             const w = e.nativeEvent.layout.width;
-            if (w > 0 && w !== listW) setListW(w);
+            if (w > 0 && w !== listW) {
+              setListW(w);
+              // Keep the settled page aligned to the new page width.
+              requestAnimationFrame(() => scrollRef.current?.scrollTo({ x: indexRef.current * w, animated: false }));
+            }
           }}
-          getItemLayout={(_, index) => ({
-            length: listW,
-            offset: listW * index,
-            index,
-          })}
-          keyboardShouldPersistTaps="handled"
-        />
+        >
+          <WelcomePage listW={listW} sky={sky} skyDark={skyDark} styles={styles} t={t} pagerGesture={nativePager} />
+          {PAGES.map((page, i) => (
+            <SlidePage
+              key={page.id}
+              slide={page}
+              active={currentIndex === i + 1}
+              listW={listW}
+              sky={sky}
+              skyDark={skyDark}
+              styles={styles}
+            />
+          ))}
+          <StartChoicePage
+            active={isLastPage}
+            selected={startChoice}
+            onPick={handleStartPick}
+            listW={listW}
+            sky={sky}
+            styles={styles}
+            t={t}
+          />
+        </RAnimated.ScrollView>
       </GestureDetector>
 
       {/* Bottom: dots + button */}
       <View style={styles.footer}>
-        <Dots count={ALL_PAGES.length} index={currentIndex} colors={DOT_COLORS} inactive={sky.dotInactive} />
+        <Dots colors={DOT_COLORS} inactive={sky.dotInactive} scrollX={scrollX} pageW={listW} />
 
         {(() => {
-          const currentPage = ALL_PAGES[currentIndex];
-          const slideIndex = currentPage?.type === 'slide' ? currentIndex - 1 : -1;
+          const slideIndex = currentIndex >= 1 && currentIndex <= PAGES.length ? currentIndex - 1 : -1;
           // Night CTAs use the bright accent variants (gold family) with near-black
           // ink — the day olives fail contrast on the navy sky.
           const buttonAccent = slideIndex >= 0
             ? accentFor(PAGES[slideIndex]?.accentColor ?? SKY_DAY.accent, skyDark)
             : sky.accent;
-          // Final page = mode-pick. Disable until the user picks one.
-          const isModePage = currentPage?.type === 'mode';
-          const disabled = isModePage && selectedMode == null;
+          // Final page = start-choice. Disable until the user picks one.
+          const disabled = isLastPage && startChoice == null;
           const label =
             currentIndex === 0
               ? t.onboarding.letsGo
@@ -1116,13 +1186,13 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
-  // ── Mode page ──
-  modeList: {
+  // ── Start-choice page ──
+  choiceList: {
     width: '100%',
     marginTop: SPACING['2xl'],
     gap: SPACING.md,
   },
-  modeCard: {
+  choiceCard: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.md,
@@ -1132,13 +1202,14 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: sky.choiceBorder,
     gap: SPACING.md,
+    minHeight: 72,
     ...(skyDark ? NO_SHADOW : { ...WARM_SHADOW_SM, elevation: 0 }),
   },
-  modeCardActive: {
+  choiceCardActive: {
     borderColor: sky.accent,
     backgroundColor: withAlpha(sky.accent, 0.14),
   },
-  modeIconWrap: {
+  choiceIconWrap: {
     width: 40,
     height: 40,
     borderRadius: RADIUS.md,
@@ -1146,26 +1217,17 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modeIconWrapActive: {
+  choiceIconWrapActive: {
     backgroundColor: withAlpha(sky.accent, 0.18),
   },
-  modeTextWrap: {
+  choiceLabel: {
     flex: 1,
-  },
-  modeLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: sky.ink,
   },
-  modeLabelActive: {
-    color: skyDark ? sky.accent : sky.accent,
-  },
-  modeSub: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.regular,
-    color: sky.sub,
-    marginTop: SPACING.xs / 2,
-    lineHeight: TYPOGRAPHY.size.sm * TYPOGRAPHY.lineHeight.normal,
+  choiceLabelActive: {
+    color: sky.accent,
   },
   radioOuter: {
     width: 24,

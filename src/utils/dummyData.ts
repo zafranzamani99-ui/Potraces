@@ -1,5 +1,7 @@
 import { useWalletStore } from '../store/walletStore';
 import { usePersonalStore } from '../store/personalStore';
+import { useSettingsStore } from '../store/settingsStore';
+import { roundMoney } from './money';
 import { useDebtStore } from '../store/debtStore';
 import { useSavingsStore } from '../store/savingsStore';
 import { useNotesStore } from '../store/notesStore';
@@ -42,6 +44,25 @@ export const loadDummyData = (): void => {
   const savingsStore = useSavingsStore.getState();
   const notesStore = useNotesStore.getState();
   const receiptStore = useReceiptStore.getState();
+
+  // Was this an otherwise-empty personal account before we seeded? Only then is
+  // it safe to arm the "exploring with sample data" banner (whose "clear & start
+  // fresh" empties ALL personal data). If a real user loads the sample set on
+  // top of their own data (Settings → Load Sample Data appends, it never
+  // clears), we must NOT arm that one-tap wipe — it would destroy their real
+  // data. The demo dataset always creates wallets + transactions, so any
+  // pre-existing personal rows mean this is a real account.
+  const wasEmptyPersonalAccount =
+    walletStore.wallets.length === 0 &&
+    personalStore.transactions.length === 0 &&
+    personalStore.subscriptions.length === 0 &&
+    personalStore.budgets.length === 0 &&
+    personalStore.goals.length === 0 &&
+    debtStore.debts.length === 0 &&
+    debtStore.splits.length === 0 &&
+    savingsStore.accounts.length === 0 &&
+    notesStore.pages.length === 0 &&
+    receiptStore.receipts.length === 0;
 
   // ─── 1. Wallets — what a real 25yo actually has (9 wallets, not 34) ─
   // Banks
@@ -346,4 +367,33 @@ export const loadDummyData = (): void => {
       { name: 'Hand sanitizer 50ml',  amount: 10.60 },
     ],
   });
+
+  // ─── 11. Re-snapshot initialBalance for the seeded wallets ─────────
+  // The wallet balances above are the persona's FINAL balances, and the
+  // seeded transactions never applied per-transaction wallet adjustments.
+  // Wallet reconciliation replays balance = initialBalance + Σin − Σout
+  // (src/utils/walletReconcile.ts) and auto-runs after every successful
+  // personal sync — without this snapshot it would rewrite every seeded
+  // balance (and deleting a seeded transaction would drift the wallet).
+  // Scoped to the wallets created here so a Settings-triggered load never
+  // touches a real user wallet.
+  const seededWalletIds = [maybankId, cimbId, gxbankId, tngId, grabpayId, shopeeId, atomeId, visaId, mcId];
+  const allTxns = usePersonalStore.getState().transactions;
+  useWalletStore.getState().wallets.forEach((wallet) => {
+    if (!seededWalletIds.includes(wallet.id)) return;
+    const netFlow = allTxns.reduce((sum, t) => {
+      if (t.walletId !== wallet.id || t.id.startsWith('transfer-')) return sum;
+      return sum + (t.type === 'income' ? t.amount : -t.amount);
+    }, 0);
+    walletStore.updateWallet(wallet.id, { initialBalance: roundMoney(wallet.balance - netFlow) });
+  });
+
+  // Mark that the sample dataset is loaded so the dashboard shows the
+  // "exploring with sample data" banner and the sign-in guard can clear it
+  // before it reaches a real cloud account. Cleared by clearSampleData.
+  // Only arm it when we seeded into an empty account (see wasEmptyPersonalAccount)
+  // — otherwise the banner's wipe-all would destroy a real user's own data.
+  if (wasEmptyPersonalAccount) {
+    useSettingsStore.getState().setSampleDataLoaded(true);
+  }
 };

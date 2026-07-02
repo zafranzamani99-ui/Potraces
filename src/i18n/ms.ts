@@ -2809,15 +2809,10 @@ export const ms: Translations = {
     runBusinessDesc: 'dibina untuk penjual, rider, dan freelancer.\nlog pesanan, produk, musim, dan kos — semua dari telefon.',
     notesEcho: 'nota duit anda',
     notesEchoDesc: "tulis biasa — 'makan rm12, grab rm8' — kami keluarkan nombor.\ntanya apa-apa tentang duit anda dalam bahasa biasa.",
-    // Skrin pilih mod terakhir (FIRSTRUN-C2).
-    modePickTitle: 'apa yang bawa anda ke sini?',
-    modePickSubtitle: 'pilih satu — boleh tukar bila-bila dalam tetapan.',
-    modeTrackMine: 'jejak duit saya sendiri',
-    modeTrackMineSub: 'untuk perbelanjaan, bil, dan simpanan.',
-    modeRunSomething: 'saya ada bisnes / kerja sambilan',
-    modeRunSomethingSub: 'jual, rider, atau freelance.',
-    modeBoth: 'kedua-duanya',
-    modeBothSub: 'duit peribadi dan kerja sampingan.',
+    // Skrin pilihan mula terakhir: data sendiri vs data contoh.
+    startPickTitle: 'nak mula macam mana?',
+    startFresh: 'mula baru',
+    startDemo: 'mula dengan data demo',
     getStarted: 'jom!',
     skip: 'langkau',
     // Kunci lama dikekalkan; UI tidak lagi membaca ini.
@@ -2825,6 +2820,15 @@ export const ms: Translations = {
     splitSettleDesc: 'pecah bil dengan kawan, jejak siapa hutang apa.',
     receiptsPulse: 'resit',
     receiptsPulseDesc: 'tangkap resit, kami simpan.',
+  },
+
+  sampleData: {
+    bannerTitle: 'tengah guna data contoh',
+    bannerSubtitle: 'clear bila-bila bila nak mula dengan data sendiri',
+    cta: 'clear & mula baru',
+    confirmTitle: 'clear & mula baru?',
+    confirmBody: 'ni akan kosongkan semua di sini supaya boleh mula dengan data sendiri. nama dan tetapan anda kekal.',
+    cleared: 'dah clear — semua milik anda',
   },
 
   gettingStarted: {
@@ -2851,8 +2855,6 @@ export const ms: Translations = {
   // Banner intro skrin. Formula: detik yang dikenali (≤8 patah) + manfaat
   // senyap (≤10 patah). Satu idea sahaja — bukan senarai ciri.
   guide: {
-    addMoneyInOut: 'tambah duit masuk atau keluar',
-    descExpense: "taip 'nasi lemak rm8', siap — kami uruskan yang lain",
     meetEcho: 'kenali gema',
     descChat: 'tanya apa-apa tentang duit anda, guna ayat sendiri — gema akan ingat',
     yourMoneyNotes: 'nota duit anda',
@@ -2867,6 +2869,10 @@ export const ms: Translations = {
     descReceipt: 'snap sebelum dakwat pudar — jumlah dan kedai, terus simpan',
     yourMoneyHealth: 'kesihatan duit anda',
     descPulse: 'satu pandang, satu skor — makin tepat bila makin banyak dicatat',
+    yourSavings: 'simpanan anda',
+    descSavings: 'simpan sikit-sikit — semua akaun dan pertumbuhannya di satu tempat',
+    yourSubscriptions: 'langganan anda',
+    descSubscriptions: 'bil yang berulang — tengok apa kena bayar, dan bila',
     // baris "cara guna" — setiap satu tunjuk kawalan sebenar pada skrin
     debtPoint1: 'tekan + untuk tambah hutang atau pecah bil',
     debtPoint2: 'tekan mana-mana hutang untuk catat bayaran atau settle',
@@ -2884,6 +2890,18 @@ export const ms: Translations = {
     pulsePoint2: 'catat setiap hari, skor makin tepat',
     goalsPoint1: 'tekan + untuk letak sasaran',
     goalsPoint2: 'tambah bila-bila — progress naik sendiri',
+    // Panduan langkah nota (buat sama-sama).
+    notesStartStep: 'tekan sini untuk mula tulis',
+    noteEditorStep: "taip je — 'makan rm12, grab rm8'",
+    noteEditorStep2: 'tekan extract — echo baca nombornya',
+    // Panduan langkah dompet (buat sama-sama).
+    walletsWalk: 'tekan + — jom buat dompet pertama',
+    walletsPayoffTitle: 'itu dia',
+    walletsPayoffBody: 'setiap belanja tolak dari dompet yang betul sendiri. leret mana-mana dompet untuk topup atau betulkan baki.',
+    savingsPoint1: 'tekan + untuk tambah akaun simpanan atau pelaburan',
+    savingsPoint2: 'kemas kini nilai untuk jejak pertumbuhannya',
+    subscriptionPoint1: 'tekan + untuk tambah bil berulang atau keahlian',
+    subscriptionPoint2: 'kami ingatkan sebelum tarikh setiap satu',
   },
 
   partTime: {

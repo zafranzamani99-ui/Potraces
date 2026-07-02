@@ -2838,15 +2838,10 @@ export const en = {
     runBusinessDesc: "built for sellers, riders, and freelancers.\nlog orders, products, seasons, and costs from your phone.",
     notesEcho: 'your money notes',
     notesEchoDesc: "write naturally — 'lunch rm12, grab rm8' — we pull out the numbers.\nask anything about your money in plain words.",
-    // Final mode-pick page (FIRSTRUN-C2).
-    modePickTitle: 'what brings you here?',
-    modePickSubtitle: 'pick one — you can switch anytime in settings.',
-    modeTrackMine: 'track my own money',
-    modeTrackMineSub: 'for spending, bills, and savings.',
-    modeRunSomething: "i'm running something",
-    modeRunSomethingSub: 'selling, riding, or freelancing.',
-    modeBoth: 'a bit of both',
-    modeBothSub: 'personal money plus a side hustle.',
+    // Final start-choice page: real data vs the sample dataset.
+    startPickTitle: 'how do you want to start?',
+    startFresh: 'start fresh',
+    startDemo: 'start with demo data',
     getStarted: "let's go",
     skip: 'skip',
     // Legacy keys retained for any external reader; UI no longer reads them.
@@ -2854,6 +2849,15 @@ export const en = {
     splitSettleDesc: 'split with friends, track who owes what.',
     receiptsPulse: 'receipts',
     receiptsPulseDesc: 'snap a receipt and we save it.',
+  },
+
+  sampleData: {
+    bannerTitle: 'exploring with sample data',
+    bannerSubtitle: 'clear it whenever you want to start with your own',
+    cta: 'clear & start fresh',
+    confirmTitle: 'clear & start fresh?',
+    confirmBody: 'this empties everything here so you can start with your own. your name and settings stay.',
+    cleared: 'cleared — all yours now',
   },
 
   gettingStarted: {
@@ -2880,8 +2884,6 @@ export const en = {
   // Screen-intro banners. Formula: a lived moment (≤8 words) + the quiet
   // payoff (≤10 words). One idea each — never a feature list.
   guide: {
-    addMoneyInOut: 'add money in or out',
-    descExpense: "type 'nasi lemak rm8' and you're done — we file the rest",
     meetEcho: 'meet echo',
     descChat: 'ask anything about your money, in your own words — echo remembers',
     yourMoneyNotes: 'your money notes',
@@ -2896,6 +2898,10 @@ export const en = {
     descReceipt: 'snap it before the ink fades — total and shop, saved',
     yourMoneyHealth: 'your money health',
     descPulse: 'one glance, one score — it sharpens as you log more',
+    yourSavings: 'your savings',
+    descSavings: 'set aside a little — every account and its growth in one place',
+    yourSubscriptions: 'your subscriptions',
+    descSubscriptions: "the bills that repeat — see what's due, and when",
     // "how" rows — each names a real control on the screen, ≤8 words
     debtPoint1: 'tap + to add a debt or split a bill',
     debtPoint2: 'tap any debt to record a payment or settle it',
@@ -2913,6 +2919,18 @@ export const en = {
     pulsePoint2: 'log daily and watch it sharpen',
     goalsPoint1: 'tap + to set a target',
     goalsPoint2: 'add to it anytime — progress fills as you go',
+    // Notes walk-through (do-it-with-me).
+    notesStartStep: 'tap here to jot your first one',
+    noteEditorStep: "type it messy — 'lunch rm12, grab rm8'",
+    noteEditorStep2: 'now tap extract — echo reads the amounts out',
+    // Wallets walk-through (do-it-with-me).
+    walletsWalk: "tap + — let's make your first wallet",
+    walletsPayoffTitle: 'there it is',
+    walletsPayoffBody: 'every spend now leaves the right wallet on its own. swipe any wallet to top up or fix a balance.',
+    savingsPoint1: 'tap + to add a savings or investment account',
+    savingsPoint2: 'log a new value to track how it grows',
+    subscriptionPoint1: 'tap + to add a recurring bill or membership',
+    subscriptionPoint2: 'we nudge you before each one is due',
   },
 
   partTime: {

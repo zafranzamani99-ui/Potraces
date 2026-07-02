@@ -1360,7 +1360,7 @@ const Goals: React.FC = () => {
         id="goals-guide"
         title={t.goals.screenGuideTitle ?? 'track your savings goals'}
         description={t.goals.screenGuideDesc ?? 'set targets, contribute regularly, and watch your progress grow'}
-        icon="target"
+        icon="flag"
         points={[
           { icon: 'plus', text: t.guide.goalsPoint1 },
           { icon: 'trending-up', text: t.guide.goalsPoint2 },

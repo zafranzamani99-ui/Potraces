@@ -2499,7 +2499,7 @@ const MoneyChat: React.FC = () => {
       <ScreenGuide
         id="guide_chat"
         title={t.guide.meetEcho}
-        icon="message-circle"
+        icon="zap"
         description={t.guide.descChat}
         accent="#6BA3BE"
         points={[

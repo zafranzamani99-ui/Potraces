@@ -62,6 +62,7 @@ import { generateSpendingMirror } from '../../services/spendingMirror';
 import BreathingRoom from '../../components/common/BreathingRoom';
 import FreshStart from '../../components/common/FreshStart';
 import GettingStarted from '../../components/common/GettingStarted';
+import SampleDataBanner from '../../components/common/SampleDataBanner';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import OfflineBanner from '../../components/common/OfflineBanner';
@@ -548,6 +549,9 @@ const PersonalDashboard: React.FC = () => {
   //   3. EmptyState (inside Details) — fallback when zero transactions.
   // Never render both at once.
   const gettingStartedDismissed = useSettingsStore((s) => s.gettingStartedDismissed);
+  // While sample data is loaded, the demo banner owns the first-run slot — it
+  // supersedes FreshStart/GettingStarted (keeps the "exactly one" rule).
+  const sampleDataLoaded = useSettingsStore((s) => s.sampleDataLoaded);
   const ladderComplete = wallets.length > 0 && transactions.length > 0 && budgets.length > 0;
   const showGettingStarted = useMemo(
     () => !gettingStartedDismissed && !ladderComplete && transactions.length < 5,
@@ -797,9 +801,16 @@ const PersonalDashboard: React.FC = () => {
         </RAnimated.View>
 
         {/* First-run surfaces — exactly one renders at a time. See precedence
-            rule above. FreshStart wins on days 1-5; GettingStarted otherwise. */}
-        {showFreshStart && <FreshStart />}
-        {showGettingStarted && <GettingStarted />}
+            rule above. The sample-data banner (demo mode) wins the slot; else
+            FreshStart on days 1-5, GettingStarted otherwise. */}
+        {sampleDataLoaded ? (
+          <SampleDataBanner />
+        ) : (
+          <>
+            {showFreshStart && <FreshStart />}
+            {showGettingStarted && <GettingStarted />}
+          </>
+        )}
 
         {/* Zone 5 — Insight Strip. Hidden until real data exists — a row of
             zeros ("0 transactions", "0%") reads as a dead app, not a report. */}

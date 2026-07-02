@@ -119,6 +119,10 @@ interface SettingsState {
   hasCompletedOnboarding: boolean;
   gettingStartedDismissed: boolean;
   dismissedHints: string[];
+  /** True while the sample/demo dataset is loaded (from onboarding or Settings).
+   *  Drives the "exploring with sample data" dashboard banner and the sign-in
+   *  guard that clears demo data before it can push to a real cloud account. */
+  sampleDataLoaded: boolean;
   biometricLockEnabled: boolean;
   biometricLockTimeoutMin: number;
   walletEchoHidden: boolean;
@@ -187,8 +191,132 @@ interface SettingsState {
   setBiometricLockTimeoutMin: (value: number) => void;
   /** Wipe ALL personal data (local + cloud). Never touches business data. */
   clearPersonalData: () => Promise<void>;
+  /** Clear only the sample/demo dataset: empties every personal store in place
+   *  but keeps the user onboarded — name, language, and hasCompletedOnboarding
+   *  are preserved so they land on a clean empty dashboard, not back in
+   *  onboarding. Resets dismissedHints so the first-visit screen tutorials
+   *  (consumed on populated demo screens) replay fresh on the user's own data.
+   *  Pass `{ localOnly: true }` from the sign-in guard so the real account's
+   *  cloud rows are NOT deleted (a normal user-initiated clear also removes
+   *  cloud rows). */
+  clearSampleData: (opts?: { localOnly?: boolean }) => Promise<void>;
+  setSampleDataLoaded: (value: boolean) => void;
   clearBusinessData: () => Promise<void>;
 }
+
+// Shared personal-data wipe used by BOTH clearPersonalData (full account reset)
+// and clearSampleData (clear demo data, keep the user where they are). Resets
+// every personal store in-memory, purges local rolling backups, and drops
+// personal FileSystem assets + persisted keys so nothing rehydrates.
+// `remote` controls the cloud row deletion: true for user-initiated wipes;
+// false for the sign-in guard, where the session already belongs to the REAL
+// account, so deleting cloud rows would destroy real data before the first
+// pull — instead we clear local sample data and let syncPersonal.pullAll bring
+// the real account's data down.
+// Deliberately does NOT touch settings fields — each caller owns its own set().
+const wipePersonalStores = async ({ remote }: { remote: boolean }): Promise<void> => {
+  usePersonalStore.setState({
+    transactions: [],
+    subscriptions: [],
+    budgets: [],
+    goals: [],
+  });
+  useDebtStore.setState({
+    debts: [],
+    splits: [],
+    contacts: [],
+  });
+  useWalletStore.setState({
+    wallets: [],
+    transfers: [],
+    selectedWalletId: null,
+  });
+  useSavingsStore.setState({
+    accounts: [],
+    sortBy: 'manual',
+    accountOrder: [],
+    lastOpenedValue: null,
+    _deletedSavingsIds: [],
+  });
+  useCategoryStore.setState({
+    customExpenseCategories: [],
+    customIncomeCategories: [],
+    expenseCategoryOverrides: {},
+    incomeCategoryOverrides: {},
+    expenseCategoryOrder: [],
+    incomeCategoryOrder: [],
+  });
+  useNotesStore.setState({
+    pages: [],
+    activePageId: null,
+    isFirstWrite: true,
+  });
+  useLearningStore.setState({
+    categoryPatterns: [],
+    personAliases: [],
+    walletPreferences: [],
+    typeCorrections: [],
+    skippedKeywords: {},
+  });
+  usePlaybookStore.setState({
+    playbooks: [],
+    echoMemory: [],
+  });
+  useAIInsightsStore.setState({
+    spendingMirrorText: null,
+    spendingMirrorGeneratedAt: null,
+    spendingMirrorMonthKey: null,
+    isGenerating: false,
+    breathingRooms: [],
+    freshStartDismissedMonth: null,
+    reportNarratives: {},
+    chatMessages: [],
+    conversations: [],
+  });
+  useReceiptStore.setState({
+    receipts: [],
+    draft: null,
+    _deletedReceiptIds: [],
+  });
+
+  // Purge local rolling backups of personal stores too — otherwise deleted
+  // data survives in bak:* snapshots and the deletion right is incomplete.
+  await purgeBackups(PERSONAL_BACKUP_KEYS);
+
+  // Delete this user's PERSONAL cloud rows (best-effort). Keeps the auth user +
+  // any business data. No session (personal-only, never signed in) is a no-op.
+  // Skipped for the sign-in guard (remote=false) — see the header note.
+  if (remote) {
+    try {
+      await clearPersonalDataRemote();
+    } catch {
+      // Offline / no session — local is wiped; remote prunes on the next wipe.
+    }
+  }
+
+  // Delete personal FileSystem assets (scanned receipts). Payment-QR image files
+  // share a directory with business QRs, so callers drop personal QR references
+  // via set() and we leave that shared dir untouched.
+  const docDir = FileSystem.documentDirectory;
+  if (docDir) {
+    await FileSystem.deleteAsync(`${docDir}receipts/`, { idempotent: true }).catch(() => {});
+  }
+
+  // Remove ONLY the personal persisted keys so nothing rehydrates. Business
+  // keys, auth-storage, premium-storage, and settings-storage are kept.
+  await Promise.all([
+    'personal-storage',
+    'wallet-storage',
+    'savings-storage',
+    'category-storage',
+    'debt-storage',
+    'notes-storage',
+    'learning-storage',
+    'playbook-storage',
+    'ai-insights-storage',
+    'receipt-storage',
+  ].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
+};
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -209,6 +337,7 @@ export const useSettingsStore = create<SettingsState>()(
       hasCompletedOnboarding: false,
       gettingStartedDismissed: false,
       dismissedHints: [],
+      sampleDataLoaded: false,
       biometricLockEnabled: false,
       biometricLockTimeoutMin: 5,
       walletEchoHidden: true,
@@ -270,6 +399,7 @@ export const useSettingsStore = create<SettingsState>()(
       setDefaultMode: (defaultMode) => set({ defaultMode }),
       setThemePreference: (themePreference) => set({ themePreference }),
       setLanguage: (language) => set({ language }),
+      setSampleDataLoaded: (sampleDataLoaded) => set({ sampleDataLoaded }),
       addPaymentQr: (uri, label, mode, meta) => set((s) => {
         const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
         const arr = s[key] || [];
@@ -306,75 +436,7 @@ export const useSettingsStore = create<SettingsState>()(
         // stores, the Supabase session, and the auth user are left intact — a
         // business user who deletes their personal data keeps their shop and stays
         // signed in. Premium (a paid, account-level entitlement) is preserved.
-
-        // 1. Reset every PERSONAL store in-memory.
-        usePersonalStore.setState({
-          transactions: [],
-          subscriptions: [],
-          budgets: [],
-          goals: [],
-        });
-        useDebtStore.setState({
-          debts: [],
-          splits: [],
-          contacts: [],
-        });
-        useWalletStore.setState({
-          wallets: [],
-          transfers: [],
-          selectedWalletId: null,
-        });
-        useSavingsStore.setState({
-          accounts: [],
-          sortBy: 'manual',
-          accountOrder: [],
-          lastOpenedValue: null,
-          _deletedSavingsIds: [],
-        });
-        useCategoryStore.setState({
-          customExpenseCategories: [],
-          customIncomeCategories: [],
-          expenseCategoryOverrides: {},
-          incomeCategoryOverrides: {},
-          expenseCategoryOrder: [],
-          incomeCategoryOrder: [],
-        });
-        useNotesStore.setState({
-          pages: [],
-          activePageId: null,
-          isFirstWrite: true,
-        });
-        useLearningStore.setState({
-          categoryPatterns: [],
-          personAliases: [],
-          walletPreferences: [],
-          typeCorrections: [],
-          skippedKeywords: {},
-        });
-        usePlaybookStore.setState({
-          playbooks: [],
-          echoMemory: [],
-        });
-        useAIInsightsStore.setState({
-          spendingMirrorText: null,
-          spendingMirrorGeneratedAt: null,
-          spendingMirrorMonthKey: null,
-          isGenerating: false,
-          breathingRooms: [],
-          freshStartDismissedMonth: null,
-          reportNarratives: {},
-          chatMessages: [],
-          conversations: [],
-        });
-        useReceiptStore.setState({
-          receipts: [],
-          draft: null,
-          _deletedReceiptIds: [],
-        });
-
-        // Purge local rolling backups of personal stores too — otherwise deleted
-        // data survives in bak:* snapshots and the deletion right is incomplete.
-        await purgeBackups(PERSONAL_BACKUP_KEYS);
+        await wipePersonalStores({ remote: true });
 
         // Personal-only settings + a fresh-start reset so the app returns to the
         // first-run Onboarding screen — RootNavigator renders Onboarding
@@ -390,45 +452,27 @@ export const useSettingsStore = create<SettingsState>()(
           hasCompletedOnboarding: false,
           gettingStartedDismissed: false,
           dismissedHints: [],
+          sampleDataLoaded: false,
         });
         // Open in personal mode (the install default). Business data is untouched
         // and reappears the moment the user switches back to business mode.
         useAppStore.setState({ mode: 'personal' });
+      },
 
-        // 2. Delete this user's PERSONAL cloud rows (best-effort). Keeps the auth
-        //    user + any business data. No session (personal-only, never signed
-        //    in) is a no-op.
-        try {
-          await clearPersonalDataRemote();
-        } catch {
-          // Offline / no session — local is wiped; remote prunes on the next wipe.
-        }
-
-        // 3. Delete personal FileSystem assets (scanned receipts). Payment-QR
-        //    image files share a directory with business QRs, so we only drop the
-        //    personal QR references (above) and leave that shared dir untouched.
-        const docDir = FileSystem.documentDirectory;
-        if (docDir) {
-          await FileSystem.deleteAsync(`${docDir}receipts/`, { idempotent: true }).catch(() => {});
-        }
-
-        // 4. Remove ONLY the personal persisted keys so nothing rehydrates.
-        //    Business keys (business/seller/stall/crm/...), auth-storage, and
-        //    premium-storage are deliberately kept. settings-storage is kept too
-        //    (it holds business QRs + theme/language) — its personal fields were
-        //    already cleared via set() above.
-        await Promise.all([
-          'personal-storage',
-          'wallet-storage',
-          'savings-storage',
-          'category-storage',
-          'debt-storage',
-          'notes-storage',
-          'learning-storage',
-          'playbook-storage',
-          'ai-insights-storage',
-          'receipt-storage',
-        ].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
+      clearSampleData: async (opts) => {
+        // "I'm done with the demo" — empties every personal store but KEEPS the
+        // user onboarded. Name, language, theme, currency, and
+        // hasCompletedOnboarding are all preserved, so the user lands on a clean
+        // empty dashboard ready for their own data rather than replaying
+        // onboarding. localOnly (sign-in guard) skips the cloud-row delete so the
+        // real account's data survives to be pulled down — see the header note.
+        await wipePersonalStores({ remote: !opts?.localOnly });
+        // Replay the first-visit tutorials: the demo run fired (and consumed)
+        // each screen's ScreenGuide on already-populated demo screens, so reset
+        // dismissedHints to give the user's own empty screens the fresh guided
+        // tour. Applies to both the banner "clear & start fresh" and the
+        // sign-in guard — both are demo → real transitions.
+        set({ sampleDataLoaded: false, dismissedHints: [] });
       },
 
       clearBusinessData: async () => {

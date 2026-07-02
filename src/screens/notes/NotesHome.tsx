@@ -18,7 +18,8 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { NotePage } from '../../types';
-import ScreenGuide from '../../components/common/ScreenGuide';
+import ScreenGuide, { whenStore, type GuideStep } from '../../components/common/ScreenGuide';
+import { useSettingsStore } from '../../store/settingsStore';
 import { lightTap, mediumTap, warningNotification } from '../../services/haptics';
 
 // Delete is the one place we allow a true red — a clear, expected destructive
@@ -31,6 +32,7 @@ const NotesHome: React.FC = () => {
   // ScreenGuide spotlight target — the + FAB (hidden in select mode; the
   // guide falls back to inline points if it can't be measured).
   const guideTargetRef = useRef<any>(null);
+  const emptyCtaRef = useRef<any>(null);
   const styles = useMemo(() => makeStyles(C), [C]);
   const pages = useNotesStore((s) => s.pages);
   const isFirstWrite = useNotesStore((s) => s.isFirstWrite);
@@ -51,9 +53,24 @@ const NotesHome: React.FC = () => {
   const handleNewNote = useCallback(() => {
     mediumTap();
     if (isFirstWrite) markFirstWriteComplete();
+    // The empty-state greeting + editor walk-through already introduce Notes;
+    // retire the legacy FAB spotlight so returning here doesn't re-greet with
+    // the identical card.
+    useSettingsStore.getState().dismissHint('guide_notes');
     const id = createPage(mode);
     navigation.navigate('NoteEditor', { pageId: id });
   }, [createPage, mode, navigation, isFirstWrite, markFirstWriteComplete]);
+
+  // Stable step list (memoized) — see the editor guide for why.
+  const startGuideSteps = useMemo<GuideStep[]>(() => [
+    { kind: 'intro', title: t.guide.yourMoneyNotes, body: t.guide.descNotes, icon: 'edit-3' },
+    {
+      kind: 'doWithMe',
+      targetRef: emptyCtaRef,
+      label: t.guide.notesStartStep,
+      watch: whenStore(useNotesStore, (s) => s.pages.length, (n, base) => n > base),
+    },
+  ], [t]);
 
   const handleOpenNote = useCallback(
     (page: NotePage) => {
@@ -175,6 +192,7 @@ const NotesHome: React.FC = () => {
             {isFirstWrite ? t.notes.firstWriteHint : t.notes.startWritingHint}
           </Text>
           <TouchableOpacity
+            ref={emptyCtaRef}
             style={styles.emptyCTA}
             activeOpacity={0.7}
             onPress={handleNewNote}
@@ -183,6 +201,11 @@ const NotesHome: React.FC = () => {
             <Text style={styles.emptyCTAText}>{t.notes.startWriting}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* First impression greets HERE, on arrival — not after "start writing".
+            It points at the real CTA; tapping it (through the hole) opens the
+            editor, where the type→extract walk-through continues. */}
+        <ScreenGuide id="guide_notes_start" accent="#8B7355" steps={startGuideSteps} />
       </View>
     );
   }
