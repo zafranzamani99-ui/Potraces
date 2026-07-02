@@ -116,18 +116,18 @@ export const MYTAX_CATEGORIES: MyTaxCategory[] = [
 // Common Malaysian payment methods — stored as CategoryOption for reuse with CategoryPicker
 
 export const DEFAULT_PAYMENT_METHODS: CategoryOption[] = [
-  { id: 'cash', name: 'Cash', icon: 'dollar-sign', color: '#4F5104' },
-  { id: 'debit_card', name: 'Debit Card', icon: 'credit-card', color: '#6BA3BE' },
-  { id: 'credit_card', name: 'Credit Card', icon: 'credit-card', color: '#B2780A' },
-  { id: 'tng', name: 'TNG eWallet', icon: 'smartphone', color: '#5E72E4' },
-  { id: 'grabpay', name: 'GrabPay', icon: 'smartphone', color: '#2E7D5B' },
-  { id: 'boost', name: 'Boost', icon: 'zap', color: '#DEAB22' },
-  { id: 'shopee_pay', name: 'ShopeePay', icon: 'shopping-bag', color: '#C4956A' },
-  { id: 'mae', name: 'MAE', icon: 'smartphone', color: '#A06CD5' },
-  { id: 'bigpay', name: 'BigPay', icon: 'smartphone', color: '#7C5CFC' },
-  { id: 'duitnow_qr', name: 'DuitNow QR', icon: 'maximize', color: '#332D03' },
-  { id: 'fpx', name: 'FPX', icon: 'globe', color: '#B8AFBC' },
-  { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#8B7355' },
+  { id: 'cash', name: 'Cash', icon: 'm/cash', color: '#4F5104' },
+  { id: 'debit_card', name: 'Debit Card', icon: 'i/card', color: '#6BA3BE' },
+  { id: 'credit_card', name: 'Credit Card', icon: 'i/card', color: '#B2780A' },
+  { id: 'tng', name: 'TNG eWallet', icon: 'm/wallet', color: '#5E72E4' },
+  { id: 'grabpay', name: 'GrabPay', icon: 'm/wallet', color: '#2E7D5B' },
+  { id: 'boost', name: 'Boost', icon: 'm/wallet', color: '#DEAB22' },
+  { id: 'shopee_pay', name: 'ShopeePay', icon: 'i/bag-handle', color: '#C4956A' },
+  { id: 'mae', name: 'MAE', icon: 'm/wallet', color: '#A06CD5' },
+  { id: 'bigpay', name: 'BigPay', icon: 'm/wallet', color: '#7C5CFC' },
+  { id: 'duitnow_qr', name: 'DuitNow QR', icon: 'm/qrcode', color: '#332D03' },
+  { id: 'fpx', name: 'FPX', icon: 'm/bank', color: '#B8AFBC' },
+  { id: 'other', name: 'Other', icon: 'i/ellipsis-horizontal', color: '#8B7355' },
 ];
 
 // Legacy compat — old code referencing RECEIPT_PAYMENT_METHODS

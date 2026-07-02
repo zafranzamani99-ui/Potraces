@@ -14,7 +14,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import ModalToastHost from '../common/ModalToastHost';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -387,6 +387,7 @@ const EditTransactionSheet: React.FC<EditTransactionSheetProps> = ({
       statusBarTranslucent
       onRequestClose={requestCloseWithGuard}
     >
+      <GestureHandlerRootView style={{ flex: 1 }}>
       {/* Real bottom-sheet — Reanimated translateY + drag-to-dismiss + velocity-aware close.
           Backdrop opacity is tied to sheet position so the dim deepens as the sheet rises. */}
       <View style={styles.editSheetWrapper} pointerEvents="box-none">
@@ -406,39 +407,39 @@ const EditTransactionSheet: React.FC<EditTransactionSheetProps> = ({
         </Reanimated.View>
 
         {/* Drag-enabled sheet — outer pan; ScrollView wraps its own native gesture inside */}
-        <GestureDetector gesture={sheetPanGestureSimple}>
-          <Reanimated.View style={[styles.editSheet, sheetAnimatedStyle]}>
-            {/* Drag handle — animated: opacity + width respond to drag distance.
-                Brightens + widens as user drags toward dismiss threshold.
-                a11y (#20): role="button" — VoiceOver users can double-tap to dismiss the keyboard.
-                The drag-to-close gesture is visual, but a11y users should be able to close via
-                the backdrop or hardware-back path — both go through requestCloseWithGuard. */}
-            {/* Drag handle — plain View, no accessibility props on the container. */}
-            <View style={styles.editSheetHandleHit}>
-              <Reanimated.View style={[styles.editSheetHandle, sheetHandleAnimatedStyle]} />
-            </View>
+        <Reanimated.View
+          style={[styles.editSheet, sheetAnimatedStyle]}
+          onStartShouldSetResponder={() => true}
+        >
+          {/* Drag-to-dismiss is scoped to the handle + title zone ONLY. The scroll body
+              and every field below (category dropdown, date, inputs) sit OUTSIDE the
+              GestureDetector, so taps and scrolling are never stolen by the pan.
+              Mirrors SharedSubDetailSheet's structure. */}
+          <GestureDetector gesture={sheetPanGestureSimple}>
+            <View collapsable={false}>
+              {/* Drag handle — animated: opacity + width respond to drag distance. */}
+              <View style={styles.editSheetHandleHit}>
+                <Reanimated.View style={[styles.editSheetHandle, sheetHandleAnimatedStyle]} />
+              </View>
 
-            {/* Title + subtitle pair, centered. Italic serif punch word borrows
-                Mercury § 2 — single typographic moment.
-                Long descriptions are ellipsized — only the dynamic accent shrinks,
-                the static "edit" prefix is preserved. */}
-            {/* Title zone — no `accessible` on the container, otherwise it intercepts gestures.
-                Inner Text elements remain accessible to screen readers naturally. */}
-            <View style={styles.editSheetTitleZone}>
-              <Text
-                style={styles.editSheetTitle}
-                numberOfLines={2}
-              >
-                {t.transaction.editTransaction.toLowerCase().split(' ')[0]}{' '}
-                <Text style={styles.editSheetTitleAccent}>
-                  {transaction?.description?.toLowerCase() ||
-                    t.transaction.editTransaction.toLowerCase().split(' ').slice(1).join(' ')}
+              {/* Title + subtitle pair, centered. */}
+              <View style={styles.editSheetTitleZone}>
+                <Text
+                  style={styles.editSheetTitle}
+                  numberOfLines={2}
+                >
+                  {t.transaction.editTransaction.toLowerCase().split(' ')[0]}{' '}
+                  <Text style={styles.editSheetTitleAccent}>
+                    {transaction?.description?.toLowerCase() ||
+                      t.transaction.editTransaction.toLowerCase().split(' ').slice(1).join(' ')}
+                  </Text>
                 </Text>
-              </Text>
-              <Text style={styles.editSheetSubtitle}>
-                {t.transactionList.editSheetSubtitle}
-              </Text>
+                <Text style={styles.editSheetSubtitle}>
+                  {t.transactionList.editSheetSubtitle}
+                </Text>
+              </View>
             </View>
+          </GestureDetector>
 
             <AnimatedKAS
               showsVerticalScrollIndicator={false}
@@ -541,7 +542,6 @@ const EditTransactionSheet: React.FC<EditTransactionSheetProps> = ({
               </Pressable>
             </View>
           </Reanimated.View>
-        </GestureDetector>
       </View>
       {keyboardHeight > 0 && multilineFocused && (
         <TouchableOpacity
@@ -554,6 +554,7 @@ const EditTransactionSheet: React.FC<EditTransactionSheetProps> = ({
       )}
 
       <ModalToastHost />
+      </GestureHandlerRootView>
     </Modal>
   );
 };

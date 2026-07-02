@@ -11,7 +11,6 @@ import {
   Platform,
   Keyboard,
   FlatList,
-  KeyboardAvoidingView,
   ActivityIndicator,
   Linking,
   Image,
@@ -21,7 +20,7 @@ import {
   InputAccessoryView,
   NativeModules,
 } from 'react-native';
-import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { ScrollView, Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -36,7 +35,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { useWindowDimensions } from 'react-native';
 import { lightTap } from '../../services/haptics';
-import { KeyboardAwareScrollView, KeyboardToolbar } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, KeyboardToolbar, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { format, differenceInDays, isValid } from 'date-fns';
@@ -76,6 +75,10 @@ import {
   withAlpha,
 } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
+import { useDebtAutoArchive } from './debt/useDebtAutoArchive';
+import { useDebtFilters } from './debt/useDebtFilters';
+import { useDebtDerived } from './debt/useDebtDerived';
 import Card from '../../components/common/Card';
 import WalletLogo from '../../components/common/WalletLogo';
 import Button from '../../components/common/Button';
@@ -106,11 +109,35 @@ import {
   SharedSubscription,
 } from '../../types';
 import { calculateSplit, CalculateSplitResult } from '../../utils/splitCalculator';
+import {
+  normalizeAmountInput,
+  safeFormatDate,
+  cleanPhoneNumber,
+  getDebtAge,
+  getReminderTone,
+  getStatusConfig as getStatusConfigUtil,
+  getTypeConfig as getTypeConfigUtil,
+  getRecentDebtPeople,
+  getGroupDateLabel,
+} from '../../utils/debtTracking';
 import { useCategories } from '../../hooks/useCategories';
 import SharedSubscriptionTab from '../../components/debt/SharedSubscriptionTab';
 import SharedSubFormSheet from '../../components/debt/SharedSubFormSheet';
 import SharedSubDetailSheet from '../../components/debt/SharedSubDetailSheet';
 import PriceChangeSheet from '../../components/debt/PriceChangeSheet';
+import ScanningOverlay from '../../components/debt/ScanningOverlay';
+import DebtHowItWorksModal from '../../components/debt/DebtHowItWorksModal';
+import FabChoiceModal from '../../components/debt/FabChoiceModal';
+import SplitChoiceModal from '../../components/debt/SplitChoiceModal';
+import CommitmentPickerModal from '../../components/debt/CommitmentPickerModal';
+import SelectionActionBar from '../../components/debt/SelectionActionBar';
+import DebtSortFilterMenu from '../../components/debt/DebtSortFilterMenu';
+import DebtViewSettingsModal from '../../components/debt/DebtViewSettingsModal';
+import DebtSegmentedControl from '../../components/debt/DebtSegmentedControl';
+import SplitTabHeader from '../../components/debt/SplitTabHeader';
+import DebtScreenHeader from '../../components/debt/DebtScreenHeader';
+import DebtRow from '../../components/debt/DebtRow';
+import SplitRow from '../../components/debt/SplitRow';
 
 type TabType = 'debts' | 'splits' | 'shared';
 
@@ -212,41 +239,11 @@ const DebtTracking: React.FC = () => {
   // Keyboard visibility tracking — drives the floating gold "done" FAB inside modals.
   // FAB shows only when a multiline text input is focused — numeric keypads have their
   // own native "Done" key, so showing the FAB there would be redundant.
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [multilineFocused, setMultilineFocused] = useState(false);
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, (e) => {
-      setKeyboardVisible(true);
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      setKeyboardVisible(false);
-      setKeyboardHeight(0);
-      setMultilineFocused(false);
-    });
-    return () => { showSub.remove(); hideSub.remove(); };
-  }, []);
+  const { keyboardVisible, keyboardHeight } = useKeyboardVisible(() => setMultilineFocused(false));
 
   // Auto-archive settled debts older than 30 days (respects groups — waits for all siblings)
-  useEffect(() => {
-    const now = new Date();
-    const stale = debts.filter(
-      (d) => d.status === 'settled' && !d.isArchived && differenceInDays(now, new Date(d.updatedAt)) >= 30,
-    );
-    const safeToArchive = stale.filter((d) => {
-      if (!d.groupId) return true;
-      const groupSiblings = debts.filter((s) => s.groupId === d.groupId && s.id !== d.id && !s.isArchived);
-      return groupSiblings.every((s) =>
-        s.status === 'settled' && differenceInDays(now, new Date(s.updatedAt)) >= 30
-      );
-    });
-    if (safeToArchive.length > 0) {
-      safeToArchive.forEach((d) => archiveDebt(d.id));
-    }
-  }, [debts, archiveDebt]);
+  useDebtAutoArchive(debts, archiveDebt);
 
   // Debt modal state
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
@@ -286,6 +283,8 @@ const DebtTracking: React.FC = () => {
   const dReminderDragStart = useSharedValue(0);
   const [editingDebtId, setEditingDebtId] = useState<string | null>(null);
   const [debtContacts, setDebtContacts] = useState<Contact[]>([]);
+  // Recent people from existing debts — quick-pick chips for the "who" input
+  const recentDebtPeople = useMemo(() => getRecentDebtPeople(debts), [debts]);
   const [debtType, setDebtType] = useState<DebtType>('they_owe');
   const [debtAmount, setDebtAmount] = useState('');
   const [debtDescription, setDebtDescription] = useState('');
@@ -404,16 +403,16 @@ const DebtTracking: React.FC = () => {
   const [selectionMode, setSelectionMode] = useState<'debt' | 'split' | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Split filter
-  const [splitTab, setSplitTab] = useState<'waiting' | 'youOwe' | 'settled' | 'drafts' | 'archive'>('waiting');
-  const [debtTab, setDebtTab] = useState<'pending' | 'settled' | 'archive'>('pending');
-
-  // Search + debt filter
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debtFilter, setDebtFilter] = useState<'pending' | 'partial' | 'settled' | null>(null);
-  const [debtTypeFilter, setDebtTypeFilter] = useState<'i_owe' | 'they_owe' | null>(null);
-  const [debtSort, setDebtSort] = useState<'newest' | 'oldest' | 'amount_high' | 'amount_low'>('newest');
-  const [splitSort, setSplitSort] = useState<'newest' | 'oldest' | 'amount_high' | 'amount_low'>('newest');
+  // Split filter / search + debt filter — tab/sort/search UI state + archive snap-back effect.
+  const {
+    splitTab, setSplitTab,
+    debtTab, setDebtTab,
+    searchQuery, setSearchQuery,
+    debtFilter, setDebtFilter,
+    debtTypeFilter, setDebtTypeFilter,
+    debtSort, setDebtSort,
+    splitSort, setSplitSort,
+  } = useDebtFilters(debtsShowArchive);
   const [sortModalVisible, setSortModalVisible] = useState(false);
   const [groupPaymentId, setGroupPaymentId] = useState<string | null>(null);
   const [detailDebtId, setDetailDebtId] = useState<string | null>(null);
@@ -423,239 +422,39 @@ const DebtTracking: React.FC = () => {
   const mainScrollRef = useRef<any>(null);
   const highlightScrollTarget = useRef<string | null>(null);
 
-  // Filtered data
-  const modeDebts = useMemo(() => debts.filter((d) => d.mode === mode), [debts, mode]);
-  const modeSplits = useMemo(() => splits.filter((s) => s.mode === mode), [splits, mode]);
-
-  // Search + type + status filtered + sorted debts
-  const filteredDebts = useMemo(() => {
-    let result = modeDebts;
-    // Bucket by tab — archive is a separate world.
-    if (debtTab === 'archive') {
-      result = result.filter((d) => d.isArchived === true);
-    } else {
-      // Default views: exclude archived items entirely.
-      result = result.filter((d) => !d.isArchived);
-      if (debtTab === 'pending') {
-        result = result.filter((d) => d.status !== 'settled');
-      } else if (debtTab === 'settled') {
-        result = result.filter((d) => d.status === 'settled');
-      }
-    }
-    if (debtTypeFilter) {
-      result = result.filter((d) => d.type === debtTypeFilter);
-    }
-    if (debtFilter) {
-      result = result.filter((d) => d.status === debtFilter);
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (d) => d.contact.name.toLowerCase().includes(q) || d.description.toLowerCase().includes(q)
-      );
-    }
-    result = [...result].sort((a, b) => {
-      // Use updatedAt for settled/partial (reflects last payment), createdAt for pending
-      const aTime = new Date(a.status === 'pending' ? a.createdAt : a.updatedAt).getTime();
-      const bTime = new Date(b.status === 'pending' ? b.createdAt : b.updatedAt).getTime();
-      switch (debtSort) {
-        case 'newest': return bTime - aTime || b.id.localeCompare(a.id);
-        case 'oldest': return aTime - bTime || a.id.localeCompare(b.id);
-        case 'amount_high': return (b.totalAmount - b.paidAmount) - (a.totalAmount - a.paidAmount) || bTime - aTime;
-        case 'amount_low': return (a.totalAmount - a.paidAmount) - (b.totalAmount - b.paidAmount) || bTime - aTime;
-        default: return 0;
-      }
-    });
-    return result;
-  }, [modeDebts, debtTab, debtTypeFilter, debtFilter, searchQuery, debtSort]);
-
-  // Bucket counts (always uses non-mode-filtered modeDebts so badges reflect totals)
-  const debtTabCounts = useMemo(() => ({
-    pending: modeDebts.filter((d) => !d.isArchived && d.status !== 'settled').length,
-    settled: modeDebts.filter((d) => !d.isArchived && d.status === 'settled').length,
-    archive: modeDebts.filter((d) => d.isArchived === true).length,
-  }), [modeDebts]);
-
-  const groupedDebts = useMemo(() => {
-    const map = new Map<string, { contactId: string; contactName: string; contact: typeof filteredDebts[0]['contact']; debts: typeof filteredDebts; totalRemaining: number }>();
-    filteredDebts.forEach((debt) => {
-      const key = debt.groupId || debt.contact.id || debt.contact.name;
-      if (!map.has(key)) {
-        map.set(key, { contactId: key, contactName: debt.contact.name, contact: debt.contact, debts: [], totalRemaining: 0 });
-      }
-      const g = map.get(key)!;
-      g.debts.push(debt);
-      g.totalRemaining += Math.max(0, debt.totalAmount - debt.paidAmount);
-    });
-    return Array.from(map.values());
-  }, [filteredDebts]);
-
-  // Search filtered splits
-  const searchedSplits = useMemo(() => {
-    if (!searchQuery.trim()) return modeSplits;
-    const q = searchQuery.toLowerCase().trim();
-    return modeSplits.filter(
-      (s) => s.description.toLowerCase().includes(q) ||
-        s.participants.some((p) => p.contact.name.toLowerCase().includes(q))
-    );
-  }, [modeSplits, searchQuery]);
-
-  // Bucket each split into one of: drafts | waiting (others owe me) | youOwe | settled.
-  // Drafts are workflow stash, not a status — they always go to drafts regardless of payment state.
-  // For finalised splits:
-  //   - settled when every non-self participant has isPaid === true
-  //   - youOwe when someone else fronted the cash AND my own share is unpaid
-  //   - waiting otherwise (I fronted, or paidBy undefined and anyone unpaid)
-  const splitBuckets = useMemo(() => {
-    const groups: Record<'waiting' | 'youOwe' | 'settled' | 'drafts' | 'archive', SplitExpense[]> = {
-      waiting: [], youOwe: [], settled: [], drafts: [], archive: [],
-    };
-    searchedSplits.forEach((s) => {
-      // Archived splits go to the archive bucket — never appear in other buckets.
-      if (s.isArchived) {
-        groups.archive.push(s);
-        return;
-      }
-      if (s.status === 'draft') {
-        groups.drafts.push(s);
-        return;
-      }
-      // "I still owe my share" must win over settled: the payer is auto-marked isPaid at
-      // creation, so a "someone else paid" split would otherwise auto-bucket as settled
-      // and hide my own unpaid share. Check youOwe BEFORE settled.
-      if (s.paidBy && s.paidBy.id !== '__self__') {
-        const me = s.participants.find((p) => p.contact.id === '__self__');
-        if (me && !me.isPaid) {
-          groups.youOwe.push(s);
-          return;
-        }
-      }
-      const nonSelf = s.participants.filter((p) => p.contact.id !== '__self__');
-      const allPaid = nonSelf.length > 0 && nonSelf.every((p) => p.isPaid);
-      if (allPaid) {
-        groups.settled.push(s);
-        return;
-      }
-      groups.waiting.push(s);
-    });
-    const sorter = (a: SplitExpense, b: SplitExpense) => {
-      const aTime = new Date(a.createdAt).getTime();
-      const bTime = new Date(b.createdAt).getTime();
-      switch (splitSort) {
-        case 'newest': return bTime - aTime;
-        case 'oldest': return aTime - bTime;
-        case 'amount_high': return b.totalAmount - a.totalAmount || bTime - aTime;
-        case 'amount_low': return a.totalAmount - b.totalAmount || bTime - aTime;
-        default: return 0;
-      }
-    };
-    (Object.keys(groups) as Array<keyof typeof groups>).forEach((k) => groups[k].sort(sorter));
-    return groups;
-  }, [searchedSplits, splitSort]);
-
-  // Hero numbers — what the user actually wants to know at a glance.
-  const waitingTotal = useMemo(
-    () => splitBuckets.waiting.reduce((sum, s) => {
-      const nonSelf = s.participants.filter((p) => p.contact.id !== '__self__');
-      return sum + nonSelf.filter((p) => !p.isPaid).reduce((a, p) => a + p.amount, 0);
-    }, 0),
-    [splitBuckets.waiting]
-  );
-  const youOweTotal = useMemo(
-    () => splitBuckets.youOwe.reduce((sum, s) => {
-      const me = s.participants.find((p) => p.contact.id === '__self__');
-      return me && !me.isPaid ? sum + me.amount : sum;
-    }, 0),
-    [splitBuckets.youOwe]
-  );
-  const settledTotal = useMemo(
-    () => splitBuckets.settled.reduce((sum, s) => sum + s.totalAmount, 0),
-    [splitBuckets.settled]
-  );
-
-  // Currently visible bucket (drives the list under the segmented control).
-  const filteredSplits = useMemo(() => splitBuckets[splitTab], [splitBuckets, splitTab]);
-
-  const activeSplitCount = useMemo(
-    () => splitBuckets.waiting.length + splitBuckets.youOwe.length,
-    [splitBuckets.waiting.length, splitBuckets.youOwe.length]
-  );
-  const settledSplitCount = splitBuckets.settled.length;
-  const draftSplitCount = splitBuckets.drafts.length;
-  const archiveSplitCount = splitBuckets.archive.length;
-
-  const searchedModeDebts = useMemo(() => {
-    if (!searchQuery.trim()) return modeDebts;
-    const q = searchQuery.toLowerCase().trim();
-    return modeDebts.filter((d) =>
-      d.contact.name.toLowerCase().includes(q) || d.description.toLowerCase().includes(q)
-    );
-  }, [modeDebts, searchQuery]);
-
-  // Debt filter counts (respects type filter + search)
-  const debtFilterCounts = useMemo(() => {
-    const active = searchedModeDebts.filter((d) => !d.isArchived);
-    const base = debtTypeFilter ? active.filter((d) => d.type === debtTypeFilter) : active;
-    return {
-      pending: base.filter((d) => d.status === 'pending').length,
-      partial: base.filter((d) => d.status === 'partial').length,
-      settled: base.filter((d) => d.status === 'settled').length,
-    };
-  }, [searchedModeDebts, debtTypeFilter]);
-
-  // Debt type filter counts (respects status filter + search)
-  const debtTypeCounts = useMemo(() => {
-    const active = searchedModeDebts.filter((d) => !d.isArchived);
-    const base = debtFilter ? active.filter((d) => d.status === debtFilter) : active;
-    return {
-      i_owe: base.filter((d) => d.type === 'i_owe').length,
-      they_owe: base.filter((d) => d.type === 'they_owe').length,
-    };
-  }, [searchedModeDebts, debtFilter]);
-
-  const getDebtAge = useCallback((createdAt: string | Date): string => {
-    const days = differenceInDays(new Date(), new Date(createdAt));
-    if (days === 0) return 'today';
-    if (days < 7) return `${days}d`;
-    if (days < 30) return `${Math.floor(days / 7)}w`;
-    if (days < 365) return `${Math.floor(days / 30)}mo`;
-    return `${Math.floor(days / 365)}y`;
-  }, []);
-
-  const getReminderTone = useCallback((createdAt: string | Date, contactName: string, amount: number, description: string, cur: string): string => {
-    const days = differenceInDays(new Date(), new Date(createdAt));
-    const amt = `${cur} ${amount.toFixed(2)}`;
-    if (days < 7) {
-      return `Hey ${contactName}, you owe me ${amt} for ${description}\n\nNo rush, just checking in!`;
-    } else if (days < 30) {
-      return `Hi ${contactName}, you owe me ${amt} for ${description}\n\nCan you settle when free? Thank you!`;
-    } else {
-      return `Hi ${contactName}, you owe me ${amt} for ${description}\n\nIt's been a while — can you settle when you get a chance? Thank you!`;
-    }
-  }, []);
-
-  // Balance summary
-  const balanceSummary = useMemo(() => {
-    const activeDebts = modeDebts.filter((d) => !d.isArchived);
-
-    const youOwe = activeDebts
-      .filter((d) => d.type === 'i_owe' && d.status !== 'settled')
-      .reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0);
-
-    const owedToYou = activeDebts
-      .filter((d) => d.type === 'they_owe' && d.status !== 'settled')
-      .reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0);
-
-    const collected = activeDebts
-      .filter((d) => d.type === 'they_owe')
-      .reduce((sum, d) => sum + d.payments.filter((p) => p.note !== 'netted').reduce((s, p) => s + p.amount, 0), 0);
-
-    const paid = activeDebts
-      .filter((d) => d.type === 'i_owe')
-      .reduce((sum, d) => sum + d.payments.filter((p) => p.note !== 'netted').reduce((s, p) => s + p.amount, 0), 0);
-
-    return { youOwe, owedToYou, collected, paid };
-  }, [modeDebts]);
+  // Read-only filter / bucket / total memos — pure function of store arrays + filter state.
+  const {
+    modeDebts,
+    modeSplits,
+    filteredDebts,
+    debtTabCounts,
+    groupedDebts,
+    searchedSplits,
+    splitBuckets,
+    waitingTotal,
+    youOweTotal,
+    settledTotal,
+    filteredSplits,
+    activeSplitCount,
+    settledSplitCount,
+    draftSplitCount,
+    archiveSplitCount,
+    searchedModeDebts,
+    debtFilterCounts,
+    debtTypeCounts,
+    balanceSummary,
+  } = useDebtDerived({
+    debts,
+    splits,
+    mode,
+    splitTab,
+    debtTab,
+    searchQuery,
+    debtFilter,
+    debtTypeFilter,
+    debtSort,
+    splitSort,
+  });
 
   // ── Header gear — opens settings sheet (matches Wallet's zap icon pattern) ──
   useLayoutEffect(() => {
@@ -672,14 +471,6 @@ const DebtTracking: React.FC = () => {
       ),
     });
   }, [navigation, C.textPrimary]);
-
-  // ── Snap back to a visible tab if archive is turned off while user is in it ──
-  useEffect(() => {
-    if (!debtsShowArchive) {
-      if (splitTab === 'archive') setSplitTab('waiting');
-      if (debtTab === 'archive') setDebtTab('pending');
-    }
-  }, [debtsShowArchive, splitTab, debtTab]);
 
   // ── Add/Edit Debt sheet — open / close spring animation ────
   useEffect(() => {
@@ -3434,18 +3225,6 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   };
 
   // ── Request Payment Handlers ──────────────────────────────
-  const cleanPhoneNumber = (phone: string): string => {
-    let cleaned = phone.replace(/[\s\-()]/g, '');
-    if (cleaned.startsWith('0')) {
-      cleaned = '60' + cleaned.slice(1);
-    }
-    if (!cleaned.startsWith('+') && !cleaned.startsWith('60')) {
-      cleaned = '60' + cleaned;
-    }
-    cleaned = cleaned.replace(/^\+/, '');
-    return cleaned;
-  };
-
   const composePaymentMessage = (debt: Debt): string => {
     const remaining = Math.max(0, debt.totalAmount - debt.paidAmount);
     const senderName = userName?.trim() || 'Me';
@@ -3663,15 +3442,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
     setFabChoiceVisible(true);
   }, []);
 
-  const getStatusConfig = useCallback((status: string) => {
-    const safe = DEBT_STATUSES_SAFE.find((s) => s.value === status) || DEBT_STATUSES_SAFE[0];
-    return { ...safe, color: semantic(safe.color, isDark) };
-  }, [isDark]);
+  const getStatusConfig = useCallback((status: string) => getStatusConfigUtil(status, isDark), [isDark]);
 
-  const getTypeConfig = useCallback((type: string) => {
-    const safe = DEBT_TYPES_SAFE.find((t) => t.value === type) || DEBT_TYPES_SAFE[0];
-    return { ...safe, color: semantic(safe.color, isDark) };
-  }, [isDark]);
+  const getTypeConfig = useCallback((type: string) => getTypeConfigUtil(type, isDark), [isDark]);
 
   return (
     <View style={styles.container}>
@@ -3689,216 +3462,50 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           />
         }
       >
-        {/* Balance Summary */}
-        <View style={styles.heroRow}>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => {
-              setDebtTypeFilter(debtTypeFilter === 'i_owe' ? null : 'i_owe');
-              setDebtFilter(debtFilter === 'pending' ? null : 'pending');
-            }}
-            style={[
-              styles.heroTile,
-              { backgroundColor: withAlpha(iOweColor, 0.06) },
-              debtTypeFilter === 'i_owe' && { backgroundColor: withAlpha(iOweColor, 0.14) },
-            ]}
-          >
-            <Text style={styles.heroTileLabel}>{t.debts.youOwe}</Text>
-            <Text style={[styles.heroTileAmount, { color: iOweColor }]}>
-              {currency} {balanceSummary.youOwe.toFixed(2)}
-            </Text>
-            {balanceSummary.paid > 0 && (
-              <Text style={[styles.heroTileSub, { color: settledColor }]}>
-                {balanceSummary.paid.toFixed(2)} paid
-              </Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => {
-              setDebtTypeFilter(debtTypeFilter === 'they_owe' ? null : 'they_owe');
-              setDebtFilter(debtFilter === 'pending' ? null : 'pending');
-            }}
-            style={[
-              styles.heroTile,
-              { backgroundColor: withAlpha(theyOweColor, 0.06) },
-              debtTypeFilter === 'they_owe' && { backgroundColor: withAlpha(theyOweColor, 0.14) },
-            ]}
-          >
-            <Text style={styles.heroTileLabel}>{t.debts.owedToYou}</Text>
-            <Text style={[styles.heroTileAmount, { color: theyOweColor }]}>
-              {currency} {balanceSummary.owedToYou.toFixed(2)}
-            </Text>
-            {balanceSummary.collected > 0 && (
-              <Text style={[styles.heroTileSub, { color: settledColor }]}>
-                {balanceSummary.collected.toFixed(2)} collected
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Search Bar */}
-        <View style={styles.searchBar}>
-          <Feather name="search" size={16} color={C.textMuted} />
-          <TextInput
-            style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder={activeTab === 'debts' ? 'Search debts...' : 'Search splits...'}
-            placeholderTextColor={C.textMuted}
-            returnKeyType="search"
-            keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Feather name="x-circle" size={16} color={C.textMuted} />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            onPress={() => setSortModalVisible(true)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            style={{ paddingLeft: SPACING.xs }}
-          >
-            <View>
-              <Feather name="sliders" size={16} color={(activeTab === 'debts' ? (debtSort !== 'newest' || debtTypeFilter || debtFilter) : splitSort !== 'newest') ? C.accent : C.textMuted} />
-              {activeTab === 'debts' && (debtTypeFilter || debtFilter) && (
-                <View style={{ position: 'absolute', top: -3, right: -3, width: 7, height: 7, borderRadius: 4, backgroundColor: C.accent }} />
-              )}
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Tab Toggle */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'debts' && styles.tabActive]}
-            onPress={() => {
-              if (selectionMode) exitSelectionMode();
-              if (activeTab !== 'debts') setActiveTab('debts');
-            }}
-            activeOpacity={0.7}
-          >
-            <Feather name="users" size={16} color={activeTab === 'debts' ? C.accent : C.textSecondary} />
-            <Text style={[styles.tabText, activeTab === 'debts' && styles.tabTextActive]}>
-              Debts
-            </Text>
-            <View style={{
-              backgroundColor: activeTab === 'debts' ? C.accent : withAlpha(C.textSecondary, 0.15),
-              paddingHorizontal: 7,
-              paddingVertical: 2,
-              borderRadius: RADIUS.full,
-              minWidth: 22,
-              alignItems: 'center',
-            }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: activeTab === 'debts' ? C.onAccent : C.textSecondary }}>
-                {modeDebts.length}
-              </Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'splits' && styles.tabActive]}
-            onPress={() => {
-              if (selectionMode) exitSelectionMode();
-              if (activeTab !== 'splits') setActiveTab('splits');
-            }}
-            activeOpacity={0.7}
-          >
-            <Feather name="scissors" size={16} color={activeTab === 'splits' ? C.accent : C.textSecondary} />
-            <Text style={[styles.tabText, activeTab === 'splits' && styles.tabTextActive]}>
-              Splits
-            </Text>
-            <View style={{
-              backgroundColor: activeTab === 'splits' ? C.accent : withAlpha(C.textSecondary, 0.15),
-              paddingHorizontal: 7,
-              paddingVertical: 2,
-              borderRadius: RADIUS.full,
-              minWidth: 22,
-              alignItems: 'center',
-            }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: activeTab === 'splits' ? C.onAccent : C.textSecondary }}>
-                {modeSplits.length}
-              </Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'shared' && styles.tabActive]}
-            onPress={() => {
-              if (selectionMode) exitSelectionMode();
-              if (activeTab !== 'shared') setActiveTab('shared');
-            }}
-            activeOpacity={0.7}
-          >
-            <Feather name="repeat" size={16} color={activeTab === 'shared' ? C.accent : C.textSecondary} />
-            <Text style={[styles.tabText, activeTab === 'shared' && styles.tabTextActive]}>
-              {t.sharedSubs.shared}
-            </Text>
-            <View style={{
-              backgroundColor: activeTab === 'shared' ? C.accent : withAlpha(C.textSecondary, 0.15),
-              paddingHorizontal: 7,
-              paddingVertical: 2,
-              borderRadius: RADIUS.full,
-              minWidth: 22,
-              alignItems: 'center',
-            }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: activeTab === 'shared' ? C.onAccent : C.textSecondary }}>
-                {activeSharedSubs.length}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+        <DebtScreenHeader
+          balanceSummary={balanceSummary}
+          currency={currency}
+          iOweColor={iOweColor}
+          theyOweColor={theyOweColor}
+          settledColor={settledColor}
+          debtTypeFilter={debtTypeFilter}
+          setDebtTypeFilter={setDebtTypeFilter}
+          debtFilter={debtFilter}
+          setDebtFilter={setDebtFilter}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          debtSort={debtSort}
+          splitSort={splitSort}
+          setSortModalVisible={setSortModalVisible}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          selectionMode={selectionMode}
+          exitSelectionMode={exitSelectionMode}
+          modeDebtsCount={modeDebts.length}
+          modeSplitsCount={modeSplits.length}
+          activeSharedSubsCount={activeSharedSubs.length}
+        />
 
         {/* Debts Tab */}
         {activeTab === 'debts' && (
           <>
             {/* Segmented control — pending / settled / optional archive */}
-            <View style={styles.segmentedControl}>
-              {([
+            <DebtSegmentedControl
+              tabs={[
                 { key: 'pending' as const, label: 'pending', count: debtTabCounts.pending, color: C.accent },
                 { key: 'settled' as const, label: 'settled', count: debtTabCounts.settled, color: settledColor },
                 ...(debtsShowArchive ? [{ key: 'archive' as const, label: 'archive', count: debtTabCounts.archive, color: C.bronze }] : []),
-              ] as const).map((tab) => {
-                const isActive = debtTab === tab.key;
-                return (
-                  <TouchableOpacity
-                    key={tab.key}
-                    onPress={() => {
-                      // Defensive: only fire state setters that actually change state.
-                      // Avoids stray LayoutAnimation / re-render hiccups that can
-                      // make rows visibly recompute padding by 1-2px on tap.
-                      if (selectionMode) exitSelectionMode();
-                      if (debtTab !== tab.key) setDebtTab(tab.key);
-                    }}
-                    style={[
-                      styles.segmentTab,
-                      isActive && { backgroundColor: withAlpha(tab.color, 0.12) },
-                    ]}
-                    activeOpacity={0.7}
-                    accessibilityRole="tab"
-                    accessibilityState={{ selected: isActive }}
-                    accessibilityLabel={`${tab.label}, ${tab.count} ${tab.count === 1 ? 'debt' : 'debts'}`}
-                  >
-                    <Text style={[
-                      styles.segmentTabText,
-                      isActive && { color: tab.color, fontWeight: TYPOGRAPHY.weight.semibold },
-                    ]}>
-                      {tab.label}
-                    </Text>
-                    <View style={[
-                      styles.segmentTabBadge,
-                      isActive && { backgroundColor: tab.color },
-                    ]}>
-                      <Text style={[
-                        styles.segmentTabBadgeText,
-                        isActive && { color: C.onAccent },
-                      ]}>
-                        {tab.count}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+              ]}
+              active={debtTab}
+              itemNoun="debt"
+              onSelect={(key) => {
+                // Defensive: only fire state setters that actually change state.
+                // Avoids stray LayoutAnimation / re-render hiccups that can
+                // make rows visibly recompute padding by 1-2px on tap.
+                if (selectionMode) exitSelectionMode();
+                if (debtTab !== key) setDebtTab(key);
+              }}
+            />
 
             {/* Active filter summary */}
             {(debtTypeFilter || debtFilter) && (
@@ -3919,217 +3526,35 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               </View>
             )}
             {filteredDebts.length > 0 ? (
-              groupedDebts.map((group) => {
-                const isMulti = group.debts.length > 1;
-                const inDebtSelection = selectionMode === 'debt';
-                const allTheyOwe = group.debts.every((d) => d.type === 'they_owe' && d.status !== 'settled');
-                const hasPhone = !!group.contact.phone;
-
-                if (isMulti) {
-                  // ── Compact group card — tap opens group detail sheet ──
-                  const iOweDebts = group.debts.filter((d) => d.type === 'i_owe' && d.status !== 'settled');
-                  const theyOweDebts = group.debts.filter((d) => d.type === 'they_owe' && d.status !== 'settled');
-                  const iOweSum = iOweDebts.reduce((s, d) => s + Math.max(0, d.totalAmount - d.paidAmount), 0);
-                  const theyOweSum = theyOweDebts.reduce((s, d) => s + Math.max(0, d.totalAmount - d.paidAmount), 0);
-                  const isMixed = iOweSum > 0 && theyOweSum > 0;
-                  const netAmount = Math.abs(iOweSum - theyOweSum);
-                  const netDirection = iOweSum >= theyOweSum ? 'i_owe' : 'they_owe';
-                  const primaryType = isMixed ? netDirection : group.debts[0].type;
-                  const typeConfig = getTypeConfig(primaryType);
-                  const settledCount = group.debts.filter((d) => d.status === 'settled').length;
-                  const allSettled = settledCount === group.debts.length;
-                  const allIOweTotal = group.debts.filter((d) => d.type === 'i_owe').reduce((s, d) => s + d.totalAmount, 0);
-                  const allTheyOweTotal = group.debts.filter((d) => d.type === 'they_owe').reduce((s, d) => s + d.totalAmount, 0);
-                  const wasMixed = allIOweTotal > 0 && allTheyOweTotal > 0;
-                  const groupTotal = wasMixed ? Math.abs(allTheyOweTotal - allIOweTotal) : allIOweTotal + allTheyOweTotal;
-                  const groupIds = group.debts.map((d) => d.id);
-                  const allGroupSelected = inDebtSelection && groupIds.every((id) => selectedIds.has(id));
-                  const someGroupSelected = inDebtSelection && groupIds.some((id) => selectedIds.has(id));
-                  return (
-                    <View key={group.contactId} style={[styles.tickerDebtRow, allGroupSelected && styles.tickerSplitRowSelected]}>
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => {
-                          if (inDebtSelection) {
-                            setSelectedIds((prev) => {
-                              const next = new Set(prev);
-                              groupIds.forEach((id) => allGroupSelected ? next.delete(id) : next.add(id));
-                              return next;
-                            });
-                            return;
-                          }
-                          setDetailGroupId(group.contactId);
-                        }}
-                        onLongPress={() => !inDebtSelection && enterSelectionMode('debt', group.debts.map((d) => d.id))}
-                        delayLongPress={400}
-                      >
-                        <View style={styles.tickerDebtHeaderRow}>
-                          {inDebtSelection && (
-                            <View style={[styles.selectionCheckbox, allGroupSelected && styles.selectionCheckboxActive, someGroupSelected && !allGroupSelected && { borderColor: C.accent, backgroundColor: withAlpha(C.accent, 0.3) }, { marginRight: SPACING.xs }]}>
-                              {allGroupSelected && <Feather name="check" size={14} color={C.onAccent} />}
-                              {someGroupSelected && !allGroupSelected && <Feather name="minus" size={14} color={C.onAccent} />}
-                            </View>
-                          )}
-                          <View style={[styles.tickerDebtAvatar, { backgroundColor: withAlpha(typeConfig.color, 0.12) }]}>
-                            <Text style={[styles.tickerDebtAvatarText, { color: typeConfig.color }]}>
-                              {group.contactName.charAt(0).toUpperCase()}
-                            </Text>
-                          </View>
-                          <Text style={styles.tickerDebtName} numberOfLines={1}>
-                            {group.contactName.toLowerCase()}
-                          </Text>
-                          <Text style={[styles.tickerDebtTypeChip, { color: typeConfig.color }]}>
-                            {group.debts.length} debts
-                          </Text>
-                          <View style={styles.tickerLeader} />
-                          <Text style={[styles.tickerSplitAmount, { color: allSettled ? settledColor : typeConfig.color }]}>
-                            {allSettled ? `${currency} ${groupTotal.toFixed(2)}` : isMixed ? `${currency} ${netAmount.toFixed(2)}` : `${currency} ${group.totalRemaining.toFixed(2)}`}
-                          </Text>
-                          <Feather name="chevron-right" size={14} color={C.textMuted} style={{ marginLeft: 4 }} />
-                        </View>
-                        <Text style={styles.tickerSplitFooter} numberOfLines={1}>
-                          {allSettled
-                            ? wasMixed
-                              ? `settled up · net ${currency} ${groupTotal.toFixed(2)}`
-                              : `${group.debts[0].type === 'i_owe' ? 'i owe' : 'they owe'} · settled · ${currency} ${groupTotal.toFixed(2)} total`
-                            : isMixed ? `net ${netDirection === 'i_owe' ? 'i owe' : 'they owe'}` : `${primaryType === 'i_owe' ? 'i owe' : 'they owe'}`}
-                          {!allSettled && settledCount > 0 ? ` · ${settledCount} settled` : ''}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  );
-                }
-
-                // ── Single debt card (unchanged layout) ──
-                const debt = group.debts[0];
-                const typeConfig = getTypeConfig(debt.type);
-                const statusConfig = getStatusConfig(debt.status);
-                const remaining = Math.max(0, debt.totalAmount - debt.paidAmount);
-                const paidPct = debt.totalAmount > 0 ? (debt.paidAmount / debt.totalAmount) * 100 : 0;
-                const isSelected = inDebtSelection && selectedIds.has(debt.id);
-
-                let debtFooterText = '';
-                let debtFooterColor: string | null = null;
-                if (debt.status === 'settled') {
-                  const dir = debt.type === 'i_owe' ? 'i owe' : 'they owe';
-                  debtFooterText = `${dir} · settled · ${currency} ${debt.totalAmount.toFixed(2)} total`;
-                  debtFooterColor = settledColor;
-                } else if (debt.dueDate) {
-                  const dueD = new Date(debt.dueDate);
-                  if (!isNaN(dueD.getTime())) {
-                    const daysUntil = differenceInDays(dueD, new Date());
-                    if (daysUntil < 0) {
-                      debtFooterText = `${currency} ${remaining.toFixed(2)} left · overdue ${Math.abs(daysUntil)}d`;
-                      debtFooterColor = overdueColor;
-                    } else if (daysUntil === 0) {
-                      debtFooterText = `${currency} ${remaining.toFixed(2)} left · due today`;
-                      debtFooterColor = C.gold;
-                    } else if (daysUntil <= 3) {
-                      debtFooterText = `${currency} ${remaining.toFixed(2)} left · due in ${daysUntil}d`;
-                      debtFooterColor = C.gold;
-                    } else {
-                      debtFooterText = `${currency} ${remaining.toFixed(2)} left · due in ${daysUntil}d`;
-                    }
-                  } else {
-                    debtFooterText = `${currency} ${remaining.toFixed(2)} left · ${getDebtAge(debt.createdAt)}`;
-                  }
-                } else {
-                  const days = differenceInDays(new Date(), new Date(debt.createdAt));
-                  debtFooterText = `${currency} ${remaining.toFixed(2)} left · ${getDebtAge(debt.createdAt)}`;
-                  if (days >= 30) debtFooterColor = overdueColor;
-                  else if (days >= 7) debtFooterColor = C.gold;
-                }
-
-                return (
-                  <View key={group.contactId} ref={route.params?.highlightId === debt.id ? highlightDebtRef : undefined}>
-                  <View style={[
-                    styles.tickerDebtRow,
-                    isSelected && styles.tickerSplitRowSelected,
-                  ]}>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        if (inDebtSelection) { toggleSelection(debt.id); return; }
-                        setDetailDebtId(debt.id);
-                      }}
-                      onLongPress={() => !inDebtSelection && enterSelectionMode('debt', debt.id)}
-                      delayLongPress={400}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${debt.contact.name}, ${currency} ${remaining.toFixed(2)} left, ${typeConfig.label}`}
-                    >
-                      <View style={styles.tickerDebtHeaderRow}>
-                        {inDebtSelection && (
-                          <View style={[styles.selectionCheckbox, isSelected && styles.selectionCheckboxActive, { marginRight: SPACING.xs }]}>
-                            {isSelected && <Feather name="check" size={14} color={C.onAccent} />}
-                          </View>
-                        )}
-                        <View style={[styles.tickerDebtAvatar, { backgroundColor: withAlpha(typeConfig.color, 0.12) }]}>
-                          <Text style={[styles.tickerDebtAvatarText, { color: typeConfig.color }]}>
-                            {debt.contact.name.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                        <Text style={styles.tickerDebtName} numberOfLines={1}>
-                          {debt.contact.name.toLowerCase()}
-                        </Text>
-                        <Text style={[styles.tickerDebtTypeChip, { color: typeConfig.color }]}>
-                          {debt.type === 'i_owe' ? 'i owe' : 'they owe'}
-                        </Text>
-                        <View style={styles.tickerLeader} />
-                        <Text style={[styles.tickerSplitAmount, { color: debt.status === 'settled' ? settledColor : typeConfig.color }]}>
-                          {currency} {debt.status === 'settled' ? debt.totalAmount.toFixed(2) : remaining.toFixed(2)}
-                        </Text>
-                        {!inDebtSelection && (
-                          <Feather
-                            name="chevron-right"
-                            size={14}
-                            color={C.textMuted}
-                            style={{ marginLeft: 4 }}
-                          />
-                        )}
-                      </View>
-
-                      {debt.description ? (
-                        <Text style={styles.tickerDebtDesc} numberOfLines={1}>
-                          {debt.description.toLowerCase()}
-                        </Text>
-                      ) : null}
-
-                      {debt.status !== 'settled' && debt.paidAmount > 0 && (
-                        <View style={[styles.tickerProgressTrack, { marginTop: SPACING.xs }]}>
-                          <View style={[styles.tickerProgressFill, { width: `${paidPct}%`, backgroundColor: statusConfig.color }]} />
-                        </View>
-                      )}
-                      {debt.status === 'settled' && (
-                        <View style={[styles.tickerProgressTrack, { marginTop: SPACING.xs }]}>
-                          <View style={[styles.tickerProgressFill, { width: '100%', backgroundColor: settledColor }]} />
-                        </View>
-                      )}
-
-                      <Text
-                        style={[
-                          styles.tickerSplitFooter,
-                          debtFooterColor ? { color: debtFooterColor, fontWeight: TYPOGRAPHY.weight.semibold } : null,
-                          { marginTop: SPACING.xs },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {debtFooterText}
-                      </Text>
-                    </TouchableOpacity>
-
-                  </View>
-                  </View>
-                );
-              })
+              groupedDebts.map((group) => (
+                <DebtRow
+                  key={group.contactId}
+                  group={group}
+                  selectionMode={selectionMode}
+                  selectedIds={selectedIds}
+                  setSelectedIds={setSelectedIds}
+                  enterSelectionMode={enterSelectionMode}
+                  toggleSelection={toggleSelection}
+                  setDetailGroupId={setDetailGroupId}
+                  setDetailDebtId={setDetailDebtId}
+                  getTypeConfig={getTypeConfig}
+                  getStatusConfig={getStatusConfig}
+                  currency={currency}
+                  settledColor={settledColor}
+                  overdueColor={overdueColor}
+                  highlightId={route.params?.highlightId}
+                  highlightRef={highlightDebtRef}
+                />
+              ))
             ) : modeDebts.length > 0 ? (
               <EmptyState
-                icon={searchQuery ? 'search' : 'filter'}
+                icon={searchQuery ? 'i/search-outline' : 'i/filter-outline'}
                 title={t.debts.noMatches}
                 message={searchQuery ? `No debts matching "${searchQuery}"` : debtFilter ? `No ${debtFilter} debts` : t.debts.noMatchingDebts}
               />
             ) : (
               <EmptyState
-                icon="users"
+                icon="i/people-outline"
                 title={t.debts.noDebts}
                 message={t.debts.noDebtsMessage}
                 actionLabel={t.debts.addDebt}
@@ -4164,259 +3589,53 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 </View>
               </View>
             ) : (
-              <>
-                {/* Segmented control — 3 emotional buckets + optional archive */}
-                <View style={styles.segmentedControl}>
-                  {([
-                    { key: 'waiting' as const, label: 'waiting on', count: splitBuckets.waiting.length, color: theyOweColor },
-                    { key: 'youOwe' as const,  label: 'you owe',    count: splitBuckets.youOwe.length,  color: iOweColor    },
-                    { key: 'settled' as const, label: 'settled',    count: splitBuckets.settled.length, color: settledColor },
-                    ...(debtsShowArchive ? [{ key: 'archive' as const, label: 'archive', count: archiveSplitCount, color: C.bronze }] : []),
-                  ] as const).map((tab) => {
-                    const isActive = splitTab === tab.key;
-                    return (
-                      <TouchableOpacity
-                        key={tab.key}
-                        onPress={() => {
-                          if (selectionMode) exitSelectionMode();
-                          if (splitTab !== tab.key) setSplitTab(tab.key);
-                        }}
-                        style={[
-                          styles.segmentTab,
-                          isActive && { backgroundColor: withAlpha(tab.color, 0.12) },
-                        ]}
-                        activeOpacity={0.7}
-                        accessibilityRole="tab"
-                        accessibilityState={{ selected: isActive }}
-                        accessibilityLabel={`${tab.label}, ${tab.count} ${tab.count === 1 ? 'split' : 'splits'}`}
-                      >
-                        <Text style={[
-                          styles.segmentTabText,
-                          isActive && { color: tab.color, fontWeight: TYPOGRAPHY.weight.semibold },
-                        ]}>
-                          {tab.label}
-                        </Text>
-                        <View style={[
-                          styles.segmentTabBadge,
-                          isActive && { backgroundColor: tab.color },
-                        ]}>
-                          <Text style={[
-                            styles.segmentTabBadgeText,
-                            isActive && { color: C.onAccent },
-                          ]}>
-                            {tab.count}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                  {draftSplitCount > 0 && (
-                    <TouchableOpacity
-                      style={styles.draftBookmark}
-                      onPress={() => { exitSelectionMode(); setSplitTab('drafts'); }}
-                      activeOpacity={0.7}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${draftSplitCount} ${draftSplitCount === 1 ? 'draft' : 'drafts'}`}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Feather name="bookmark" size={14} color={C.bronze} />
-                      <Text style={styles.draftBookmarkCount}>{draftSplitCount}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                {/* Hero card — one confident number per bucket */}
-                <Card style={styles.splitHeroCard}>
-                  {splitTab === 'waiting' && (
-                    <>
-                      <Text style={styles.splitHeroLabel}>you're owed back</Text>
-                      <Text style={[styles.splitHeroAmount, { color: theyOweColor }]}>
-                        {currency} {waitingTotal.toFixed(2)}
-                      </Text>
-                      <Text style={styles.splitHeroSub}>
-                        {splitBuckets.waiting.length === 0
-                          ? "nothing pending — you're clean"
-                          : `across ${splitBuckets.waiting.length} ${splitBuckets.waiting.length === 1 ? 'split' : 'splits'}`}
-                      </Text>
-                    </>
-                  )}
-                  {splitTab === 'youOwe' && (
-                    <>
-                      <Text style={styles.splitHeroLabel}>you owe</Text>
-                      <Text style={[styles.splitHeroAmount, { color: iOweColor }]}>
-                        {currency} {youOweTotal.toFixed(2)}
-                      </Text>
-                      <Text style={styles.splitHeroSub}>
-                        {splitBuckets.youOwe.length === 0
-                          ? "you don't owe anyone — living free"
-                          : `across ${splitBuckets.youOwe.length} ${splitBuckets.youOwe.length === 1 ? 'split' : 'splits'}`}
-                      </Text>
-                    </>
-                  )}
-                  {splitTab === 'settled' && (
-                    <>
-                      <Text style={styles.splitHeroLabel}>all squared up</Text>
-                      <Text style={[styles.splitHeroAmount, { color: settledColor }]}>
-                        {currency} {settledTotal.toFixed(2)}
-                      </Text>
-                      <Text style={styles.splitHeroSub}>
-                        {splitBuckets.settled.length === 0
-                          ? "settled splits land here when everyone's paid up"
-                          : `${splitBuckets.settled.length} done · everyone paid up`}
-                      </Text>
-                    </>
-                  )}
-                </Card>
-              </>
+              <SplitTabHeader
+                splitTab={splitTab}
+                setSplitTab={setSplitTab}
+                selectionMode={selectionMode}
+                exitSelectionMode={exitSelectionMode}
+                splitBuckets={splitBuckets}
+                debtsShowArchive={debtsShowArchive}
+                archiveSplitCount={archiveSplitCount}
+                draftSplitCount={draftSplitCount}
+                waitingTotal={waitingTotal}
+                youOweTotal={youOweTotal}
+                settledTotal={settledTotal}
+                currency={currency}
+                theyOweColor={theyOweColor}
+                iOweColor={iOweColor}
+                settledColor={settledColor}
+              />
             )}
 
             {filteredSplits.length > 0 ? (
-              filteredSplits.map((split, idx) => {
-                const isDraft = split.status === 'draft';
-                const methodConfig = SPLIT_METHODS.find((m) => m.value === split.splitMethod);
-                const paidCount = split.participants.filter((p) => p.isPaid).length;
-                const totalCount = split.participants.length;
-                const isSettled = !isDraft && paidCount === totalCount;
-                // Bucket-driven left-rail color so the row's identity matches the active tab.
-                const railColor = isDraft
-                  ? C.bronze
-                  : isSettled
-                  ? settledColor
-                  : splitTab === 'youOwe'
-                  ? iOweColor
-                  : theyOweColor;
-                const draftAssigned = isDraft ? split.items.filter((item) => item.assignedTo.length > 0).length : 0;
-
-                // Compact subtitle — one line, "X of Y · Md" or "due in Nd" with overdue color.
-                let subtitle = '';
-                let subtitleColor: string | null = null;
-                if (isDraft) {
-                  subtitle = `draft · ${draftAssigned}/${split.items.length} items assigned`;
-                } else {
-                  const dueRaw = (split as any).dueDate;
-                  const dueD = dueRaw ? new Date(dueRaw) : null;
-                  if (dueD && !isNaN(dueD.getTime()) && !isSettled) {
-                    const daysUntil = differenceInDays(dueD, new Date());
-                    if (daysUntil < 0) {
-                      subtitle = `${paidCount} of ${totalCount} paid · overdue ${Math.abs(daysUntil)}d`;
-                      subtitleColor = overdueColor;
-                    } else if (daysUntil === 0) {
-                      subtitle = `${paidCount} of ${totalCount} paid · due today`;
-                      subtitleColor = C.gold;
-                    } else if (daysUntil <= 3) {
-                      subtitle = `${paidCount} of ${totalCount} paid · due in ${daysUntil}d`;
-                      subtitleColor = C.gold;
-                    } else {
-                      subtitle = `${paidCount} of ${totalCount} paid · due in ${daysUntil}d`;
-                    }
-                  } else {
-                    subtitle = `${paidCount} of ${totalCount} paid · ${getDebtAge(split.createdAt)}`;
-                  }
-                }
-
-                const isSelected = selectionMode === 'split' && selectedIds.has(split.id);
-                const inSplitSelection = selectionMode === 'split';
-
-                // ── B "ticker tape" — outline card, title + amount on a single line, mini progress + status below
-                const paidAmount = split.participants.reduce((sum, p) => sum + (p.isPaid ? p.amount : 0), 0);
-                const paidPct = split.totalAmount > 0 ? (paidAmount / split.totalAmount) * 100 : 0;
-                const leftAmount = Math.max(0, split.totalAmount - paidAmount);
-                let footerText = '';
-                let footerColor: string | null = null;
-                if (isDraft) {
-                  footerText = `draft · ${draftAssigned} of ${split.items.length} items assigned`;
-                } else {
-                  const dueRaw = (split as any).dueDate;
-                  const dueD = dueRaw ? new Date(dueRaw) : null;
-                  if (dueD && !isNaN(dueD.getTime()) && !isSettled) {
-                    const daysUntil = differenceInDays(dueD, new Date());
-                    if (daysUntil < 0) {
-                      footerText = `${currency} ${leftAmount.toFixed(2)} left · overdue ${Math.abs(daysUntil)}d`;
-                      footerColor = overdueColor;
-                    } else if (daysUntil === 0) {
-                      footerText = `${currency} ${leftAmount.toFixed(2)} left · due today`;
-                      footerColor = C.gold;
-                    } else if (daysUntil <= 3) {
-                      footerText = `${currency} ${leftAmount.toFixed(2)} left · due in ${daysUntil}d`;
-                      footerColor = C.gold;
-                    } else {
-                      footerText = `${currency} ${leftAmount.toFixed(2)} left · ${totalCount - paidCount} unpaid`;
-                    }
-                  } else if (isSettled) {
-                    footerText = `settled · everyone paid up`;
-                    footerColor = settledColor;
-                  } else {
-                    footerText = `${currency} ${leftAmount.toFixed(2)} left · ${totalCount - paidCount} unpaid`;
-                  }
-                }
-
-                return (
-                  <TouchableOpacity
-                    key={`${split.id}-${idx}`}
-                    activeOpacity={0.7}
-                    style={[
-                      styles.tickerSplitRow,
-                      isSelected && styles.tickerSplitRowSelected,
-                    ]}
-                    onPress={() => {
-                      if (inSplitSelection) { toggleSelection(split.id); return; }
-                      if (isDraft) { openDraftInWizard(split); return; }
-                      setSelectedSplit(split); setSplitDetailVisible(true);
-                    }}
-                    onLongPress={() => !inSplitSelection && enterSelectionMode('split', split.id)}
-                    delayLongPress={400}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${split.description}, ${currency} ${split.totalAmount.toFixed(2)}, ${footerText}`}
-                  >
-                    {/* Top header line — title left, dotted leader, amount right */}
-                    <View style={styles.tickerSplitHeaderRow}>
-                      {inSplitSelection && (
-                        <View style={[styles.selectionCheckbox, isSelected && styles.selectionCheckboxActive, { marginRight: SPACING.sm }]}>
-                          {isSelected && <Feather name="check" size={14} color={C.onAccent} />}
-                        </View>
-                      )}
-                      <Text style={styles.tickerSplitTitle} numberOfLines={1}>
-                        {split.description}
-                      </Text>
-                      <View style={styles.tickerLeader} />
-                      <Text style={styles.tickerSplitAmount}>
-                        {currency} {split.totalAmount.toFixed(2)}
-                      </Text>
-                    </View>
-
-                    {/* Mini progress bar — inline, sky for paid portion */}
-                    {!isDraft && (
-                      <View style={styles.tickerProgressTrack}>
-                        <View
-                          style={[
-                            styles.tickerProgressFill,
-                            { width: `${paidPct}%`, backgroundColor: railColor },
-                          ]}
-                        />
-                      </View>
-                    )}
-
-                    {/* Status footer — single line: "RM X left · status" */}
-                    <Text
-                      style={[
-                        styles.tickerSplitFooter,
-                        footerColor ? { color: footerColor, fontWeight: TYPOGRAPHY.weight.semibold } : null,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {footerText}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })
+              filteredSplits.map((split) => (
+                <SplitRow
+                  key={split.id}
+                  split={split}
+                  splitTab={splitTab}
+                  selectionMode={selectionMode}
+                  selectedIds={selectedIds}
+                  toggleSelection={toggleSelection}
+                  enterSelectionMode={enterSelectionMode}
+                  openDraftInWizard={openDraftInWizard}
+                  setSelectedSplit={setSelectedSplit}
+                  setSplitDetailVisible={setSplitDetailVisible}
+                  currency={currency}
+                  settledColor={settledColor}
+                  iOweColor={iOweColor}
+                  theyOweColor={theyOweColor}
+                  overdueColor={overdueColor}
+                />
+              ))
             ) : modeSplits.length > 0 ? (
               <EmptyState
                 icon={
-                  searchQuery ? 'search' :
-                  splitTab === 'settled' ? 'check-circle' :
-                  splitTab === 'youOwe' ? 'inbox' :
-                  splitTab === 'drafts' ? 'bookmark' :
-                  'inbox'
+                  searchQuery ? 'i/search-outline' :
+                  splitTab === 'settled' ? 'i/checkmark-circle-outline' :
+                  splitTab === 'youOwe' ? 'i/file-tray-outline' :
+                  splitTab === 'drafts' ? 'i/bookmark-outline' :
+                  'i/file-tray-outline'
                 }
                 title={
                   searchQuery ? t.debts.noMatches :
@@ -4435,7 +3654,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               />
             ) : (
               <EmptyState
-                icon="scissors"
+                icon="m/call-split"
                 title="no splits yet"
                 message="split a bill with friends — receipt, equal, custom, your call."
                 actionLabel={t.debts.splitExpense}
@@ -4455,42 +3674,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       </ScrollView>
 
       {selectionMode ? (
-        <View style={styles.selectionBar}>
-          <View style={styles.selectionBarTop}>
-            <TouchableOpacity onPress={exitSelectionMode} style={styles.selectionBarBtn}>
-              <Feather name="x" size={18} color={C.textPrimary} />
-              <Text style={styles.selectionBarBtnText}>{t.common.cancel}</Text>
-            </TouchableOpacity>
-            <Text style={styles.selectionBarCount}>{selectedIds.size} {t.debts.selected}</Text>
-            <TouchableOpacity onPress={selectAll} style={styles.selectionBarBtn}>
-              <Feather name="check-square" size={18} color={C.accent} />
-              <Text style={[styles.selectionBarBtnText, { color: C.accent }]}>{t.common.all}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.selectionBarActions}>
-            {selectedIds.size === 1 && (
-              <TouchableOpacity style={styles.selectionEditBtn} onPress={handleSelectionEdit} activeOpacity={0.7}>
-                <Feather name="edit-2" size={18} color={C.accent} />
-                <Text style={styles.selectionEditText}>{t.common.edit}</Text>
-              </TouchableOpacity>
-            )}
-            {(() => {
-              const ids = Array.from(selectedIds);
-              const items = selectionMode === 'debt' ? debts : splits;
-              const allArchived = ids.every((id) => items.find((i) => i.id === id)?.isArchived);
-              return (
-                <TouchableOpacity style={styles.selectionEditBtn} onPress={handleBulkArchive} activeOpacity={0.7}>
-                  <Feather name={allArchived ? 'corner-up-left' : 'archive'} size={18} color={C.bronze} />
-                  <Text style={[styles.selectionEditText, { color: C.bronze }]}>{allArchived ? 'unarchive' : 'archive'}</Text>
-                </TouchableOpacity>
-              );
-            })()}
-            <TouchableOpacity style={[styles.selectionDeleteBtn, { flex: 1 }]} onPress={handleBulkDelete} activeOpacity={0.7}>
-              <Feather name="trash-2" size={18} color={C.onAccent} />
-              <Text style={styles.selectionDeleteText}>{t.common.delete} ({selectedIds.size})</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <SelectionActionBar
+          count={selectedIds.size}
+          allArchived={(() => {
+            const ids = Array.from(selectedIds);
+            const items = selectionMode === 'debt' ? debts : splits;
+            return ids.every((id) => items.find((i) => i.id === id)?.isArchived);
+          })()}
+          onCancel={exitSelectionMode}
+          onSelectAll={selectAll}
+          onEdit={handleSelectionEdit}
+          onArchive={handleBulkArchive}
+          onDelete={handleBulkDelete}
+        />
       ) : (
         <FAB
           ref={guideTargetRef}
@@ -4503,6 +3699,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
       {/* ── Add/Edit Debt Modal — full bottom-sheet (drag-to-dismiss, animated backdrop, anchored save) ─── */}
       {debtModalVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={dDebtCloseSheet} onDismiss={doDebtReopen}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         {/* Animated backdrop — opacity tied to sheet position */}
         <Reanimated.View style={[styles.dDebtBackdrop, dDebtBackdropAnimatedStyle]}>
           <Pressable style={{ flex: 1 }} onPress={dDebtCloseSheet} />
@@ -4554,15 +3751,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 const intFormatted = intRaw ? Number(intRaw).toLocaleString('en-US') : '';
                 const displayAmount = fracRaw === null ? intFormatted : `${intFormatted}.${fracRaw}`;
                 const handleAmountChange = (raw: string) => {
-                  const stripped = raw.replace(/,/g, '').replace(/[^\d.]/g, '');
-                  const fd = stripped.indexOf('.');
-                  let normalized = stripped;
-                  if (fd !== -1) {
-                    normalized = stripped.slice(0, fd + 1) + stripped.slice(fd + 1).replace(/\./g, '');
-                    const [ip, fp = ''] = normalized.split('.');
-                    normalized = ip + '.' + fp.slice(0, 2);
-                  }
-                  setDebtAmount(normalized);
+                  setDebtAmount(normalizeAmountInput(raw));
                 };
                 return (
                   <View style={styles.dDebtFieldHeroCard}>
@@ -4587,7 +3776,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         accessibilityLabel="amount"
                         inputAccessoryViewID={Platform.OS === 'ios' ? 'dDebtModalAcc' : undefined}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
                     </View>
 
@@ -4679,7 +3868,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   onFocus={() => setMultilineFocused(true)}
                   onBlur={() => setMultilineFocused(false)}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
 
@@ -4692,6 +3881,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   onSelect={setDebtContacts}
                   mode="single"
                   label="who *"
+                  variant="input"
+                  recent={recentDebtPeople}
                 />
               </View>
 
@@ -4882,10 +4073,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           </TouchableOpacity>
         )}
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>)}
 
       {/* ── Add/Edit Split Modal — full bottom-sheet (drag-to-dismiss, animated backdrop, anchored save) ─── */}
       {splitModalVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={dSplitCloseSheet}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         {/* Animated backdrop */}
         <Reanimated.View style={[styles.dDebtBackdrop, dSplitBackdropAnimatedStyle]}>
           <Pressable style={{ flex: 1 }} onPress={dSplitCloseSheet} />
@@ -4931,15 +4124,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               const intFormatted = intRaw ? Number(intRaw).toLocaleString('en-US') : '';
               const displayAmount = fracRaw === null ? intFormatted : `${intFormatted}.${fracRaw}`;
               const handleAmountChange = (raw: string) => {
-                const stripped = raw.replace(/,/g, '').replace(/[^\d.]/g, '');
-                const fd = stripped.indexOf('.');
-                let normalized = stripped;
-                if (fd !== -1) {
-                  normalized = stripped.slice(0, fd + 1) + stripped.slice(fd + 1).replace(/\./g, '');
-                  const [ip, fp = ''] = normalized.split('.');
-                  normalized = ip + '.' + fp.slice(0, 2);
-                }
-                setSplitAmount(normalized);
+                setSplitAmount(normalizeAmountInput(raw));
               };
               return (
                 <View style={styles.dDebtFieldHeroCard}>
@@ -4963,7 +4148,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       accessibilityLabel="total amount"
                       inputAccessoryViewID={Platform.OS === 'ios' ? 'dSplitModalAcc' : undefined}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                     />
                   </View>
                 </View>
@@ -4987,7 +4172,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 onFocus={() => setMultilineFocused(true)}
                 onBlur={() => setMultilineFocused(false)}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
 
@@ -5115,7 +4300,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           returnKeyType="done"
                           onSubmitEditing={Keyboard.dismiss}
                           keyboardAppearance={isDark ? 'dark' : 'light'}
-                          selectionColor={C.accent}
+                          selectionColor={withAlpha(C.accent, 0.25)}
                         />
                       </View>
                     ))}
@@ -5138,7 +4323,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           placeholderTextColor={C.textSecondary}
                           returnKeyType="next"
                           keyboardAppearance={isDark ? 'dark' : 'light'}
-                          selectionColor={C.accent}
+                          selectionColor={withAlpha(C.accent, 0.25)}
                         />
                         <TextInput
                           style={[styles.formInput, { flex: 1 }]}
@@ -5150,7 +4335,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           returnKeyType="done"
                           onSubmitEditing={Keyboard.dismiss}
                           keyboardAppearance={isDark ? 'dark' : 'light'}
-                          selectionColor={C.accent}
+                          selectionColor={withAlpha(C.accent, 0.25)}
                         />
                         <TouchableOpacity style={styles.addItemButton} onPress={handleAddItem}>
                           <Feather name="plus" size={20} color={C.onAccent} />
@@ -5365,6 +4550,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           </TouchableOpacity>
         )}
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>)}
 
       {/* ── Debt Detail Sheet ─── */}
@@ -5375,6 +4561,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         statusBarTranslucent
         onRequestClose={dDetailCloseSheet}
       >
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <Reanimated.View style={[styles.dDebtBackdrop, dDetailBackdropAnimatedStyle]}>
           <Pressable style={{ flex: 1 }} onPress={dDetailCloseSheet} />
         </Reanimated.View>
@@ -5670,6 +4857,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           })()}
         </Reanimated.View>
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>)}
 
       {/* ── Group Detail Sheet ─── */}
@@ -5680,6 +4868,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         statusBarTranslucent
         onRequestClose={dGroupDetailCloseSheet}
       >
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <Reanimated.View style={[styles.dDebtBackdrop, dGroupDetailBackdropAnimatedStyle]}>
           <Pressable style={{ flex: 1 }} onPress={dGroupDetailCloseSheet} />
         </Reanimated.View>
@@ -5707,24 +4896,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             const groupWasMixed = group.debts.some(d => d.type === 'i_owe') && group.debts.some(d => d.type === 'they_owe');
             const allIOweTotal = group.debts.filter(d => d.type === 'i_owe').reduce((s, d) => s + d.totalAmount, 0);
             const allTheyOweTotal = group.debts.filter(d => d.type === 'they_owe').reduce((s, d) => s + d.totalAmount, 0);
-            const groupDateLabel = (() => {
-              if (allSettled) {
-                const latestPayment = group.debts
-                  .flatMap((d) => d.payments)
-                  .reduce((latest, p) => {
-                    const pd = new Date(p.createdAt);
-                    return pd > latest ? pd : latest;
-                  }, new Date(0));
-                return isValid(latestPayment) && latestPayment.getTime() > 0
-                  ? `settled ${format(latestPayment, 'MMM d')}`
-                  : null;
-              }
-              const oldest = group.debts.reduce((o, d) => {
-                const cd = new Date(d.createdAt);
-                return cd < o ? cd : o;
-              }, new Date());
-              return isValid(oldest) ? `since ${format(oldest, 'MMM d')}` : null;
-            })();
+            const groupDateLabel = getGroupDateLabel(group.debts);
 
             return (
               <>
@@ -6158,6 +5330,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           })()}
         </Reanimated.View>
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>)}
 
       {/* ── Record Payment Modal — bottom-sheet w/ live progress preview + quick-fill chips ─── */}
@@ -6168,6 +5341,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         statusBarTranslucent
         onRequestClose={dPayCloseSheet}
       >
+        <GestureHandlerRootView style={{ flex: 1 }}>
         {/* Animated backdrop */}
         <Reanimated.View style={[styles.dDebtBackdrop, dPayBackdropAnimatedStyle]}>
           <Pressable style={{ flex: 1 }} onPress={dPayCloseSheet} />
@@ -6260,15 +5434,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       const epIntFmt = epIntRaw ? Number(epIntRaw).toLocaleString('en-US') : '';
                       const epDisplay = epFracRaw === null ? epIntFmt : `${epIntFmt}.${epFracRaw}`;
                       const handleEpChange = (raw: string) => {
-                        const stripped = raw.replace(/,/g, '').replace(/[^\d.]/g, '');
-                        const fd = stripped.indexOf('.');
-                        let normalized = stripped;
-                        if (fd !== -1) {
-                          normalized = stripped.slice(0, fd + 1) + stripped.slice(fd + 1).replace(/\./g, '');
-                          const [ip, fp = ''] = normalized.split('.');
-                          normalized = ip + '.' + fp.slice(0, 2);
-                        }
-                        setEditPayAmount(normalized);
+                        setEditPayAmount(normalizeAmountInput(raw));
                       };
                       return (
                         <View style={styles.dDebtFieldHeroCard}>
@@ -6290,7 +5456,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               placeholder="0.00"
                               placeholderTextColor={withAlpha(C.textPrimary, 0.12)}
                               keyboardAppearance={isDark ? 'dark' : 'light'}
-                              selectionColor={C.accent}
+                              selectionColor={withAlpha(C.accent, 0.25)}
                             />
                           </View>
                         </View>
@@ -6313,7 +5479,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         textAlignVertical="top"
                         returnKeyType="default"
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                         onFocus={() => setMultilineFocused(true)}
                         onBlur={() => setMultilineFocused(false)}
                       />
@@ -6664,15 +5830,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     const payIntFmt = payIntRaw ? Number(payIntRaw).toLocaleString('en-US') : '';
                     const payDisplay = payFracRaw === null ? payIntFmt : `${payIntFmt}.${payFracRaw}`;
                     const handlePayAmountChange = (raw: string) => {
-                      const stripped = raw.replace(/,/g, '').replace(/[^\d.]/g, '');
-                      const fd = stripped.indexOf('.');
-                      let normalized = stripped;
-                      if (fd !== -1) {
-                        normalized = stripped.slice(0, fd + 1) + stripped.slice(fd + 1).replace(/\./g, '');
-                        const [ip, fp = ''] = normalized.split('.');
-                        normalized = ip + '.' + fp.slice(0, 2);
-                      }
-                      setPaymentAmount(normalized);
+                      setPaymentAmount(normalizeAmountInput(raw));
                     };
                     return (
                     <>
@@ -6696,7 +5854,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             onSubmitEditing={Keyboard.dismiss}
                             selectTextOnFocus
                             keyboardAppearance={isDark ? 'dark' : 'light'}
-                            selectionColor={C.accent}
+                            selectionColor={withAlpha(C.accent, 0.25)}
                           />
                         </View>
                       </View>
@@ -6781,7 +5939,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           onFocus={() => setMultilineFocused(true)}
                           onBlur={() => setMultilineFocused(false)}
                           keyboardAppearance={isDark ? 'dark' : 'light'}
-                          selectionColor={C.accent}
+                          selectionColor={withAlpha(C.accent, 0.25)}
                         />
                       </View>
                     </>
@@ -6857,7 +6015,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                   <View style={{ flex: 1 }}>
                                     <View style={styles.payHistoryTopRow}>
                                       <Text style={styles.payHistoryAmount}>{currency} {batch.total.toFixed(2)}</Text>
-                                      <Text style={styles.payHistoryDate}>{(() => { const d = new Date(firstPay.date); return isValid(d) ? format(d, 'MMM dd, HH:mm') : '—'; })()}</Text>
+                                      <Text style={styles.payHistoryDate}>{safeFormatDate(firstPay.date, 'MMM dd, HH:mm', '—')}</Text>
                                     </View>
                                     <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>settled up · {batch.payments.length} debts netted</Text>
                                   </View>
@@ -6878,7 +6036,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                   <View style={{ flex: 1 }}>
                                     <View style={styles.payHistoryTopRow}>
                                       <Text style={styles.payHistoryAmount}>{currency} {batch.total.toFixed(2)}</Text>
-                                      <Text style={styles.payHistoryDate}>{(() => { const d = new Date(firstPay.date); return isValid(d) ? format(d, 'MMM dd, HH:mm') : '—'; })()}</Text>
+                                      <Text style={styles.payHistoryDate}>{safeFormatDate(firstPay.date, 'MMM dd, HH:mm', '—')}</Text>
                                     </View>
                                     <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>consolidated · {batch.payments.length} debts</Text>
                                   </View>
@@ -6898,7 +6056,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                 <View style={{ flex: 1 }}>
                                   <View style={styles.payHistoryTopRow}>
                                     <Text style={styles.payHistoryAmount}>{currency} {batch.total.toFixed(2)}</Text>
-                                    <Text style={styles.payHistoryDate}>{(() => { const d = new Date(firstNP.date); return isValid(d) ? format(d, 'MMM dd, HH:mm') : '—'; })()}</Text>
+                                    <Text style={styles.payHistoryDate}>{safeFormatDate(firstNP.date, 'MMM dd, HH:mm', '—')}</Text>
                                   </View>
                                   <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.bronze }}>offset · no cash exchanged</Text>
                                   {descs.length > 0 && (
@@ -6924,7 +6082,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                   <View style={{ flex: 1 }}>
                                     <View style={styles.payHistoryTopRow}>
                                       <Text style={styles.payHistoryAmount}>{currency} {payment.amount.toFixed(2)}</Text>
-                                      <Text style={styles.payHistoryDate}>{(() => { const d = new Date(payment.date); return isValid(d) ? format(d, 'MMM dd, HH:mm') : '—'; })()}</Text>
+                                      <Text style={styles.payHistoryDate}>{safeFormatDate(payment.date, 'MMM dd, HH:mm', '—')}</Text>
                                     </View>
                                     {groupForPay && payment._debtDesc ? (
                                       <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>{payment._debtDesc.toLowerCase()}</Text>
@@ -6937,7 +6095,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                       <View style={styles.payEditedBadge}>
                                         <Feather name="edit-2" size={10} color={C.bronze} />
                                         <Text style={styles.payEditedBadgeText}>
-                                          edited {(() => { const d = new Date(payment.editLog[payment.editLog.length - 1].editedAt); return isValid(d) ? format(d, 'MMM d, HH:mm') : '—'; })()}
+                                          edited {safeFormatDate(payment.editLog[payment.editLog.length - 1].editedAt, 'MMM d, HH:mm', '—')}
                                         </Text>
                                       </View>
                                     )}
@@ -7145,10 +6303,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           </>
         )}
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>)}
 
       {/* ── Split Detail Modal (Summary View — TransactionsList vibe) ─── */}
       {splitDetailVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={dSplitDetailCloseSheet}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <Reanimated.View style={[styles.dDebtBackdrop, dSplitDetailBackdropStyle]}>
           <Pressable style={{ flex: 1 }} onPress={dSplitDetailCloseSheet} />
         </Reanimated.View>
@@ -7230,7 +6390,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     <View style={styles.detailMetaRow}>
                       <Text style={styles.detailMetaLabel}>when</Text>
                       <Text style={styles.detailMetaValue}>
-                        {isValid(selectedSplit.createdAt) ? format(selectedSplit.createdAt, 'MMM dd, yyyy').toLowerCase() : '—'}
+                        {safeFormatDate(selectedSplit.createdAt, 'MMM dd, yyyy', '—').toLowerCase()}
                       </Text>
                     </View>
                     {(selectedSplit as any).dueDate && (() => {
@@ -7392,6 +6552,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             </View>
         </Reanimated.View>
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>)}
 
       {/* ── Receipt Split Wizard Modal ────────────────────────── */}
@@ -7402,7 +6563,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         statusBarTranslucent
         onRequestClose={handleWizardRequestClose}
       >
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={stashOrDiscardWizard} />
           <View style={styles.wizardContent} onStartShouldSetResponder={() => true}>
@@ -7451,7 +6612,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
                   {wizardReceipt && (
                     <View style={styles.wizardContext}>
@@ -7518,7 +6679,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         returnKeyType="done"
                         onSubmitEditing={Keyboard.dismiss}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
                     </View>
                   )}
@@ -7599,7 +6760,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             placeholder={t.debts.itemName}
                             autoFocus
                             keyboardAppearance={isDark ? 'dark' : 'light'}
-                            selectionColor={C.accent}
+                            selectionColor={withAlpha(C.accent, 0.25)}
                           />
                           <TextInput
                             style={[styles.itemAmount, { width: 80, borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 4, textAlign: 'right' }]}
@@ -7608,7 +6769,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             keyboardType="decimal-pad"
                             placeholder="0.00"
                             keyboardAppearance={isDark ? 'dark' : 'light'}
-                            selectionColor={C.accent}
+                            selectionColor={withAlpha(C.accent, 0.25)}
                           />
                         </View>
                         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: SPACING.sm, marginTop: SPACING.sm }}>
@@ -7953,7 +7114,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         {assigningItemIndex !== null && (
           <KeyboardAvoidingView
             style={[StyleSheet.absoluteFill]}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
           >
           <View style={[{ flex: 1 }, styles.modalOverlay]}>
           <Pressable style={{ flex: 1 }} onPress={() => setAssigningItemIndex(null)} />
@@ -8063,7 +7224,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onSubmitEditing={handleItemAddManual}
                       onFocus={() => assignScrollRef.current?.scrollToEnd({ animated: false })}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                     />
                     <TouchableOpacity
                       style={styles.assignManualAddBtn}
@@ -8115,7 +7276,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     returnKeyType="search"
                     onSubmitEditing={Keyboard.dismiss}
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
 
                   <FlatList
@@ -8191,17 +7352,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       </Modal>)}
 
       {/* ── Scanning Loading Overlay ──────────────────────────── */}
-      {scanningReceipt && (
-        <Modal visible transparent statusBarTranslucent animationType="fade">
-          <View style={styles.scanningOverlay}>
-            <View style={styles.scanningCard}>
-              <ActivityIndicator size="large" color={C.accent} />
-              <Text style={styles.scanningTitle}>{t.debts.scanningReceipt}</Text>
-              <Text style={styles.scanningSubtext}>{t.debts.aiReadingReceipt}</Text>
-            </View>
-          </View>
-        </Modal>
-      )}
+      <ScanningOverlay visible={scanningReceipt} />
 
       {/* ── Shared Subscription Modals ─────────────────────────────────── */}
       <SharedSubFormSheet
@@ -8230,86 +7381,35 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       />
 
       {/* ── Commitment Picker Modal ──────────────────────────────────────── */}
-      {commitmentPickerSubId && (
-        <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setCommitmentPickerSubId(null)}>
-          <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setCommitmentPickerSubId(null)}>
-            <Pressable onPress={() => {}} style={[styles.choiceCard, { maxHeight: '60%' }]}>
-              <Text style={styles.choiceTitle}>link to commitment</Text>
-              <Text style={styles.choiceSubtitle}>pick an existing commitment</Text>
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ marginTop: SPACING.md }}>
-                {subscriptions.filter((s) => s.isActive).map((sub, idx, arr) => (
-                  <TouchableOpacity
-                    key={sub.id}
-                    style={[{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, gap: SPACING.sm }, idx < arr.length - 1 && styles.choiceRowBorder]}
-                    onPress={() => handlePickCommitment(sub.id)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.choiceIcon}>
-                      <Feather name="repeat" size={18} color={C.accent} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.choiceLabel}>{sub.name}</Text>
-                      <Text style={styles.choiceDesc}>{currency}{sub.amount.toFixed(2)}/{sub.billingCycle === 'monthly' ? 'mo' : sub.billingCycle === 'yearly' ? 'yr' : 'qtr'}</Text>
-                    </View>
-                    <Feather name="link" size={16} color={C.accent} />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </Pressable>
-          </Pressable>
-        </Modal>
-      )}
+      <CommitmentPickerModal
+        visible={!!commitmentPickerSubId}
+        subscriptions={subscriptions}
+        currency={currency}
+        onPick={handlePickCommitment}
+        onClose={() => setCommitmentPickerSubId(null)}
+      />
 
       {/* ── FAB Choice Modal ─────────────────────────────────────────────── */}
-      {fabChoiceVisible && (<Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setFabChoiceVisible(false)}>
-        <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setFabChoiceVisible(false)}>
-          <Pressable onPress={() => {}} style={styles.choiceCard}>
-            <Text style={styles.choiceTitle}>{t.debts.newEntry}</Text>
-            <Text style={styles.choiceSubtitle}>{t.debts.whatWouldYouAdd}</Text>
-            {([
-              { icon: 'users' as const, label: t.debts.addDebt, desc: t.debts.trackMoneyOwed, onPress: () => { setFabChoiceVisible(false); resetDebtForm(); setDebtModalVisible(true); } },
-              { icon: 'scissors' as const, label: t.debts.splitExpense, desc: t.debts.divideBill, onPress: () => { setFabChoiceVisible(false); setSplitChoiceVisible(true); } },
-              { icon: 'repeat' as const, label: t.sharedSubs.addSharedSub, desc: t.sharedSubs.noSharedSubsHint, onPress: () => { setFabChoiceVisible(false); handleOpenSharedForm(); } },
-            ] as const).map((opt, i, arr) => (
-              <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, i < arr.length - 1 && styles.choiceRowBorder]}>
-                <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={C.accent} /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.choiceLabel}>{opt.label}</Text>
-                  <Text style={styles.choiceDesc}>{opt.desc}</Text>
-                </View>
-                <Feather name="chevron-right" size={16} color={C.textMuted} />
-              </TouchableOpacity>
-            ))}
-          </Pressable>
-        </Pressable>
-      </Modal>)}
+      <FabChoiceModal
+        visible={fabChoiceVisible}
+        onClose={() => setFabChoiceVisible(false)}
+        onAddDebt={() => { setFabChoiceVisible(false); resetDebtForm(); setDebtModalVisible(true); }}
+        onSplitExpense={() => { setFabChoiceVisible(false); setSplitChoiceVisible(true); }}
+        onAddSharedSub={() => { setFabChoiceVisible(false); handleOpenSharedForm(); }}
+      />
 
       {/* ── Split Choice Modal (animationType="none" — instant dismiss, safe for native pickers) ── */}
-      {splitChoiceVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={() => setSplitChoiceVisible(false)}>
-        <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setSplitChoiceVisible(false)}>
-          <Pressable onPress={() => {}} style={styles.choiceCard}>
-            <Text style={styles.choiceTitle}>{t.debts.splitExpense}</Text>
-            <Text style={styles.choiceSubtitle}>{t.debts.howWouldYouSplit}</Text>
-            {([
-              { icon: 'edit-3' as const, label: t.debts.manual, desc: t.debts.manualDesc, onPress: () => { setSplitChoiceVisible(false); resetSplitForm(); setSplitModalVisible(true); } },
-              { icon: 'camera' as const, label: t.debts.takePhotoLabel, desc: t.debts.takePhotoDesc, onPress: () => { setSplitChoiceVisible(false); setTimeout(handleWizardScan, 50); } },
-              { icon: 'image' as const, label: t.debts.chooseFromGalleryLabel, desc: t.debts.chooseFromGalleryDesc, onPress: () => { setSplitChoiceVisible(false); setTimeout(handleWizardGallery, 50); } },
-            ] as const).map((opt, i, arr) => (
-              <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, i < arr.length - 1 && styles.choiceRowBorder]}>
-                <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={C.accent} /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.choiceLabel}>{opt.label}</Text>
-                  <Text style={styles.choiceDesc}>{opt.desc}</Text>
-                </View>
-                <Feather name="chevron-right" size={16} color={C.textMuted} />
-              </TouchableOpacity>
-            ))}
-          </Pressable>
-        </Pressable>
-      </Modal>)}
+      <SplitChoiceModal
+        visible={splitChoiceVisible}
+        onClose={() => setSplitChoiceVisible(false)}
+        onManual={() => { setSplitChoiceVisible(false); resetSplitForm(); setSplitModalVisible(true); }}
+        onTakePhoto={() => { setSplitChoiceVisible(false); setTimeout(handleWizardScan, 50); }}
+        onChooseGallery={() => { setSplitChoiceVisible(false); setTimeout(handleWizardGallery, 50); }}
+      />
 
       {/* ── Reminder Sheet ──────────────────────────────── */}
       {reminderModalVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={dReminderCloseSheet}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <Reanimated.View style={[styles.dDebtBackdrop, dReminderBackdropAnimatedStyle]}>
           <Pressable style={{ flex: 1 }} onPress={dReminderCloseSheet} />
         </Reanimated.View>
@@ -8372,7 +7472,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onFocus={() => { setReminderEditing(true); setMultilineFocused(true); }}
                     onBlur={() => { setReminderEditing(false); setMultilineFocused(false); }}
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
                 </KeyboardAwareScrollView>
 
@@ -8438,10 +7538,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           </TouchableOpacity>
         )}
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>)}
 
       {/* ── Request Payment Sheet ──────────────────────────────── */}
       {requestPaymentVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={dReqCloseSheet}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <Reanimated.View style={[styles.dDebtBackdrop, dReqBackdropAnimatedStyle]}>
           <Pressable style={{ flex: 1 }} onPress={dReqCloseSheet} />
         </Reanimated.View>
@@ -8505,7 +7607,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onFocus={() => { setMessageEditing(true); setMultilineFocused(true); }}
                     onBlur={() => { setMessageEditing(false); setMultilineFocused(false); }}
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
 
                   {showQrPicker && paymentQrs.length > 1 && (
@@ -8601,279 +7703,44 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           </TouchableOpacity>
         )}
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>)}
 
       {/* ── Sort Modal ─────────────────────────────────────────── */}
       {/* ── Settings Modal — show/hide archive tab ─── */}
-      {settingsModalVisible && (
-        <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setSettingsModalVisible(false)}>
-          <View style={styles.modalOverlay}>
-            <Pressable style={{ flex: 1 }} onPress={() => setSettingsModalVisible(false)} />
-            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
-              <View style={styles.dDebtSheetTopRow}>
-                <View style={styles.dDebtSheetHandle} />
-              </View>
-              <View style={styles.dDebtTitleZone}>
-                <Text style={styles.dDebtTitle}>
-                  view <Text style={styles.dDebtTitleAccent}>settings</Text>
-                </Text>
-                <Text style={styles.dDebtSubtitle}>tweak what shows up on this screen</Text>
-              </View>
-
-              <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.lg }}>
-                <TouchableOpacity
-                  style={styles.dSettingsRow}
-                  onPress={() => setDebtsShowArchive(!debtsShowArchive)}
-                  activeOpacity={0.7}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: debtsShowArchive }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.dSettingsRowTitle}>show archive tab</Text>
-                    <Text style={styles.dSettingsRowSub}>
-                      keeps an extra tab for debts and splits you've stashed away. tap any item's "archive" action to move it there.
-                    </Text>
-                  </View>
-                  <View style={[
-                    styles.dSettingsToggle,
-                    debtsShowArchive && { backgroundColor: C.accent },
-                  ]}>
-                    <View style={[
-                      styles.dSettingsToggleThumb,
-                      debtsShowArchive && { transform: [{ translateX: 18 }] },
-                    ]} />
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.dSettingsRow, { marginTop: SPACING.md }]}
-                  onPress={() => setDebtsShowReminder(!debtsShowReminder)}
-                  activeOpacity={0.7}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: debtsShowReminder }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.dSettingsRowTitle}>show reminder button</Text>
-                    <Text style={styles.dSettingsRowSub}>
-                      adds a reminder button on "they owe" debts so you can nudge people with a friendly message.
-                    </Text>
-                  </View>
-                  <View style={[
-                    styles.dSettingsToggle,
-                    debtsShowReminder && { backgroundColor: C.accent },
-                  ]}>
-                    <View style={[
-                      styles.dSettingsToggleThumb,
-                      debtsShowReminder && { transform: [{ translateX: 18 }] },
-                    ]} />
-                  </View>
-                </TouchableOpacity>
-
-                {/* ── How it works button ─────────────────────── */}
-                <TouchableOpacity
-                  style={styles.dHowButton}
-                  onPress={() => {
-                    setSettingsModalVisible(false);
-                    setTimeout(() => setHowItWorksVisible(true), 50);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Feather name="help-circle" size={16} color={C.accent} />
-                  <Text style={styles.dHowButtonText}>how it works</Text>
-                  <Feather name="chevron-right" size={14} color={C.textMuted} />
-                </TouchableOpacity>
-
-                <Button
-                  title={t.common.done}
-                  onPress={() => setSettingsModalVisible(false)}
-                  variant="outline"
-                  fullWidth
-                  style={{ marginTop: SPACING.lg }}
-                />
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
+      <DebtViewSettingsModal
+        visible={settingsModalVisible}
+        onClose={() => setSettingsModalVisible(false)}
+        bottomInset={insets.bottom}
+        debtsShowArchive={debtsShowArchive}
+        setDebtsShowArchive={setDebtsShowArchive}
+        debtsShowReminder={debtsShowReminder}
+        setDebtsShowReminder={setDebtsShowReminder}
+        onHowItWorks={() => {
+          setSettingsModalVisible(false);
+          setTimeout(() => setHowItWorksVisible(true), 50);
+        }}
+      />
 
       {/* ── How It Works — floating centered modal ─── */}
-      {howItWorksVisible && (
-        <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setHowItWorksVisible(false)}>
-          <Pressable style={styles.dHowOverlay} onPress={() => setHowItWorksVisible(false)}>
-            <View style={styles.dHowCard} onStartShouldSetResponder={() => true}>
-              <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: SPACING.sm }}>
-                <View style={styles.dHowCardHeader}>
-                  <Text style={styles.dHowCardTitle}>how it works</Text>
-                  <Text style={styles.dHowCardSub}>everything you need to know about this screen</Text>
-                </View>
+      <DebtHowItWorksModal
+        visible={howItWorksVisible}
+        onClose={() => setHowItWorksVisible(false)}
+      />
 
-                {/* ── Basics ── */}
-                <Text style={styles.dHowGroupLabel}>basics</Text>
-                <View style={styles.dHowItem}>
-                  <View style={styles.dHowIconCircle}><Feather name="users" size={14} color={C.textSecondary} /></View>
-                  <Text style={styles.dHowText}><Text style={styles.dHowBold}>grouped by person</Text> — debts with the same person are consolidated into one card. tap to see each debt inside.</Text>
-                </View>
-                <View style={styles.dHowItem}>
-                  <View style={styles.dHowIconCircle}><Feather name="check-circle" size={14} color={C.textSecondary} /></View>
-                  <Text style={styles.dHowText}><Text style={styles.dHowBold}>record payments</Text> — partial or full, against any debt. each payment links to your wallet automatically.</Text>
-                </View>
-                <View style={styles.dHowItem}>
-                  <View style={styles.dHowIconCircle}><Feather name="rotate-ccw" size={14} color={C.textSecondary} /></View>
-                  <Text style={styles.dHowText}><Text style={styles.dHowBold}>undo payments</Text> — tap the clock icon to view history. you can remove any payment from there.</Text>
-                </View>
-
-                {/* ── Automation ── */}
-                <Text style={styles.dHowGroupLabel}>automation</Text>
-                <View style={styles.dHowItem}>
-                  <View style={styles.dHowIconCircle}><Feather name="archive" size={14} color={C.textSecondary} /></View>
-                  <Text style={styles.dHowText}><Text style={styles.dHowBold}>auto-archive</Text> — settled debts move to archive after 30 days. enable the archive tab in settings to view them.</Text>
-                </View>
-                <View style={styles.dHowItem}>
-                  <View style={styles.dHowIconCircle}><Feather name="bell" size={14} color={C.textSecondary} /></View>
-                  <Text style={styles.dHowText}><Text style={styles.dHowBold}>reminders</Text> — send a friendly nudge via WhatsApp for "they owe" debts. includes all outstanding amounts.</Text>
-                </View>
-                <View style={styles.dHowItem}>
-                  <View style={styles.dHowIconCircle}><Feather name="send" size={14} color={C.textSecondary} /></View>
-                  <Text style={styles.dHowText}><Text style={styles.dHowBold}>request payment</Text> — generate a message with optional QR code. share via WhatsApp or copy.</Text>
-                </View>
-
-                {/* ── Managing ── */}
-                <Text style={styles.dHowGroupLabel}>managing</Text>
-                <View style={styles.dHowItem}>
-                  <View style={styles.dHowIconCircle}><Feather name="trash-2" size={14} color={C.textSecondary} /></View>
-                  <Text style={styles.dHowText}><Text style={styles.dHowBold}>delete only here</Text> — debt-linked transactions can only be removed from this screen, not from the transactions list.</Text>
-                </View>
-                <View style={styles.dHowItem}>
-                  <View style={styles.dHowIconCircle}><Feather name="check-square" size={14} color={C.textSecondary} /></View>
-                  <Text style={styles.dHowText}><Text style={styles.dHowBold}>bulk actions</Text> — long-press any debt or split to select. archive or delete multiple items at once.</Text>
-                </View>
-                <View style={styles.dHowItem}>
-                  <View style={styles.dHowIconCircle}><Feather name="edit-2" size={14} color={C.textSecondary} /></View>
-                  <Text style={styles.dHowText}><Text style={styles.dHowBold}>edit tracking</Text> — payment edits are logged. look for the "edited" badge on modified payments.</Text>
-                </View>
-                <View style={styles.dHowItem}>
-                  <View style={styles.dHowIconCircle}><Feather name="scissors" size={14} color={C.textSecondary} /></View>
-                  <Text style={styles.dHowText}><Text style={styles.dHowBold}>splits</Text> — divide expenses with friends using equal, custom, or item-based methods.</Text>
-                </View>
-              </ScrollView>
-
-              <TouchableOpacity
-                style={styles.dHowDismiss}
-                onPress={() => setHowItWorksVisible(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.dHowDismissText}>got it</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Modal>
-      )}
-
-      {sortModalVisible && (<Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setSortModalVisible(false)}>
-        <Pressable style={{ flex: 1 }} onPress={() => setSortModalVisible(false)}>
-          <View
-            style={{
-              position: 'absolute',
-              top: 120,
-              right: 16,
-              width: 240,
-              backgroundColor: C.surface,
-              borderRadius: RADIUS.lg,
-              ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
-              paddingVertical: 8,
-              overflow: 'hidden',
-            }}
-          >
-            <Pressable onPress={() => {}}>
-              {/* Filter by Type — debts tab only */}
-              {activeTab === 'debts' && (
-                <>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: C.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>{t.debts.filterByType}</Text>
-                  {([
-                    { key: 'they_owe' as const, label: t.debts.theyOweFilter },
-                    { key: 'i_owe' as const, label: t.debts.iOweFilter },
-                  ]).map((f) => {
-                    const isActive = debtTypeFilter === f.key;
-                    return (
-                      <TouchableOpacity
-                        key={f.key}
-                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(C.accent, 0.06) : 'transparent' }}
-                        onPress={() => setDebtTypeFilter(isActive ? null : f.key)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={{ fontSize: 14, color: isActive ? C.accent : C.textPrimary, fontWeight: isActive ? '600' : '400' }}>{f.label}</Text>
-                        {isActive && <Feather name="check" size={16} color={C.accent} />}
-                      </TouchableOpacity>
-                    );
-                  })}
-                  <View style={{ height: 1, backgroundColor: C.border, marginHorizontal: 16, marginVertical: 4 }} />
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: C.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>{t.debts.filterByStatus}</Text>
-                  {([
-                    { key: 'pending' as const, label: t.debts.pending },
-                    { key: 'partial' as const, label: t.debts.partial },
-                    { key: 'settled' as const, label: t.debts.settled },
-                  ]).map((f) => {
-                    const isActive = debtFilter === f.key;
-                    return (
-                      <TouchableOpacity
-                        key={f.key}
-                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(C.accent, 0.06) : 'transparent' }}
-                        onPress={() => setDebtFilter(isActive ? null : f.key)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={{ fontSize: 14, color: isActive ? C.accent : C.textPrimary, fontWeight: isActive ? '600' : '400' }}>{f.label}</Text>
-                        {isActive && <Feather name="check" size={16} color={C.accent} />}
-                      </TouchableOpacity>
-                    );
-                  })}
-                  <View style={{ height: 1, backgroundColor: C.border, marginHorizontal: 16, marginVertical: 4 }} />
-                </>
-              )}
-              {/* Sort By */}
-              <Text style={{ fontSize: 11, fontWeight: '600', color: C.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>{t.debts.sortBy}</Text>
-              {([
-                { key: 'newest' as const, label: t.debts.newestFirst, icon: 'arrow-down' as const },
-                { key: 'oldest' as const, label: t.debts.oldestFirst, icon: 'arrow-up' as const },
-                { key: 'amount_high' as const, label: t.debts.highestAmount, icon: 'trending-up' as const },
-                { key: 'amount_low' as const, label: t.debts.lowestAmount, icon: 'trending-down' as const },
-              ]).map((option) => {
-                const currentSort = activeTab === 'splits' ? splitSort : debtSort;
-                const isActive = currentSort === option.key;
-                return (
-                  <TouchableOpacity
-                    key={option.key}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(C.accent, 0.06) : 'transparent' }}
-                    onPress={() => {
-                      if (activeTab === 'splits') setSplitSort(option.key);
-                      else setDebtSort(option.key);
-                      setSortModalVisible(false);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name={option.icon} size={16} color={isActive ? C.accent : C.textSecondary} />
-                    <Text style={{ flex: 1, fontSize: 14, color: isActive ? C.accent : C.textPrimary, fontWeight: isActive ? '600' : '400' }}>{option.label}</Text>
-                    {isActive && <Feather name="check" size={16} color={C.accent} />}
-                  </TouchableOpacity>
-                );
-              })}
-              {/* Clear filters button — show when any filter active */}
-              {(debtTypeFilter || debtFilter) && activeTab === 'debts' && (
-                <>
-                  <View style={{ height: 1, backgroundColor: C.border, marginHorizontal: 16, marginVertical: 4 }} />
-                  <TouchableOpacity
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10 }}
-                    onPress={() => { setDebtTypeFilter(null); setDebtFilter(null); setSortModalVisible(false); }}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="x-circle" size={16} color={C.gold} />
-                    <Text style={{ fontSize: 14, color: C.gold, fontWeight: '600' }}>{t.debts.clearFilters}</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>)}
+      <DebtSortFilterMenu
+        visible={sortModalVisible}
+        onClose={() => setSortModalVisible(false)}
+        activeTab={activeTab}
+        debtTypeFilter={debtTypeFilter}
+        setDebtTypeFilter={setDebtTypeFilter}
+        debtFilter={debtFilter}
+        setDebtFilter={setDebtFilter}
+        debtSort={debtSort}
+        setDebtSort={setDebtSort}
+        splitSort={splitSort}
+        setSplitSort={setSplitSort}
+      />
 
       {/* ── Inline Category Manager (no navigation needed) ── */}
       <CategoryManager

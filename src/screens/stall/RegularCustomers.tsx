@@ -7,10 +7,9 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   SafeAreaView,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useStallStore } from '../../store/stallStore';
@@ -163,7 +162,7 @@ const RegularCustomers: React.FC = () => {
                 autoFocus
                 accessibilityLabel="Customer name"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               <TextInput
                 style={styles.editInput}
@@ -173,7 +172,7 @@ const RegularCustomers: React.FC = () => {
                 placeholderTextColor={C.textSecondary}
                 accessibilityLabel="Usual order"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               <TextInput
                 style={styles.editInput}
@@ -183,7 +182,7 @@ const RegularCustomers: React.FC = () => {
                 placeholderTextColor={C.textSecondary}
                 accessibilityLabel="Note about this customer"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <View style={styles.editActions}>
@@ -318,7 +317,7 @@ const RegularCustomers: React.FC = () => {
               autoFocus
               accessibilityLabel={t.stallRegulars.name}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <TextInput
               style={styles.addInput}
@@ -328,7 +327,7 @@ const RegularCustomers: React.FC = () => {
               placeholderTextColor={C.textSecondary}
               accessibilityLabel="Usual order, optional"
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <TextInput
               style={styles.addInput}
@@ -338,7 +337,7 @@ const RegularCustomers: React.FC = () => {
               placeholderTextColor={C.textSecondary}
               accessibilityLabel="Note, optional"
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <TouchableOpacity
               style={[
@@ -370,7 +369,7 @@ const RegularCustomers: React.FC = () => {
               keyboardType="number-pad"
               accessibilityLabel="Reward every how many visits"
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <Text style={styles.loyaltyWord}>{t.stall.loyaltyVisitsWord}</Text>
           </View>
@@ -382,7 +381,7 @@ const RegularCustomers: React.FC = () => {
             placeholderTextColor={C.neutral}
             accessibilityLabel="Loyalty reward"
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
       </View>
@@ -403,7 +402,7 @@ const RegularCustomers: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
         <FlatList
           data={regularCustomers}

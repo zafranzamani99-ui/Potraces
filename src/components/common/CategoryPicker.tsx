@@ -10,6 +10,7 @@ import {
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import CategoryIcon from './CategoryIcon';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { CategoryOption } from '../../types';
@@ -42,7 +43,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
   const settingsHint = (
     <TouchableOpacity
       style={styles.settingsHint}
-      onPress={() => onNavigateToSettings ? onNavigateToSettings() : navigation.navigate('Settings', { scrollTo: 'categories' })}
+      onPress={() => onNavigateToSettings ? onNavigateToSettings() : navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'categories' })}
       activeOpacity={0.6}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
@@ -79,8 +80,8 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
             },
           ]}
         >
-          <Feather
-            name={item.icon as keyof typeof Feather.glyphMap}
+          <CategoryIcon
+            icon={item.icon}
             size={18}
             color={isSelected ? C.onAccent : item.color}
           />
@@ -119,8 +120,8 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
       onPress={() => { lightTap(); onSelect(category.id); }}
       activeOpacity={0.7}
     >
-      <Feather
-        name={category.icon as keyof typeof Feather.glyphMap}
+      <CategoryIcon
+        icon={category.icon}
         size={20}
         color={selectedId === category.id ? C.onAccent : category.color}
       />
@@ -160,8 +161,8 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                   { backgroundColor: withAlpha(selectedCategory.color, 0.15) },
                 ]}
               >
-                <Feather
-                  name={selectedCategory.icon as keyof typeof Feather.glyphMap}
+                <CategoryIcon
+                  icon={selectedCategory.icon}
                   size={18}
                   color={selectedCategory.color}
                 />
@@ -215,7 +216,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                         if (onNavigateToSettings) {
                           onNavigateToSettings();
                         } else {
-                          navigation.navigate('Settings', { scrollTo: 'categories' });
+                          navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'categories' });
                         }
                       }, 50);
                     }}

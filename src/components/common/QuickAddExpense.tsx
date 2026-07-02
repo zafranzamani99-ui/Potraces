@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { findRecentDuplicate } from '../../utils/findDuplicateTransaction';
 import { SUPPORTED_CURRENCIES, getRates, toMyr } from '../../services/fxRates';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,8 +27,10 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { usePlaybookStore } from '../../store/playbookStore';
 import { CALM, CALM_DARK, SHADOWS, withAlpha, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
 import WalletLogo from './WalletLogo';
+import CategoryIcon from './CategoryIcon';
 import ModalToastHost from './ModalToastHost';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 import { useLearningStore } from '../../store/learningStore';
@@ -94,7 +96,7 @@ const NumpadKey = React.memo(
       accessibilityLabel={label === '⌫' ? 'backspace' : label}
     >
       {label === '⌫' ? (
-        <Feather name="delete" size={20} color={mutedColor} />
+        <Ionicons name="backspace-outline" size={20} color={mutedColor} />
       ) : (
         <Text style={keyTextStyle}>{label}</Text>
       )}
@@ -281,7 +283,9 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
+        // Only the FAB itself (touch starting on it) should drag; do NOT claim a scroll that merely
+        // moves over the FAB — that's what made the page intermittently hard to scroll near the button.
+        onMoveShouldSetPanResponder: () => false,
         onPanResponderGrant: () => {
           isDragging.current = false;
           fabPos.setOffset(lastPos.current);
@@ -560,6 +564,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
     },
     [hasMultipleWallets, categories, animateTo, saveTransaction, quickAddConfirm, showConfirmOverlay, ensureDefaultWalletId],
   );
+  const guardedCategorySelect = useSubmitGuard(handleCategorySelect);
 
   // ── Wallet select ───────────────────────────────────────────
   const handleWalletSelect = useCallback(
@@ -575,6 +580,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
     },
     [categoryId, categories, saveTransaction, quickAddConfirm, showConfirmOverlay],
   );
+  const guardedWalletSelect = useSubmitGuard(handleWalletSelect);
 
   const handleConfirmSave = useCallback(() => {
     lightTap();
@@ -584,6 +590,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
     const cat = categories.find((c) => c.id === categoryId);
     saveTransaction(categoryId, cat?.name || categoryId, pendingWalletId);
   }, [categoryId, categories, saveTransaction, pendingWalletId, bgCardScale, bgCardOpacity]);
+  const guardedConfirmSave = useSubmitGuard(handleConfirmSave);
 
   const handleClose = useCallback(() => setVisible(false), []);
 
@@ -597,6 +604,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
     setPbPrompt(null);
     if (pbId) showToast('playbook created', 'success');
   }, [pbPrompt, showToast]);
+  const guardedPbCreate = useSubmitGuard(handlePbCreate);
 
   const handlePbDismiss = useCallback(() => setPbPrompt(null), []);
 
@@ -620,7 +628,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
           accessibilityHint={t.quickAdd.fabHint}
           accessibilityRole="button"
         >
-          <Feather name="plus" size={26} color={C.onAccent} />
+          <Ionicons name="add" size={30} color={C.onAccent} />
         </View>
         {showHint && (
           <Animated.View style={[styles.hint, { opacity: hintOpacity }]} pointerEvents="none">
@@ -650,13 +658,13 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
             <View style={styles.hdr}>
               {currentStepIdx > 0 ? (
                 <TouchableOpacity onPress={goBack} style={styles.hdrBtn} hitSlop={HITSLOP_10} accessibilityRole="button" accessibilityLabel={t.a11y.back}>
-                  <Feather name="chevron-left" size={20} color={C.textSecondary} />
+                  <Ionicons name="chevron-back" size={22} color={C.textSecondary} />
                 </TouchableOpacity>
               ) : (
                 <View style={styles.hdrBtn} />
               )}
               <TouchableOpacity onPress={handleClose} style={styles.hdrBtn} hitSlop={HITSLOP_10} accessibilityRole="button" accessibilityLabel={t.a11y.close}>
-                <Feather name="x" size={18} color={C.textMuted} />
+                <Ionicons name="close" size={20} color={C.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -707,7 +715,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                       accessibilityState={{ selected: txType === 'expense' }}
                       accessibilityLabel={t.quickAdd.wentOut}
                     >
-                      <Feather name="arrow-up-right" size={14} color={txType === 'expense' ? C.onAccent : C.textMuted} />
+                      <Ionicons name="arrow-up" size={14} color={txType === 'expense' ? C.onAccent : C.textMuted} />
                       <Text style={[styles.typePillText, txType === 'expense' && styles.typePillTextActive]}>{t.quickAdd.wentOut}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -719,7 +727,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                       accessibilityState={{ selected: txType === 'income' }}
                       accessibilityLabel={t.quickAdd.cameIn}
                     >
-                      <Feather name="arrow-down-left" size={14} color={txType === 'income' ? C.onAccent : C.textMuted} />
+                      <Ionicons name="arrow-down" size={14} color={txType === 'income' ? C.onAccent : C.textMuted} />
                       <Text style={[styles.typePillText, txType === 'income' && styles.typePillTextActive]}>{t.quickAdd.cameIn}</Text>
                     </TouchableOpacity>
                   </View>
@@ -744,7 +752,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                     accessibilityLabel={t.a11y.forward}
                   >
                     <Text style={styles.ctaText}>{t.quickAdd.next}</Text>
-                    <Feather name="arrow-right" size={16} color={C.onAccent} />
+                    <Ionicons name="arrow-forward" size={16} color={C.onAccent} />
                   </TouchableOpacity>
                 </View>
 
@@ -760,13 +768,13 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                       <TouchableOpacity
                         key={cat.id}
                         style={styles.catCell}
-                        onPress={() => handleCategorySelect(cat.id)}
+                        onPress={() => guardedCategorySelect(cat.id)}
                         activeOpacity={0.55}
                         accessibilityRole="button"
                         accessibilityLabel={cat.name}
                       >
                         <View style={[styles.catIcon, { backgroundColor: withAlpha(cat.color, 0.1) }]}>
-                          <Feather name={(cat.icon as keyof typeof Feather.glyphMap) || 'tag'} size={22} color={cat.color} />
+                          <CategoryIcon icon={cat.icon || 'tag'} size={22} color={cat.color} />
                         </View>
                         <Text style={styles.catLabel} numberOfLines={2}>{cat.name}</Text>
                       </TouchableOpacity>
@@ -792,7 +800,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                         <TouchableOpacity
                           key={w.id}
                           style={styles.walletRow}
-                          onPress={() => handleWalletSelect(w.id)}
+                          onPress={() => guardedWalletSelect(w.id)}
                           activeOpacity={0.55}
                           accessibilityRole="button"
                           accessibilityLabel={`${w.name} · ${currency} ${w.balance.toFixed(2)}`}
@@ -805,9 +813,9 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                             <Text style={styles.walletBal}>{currency} {w.balance.toFixed(2)}</Text>
                           </View>
                           {w.isDefault && (
-                            <Feather name="star" size={16} color={w.color || C.accent} />
+                            <Ionicons name="star" size={15} color={w.color || C.accent} />
                           )}
-                          <Feather name="chevron-right" size={16} color={C.border} />
+                          <Ionicons name="chevron-forward" size={16} color={C.border} />
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
@@ -840,7 +848,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                 {cat && (
                   <View style={styles.receiptRow}>
                     <View style={[styles.receiptIcon, { backgroundColor: withAlpha(cat.color, 0.1) }]}>
-                      <Feather name={(cat.icon as keyof typeof Feather.glyphMap) || 'tag'} size={20} color={cat.color} />
+                      <CategoryIcon icon={cat.icon || 'tag'} size={20} color={cat.color} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.receiptRowLabel}>{t.quickAdd.categoryLabel}</Text>
@@ -865,12 +873,12 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                 <View style={styles.receiptActions}>
                   <TouchableOpacity
                     style={styles.receiptSave}
-                    onPress={handleConfirmSave}
+                    onPress={guardedConfirmSave}
                     activeOpacity={0.8}
                     accessibilityRole="button"
                     accessibilityLabel={t.common.save}
                   >
-                    <Feather name="check" size={16} color={C.onAccent} />
+                    <Ionicons name="checkmark" size={16} color={C.onAccent} />
                     <Text style={styles.receiptSaveText}>{t.common.save}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -881,7 +889,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                     accessibilityRole="button"
                     accessibilityLabel={t.quickAdd.change}
                   >
-                    <Feather name="chevron-left" size={13} color={C.textMuted} />
+                    <Ionicons name="chevron-back" size={14} color={C.textMuted} />
                     <Text style={styles.receiptChangeText}>{t.quickAdd.change}</Text>
                   </TouchableOpacity>
                 </View>
@@ -931,7 +939,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                     <Text style={{ flex: 1, fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontWeight: cur === selectedCurrency ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.regular }}>
                       {cur}
                     </Text>
-                    {cur === selectedCurrency && <Feather name="check" size={16} color={C.positive} />}
+                    {cur === selectedCurrency && <Ionicons name="checkmark" size={16} color={C.positive} />}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -953,7 +961,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
             </TouchableWithoutFeedback>
             <Animated.View style={[styles.pbPromptCard, { transform: [{ scale: pbPromptScale }], opacity: pbPromptOpacity }]} onStartShouldSetResponder={() => true}>
               <View style={styles.pbPromptIcon}>
-                <Feather name="book-open" size={28} color={C.accent} />
+                <Ionicons name="rocket-outline" size={28} color={C.accent} />
               </View>
               <Text style={styles.pbPromptTitle}>{t.quickAdd.pbTitle}</Text>
               <Text style={styles.pbPromptSub}>
@@ -971,12 +979,12 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.pbPromptCreate}
-                  onPress={handlePbCreate}
+                  onPress={guardedPbCreate}
                   activeOpacity={0.8}
                   accessibilityRole="button"
                   accessibilityLabel={t.quickAdd.create}
                 >
-                  <Feather name="plus" size={16} color={C.onAccent} />
+                  <Ionicons name="add" size={18} color={C.onAccent} />
                   <Text style={styles.pbPromptCreateText}>{t.quickAdd.create}</Text>
                 </TouchableOpacity>
               </View>

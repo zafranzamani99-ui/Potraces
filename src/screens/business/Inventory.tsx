@@ -23,6 +23,7 @@ import Button from '../../components/common/Button';
 import FAB from '../../components/common/FAB';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
+import CategoryIcon from '../../components/common/CategoryIcon';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
@@ -244,8 +245,8 @@ const Inventory: React.FC = () => {
                 style={[styles.categoryTab, selectedCategory === cat.id && styles.categoryTabActive]}
                 onPress={() => setSelectedCategory(cat.id)}
               >
-                <Feather
-                  name={cat.icon as keyof typeof Feather.glyphMap}
+                <CategoryIcon
+                  icon={cat.icon}
                   size={14}
                   color={selectedCategory === cat.id ? C.onAccent : C.textSecondary}
                 />
@@ -292,7 +293,7 @@ const Inventory: React.FC = () => {
               <Card key={product.id} style={styles.productCard}>
                 <View style={styles.productHeader}>
                   <View style={[styles.iconContainer, { backgroundColor: cat?.color ? withAlpha(cat.color, 0.12) : C.background }]}>
-                    <Feather name={(cat?.icon as keyof typeof Feather.glyphMap) || 'package'} size={20} color={cat?.color} />
+                    <CategoryIcon icon={cat?.icon || 'package'} size={20} color={cat?.color} />
                   </View>
                   <View style={styles.productInfo}>
                     <Text style={styles.productName}>{product.name}</Text>
@@ -378,7 +379,7 @@ const Inventory: React.FC = () => {
           </View>
         ) : (
           <EmptyState
-            icon="package"
+            icon="i/cube-outline"
             title="No Products"
             message="Add products to your inventory to start tracking stock and making sales"
             actionLabel="Add Product"

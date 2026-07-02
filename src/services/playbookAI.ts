@@ -22,6 +22,7 @@ import { useLearningStore } from '../store/learningStore';
 import { Playbook } from '../types';
 import { computeNotebookStats, computePlaybookStats, computePlanVsActual } from '../utils/playbookStats';
 import { getPlaybookObligations } from '../utils/playbookObligations';
+import { computePlaybookPlan, moneyStr } from './playbookPlan';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -508,21 +509,88 @@ BANNED WORDS — never appear anywhere in your output (any field): profit, loss,
 
 // ─── Main API Call ──────────────────────────────────────────
 
+/**
+ * Deterministic Playbook plan from live store data — the getState() glue around the pure
+ * computePlaybookPlan. Never throws: on any failure it returns a minimal one-line plan so the
+ * UI always has something real to show.
+ */
+function buildPlaybookPlan(playbook: Playbook, opts: EchoPlanOpts = {}): EchoPlanResponse {
+  const currency = useSettingsStore.getState().currency;
+  try {
+    const startDate = playbook.startDate instanceof Date ? playbook.startDate : new Date(playbook.startDate);
+    const asOf = isNaN(startDate.getTime()) ? new Date() : startDate;
+    const obl = getPlaybookObligations(playbook, playbook.coveredObligationIds || []);
+    return computePlaybookPlan({
+      sourceAmount: playbook.sourceAmount,
+      startDate: asOf,
+      obligations: obl.items.map((o) => ({ label: o.label, amount: o.amount })),
+      txns: usePersonalStore.getState().transactions,
+      debts: useDebtStore.getState().debts,
+      wallets: useWalletStore.getState().wallets,
+      asOf,
+      currency,
+      opts,
+    });
+  } catch (e) {
+    if (__DEV__) console.warn('[PlaybookAI] plan fell back to minimal:', e);
+    const live = Math.max(0, Math.round(playbook.sourceAmount || 0));
+    return {
+      greeting: '',
+      reflection: 'okay — here’s a simple way to spread this out. sound right?',
+      items: [{ label: 'living money', amount: live, category: 'other', rationale: 'what you have to live on this round' }],
+      warnings: [],
+      summary: `about ${moneyStr(currency, live)} to work with this round — you’re okay.`,
+    };
+  }
+}
+
+/**
+ * Overlay the LLM's WORDS onto the deterministic plan. Numbers, the summary, and the critic's
+ * warning are ALWAYS the engine's — the model can only change phrasing (reflection + per-item
+ * rationale, both number-free by the prompt's own rules). This is how "one brain" stays honest.
+ */
+function mergeNarration(det: EchoPlanResponse, llm: EchoPlanResponse): EchoPlanResponse {
+  const rByCat: Record<string, string> = {};
+  const rByLabel: Record<string, string> = {};
+  for (const it of llm.items) {
+    if (it.rationale && it.rationale.trim()) {
+      if (it.category) rByCat[it.category] = it.rationale.trim();
+      rByLabel[it.label.toLowerCase()] = it.rationale.trim();
+    }
+  }
+  const items = det.items.map((di) => {
+    const r = (di.category && rByCat[di.category]) || rByLabel[di.label.toLowerCase()] || di.rationale;
+    return { ...di, rationale: r };
+  });
+  return {
+    greeting: (llm.reflection && llm.reflection.trim()) || det.greeting,
+    reflection: (llm.reflection && llm.reflection.trim()) || det.reflection,
+    items,
+    warnings: det.warnings,
+    summary: det.summary,
+  };
+}
+
 export async function askEchoPlan(
   playbook: Playbook,
   opts: EchoPlanOpts = {},
 ): Promise<PlaybookAIResult> {
-  if (!isGeminiAvailable()) {
-    const secs = getCooldownSecondsLeft();
-    if (secs > 0) return { ok: false, error: `echo is cooling down — ${secs}s` };
-    return { ok: false, error: 'echo is unavailable right now' };
-  }
-
+  // ── DETERMINISTIC numbers (the fusion) ──
+  // Every ringgit comes from the shared budgeting engine + critic — NEVER the LLM. The lump
+  // is the period's take-home, the Playbook's bills are the protected commitments, and the
+  // cushion is sized from the user's reality. See playbookPlan.ts.
+  const det = buildPlaybookPlan(playbook, opts);
   const premium = usePremiumStore.getState();
-  if (!premium.canUseAI()) {
-    return { ok: false, error: 'AI limit reached this month' };
+
+  // Offline / out of AI quota: the deterministic plan stands on its own. (This path used to
+  // hard-fail with an error — now the user ALWAYS gets a real plan, instantly and for free.)
+  if (!isGeminiAvailable() || !premium.canUseAI()) {
+    try { _lastPlanContext = buildPlaybookContext(playbook, opts); } catch { _lastPlanContext = null; }
+    return { ok: true, plan: det };
   }
 
+  // Online: let Echo warm up the WORDS only (reflection + per-item rationale). Numbers, the
+  // summary, and the critic's warning stay deterministic — the LLM can never move a ringgit.
   try {
     const currency = useSettingsStore.getState().currency;
     const context = buildPlaybookContext(playbook, opts);
@@ -547,38 +615,18 @@ export async function askEchoPlan(
       30_000,
     );
 
-    if (!data) {
-      return { ok: false, error: "couldn't reach echo — check your internet" };
-    }
-
     const candidate = data?.candidates?.[0];
     const rawText = candidate?.content?.parts?.[0]?.text?.trim();
-    if (!rawText) {
-      return { ok: false, error: 'echo returned empty — try again' };
-    }
+    if (!rawText) return { ok: true, plan: det };
 
-    const truncated = candidate?.finishReason === 'MAX_TOKENS';
+    const parsed = parseEchoResponse(rawText, candidate?.finishReason === 'MAX_TOKENS');
+    if (!parsed.ok) return { ok: true, plan: det };
 
     premium.incrementAiCalls();
-    const result = parseEchoResponse(rawText, truncated);
-    if (result.ok) {
-      // Only items with a real amount count toward "money left". Items awaiting
-      // input (needsInput) and the reassurance "bills" line are 0 and excluded.
-      const totalPlanned = result.plan.items
-        .filter((i) => !i.needsInput)
-        .reduce((s, i) => s + i.amount, 0);
-      if (totalPlanned > playbook.sourceAmount && totalPlanned > 0) {
-        const scale = playbook.sourceAmount / totalPlanned;
-        for (const item of result.plan.items) {
-          if (!item.needsInput) item.amount = Math.round(item.amount * scale);
-        }
-      }
-    }
-    return result;
+    return { ok: true, plan: mergeNarration(det, parsed.plan) };
   } catch (err: any) {
-    if (__DEV__) console.warn('[PlaybookAI] Error:', err);
-    if (err?.name === 'AbortError') return { ok: false, error: 'request timed out' };
-    return { ok: false, error: 'something went wrong — try again' };
+    if (__DEV__) console.warn('[PlaybookAI] narration failed, using deterministic plan:', err);
+    return { ok: true, plan: det };
   }
 }
 

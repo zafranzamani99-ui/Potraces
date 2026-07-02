@@ -1,13 +1,34 @@
 import React, { useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { selectionChanged } from '../../services/haptics';
 import DuoIcon, { FEATHER_TO_GLYPH } from '../common/DuoIcon';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
+
+// Modern tab glyphs: outline when inactive, solid when active (iOS pattern).
+// Keyed by the Feather name the navigator passes via tabBarIcon. Any name not
+// listed falls back to the legacy DuoIcon/Feather path (e.g. business-mode tabs).
+// Budget (sliders) and Echo (zap) intentionally match their dashboard quick-action
+// glyph since they open the same screen.
+const NAV_ICON: Record<string, { solid: string; outline: string }> = {
+  home: { solid: 'i/home', outline: 'i/home-outline' },
+  sliders: { solid: 'i/pie-chart', outline: 'i/pie-chart-outline' },
+  'edit-3': { solid: 'i/pencil', outline: 'i/pencil-outline' },
+  zap: { solid: 'i/flash', outline: 'i/flash-outline' },
+  settings: { solid: 'i/settings', outline: 'i/settings-outline' },
+};
+
+// Render a lib-prefixed glyph spec (`i/` Ionicons, `m/` MaterialCommunityIcons, default Feather).
+const renderNavGlyph = (spec: string, size: number, color: string) => {
+  const [lib, name] = spec.includes('/') ? spec.split('/') : ['f', spec];
+  if (lib === 'm') return <MaterialCommunityIcons name={name as any} size={size} color={color} />;
+  if (lib === 'i') return <Ionicons name={name as any} size={size} color={color} />;
+  return <Feather name={name as any} size={size} color={color} />;
+};
 
 // CIMB-style: full-width bar matching app bg, labels always visible,
 // big colored circle popping out with a border ring
@@ -59,7 +80,13 @@ const TabItem = React.memo<TabItemProps>(({
     activeOpacity={0.7}
   >
     <View style={{ position: 'relative' }}>
-      {FEATHER_TO_GLYPH[iconName] ? (
+      {NAV_ICON[iconName] ? (
+        renderNavGlyph(
+          isFocused ? NAV_ICON[iconName].solid : NAV_ICON[iconName].outline,
+          25,
+          isFocused ? activeColor : inactiveColor,
+        )
+      ) : FEATHER_TO_GLYPH[iconName] ? (
         <DuoIcon
           glyph={FEATHER_TO_GLYPH[iconName]}
           size={25}
@@ -128,7 +155,9 @@ const CenterTabItem = React.memo<CenterTabItemProps>(({
     >
       <View style={centerRingStyle}>
         <View style={[centerButtonStyle, { backgroundColor: accentColor }]}>
-          {FEATHER_TO_GLYPH[iconName] ? (
+          {NAV_ICON[iconName] ? (
+            renderNavGlyph(NAV_ICON[iconName].solid, 30, '#FFFFFF')
+          ) : FEATHER_TO_GLYPH[iconName] ? (
             <DuoIcon glyph={FEATHER_TO_GLYPH[iconName]} size={30} color="#FFFFFF" fillAlpha={0.3} />
           ) : (
             <Feather name={iconName} size={28} color="#FFFFFF" />

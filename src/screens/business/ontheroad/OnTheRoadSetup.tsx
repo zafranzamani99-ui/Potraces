@@ -10,7 +10,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useOnTheRoadStore } from '../../../store/onTheRoadStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { successNotification } from '../../../services/haptics';
 
@@ -76,7 +76,7 @@ const OnTheRoadSetup: React.FC = () => {
           placeholderTextColor={C.textMuted}
           returnKeyType="next"
           keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={C.accent}
+          selectionColor={withAlpha(C.accent, 0.25)}
         />
 
         <Text style={styles.subHeading}>what do you drive?</Text>
@@ -131,7 +131,7 @@ const OnTheRoadSetup: React.FC = () => {
             onSubmitEditing={Keyboard.dismiss}
             autoFocus
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         )}
 

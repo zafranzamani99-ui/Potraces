@@ -237,7 +237,7 @@ const QrCaptureModal: React.FC<QrCaptureModalProps> = ({ visible, onClose, onCap
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               <Text style={styles.pasteHint}>{t.qrPay.pasteHint}</Text>
               {!!error && <Text style={styles.errorText}>{error}</Text>}
@@ -283,7 +283,7 @@ const QrCaptureModal: React.FC<QrCaptureModalProps> = ({ visible, onClose, onCap
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <Pressable style={styles.primaryBtn} onPress={handleSave}>

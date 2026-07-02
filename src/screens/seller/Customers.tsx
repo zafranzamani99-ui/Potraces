@@ -629,6 +629,66 @@ const SellerCustomers: React.FC = () => {
     return Object.values(map);
   }, [orders, sellerCustomers]);
 
+  // ─── Contact import: O(1) existence lookups + stable list/row ─
+  const existingCustomerNames = useMemo(
+    () => new Set(derivedCustomers.map((c) => c.name.toLowerCase())),
+    [derivedCustomers]
+  );
+
+  const filteredContacts = useMemo(() => {
+    const term = contactSearch.trim().toLowerCase();
+    if (!term) return contactsList;
+    return contactsList.filter((c) => c.name?.toLowerCase().includes(term));
+  }, [contactsList, contactSearch]);
+
+  const renderContactItem = useCallback(({ item: contact }: { item: Contacts.Contact }) => {
+    const phone = contact.phoneNumbers?.[0]?.number || '';
+    const alreadyExists = existingCustomerNames.has((contact.name || '').toLowerCase());
+    return (
+      <TouchableOpacity
+        style={[styles.contactItem, alreadyExists && styles.contactItemExisting]}
+        activeOpacity={0.7}
+        onPress={() => {
+          if (alreadyExists) {
+            showToast(`${contact.name} already exists`, 'error');
+            return;
+          }
+          lightTap();
+          const addr = contact.addresses?.[0]
+            ? [contact.addresses[0].street, contact.addresses[0].city, contact.addresses[0].region]
+                .filter(Boolean)
+                .join(', ')
+            : '';
+          setShowContactPicker(false);
+          setTimeout(() => {
+            setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), firstOrderDate: new Date(), orders: [] });
+            setEditName(contact.name || '');
+            setEditPhone(phone);
+            setEditAddress(addr);
+            setEditNote('');
+            setEditIsVip(false);
+            setEditModalVisible(true);
+          }, 50);
+        }}
+      >
+        <View style={styles.contactAvatar}>
+          <Text style={styles.contactAvatarText}>
+            {(contact.name || '?').charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.contactInfo}>
+          <Text style={styles.contactName} numberOfLines={1}>{contact.name}</Text>
+          {phone ? <Text style={styles.contactPhone} numberOfLines={1}>{phone}</Text> : null}
+        </View>
+        {alreadyExists ? (
+          <Text style={styles.contactExistsLabel}>exists</Text>
+        ) : (
+          <Feather name="plus" size={16} color={C.bronze} />
+        )}
+      </TouchableOpacity>
+    );
+  }, [existingCustomerNames, styles, C, showToast]);
+
   // Keep selectedCustomer in sync with derived data
   useEffect(() => {
     if (selectedCustomer) {
@@ -1071,7 +1131,7 @@ const SellerCustomers: React.FC = () => {
             accessibilityLabel="Search customers"
             accessibilityRole="search"
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
           {search.length > 0 && (
             <TouchableOpacity
@@ -1389,7 +1449,7 @@ const SellerCustomers: React.FC = () => {
                 onBlur={() => setFocusedField(null)}
                 accessibilityLabel="Customer name"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <Text style={styles.modalLabel}>phone</Text>
@@ -1404,7 +1464,7 @@ const SellerCustomers: React.FC = () => {
                 onBlur={() => setFocusedField(null)}
                 accessibilityLabel="Phone number"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <Text style={styles.modalLabel}>address</Text>
@@ -1421,7 +1481,7 @@ const SellerCustomers: React.FC = () => {
                 onBlur={() => setFocusedField(null)}
                 accessibilityLabel="Customer address"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <Text style={styles.modalLabel}>note</Text>
@@ -1435,7 +1495,7 @@ const SellerCustomers: React.FC = () => {
                 onBlur={() => setFocusedField(null)}
                 accessibilityLabel="Customer note"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <TouchableOpacity
@@ -1542,12 +1602,7 @@ const SellerCustomers: React.FC = () => {
 
             {/* Contact list */}
             <FlatList
-              data={contactSearch.trim()
-                ? contactsList.filter((c) =>
-                    c.name?.toLowerCase().includes(contactSearch.trim().toLowerCase())
-                  )
-                : contactsList
-              }
+              data={filteredContacts}
               keyExtractor={(item, idx) => (item as any).id ?? String(idx)}
               style={styles.contactList}
               contentContainerStyle={{ paddingBottom: SPACING.xl }}
@@ -1558,55 +1613,7 @@ const SellerCustomers: React.FC = () => {
               windowSize={5}
               initialNumToRender={10}
               maxToRenderPerBatch={8}
-              renderItem={({ item: contact }) => {
-                const phone = contact.phoneNumbers?.[0]?.number || '';
-                const alreadyExists = derivedCustomers.some(
-                  (dc) => dc.name.toLowerCase() === (contact.name || '').toLowerCase()
-                );
-                return (
-                  <TouchableOpacity
-                    style={[styles.contactItem, alreadyExists && styles.contactItemExisting]}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      if (alreadyExists) {
-                        showToast(`${contact.name} already exists`, 'error');
-                        return;
-                      }
-                      lightTap();
-                      const addr = contact.addresses?.[0]
-                        ? [contact.addresses[0].street, contact.addresses[0].city, contact.addresses[0].region]
-                            .filter(Boolean)
-                            .join(', ')
-                        : '';
-                      setShowContactPicker(false);
-                      setTimeout(() => {
-                        setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), firstOrderDate: new Date(), orders: [] });
-                        setEditName(contact.name || '');
-                        setEditPhone(phone);
-                        setEditAddress(addr);
-                        setEditNote('');
-                        setEditIsVip(false);
-                        setEditModalVisible(true);
-                      }, 50);
-                    }}
-                  >
-                    <View style={styles.contactAvatar}>
-                      <Text style={styles.contactAvatarText}>
-                        {(contact.name || '?').charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={styles.contactInfo}>
-                      <Text style={styles.contactName} numberOfLines={1}>{contact.name}</Text>
-                      {phone ? <Text style={styles.contactPhone} numberOfLines={1}>{phone}</Text> : null}
-                    </View>
-                    {alreadyExists ? (
-                      <Text style={styles.contactExistsLabel}>exists</Text>
-                    ) : (
-                      <Feather name="plus" size={16} color={C.bronze} />
-                    )}
-                  </TouchableOpacity>
-                );
-              }}
+              renderItem={renderContactItem}
               ListEmptyComponent={
                 <View style={styles.contactEmptyState}>
                   <Text style={styles.contactEmptyText}>no contacts found</Text>

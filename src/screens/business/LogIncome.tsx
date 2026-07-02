@@ -10,16 +10,16 @@ import {
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
+import { useVoiceInput, VoiceErrorKind } from '../../hooks/useVoiceInput';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useNavigation } from '@react-navigation/native';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { parseTextInput } from '../../services/aiService';
-import { transcribeAudio } from '../../services/speechService';
 import { createTransfer } from '../../utils/transferBridge';
 
 type InputMode = 'text' | 'voice';
@@ -49,7 +49,6 @@ const LogIncome: React.FC = () => {
   const [note, setNote] = useState('');
   const [selectedStreamId, setSelectedStreamId] = useState<string | undefined>();
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [saved, setSaved] = useState(false);
   const [lastTxId, setLastTxId] = useState<string | null>(null);
   const [showTransferPrompt, setShowTransferPrompt] = useState(false);
@@ -57,7 +56,16 @@ const LogIncome: React.FC = () => {
   const [showCostEntry, setShowCostEntry] = useState(false);
   const [costType, setCostType] = useState<'petrol' | 'maintenance' | 'data' | 'other'>('petrol');
   const [costAmount, setCostAmount] = useState('');
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const { isRecording, isTranscribing, liveTranscript, error: voiceError, startRecording, stopAndTranscribe } = useVoiceInput({
+    onResult: async (transcript) => {
+      setTextInput(transcript);
+      const result = await parseTextInput(transcript);
+      if (result) {
+        setAmount(result.amount.toString());
+        setNote(result.description);
+      }
+    },
+  });
   const transferTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -79,42 +87,27 @@ const LogIncome: React.FC = () => {
     setIsProcessing(false);
   }, [textInput]);
 
-  const handleVoiceStart = useCallback(async () => {
-    try {
-      const status = await AudioModule.requestRecordingPermissionsAsync();
-      if (!status.granted) return;
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      await audioRecorder.prepareToRecordAsync();
-      audioRecorder.record();
-      setIsRecording(true);
-    } catch {
-      // silently fail
-    }
-  }, [audioRecorder]);
+  // Hold-to-talk: start on press-in, stop+transcribe on release.
+  // Transcription only fills the field — Save stays explicit (confirmation-first).
+  const handleVoiceStart = useCallback(() => {
+    void startRecording();
+  }, [startRecording]);
 
-  const handleVoiceStop = useCallback(async () => {
-    if (!audioRecorder.isRecording) return;
-    setIsRecording(false);
-    setIsProcessing(true);
-    try {
-      await audioRecorder.stop();
-      const uri = audioRecorder.uri;
-      if (uri) {
-        const transcript = await transcribeAudio(uri);
-        if (transcript) {
-          setTextInput(transcript);
-          const result = await parseTextInput(transcript);
-          if (result) {
-            setAmount(result.amount.toString());
-            setNote(result.description);
-          }
-        }
-      }
-    } catch {
-      // silently fail
+  const handleVoiceStop = useCallback(() => {
+    stopAndTranscribe(); // transcript delivered via onResult (fires on manual stop OR auto-end)
+  }, [stopAndTranscribe]);
+
+  const voiceErrorCopy = useCallback((kind: VoiceErrorKind): string => {
+    switch (kind) {
+      case 'permission': return t.moneyChat.voicePermDenied;
+      case 'no-speech': return t.moneyChat.voiceNoSpeech;
+      case 'network': return t.moneyChat.voiceNetwork;
+      case 'setup': return t.moneyChat.voiceSetup;
+      case 'unavailable': return t.moneyChat.voiceSetup;
+      case 'quota': return t.moneyChat.voiceLimit;
+      default: return t.moneyChat.voiceNoSpeech;
     }
-    setIsProcessing(false);
-  }, [audioRecorder]);
+  }, [t]);
 
   const handleSave = useCallback(() => {
     const numAmount = parseFloat(amount);
@@ -140,6 +133,7 @@ const LogIncome: React.FC = () => {
       setShowTransferPrompt(false);
     }, 3000);
   }, [amount, note, textInput, selectedStreamId, mode, addBusinessTransaction]);
+  const guardedSave = useSubmitGuard(handleSave);
 
   const handleTransfer = useCallback(() => {
     const numAmount = parseFloat(transferAmount);
@@ -151,6 +145,7 @@ const LogIncome: React.FC = () => {
     setShowTransferPrompt(false);
     if (transferTimerRef.current) clearTimeout(transferTimerRef.current);
   }, [transferAmount, lastTxId, addTransfer, addTransferIncome]);
+  const guardedTransfer = useSubmitGuard(handleTransfer);
 
   const handleSaveCost = useCallback(() => {
     const numAmount = parseFloat(costAmount);
@@ -163,6 +158,7 @@ const LogIncome: React.FC = () => {
     setShowCostEntry(false);
     setCostAmount('');
   }, [costAmount, costType, addRiderCost]);
+  const guardedSaveCost = useSubmitGuard(handleSaveCost);
 
   const handleReset = () => {
     setSaved(false);
@@ -186,7 +182,7 @@ const LogIncome: React.FC = () => {
               <Text style={styles.transferQuestion}>
                 {t.business.logTransferQuestion}
               </Text>
-              <TouchableOpacity onPress={handleTransfer} style={styles.transferLink}>
+              <TouchableOpacity onPress={guardedTransfer} style={styles.transferLink}>
                 <Text style={styles.transferLinkText}>{t.business.logTransferLink}</Text>
               </TouchableOpacity>
               <TextInput
@@ -197,7 +193,7 @@ const LogIncome: React.FC = () => {
                 placeholder={t.business.logAmountPlaceholder}
                 placeholderTextColor={C.textSecondary}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
           )}
@@ -240,9 +236,9 @@ const LogIncome: React.FC = () => {
                 placeholder={t.business.logAmountPlaceholder}
                 placeholderTextColor={C.textSecondary}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
-              <TouchableOpacity onPress={handleSaveCost} style={styles.costSaveButton}>
+              <TouchableOpacity onPress={guardedSaveCost} style={styles.costSaveButton}>
                 <Text style={styles.costSaveText}>{t.business.logDone}</Text>
               </TouchableOpacity>
             </View>
@@ -270,7 +266,7 @@ const LogIncome: React.FC = () => {
             placeholder="0"
             placeholderTextColor={C.border}
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
 
@@ -305,7 +301,7 @@ const LogIncome: React.FC = () => {
               onSubmitEditing={handleTextParse}
               returnKeyType="done"
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             {textInput.trim().length > 0 && (
               <TouchableOpacity onPress={handleTextParse} style={styles.parseButton}>
@@ -321,6 +317,9 @@ const LogIncome: React.FC = () => {
             onPressIn={handleVoiceStart}
             onPressOut={handleVoiceStop}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={isRecording ? t.business.logListening : t.business.logHoldToSpeak}
+            accessibilityState={{ selected: isRecording, busy: isTranscribing }}
           >
             <Feather name="mic" size={32} color={isRecording ? C.onAccent : C.bronze} />
             <Text style={[styles.voiceHint, isRecording && styles.voiceHintRecording]}>
@@ -329,10 +328,25 @@ const LogIncome: React.FC = () => {
           </TouchableOpacity>
         )}
 
-        {isProcessing && (
+        {mode === 'voice' && isRecording && !!liveTranscript && (
+          <View style={styles.processingRow}>
+            <Text style={[styles.processingText, { color: C.textSecondary, flex: 1 }]} numberOfLines={4}>
+              {liveTranscript}
+            </Text>
+          </View>
+        )}
+
+        {voiceError && mode === 'voice' && !isRecording && !isTranscribing && (
+          <View style={styles.processingRow}>
+            <Feather name="alert-circle" size={14} color={C.bronze} />
+            <Text style={styles.processingText}>{voiceErrorCopy(voiceError.kind)}</Text>
+          </View>
+        )}
+
+        {(isProcessing || isTranscribing) && (
           <View style={styles.processingRow}>
             <ActivityIndicator size="small" color={C.bronze} />
-            <Text style={styles.processingText}>{t.business.logProcessing}</Text>
+            <Text style={styles.processingText}>{isTranscribing ? t.moneyChat.voiceTranscribing : t.business.logProcessing}</Text>
           </View>
         )}
 
@@ -344,7 +358,7 @@ const LogIncome: React.FC = () => {
           placeholder={t.business.logNotePlaceholder}
           placeholderTextColor={C.textSecondary}
           keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={C.accent}
+          selectionColor={withAlpha(C.accent, 0.25)}
         />
 
         {/* Stream selector for mixed/parttime */}
@@ -382,7 +396,7 @@ const LogIncome: React.FC = () => {
         {/* Save */}
         <TouchableOpacity
           style={[styles.saveButton, (!amount || parseFloat(amount) <= 0) && styles.saveButtonDisabled]}
-          onPress={handleSave}
+          onPress={guardedSave}
           disabled={!amount || parseFloat(amount) <= 0}
         >
           <Text style={styles.saveText}>{t.business.logSave}</Text>

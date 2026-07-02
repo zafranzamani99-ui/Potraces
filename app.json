@@ -21,8 +21,40 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.potraces.app",
       "usesAppleSignIn": true,
+      "associatedDomains": [
+        "applinks:jejakbaki.my",
+        "applinks:www.jejakbaki.my"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "C617.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "35F9.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryDiskSpace",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "E174.1"
+            ]
+          }
+        ]
       },
       "entitlements": {
         "com.apple.developer.proximity-reader.payment.acceptance": true,
@@ -41,6 +73,26 @@
         "android.permission.READ_CONTACTS",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "jejakbaki.my"
+            },
+            {
+              "scheme": "https",
+              "host": "www.jejakbaki.my"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {},
@@ -65,7 +117,12 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Potraces uses the microphone so you can speak your expenses instead of typing."
+        }
+      ],
       [
         "expo-notifications",
         {
@@ -75,7 +132,6 @@
       "expo-font",
       "expo-asset",
       "react-native-document-scanner-plugin",
-      "expo-tracking-transparency",
       "expo-apple-authentication",
       [
         "@react-native-google-signin/google-signin",
@@ -93,10 +149,56 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 26
+            "minSdkVersion": 26,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
           }
         }
-      ]
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Potraces uses the microphone so you can speak entries to Echo.",
+          "speechRecognitionPermission": "Potraces uses speech recognition to show your words live as you speak."
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Potraces uses Face ID to unlock the app and keep your money data private."
+        }
+      ],
+      "@sentry/react-native",
+      "expo-quick-actions",
+      [
+        "expo-share-extension",
+        {
+          "activationRules": [
+            {
+              "type": "image",
+              "max": 4
+            },
+            {
+              "type": "file",
+              "max": 4
+            },
+            {
+              "type": "text"
+            },
+            {
+              "type": "url",
+              "max": 1
+            }
+          ],
+          "excludedPackages": [
+            "expo-dev-client",
+            "expo-splash-screen"
+          ]
+        }
+      ],
+      "expo-localization",
+      "expo-web-browser",
+      "expo-mail-composer"
     ],
     "owner": "zafranzamani",
     "runtimeVersion": {

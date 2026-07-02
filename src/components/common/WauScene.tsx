@@ -118,35 +118,42 @@ export const WauMark: React.FC<{ size?: number }> = ({ size = 24 }) => {
 
 // ─── shared sky bits ──────────────────────────────────────
 
-const usePulse = () => {
+// Stars only exist at night, so don't burn 3 JS-thread opacity loops in day mode.
+// `native` lets the caller run the twinkle on the UI thread (SkyBackdrop) so it
+// can be multiplied with a native starGate; SkyPanel keeps it on JS (default).
+const usePulse = (enabled = true, native = false) => {
   const tw1 = useRef(new Animated.Value(0.35)).current;
   const tw2 = useRef(new Animated.Value(0.8)).current;
   const tw3 = useRef(new Animated.Value(0.55)).current;
   useEffect(() => {
+    if (!enabled) return;
     const pulse = (v: Animated.Value, hi: number, lo: number, ms: number) =>
       Animated.loop(
         Animated.sequence([
-          Animated.timing(v, { toValue: hi, duration: ms, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
-          Animated.timing(v, { toValue: lo, duration: ms, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+          Animated.timing(v, { toValue: hi, duration: ms, easing: Easing.inOut(Easing.quad), useNativeDriver: native }),
+          Animated.timing(v, { toValue: lo, duration: ms, easing: Easing.inOut(Easing.quad), useNativeDriver: native }),
         ]),
       );
     const loops = [pulse(tw1, 1, 0.35, 1300), pulse(tw2, 0.3, 1, 1750), pulse(tw3, 1, 0.4, 2150)];
     loops.forEach((l) => l.start());
     return () => loops.forEach((l) => l.stop());
-  }, [tw1, tw2, tw3]);
+  }, [enabled, native, tw1, tw2, tw3]);
   return [tw1, tw2, tw3];
 };
 
-const useNightValue = (dark: boolean) => {
+// `native`: SkyBackdrop drives the whole sunrise/sunset on the UI thread (no JS
+// color interpolation — see the two-layer cross-fade). SkyPanel keeps JS (it
+// still interpolates its own backgroundColor, which the native driver can't do).
+const useNightValue = (dark: boolean, native = false) => {
   const night = useRef(new Animated.Value(dark ? 1 : 0)).current;
   useEffect(() => {
     Animated.timing(night, {
       toValue: dark ? 1 : 0,
       duration: 900,
       easing: Easing.inOut(Easing.cubic),
-      useNativeDriver: false,
+      useNativeDriver: native,
     }).start();
-  }, [dark, night]);
+  }, [dark, night, native]);
   return night;
 };
 
@@ -164,26 +171,27 @@ const DriftingCloud: React.FC<{
     const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(delay),
-        Animated.timing(v, { toValue: 1, duration: dur, easing: Easing.linear, useNativeDriver: false }),
-        Animated.timing(v, { toValue: 0, duration: 0, useNativeDriver: false }),
+        Animated.timing(v, { toValue: 1, duration: dur, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0, duration: 0, useNativeDriver: true }),
       ]),
     );
     loop.start();
     return () => loop.stop();
   }, [v, dur, delay]);
+  // Outer view = opacity (driven by `gate`/theme, JS — only moves during a
+  // theme switch). Inner view = the continuous drift on the native driver, so
+  // the 6 background clouds cost the JS thread nothing while idle.
   return (
     <Animated.View
       pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top,
-        left: 0,
-        opacity: gate,
-        transform: [{ translateX: v.interpolate({ inputRange: [0, 1], outputRange: [travel + 40, -w - 60] }) }],
-      }}
+      style={{ position: 'absolute', top, left: 0, opacity: gate }}
     >
-      <View style={{ width: w, height: w * 0.3, borderRadius: w, backgroundColor: withAlpha('#FFFFFF', 0.85) }} />
-      <View style={{ position: 'absolute', top: -w * 0.16, left: w * 0.24, width: w * 0.42, height: w * 0.42, borderRadius: w, backgroundColor: withAlpha('#FFFFFF', 0.85) }} />
+      <Animated.View
+        style={{ transform: [{ translateX: v.interpolate({ inputRange: [0, 1], outputRange: [travel + 40, -w - 60] }) }] }}
+      >
+        <View style={{ width: w, height: w * 0.3, borderRadius: w, backgroundColor: withAlpha('#FFFFFF', 0.85) }} />
+        <View style={{ position: 'absolute', top: -w * 0.16, left: w * 0.24, width: w * 0.42, height: w * 0.42, borderRadius: w, backgroundColor: withAlpha('#FFFFFF', 0.85) }} />
+      </Animated.View>
     </Animated.View>
   );
 };
@@ -215,10 +223,12 @@ const BG_CLOUDS = [
 ];
 
 export const SkyBackdrop: React.FC<{ dark: boolean }> = ({ dark }) => {
-  const night = useNightValue(dark);
-  const twinkles = usePulse();
+  // Native driver throughout so the sunrise/sunset holds 60fps on Android. The
+  // sky colour is a two-layer opacity cross-fade (compositor-only) instead of a
+  // full-screen backgroundColor interpolation (JS, repaints every frame ~15fps).
+  const night = useNightValue(dark, true);
+  const twinkles = usePulse(dark, true);
 
-  const sky = night.interpolate({ inputRange: [0, 1], outputRange: ['#F3EAD6', '#232B40'] });
   const starGate = night.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
   const dayGate = night.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.3, 0] });
   // clouds stay faintly visible at night
@@ -226,7 +236,9 @@ export const SkyBackdrop: React.FC<{ dark: boolean }> = ({ dark }) => {
 
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: sky }]} />
+      {/* day base; the night sky fades in over it (opacity on the native driver) */}
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#F3EAD6' }]} />
+      <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#232B40', opacity: night }]} />
 
       {/* soft sun glow, top-left (day) */}
       <Animated.View style={{ position: 'absolute', top: -70, left: -50, opacity: dayGate }}>
@@ -292,7 +304,7 @@ export const SkyPanel: React.FC<{
   children?: React.ReactNode;
 }> = ({ dark, w, h, borderColor, style, children }) => {
   const night = useNightValue(dark);
-  const twinkles = usePulse();
+  const twinkles = usePulse(dark);
 
   const sky = night.interpolate({ inputRange: [0, 1], outputRange: ['#F3EAD6', '#232B40'] });
   const starGate = night.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
@@ -337,7 +349,11 @@ export const FlyingWau: React.FC<{
   dark?: boolean;
   /** Lets the parent freeze its scroll views while the kite is being dragged. */
   onDraggingChange?: (dragging: boolean) => void;
-}> = ({ size = 180, panelW, panelH, dark = false, onDraggingChange }) => {
+  /** The onboarding pager's native scroll gesture. Declaring the kite Pan
+   *  simultaneous with it lets a horizontal flick still page on Android instead
+   *  of the kite starving the swipe. */
+  pagerGesture?: any;
+}> = ({ size = 180, panelW, panelH, dark = false, onDraggingChange, pagerGesture }) => {
   const bob = useRef(new Animated.Value(0)).current;     // -1..1 vertical ride
   const sway = useRef(new Animated.Value(0)).current;    // -1..1 banking
   const wander = useRef(new Animated.Value(0)).current;  // -1..1 horizontal stroll
@@ -352,7 +368,6 @@ export const FlyingWau: React.FC<{
   const s3 = useRef(new Animated.Value(0)).current;
   const windPhase = useRef(new Animated.Value(0)).current; // string ripple
   const stringRef = useRef<any>(null);
-  const dragActive = useRef(false);
 
   useEffect(() => {
     const swing = (v: Animated.Value, ms: number) =>
@@ -415,20 +430,33 @@ export const FlyingWau: React.FC<{
     [topX, topY, endX, endY, span],
   );
 
-  // Drive the ripple continuously (never static); amplitude swells while dragged.
-  useEffect(() => {
-    const id = windPhase.addListener(({ value }) => {
-      stringRef.current?.setNativeProps({ d: buildD(value, dragActive.current ? 24 : 9) });
+  // The string ripple is the one effect that MUST rebuild + push an SVG path
+  // every frame (react-native-svg can't morph `d` on the native driver), so it
+  // only runs while you're actually flying the kite. Idle, it rests in a soft
+  // static curve — removing the screen's single most expensive continuous cost.
+  const rippleLoop = useRef<Animated.CompositeAnimation | null>(null);
+  const rippleSub = useRef<string | null>(null);
+  const startRipple = useCallback(() => {
+    if (rippleSub.current) return;
+    rippleSub.current = windPhase.addListener(({ value }) => {
+      stringRef.current?.setNativeProps({ d: buildD(value, 24) });
     });
-    const loop = Animated.loop(
+    windPhase.setValue(0);
+    rippleLoop.current = Animated.loop(
       Animated.timing(windPhase, { toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: false }),
     );
-    loop.start();
-    return () => {
-      windPhase.removeListener(id);
-      loop.stop();
-    };
+    rippleLoop.current.start();
   }, [windPhase, buildD]);
+  const stopRipple = useCallback(() => {
+    rippleLoop.current?.stop();
+    rippleLoop.current = null;
+    if (rippleSub.current) {
+      windPhase.removeListener(rippleSub.current);
+      rippleSub.current = null;
+    }
+    stringRef.current?.setNativeProps({ d: buildD(0, 9) });
+  }, [windPhase, buildD]);
+  useEffect(() => () => stopRipple(), [stopRipple]);
 
   // Drag bounds — roam most of the sky area without leaving it.
   const maxX = panelW / 2 - size * 0.22;
@@ -436,8 +464,8 @@ export const FlyingWau: React.FC<{
   const maxYDown = panelH * 0.52;
 
   const release = useCallback(() => {
-    dragActive.current = false;
     onDraggingChange?.(false);
+    stopRipple();
     // glide home: slow, soft springs — no snap
     Animated.parallel([
       Animated.spring(dragX, { toValue: 0, friction: 6, tension: 12, useNativeDriver: true }),
@@ -445,16 +473,21 @@ export const FlyingWau: React.FC<{
       Animated.spring(gust, { toValue: 0, friction: 6, tension: 18, useNativeDriver: true }),
       Animated.timing(shake, { toValue: 0, duration: 380, easing: Easing.out(Easing.quad), useNativeDriver: true }),
     ]).start();
-  }, [dragX, dragY, gust, shake, onDraggingChange]);
+  }, [dragX, dragY, gust, shake, onDraggingChange, stopRipple]);
 
   const makePan = useCallback(
-    () =>
-      Gesture.Pan()
+    () => {
+      const g = Gesture.Pan()
         .runOnJS(true) // reanimated is installed → force JS callbacks for RN Animated
+        // Claim the touch only after a clear drag (no time-based long-press hold),
+        // and run SIMULTANEOUSLY with the pager's native scroll so a horizontal
+        // flick still pages on Android instead of the kite starving the swipe.
+        .activeOffsetX([-12, 12])
+        .activeOffsetY([-12, 12])
         .onStart(() => {
           lightTap();
-          dragActive.current = true;
           onDraggingChange?.(true);
+          startRipple();
         })
         .onUpdate((e) => {
           const x = Math.max(-maxX, Math.min(maxX, e.translationX));
@@ -466,8 +499,10 @@ export const FlyingWau: React.FC<{
           // turbulence follows horizontal velocity
           shake.setValue(Math.max(-1, Math.min(1, e.velocityX / 900)));
         })
-        .onFinalize(() => release()),
-    [maxX, maxYUp, maxYDown, dragX, dragY, gust, shake, release, onDraggingChange],
+        .onFinalize(() => release());
+      return pagerGesture ? g.simultaneousWithExternalGesture(pagerGesture) : g;
+    },
+    [maxX, maxYUp, maxYDown, dragX, dragY, gust, shake, release, startRipple, onDraggingChange, pagerGesture],
   );
   // Identical behaviour from two grab targets: the kite body OR its string.
   const panKite = useMemo(() => makePan(), [makePan]);

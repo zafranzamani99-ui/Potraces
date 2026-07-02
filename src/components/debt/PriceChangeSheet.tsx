@@ -11,7 +11,7 @@ import {
   Keyboard,
   useWindowDimensions,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -188,6 +188,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
 
   return (
     <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeSheet}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <Reanimated.View style={[styles.backdrop, backdropAnimStyle]}>
         <Pressable style={{ flex: 1 }} onPress={closeSheet} />
       </Reanimated.View>
@@ -254,7 +255,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
           </View>
@@ -287,7 +288,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
                       placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
                       keyboardType="decimal-pad"
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                     />
                   </View>
                 </View>
@@ -347,6 +348,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
 
       </Reanimated.View>
       <ModalToastHost />
+      </GestureHandlerRootView>
     </Modal>
   );
 };

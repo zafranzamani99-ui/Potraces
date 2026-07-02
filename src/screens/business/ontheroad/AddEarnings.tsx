@@ -117,7 +117,7 @@ const AddEarnings: React.FC = () => {
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
 
@@ -182,7 +182,7 @@ const AddEarnings: React.FC = () => {
               onSubmitEditing={Keyboard.dismiss}
               autoFocus
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
           )}
         </View>
@@ -199,7 +199,7 @@ const AddEarnings: React.FC = () => {
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
 

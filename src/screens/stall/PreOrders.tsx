@@ -6,10 +6,9 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   SafeAreaView,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -230,7 +229,7 @@ const StallPreOrders: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.content}
@@ -267,7 +266,7 @@ const StallPreOrders: React.FC = () => {
                 placeholderTextColor={C.neutral}
                 autoFocus
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               <TextInput
                 style={styles.input}
@@ -277,7 +276,7 @@ const StallPreOrders: React.FC = () => {
                 placeholderTextColor={C.neutral}
                 keyboardType="phone-pad"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               <TextInput
                 style={styles.input}
@@ -286,7 +285,7 @@ const StallPreOrders: React.FC = () => {
                 placeholder={t.stall.preOrderCollectAt}
                 placeholderTextColor={C.neutral}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               {/* Quick-add product chips */}
@@ -317,7 +316,7 @@ const StallPreOrders: React.FC = () => {
                         placeholder={t.stall.preOrderItemName}
                         placeholderTextColor={C.neutral}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
                       <View style={styles.qtyStepper}>
                         <TouchableOpacity style={styles.qtyBtn} onPress={() => updateItem(it.key, { qty: String(Math.max(1, (parseInt(it.qty, 10) || 1) - 1)) })}>
@@ -336,7 +335,7 @@ const StallPreOrders: React.FC = () => {
                         placeholderTextColor={C.neutral}
                         keyboardType="decimal-pad"
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
                       <TouchableOpacity onPress={() => removeItem(it.key)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Remove item">
                         <Feather name="x" size={16} color={C.neutral} />
@@ -373,7 +372,7 @@ const StallPreOrders: React.FC = () => {
                 placeholder={t.stall.preOrderNotePlaceholder}
                 placeholderTextColor={C.neutral}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <View style={styles.formFooter}>

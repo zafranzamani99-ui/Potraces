@@ -39,13 +39,11 @@ const FreelancerReports: React.FC = () => {
     { label: t.freelancer.periodThisYear, value: 'year' },
   ];
   const currency = useSettingsStore((s) => s.currency);
-  const { businessTransactions } = useBusinessStore();
-  const {
-    clients,
-    getSixMonthAverage,
-    getClientAverageGap,
-    getClientPayments,
-  } = useFreelancerStore();
+  const businessTransactions = useBusinessStore((s) => s.businessTransactions);
+  const clients = useFreelancerStore((s) => s.clients);
+  const getSixMonthAverage = useFreelancerStore((s) => s.getSixMonthAverage);
+  const getClientAverageGap = useFreelancerStore((s) => s.getClientAverageGap);
+  const getClientPayments = useFreelancerStore((s) => s.getClientPayments);
 
   const [period, setPeriod] = useState<PeriodOption>('3months');
   const [aiSummary, setAiSummary] = useState<string | null>(null);

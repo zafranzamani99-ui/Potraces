@@ -10,7 +10,7 @@ import {
   Alert,
   useWindowDimensions,
 } from 'react-native';
-import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { ScrollView, Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -193,6 +193,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
 
   return (
     <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeSheet}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <Reanimated.View style={[styles.backdrop, backdropAnimStyle]}>
         <Pressable style={{ flex: 1 }} onPress={closeSheet} />
       </Reanimated.View>
@@ -493,6 +494,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
 
       </Reanimated.View>
       <ModalToastHost />
+      </GestureHandlerRootView>
     </Modal>
   );
 };

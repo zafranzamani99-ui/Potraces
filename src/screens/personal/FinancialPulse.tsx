@@ -1,42 +1,43 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  InteractionManager,
-} from 'react-native';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import {
   format,
   startOfMonth,
   endOfMonth,
-  subMonths,
-  isWithinInterval,
-  differenceInDays,
   getDay,
   getDaysInMonth,
-  startOfDay,
-  addDays,
   isValid,
-  startOfWeek,
-  endOfWeek,
-  subWeeks,
 } from 'date-fns';
 
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
+import {
+  realTxns,
+  inRange,
+  cashFlow,
+  getRange,
+  wellnessScore,
+  safeToSpend,
+  monthEndOutlook,
+  upcomingBills,
+  unusualSpend,
+  WellnessComponent,
+} from '../../utils/insights';
 import Card from '../../components/common/Card';
 import ScreenGuide from '../../components/common/ScreenGuide';
 import EmptyState from '../../components/common/EmptyState';
-import SkeletonLoader from '../../components/common/SkeletonLoader';
+import CircularProgress from '../../components/common/CircularProgress';
+import HalfGauge from '../../components/common/HalfGauge';
+import AnimatedNumber from '../../components/common/AnimatedNumber';
 
-// ─── HELPER: Wellness label based on score ────────────────
 const getWellnessLabel = (score: number, pulse: any): string => {
   if (score >= 80) return pulse.feelingGood;
   if (score >= 60) return pulse.steadyGround;
@@ -45,25 +46,36 @@ const getWellnessLabel = (score: number, pulse: any): string => {
   return pulse.findingRhythm;
 };
 
-// ─── HELPER: Velocity message ─────────────────────────────
-const getVelocityMessage = (velocity: number, pulse: any): string => {
-  if (velocity <= 80) return pulse.quieterThanUsual;
-  if (velocity <= 100) return pulse.rightOnRhythm;
-  if (velocity <= 120) return pulse.bitAhead;
-  return pulse.movingFaster;
-};
-
 const FinancialPulse: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
-  const { transactions, subscriptions, budgets, goals } = usePersonalStore();
+  const navigation = useNavigation<any>();
+  const { width: winW } = useWindowDimensions();
+  const gaugeSize = Math.min(winW - SPACING['2xl'] * 2 - SPACING['2xl'], 240);
+
+  const transactions = usePersonalStore((s) => s.transactions);
+  const subscriptions = usePersonalStore((s) => s.subscriptions);
+  const budgets = usePersonalStore((s) => s.budgets);
+  const goals = usePersonalStore((s) => s.goals);
   const currency = useSettingsStore((state) => state.currency);
   const expenseCategories = useCategories('expense');
 
-  // ─── TIME BOUNDARIES (recompute on focus to handle midnight/month crossover) ──
   const [focusKey, setFocusKey] = useState(0);
-  useFocusEffect(useCallback(() => { setFocusKey((k) => k + 1); }, []));
+  // Refresh date-derived bounds only when the calendar day actually changes
+  // (e.g. app left open past midnight / into a new month). Re-running the full
+  // analytics cascade on every focus blocks the JS thread right when the user
+  // tries to scroll, so guard it. (scroll-responsiveness fix)
+  const lastFocusDay = useRef(new Date().toDateString());
+  useFocusEffect(
+    useCallback(() => {
+      const today = new Date().toDateString();
+      if (today !== lastFocusDay.current) {
+        lastFocusDay.current = today;
+        setFocusKey((k) => k + 1);
+      }
+    }, [])
+  );
 
   const dateBounds = useMemo(() => {
     const now = new Date();
@@ -71,247 +83,97 @@ const FinancialPulse: React.FC = () => {
       now,
       monthStart: startOfMonth(now),
       monthEnd: endOfMonth(now),
-      lastMonthStart: startOfMonth(subMonths(now, 1)),
-      lastMonthEnd: endOfMonth(subMonths(now, 1)),
       dayOfMonth: now.getDate(),
       daysInCurrentMonth: getDaysInMonth(now),
-      daysInLastMonth: getDaysInMonth(subMonths(now, 1)),
     };
   }, [focusKey]);
+  const { now, monthStart, monthEnd, dayOfMonth, daysInCurrentMonth } = dateBounds;
 
-  const {
-    now,
-    monthStart,
-    monthEnd,
-    lastMonthStart,
-    lastMonthEnd,
-    dayOfMonth,
-    daysInCurrentMonth,
-    daysInLastMonth,
-  } = dateBounds;
-
-  // ─── FILTERED TRANSACTIONS ────────────────────────────────
   const thisMonth = useMemo(
-    () =>
-      transactions.filter((t) =>
-        isWithinInterval(t.date, { start: monthStart, end: monthEnd })
-      ),
-    [transactions, monthStart, monthEnd] // monthStart/monthEnd are stable from dateBounds memo
+    () => inRange(realTxns(transactions), { start: monthStart, end: monthEnd }),
+    [transactions, monthStart, monthEnd]
   );
+  const cf = useMemo(() => cashFlow(transactions, getRange('this_month', now)), [transactions, now]);
 
-  const lastMonth = useMemo(
+  const money0 = (n: number) =>
+    n.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const money2 = (n: number) =>
+    n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Wellness + breakdown.
+  const wellness = useMemo(
     () =>
-      transactions.filter((t) =>
-        isWithinInterval(t.date, { start: lastMonthStart, end: lastMonthEnd })
-      ),
-    [transactions, lastMonthStart, lastMonthEnd] // stable from dateBounds memo
+      wellnessScore({
+        txnsThisMonth: thisMonth,
+        budgets,
+        goals,
+        income: cf.cameIn,
+        expenses: cf.wentOut,
+        dayOfMonth,
+      }),
+    [thisMonth, budgets, goals, cf, dayOfMonth]
   );
-
-  // ─── MONTHLY TOTALS ──────────────────────────────────────
-  const monthlyStats = useMemo(() => {
-    const income = thisMonth
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const expenses = thisMonth
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const net = income - expenses;
-
-    const lastMonthExpenses = lastMonth
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const lastMonthIncome = lastMonth
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    return { income, expenses, net, lastMonthExpenses, lastMonthIncome };
-  }, [thisMonth, lastMonth]);
-
-  // ─── 1. WELLNESS SCORE ────────────────────────────────────
-  const wellnessScore = useMemo(() => {
-    let score = 0;
-
-    // Budget adherence (30 pts): how well are you staying within budget
-    // Compute spent from transactions (store spentAmount is always 0)
-    const totalBudget = budgets.reduce((sum, b) => sum + b.allocatedAmount, 0);
-    const totalBudgetSpent = budgets.reduce((sum, b) => {
-      const spent = thisMonth
-        .filter((t) => t.type === 'expense' && t.category === b.category)
-        .reduce((s, t) => s + t.amount, 0);
-      return sum + spent;
-    }, 0);
-    if (totalBudget > 0) {
-      const adherence = Math.max(0, 1 - totalBudgetSpent / totalBudget);
-      score += Math.round(adherence * 30);
-    } else {
-      // No budgets set, give partial credit
-      score += 15;
-    }
-
-    // Savings rate (30 pts): (income - expenses) / income
-    if (monthlyStats.income > 0) {
-      const savingsRate = Math.max(0, (monthlyStats.income - monthlyStats.expenses) / monthlyStats.income);
-      score += Math.round(Math.min(savingsRate, 1) * 30);
-    } else if (monthlyStats.expenses === 0) {
-      score += 15; // No activity
-    }
-
-    // Consistency (20 pts): transactions spread across the month
-    const uniqueDays = new Set(
-      thisMonth.filter((t) => isValid(t.date)).map((t) => format(t.date, 'yyyy-MM-dd'))
-    ).size;
-    const consistencyRatio = Math.min(uniqueDays / Math.max(dayOfMonth, 1), 1);
-    score += Math.round(consistencyRatio * 20);
-
-    // Goal progress (20 pts)
-    if (goals && goals.length > 0) {
-      const avgProgress =
-        goals.reduce((sum, g) => {
-          const progress = g.targetAmount > 0 ? g.currentAmount / g.targetAmount : 0;
-          return sum + Math.min(progress, 1);
-        }, 0) / goals.length;
-      score += Math.round(avgProgress * 20);
-    } else {
-      score += 10; // No goals, partial credit
-    }
-
-    return Math.min(Math.round(score), 100);
-  }, [budgets, monthlyStats, thisMonth, dayOfMonth, goals]);
-
   const wellnessColor =
-    wellnessScore >= 70
-      ? C.positive
-      : wellnessScore >= 40
-      ? C.accent
-      : C.neutral;
+    wellness.score >= 70 ? C.positive : wellness.score >= 40 ? C.accent : C.neutral;
+  const compLabel = (key: WellnessComponent['key']) =>
+    ({
+      budget: t.pulse.compBudget,
+      savings: t.pulse.compSavings,
+      consistency: t.pulse.compConsistency,
+      goals: t.pulse.compGoals,
+    }[key]);
 
-  // ─── 3. SPENDING VELOCITY ─────────────────────────────────
-  const velocity = useMemo(() => {
-    if (monthlyStats.lastMonthExpenses === 0) return { percent: 0, proRated: 0 };
-    const rawPercent =
-      (monthlyStats.expenses / monthlyStats.lastMonthExpenses) * 100;
-    // Pro-rate: if day 15 of 30, and spent 40% of last month = velocity 80%
-    const monthProgress = dayOfMonth / daysInCurrentMonth;
-    // Avoid extreme percentages on day 1-2 (tiny monthProgress = huge proRated)
-    const proRated =
-      dayOfMonth <= 2 ? rawPercent : (monthProgress > 0 ? rawPercent / monthProgress : 0);
-    return { percent: Math.round(rawPercent), proRated: Math.round(proRated) };
-  }, [monthlyStats, dayOfMonth, daysInCurrentMonth]);
+  // Count-up the wellness score on mount (seed 0 → score).
+  const [scoreVal, setScoreVal] = useState(0);
+  useEffect(() => setScoreVal(wellness.score), [wellness.score]);
 
-  const velocityColor =
-    velocity.proRated <= 90
-      ? C.positive
-      : velocity.proRated <= 110
-      ? C.accent
-      : C.neutral;
+  // Forward forecasts.
+  const sts = useMemo(() => safeToSpend(transactions, budgets, now), [transactions, budgets, now]);
+  const outlook = useMemo(() => monthEndOutlook(transactions, subscriptions, now), [transactions, subscriptions, now]);
+  const bills = useMemo(() => upcomingBills(subscriptions, 30, now), [subscriptions, now]);
+  const unusual = useMemo(() => unusualSpend(transactions, expenseCategories, now), [transactions, expenseCategories, now]);
 
-  // ─── WEEK-OVER-WEEK ───────────────────────────────────────
-  const weekComparison = useMemo(() => {
-    const thisWeekStart = startOfWeek(now, { weekStartsOn: 1 });
-    const lastWeekStart = subWeeks(thisWeekStart, 1);
-    const lastWeekEnd = endOfWeek(lastWeekStart, { weekStartsOn: 1 });
+  // Gauge fill = how much of money-in is being kept so far.
+  const pacePct = cf.cameIn > 0 ? Math.max(0, Math.min((outlook.keptSoFar / cf.cameIn) * 100, 100)) : 0;
+  const gaugeGradient: [string, string] =
+    outlook.tone === 'snug' ? [C.bronze, C.bronze] : [C.accent, C.bronze];
 
-    const thisWeekSpend = transactions
-      .filter((t) => t.type === 'expense' && t.date >= thisWeekStart && t.date <= now)
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const lastWeekSpend = transactions
-      .filter((t) => t.type === 'expense' && isWithinInterval(t.date, { start: lastWeekStart, end: lastWeekEnd }))
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const changePercent = lastWeekSpend > 0
-      ? Math.round(((thisWeekSpend - lastWeekSpend) / lastWeekSpend) * 100)
-      : 0;
-
-    return { thisWeek: thisWeekSpend, lastWeek: lastWeekSpend, changePercent, hasData: lastWeekSpend > 0 || thisWeekSpend > 0 };
-  }, [transactions, now]);
-
-  // ─── PROJECTED MONTH SPEND ───────────────────────────────
-  const projectedMonthSpend = useMemo(() => {
-    if (dayOfMonth <= 2 || monthlyStats.expenses === 0) return 0;
-    return Math.round((monthlyStats.expenses / dayOfMonth) * daysInCurrentMonth);
-  }, [monthlyStats.expenses, dayOfMonth, daysInCurrentMonth]);
-
-  // ─── 4. CATEGORY BREAKDOWN ────────────────────────────────
-  const categoryBreakdown = useMemo(() => {
-    const totals: Record<string, number> = {};
-    thisMonth
-      .filter((t) => t.type === 'expense')
-      .forEach((t) => {
-        totals[t.category] = (totals[t.category] || 0) + t.amount;
-      });
-
-    const totalExpenses = monthlyStats.expenses || 1;
-
-    return Object.entries(totals)
-      .map(([categoryId, amount]) => {
-        const cat = expenseCategories.find((c) => c.id === categoryId);
-        return {
-          id: categoryId,
-          name: cat?.name || categoryId,
-          color: cat?.color || C.accent,
-          amount,
-          percentage: (amount / totalExpenses) * 100,
-        };
-      })
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
-  }, [thisMonth, monthlyStats.expenses, expenseCategories, C]);
-
-  // ─── 5. NO-SPEND STREAK ───────────────────────────────────
+  // No-spend streak (behavioural).
   const streakData = useMemo(() => {
     const daysElapsed = dayOfMonth;
     const expenseDaysSet = new Set<string>();
     thisMonth
-      .filter((t) => t.type === 'expense')
-      .forEach((t) => {
-        if (isValid(t.date)) expenseDaysSet.add(format(t.date, 'yyyy-MM-dd'));
+      .filter((tx) => tx.type === 'expense')
+      .forEach((tx) => {
+        if (isValid(tx.date)) expenseDaysSet.add(format(tx.date, 'yyyy-MM-dd'));
       });
-
     const noSpendDays = daysElapsed - expenseDaysSet.size;
-
-    // Current streak: count backwards from today
     let currentStreak = 0;
     for (let i = 0; i < daysElapsed; i++) {
       const checkDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-      const key = format(checkDate, 'yyyy-MM-dd');
-      if (!expenseDaysSet.has(key)) {
-        currentStreak++;
-      } else {
-        break;
-      }
+      if (!expenseDaysSet.has(format(checkDate, 'yyyy-MM-dd'))) currentStreak++;
+      else break;
     }
-
-    // Best streak this month
     let bestStreak = 0;
     let tempStreak = 0;
     for (let d = 1; d <= daysElapsed; d++) {
       const checkDate = new Date(now.getFullYear(), now.getMonth(), d);
-      const key = format(checkDate, 'yyyy-MM-dd');
-      if (!expenseDaysSet.has(key)) {
+      if (!expenseDaysSet.has(format(checkDate, 'yyyy-MM-dd'))) {
         tempStreak++;
         bestStreak = Math.max(bestStreak, tempStreak);
-      } else {
-        tempStreak = 0;
-      }
+      } else tempStreak = 0;
     }
-
     return { currentStreak, bestStreak, noSpendDays, daysElapsed };
-  }, [thisMonth, dayOfMonth, now]); // now is stable from dateBounds memo
+  }, [thisMonth, dayOfMonth, now]);
 
-  // ─── 6. WEEKLY PATTERN ────────────────────────────────────
+  // Weekly pattern (behavioural).
   const weeklyPattern = useMemo(() => {
-    // Group expenses by day of week (0=Sun..6=Sat)
     const dayTotals = [0, 0, 0, 0, 0, 0, 0];
     thisMonth
-      .filter((t) => t.type === 'expense')
-      .forEach((t) => {
-        const dayIndex = getDay(t.date);
-        dayTotals[dayIndex] += t.amount;
+      .filter((tx) => tx.type === 'expense')
+      .forEach((tx) => {
+        dayTotals[getDay(tx.date)] += tx.amount;
       });
-
-    // Reorder to Mon-Sun: [Mon,Tue,Wed,Thu,Fri,Sat,Sun]
     const ordered = [
       { label: 'Mon', amount: dayTotals[1] },
       { label: 'Tue', amount: dayTotals[2] },
@@ -321,60 +183,29 @@ const FinancialPulse: React.FC = () => {
       { label: 'Sat', amount: dayTotals[6] },
       { label: 'Sun', amount: dayTotals[0] },
     ];
-
     const maxAmount = Math.max(...ordered.map((d) => d.amount), 1);
     const heaviestIndex = ordered.reduce(
       (maxIdx, d, idx, arr) => (d.amount > arr[maxIdx].amount ? idx : maxIdx),
       0
     );
-
     return { days: ordered, maxAmount, heaviestIndex };
   }, [thisMonth]);
 
-  // ─── 7. UPCOMING BILLS ───────────────────────────────────
-  const upcomingBills = useMemo(() => {
-    const today = startOfDay(now);
-    const twoWeeksLater = addDays(today, 14);
+  const safeLine =
+    sts.perDay !== null
+      ? `${currency} ${money0(Math.floor(sts.perDay))} ${t.pulse.perDay} — ${t.pulse.comfortableRest}`
+      : t.pulse.setBudgetForDaily;
+  const outlookLine = !outlook.confident
+    ? t.pulse.tooEarly
+    : outlook.tone === 'comfortable'
+    ? `${t.pulse.onTrackAround} ${currency} ${money0(Math.max(outlook.projectedKept, 0))}`
+    : t.pulse.snugMonthEnd;
 
-    const upcoming = subscriptions
-      .filter(
-        (sub) =>
-          sub.isActive &&
-          isWithinInterval(sub.nextBillingDate, {
-            start: today,
-            end: twoWeeksLater,
-          })
-      )
-      .sort(
-        (a, b) =>
-          a.nextBillingDate.getTime() - b.nextBillingDate.getTime()
-      );
-
-    const total = upcoming.reduce((sum, sub) => sum + sub.amount, 0);
-    return { list: upcoming, total };
-  }, [subscriptions, now]); // now is stable from dateBounds memo
-
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => setReady(true));
-    return () => task.cancel();
-  }, []);
-
-  if (!ready) {
-    return (
-      <View style={styles.container}>
-        <SkeletonLoader />
-        <SkeletonLoader style={{ marginTop: SPACING.md }} />
-      </View>
-    );
-  }
-
-  // ─── EMPTY STATE ──────────────────────────────────────────
   if (transactions.length === 0) {
     return (
       <View style={styles.container}>
         <EmptyState
-          icon="activity"
+          icon="i/pulse"
           title={t.pulse.notEnoughData}
           message={t.pulse.addFewTransactions}
         />
@@ -382,251 +213,201 @@ const FinancialPulse: React.FC = () => {
     );
   }
 
-  // ─── RENDER ───────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
       >
-        {/* ── 1. HERO ──────────────────────────────────────── */}
+        {/* ── HERO: wellness ring + safe-to-spend ────────────── */}
         <View style={styles.heroCard}>
-          <View style={[styles.heroWellnessBadge, { backgroundColor: withAlpha(wellnessColor, 0.1) }]}>
-            <View style={[styles.heroWellnessDot, { backgroundColor: wellnessColor }]} />
-            <Text style={[styles.heroWellnessText, { color: wellnessColor }]}>
-              {getWellnessLabel(wellnessScore, t.pulse)}
-            </Text>
+          <LinearGradient
+            colors={[withAlpha(wellnessColor, 0.07), withAlpha(C.surface, 0)]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
+          />
+          <View style={styles.ringWrap}>
+            <CircularProgress
+              size={128}
+              strokeWidth={10}
+              percentage={wellness.score}
+              color={wellnessColor}
+              trackColor={withAlpha(wellnessColor, 0.15)}
+            >
+              <View style={styles.ringCenter}>
+                <AnimatedNumber value={scoreVal} style={StyleSheet.flatten([styles.ringNumber, { color: wellnessColor }])} />
+                <Text style={styles.ringLabel}>{getWellnessLabel(wellness.score, t.pulse)}</Text>
+              </View>
+            </CircularProgress>
           </View>
-          <Text style={styles.heroHeadline}>
-            {monthlyStats.net >= 0
-              ? `${t.pulse.youKept} ${currency} ${monthlyStats.net.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${t.pulse.inMonth} ${format(now, 'MMMM')}`
-              : `${currency} ${Math.abs(monthlyStats.net).toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${t.pulse.moreOutThanIn}`}
-          </Text>
+
+          <Text style={styles.heroHeadline}>{safeLine}</Text>
+          {sts.perDay === null && (
+            <TouchableOpacity
+              style={styles.heroCta}
+              onPress={() => navigation.navigate('BudgetPlanning')}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+            >
+              <Text style={styles.heroCtaText}>{t.pulse.setBudget}</Text>
+              <Feather name="arrow-right" size={14} color={C.accent} />
+            </TouchableOpacity>
+          )}
+
           <View style={styles.heroStats}>
             <View style={styles.heroStat}>
-              <Text style={[styles.heroStatValue, { color: monthlyStats.net >= 0 ? C.positive : C.neutral }]}>
-                {monthlyStats.net >= 0 ? '+' : '−'}{currency} {Math.abs(monthlyStats.net).toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-              </Text>
-              <Text style={styles.heroStatLabel}>{t.pulse.youKept}</Text>
-            </View>
-            <View style={styles.heroStatDivider} />
-            <View style={styles.heroStat}>
-              <Text style={[styles.heroStatValue, { color: velocityColor }]}>
-                {velocity.percent > 0 ? `${velocity.percent}%` : '—'}
-              </Text>
-              <Text style={styles.heroStatLabel}>{t.pulse.yourPace}</Text>
-            </View>
-            <View style={styles.heroStatDivider} />
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>
-                {Math.max(daysInCurrentMonth - dayOfMonth, 0)}
-              </Text>
+              <Text style={styles.heroStatValue}>{Math.max(daysInCurrentMonth - dayOfMonth, 0)}</Text>
               <Text style={styles.heroStatLabel}>{t.pulse.daysLeft}</Text>
+            </View>
+            <View style={styles.heroStatDivider} />
+            <View style={styles.heroStat}>
+              {outlook.confident ? (
+                <AnimatedNumber
+                  value={outlook.projectedKept}
+                  prefix={`${currency} `}
+                  decimals={0}
+                  style={StyleSheet.flatten([
+                    styles.heroStatValue,
+                    { color: outlook.projectedKept < 0 ? C.neutral : C.positive },
+                  ])}
+                />
+              ) : (
+                <Text style={styles.heroStatValue}>—</Text>
+              )}
+              <Text style={styles.heroStatLabel}>{t.pulse.projectedToKeep}</Text>
             </View>
           </View>
         </View>
 
-        {/* ── 2. MONTHLY CASH FLOW ────────────────────────── */}
-        <Text style={styles.sectionLabel}>{t.pulse.inAndOut}</Text>
+        {/* ── WELLNESS BREAKDOWN ─────────────────────────────── */}
+        <Text style={styles.sectionLabel}>{t.pulse.wellnessBreakdown}</Text>
         <Card style={styles.card}>
-          {/* Income bar */}
-          <View style={styles.cashFlowRow}>
-            <View style={styles.cashFlowLabelCol}>
-              <Feather name="arrow-down-left" size={14} color={C.positive} />
-              <Text style={styles.cashFlowLabel}>{t.pulse.cameIn}</Text>
-            </View>
-            <View style={styles.cashFlowBarContainer}>
-              <View
-                style={[
-                  styles.cashFlowBar,
-                  {
-                    backgroundColor: withAlpha(C.positive, 0.2),
-                    width: '100%',
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.cashFlowBarFill,
-                    {
-                      backgroundColor: C.positive,
-                      width:
-                        monthlyStats.income > 0 && (monthlyStats.income + monthlyStats.expenses) > 0
-                          ? `${(monthlyStats.income / Math.max(monthlyStats.income, monthlyStats.expenses)) * 100}%`
-                          : '0%',
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-            <Text style={styles.cashFlowAmount}>
-              {currency} {monthlyStats.income.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </Text>
-          </View>
-
-          {/* Expense bar */}
-          <View style={styles.cashFlowRow}>
-            <View style={styles.cashFlowLabelCol}>
-              <Feather name="arrow-up-right" size={14} color={C.accent} />
-              <Text style={styles.cashFlowLabel}>{t.pulse.wentOut}</Text>
-            </View>
-            <View style={styles.cashFlowBarContainer}>
-              <View
-                style={[
-                  styles.cashFlowBar,
-                  {
-                    backgroundColor: withAlpha(C.accent, 0.15),
-                    width: '100%',
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.cashFlowBarFill,
-                    {
-                      backgroundColor: C.accent,
-                      width:
-                        monthlyStats.expenses > 0 && (monthlyStats.income + monthlyStats.expenses) > 0
-                          ? `${(monthlyStats.expenses / Math.max(monthlyStats.income, monthlyStats.expenses)) * 100}%`
-                          : '0%',
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-            <Text style={styles.cashFlowAmount}>
-              {currency} {monthlyStats.expenses.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </Text>
-          </View>
-
-          {/* Net */}
-          <View style={styles.cashFlowNet}>
-            <Text style={styles.cashFlowNetLabel}>{t.pulse.youKept}</Text>
-            <Text
-              style={[
-                styles.cashFlowNetAmount,
-                { color: monthlyStats.net >= 0 ? C.positive : C.neutral },
-              ]}
+          {wellness.components.map((comp, idx) => (
+            <View
+              key={comp.key}
+              style={[styles.wbRow, idx === wellness.components.length - 1 && styles.wbRowLast]}
             >
-              {currency} {Math.abs(monthlyStats.net).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </Text>
-          </View>
+              <Text style={styles.wbLabel}>{compLabel(comp.key)}</Text>
+              <View style={styles.wbBarTrack}>
+                <View
+                  style={[
+                    styles.wbBarFill,
+                    {
+                      width: `${(comp.score / comp.max) * 100}%`,
+                      backgroundColor: comp.score / comp.max >= 0.7 ? C.positive : withAlpha(C.accent, 0.55),
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.wbValue}>{comp.score}/{comp.max}</Text>
+            </View>
+          ))}
         </Card>
 
-        {/* ── 2b. WEEK-OVER-WEEK ──────────────────────────── */}
-        {weekComparison.hasData && (
+        {/* ── MONTH-END OUTLOOK (gauge) ──────────────────────── */}
+        <Text style={styles.sectionLabel}>{t.pulse.monthEndOutlook}</Text>
+        <Card style={styles.card}>
+          {outlook.confident ? (
+            <View style={styles.gaugeWrap}>
+              <HalfGauge
+                size={gaugeSize}
+                strokeWidth={16}
+                percentage={pacePct}
+                color={C.accent}
+                trackColor={withAlpha(C.textPrimary, 0.08)}
+                gradient={gaugeGradient}
+              >
+                <Text
+                  style={[
+                    styles.gaugeNumber,
+                    { color: outlook.projectedKept < 0 ? C.neutral : C.textPrimary },
+                  ]}
+                >
+                  {currency} {money0(outlook.projectedKept)}
+                </Text>
+                <Text style={styles.gaugeLabel}>{outlookLine}</Text>
+              </HalfGauge>
+              <View style={styles.outlookStatsRow}>
+                <View style={styles.outlookStat}>
+                  <Text style={styles.outlookStatValue}>{currency} {money0(Math.max(outlook.keptSoFar, 0))}</Text>
+                  <Text style={styles.outlookStatLabel}>{t.pulse.keptSoFar}</Text>
+                </View>
+                <View style={styles.outlookStatDivider} />
+                <View style={styles.outlookStat}>
+                  <Text style={styles.outlookStatValue}>{currency} {money0(outlook.billsToCome)}</Text>
+                  <Text style={styles.outlookStatLabel}>{t.pulse.billsToCome}</Text>
+                </View>
+              </View>
+              <Text style={styles.outlookCaption}>{t.pulse.basedOnPace}</Text>
+            </View>
+          ) : (
+            <Text style={styles.outlookEarly}>{t.pulse.tooEarly}</Text>
+          )}
+        </Card>
+
+        {/* ── UPCOMING BILLS (next 30 days) ──────────────────── */}
+        {bills.items.length > 0 && (
           <>
-            <Text style={styles.sectionLabel}>{t.pulse.thisWeek}</Text>
+            <Text style={styles.sectionLabel}>{t.pulse.comingUp}</Text>
             <Card style={styles.card}>
-              <View style={styles.weekCompareRow}>
-                <View style={styles.weekCompareLeft}>
-                  <Text style={styles.weekCompareAmount}>
-                    {currency} {weekComparison.thisWeek.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Text>
-                  {weekComparison.lastWeek > 0 && weekComparison.changePercent !== 0 && (
-                    <View style={[styles.weekChangePill, {
-                      backgroundColor: withAlpha(weekComparison.changePercent > 0 ? C.neutral : C.positive, 0.12),
-                    }]}>
-                      <Feather
-                        name={weekComparison.changePercent > 0 ? 'arrow-up' : 'arrow-down'}
-                        size={11}
-                        color={weekComparison.changePercent > 0 ? C.neutral : C.positive}
-                      />
-                      <Text style={[styles.weekChangeText, {
-                        color: weekComparison.changePercent > 0 ? C.neutral : C.positive,
-                      }]}>
-                        {Math.abs(weekComparison.changePercent)}% {t.pulse.vsLastWeek}
+              {bills.items.slice(0, 6).map((b) => (
+                <View
+                  key={b.id}
+                  style={[
+                    styles.billRow,
+                    { borderLeftWidth: 3, borderLeftColor: withAlpha(C.accent, b.dueInDays <= 2 ? 0.6 : 0.25), paddingLeft: SPACING.md },
+                  ]}
+                >
+                  <View style={styles.billLeft}>
+                    <View style={[styles.billIconBg, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
+                      <Feather name="repeat" size={14} color={C.accent} />
+                    </View>
+                    <View style={styles.billInfo}>
+                      <Text style={styles.billName} numberOfLines={1}>{b.name}</Text>
+                      <Text style={styles.billDue}>
+                        {b.dueInDays <= 0
+                          ? t.pulse.dueToday
+                          : b.dueInDays === 1
+                          ? t.pulse.tomorrow
+                          : `${b.dueInDays} ${t.pulse.days}`}
                       </Text>
                     </View>
-                  )}
+                  </View>
+                  <Text style={styles.billAmount}>{currency} {money2(b.amount)}</Text>
                 </View>
-                {weekComparison.lastWeek > 0 && (
-                  <Text style={styles.weekLastWeek}>
-                    {t.pulse.lastWeek}: {currency} {weekComparison.lastWeek.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Text>
-                )}
+              ))}
+              <View style={styles.billFooter}>
+                <Text style={styles.billFooterText}>
+                  {currency} {money2(bills.total)} {t.pulse.dueInNext30Days}
+                </Text>
               </View>
             </Card>
           </>
         )}
 
-        {/* ── 3. SPENDING VELOCITY ────────────────────────── */}
-        <Text style={styles.sectionLabel}>{t.pulse.yourPace}</Text>
-        <Card style={styles.card}>
-          <View style={styles.velocityHeader}>
-            <Feather name="activity" size={16} color={velocityColor} />
-            <Text style={styles.velocityTitle}>
-              {monthlyStats.lastMonthExpenses > 0
-                ? `${t.pulse.usedOfLastMonth} ${velocity.percent}% ${t.pulse.ofLastMonthSpending}`
-                : t.pulse.noComparison}
-            </Text>
-          </View>
-          {monthlyStats.lastMonthExpenses > 0 && (
-            <>
-              <View style={styles.progressBarContainer}>
-                <View
-                  style={[
-                    styles.progressBarFill,
-                    {
-                      width: `${Math.min(velocity.percent, 100)}%`,
-                      backgroundColor: velocityColor,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={[styles.velocityMessage, { color: velocityColor }]}>
-                {getVelocityMessage(velocity.proRated, t.pulse)}
-                {' \u2014 '}
-                {velocity.proRated}% {t.pulse.proRatedPace}
-              </Text>
-              {projectedMonthSpend > 0 && (
-                <Text style={styles.projectedText}>
-                  {t.pulse.projectedThisMonth}: {currency} {projectedMonthSpend.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </Text>
-              )}
-            </>
-          )}
-        </Card>
-
-        {/* ── 4. CATEGORY BREAKDOWN ───────────────────────── */}
-        {categoryBreakdown.length > 0 && (
+        {/* ── HEADS UP ───────────────────────────────────────── */}
+        {unusual.length > 0 && (
           <>
-            <Text style={styles.sectionLabel}>{t.pulse.whereItWent}</Text>
+            <Text style={styles.sectionLabel}>{t.pulse.headsUp}</Text>
             <Card style={styles.card}>
-              {categoryBreakdown.map((cat) => (
-                <View key={cat.id} style={styles.categoryRow}>
-                  <View style={styles.categoryLeft}>
-                    <View
-                      style={[styles.categoryDot, { backgroundColor: cat.color }]}
-                    />
-                    <Text style={styles.categoryName} numberOfLines={1}>
-                      {cat.name}
-                    </Text>
-                  </View>
-                  <View style={styles.categoryRight}>
-                    <View style={styles.categoryBarContainer}>
-                      <View
-                        style={[
-                          styles.categoryBarFill,
-                          {
-                            width: `${Math.min(cat.percentage, 100)}%`,
-                            backgroundColor: withAlpha(cat.color, 0.3),
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.categoryAmount}>
-                      {currency} {cat.amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </Text>
-                  </View>
+              {unusual.map((u, idx) => (
+                <View
+                  key={u.categoryId}
+                  style={[styles.unusualRow, idx === unusual.length - 1 && styles.unusualRowLast]}
+                >
+                  <Feather name="info" size={15} color={C.textMuted} />
+                  <Text style={styles.unusualText}>{u.name} {t.pulse.ranHigher}</Text>
                 </View>
               ))}
             </Card>
           </>
         )}
 
-        {/* ── 5. NO-SPEND STREAK ──────────────────────────── */}
+        {/* ── NO-SPEND STREAK ────────────────────────────────── */}
         <Text style={styles.sectionLabel}>{t.pulse.quietDays}</Text>
         <Card style={styles.card}>
           <View style={styles.streakRow}>
@@ -649,25 +430,19 @@ const FinancialPulse: React.FC = () => {
             </View>
             <View style={styles.streakDivider} />
             <View style={styles.streakStat}>
-              <Text style={styles.streakStatValue}>
-                {streakData.noSpendDays}
-              </Text>
-              <Text style={styles.streakStatLabel}>
-                {t.pulse.quietDays} / {streakData.daysElapsed}
-              </Text>
+              <Text style={styles.streakStatValue}>{streakData.noSpendDays}</Text>
+              <Text style={styles.streakStatLabel}>{t.pulse.quietDays} / {streakData.daysElapsed}</Text>
             </View>
           </View>
         </Card>
 
-        {/* ── 6. WEEKLY PATTERN ───────────────────────────── */}
+        {/* ── WEEKLY PATTERN ─────────────────────────────────── */}
         <Text style={styles.sectionLabel}>{t.pulse.yourWeek}</Text>
         <Card style={styles.card}>
           <View style={styles.weeklyChart}>
             {weeklyPattern.days.map((day, idx) => {
               const barHeight =
-                weeklyPattern.maxAmount > 0
-                  ? (day.amount / weeklyPattern.maxAmount) * 120
-                  : 0;
+                weeklyPattern.maxAmount > 0 ? (day.amount / weeklyPattern.maxAmount) * 120 : 0;
               const isHeaviest = idx === weeklyPattern.heaviestIndex && day.amount > 0;
               return (
                 <View
@@ -675,12 +450,7 @@ const FinancialPulse: React.FC = () => {
                   style={styles.weeklyColumn}
                   accessibilityLabel={`${day.label}: ${currency} ${day.amount.toFixed(2)}`}
                 >
-                  <Text
-                    style={[
-                      styles.weeklyAmount,
-                      isHeaviest && { color: C.accent, fontWeight: TYPOGRAPHY.weight.bold },
-                    ]}
-                  >
+                  <Text style={[styles.weeklyAmount, isHeaviest && { color: C.accent, fontWeight: TYPOGRAPHY.weight.bold }]}>
                     {day.amount > 0
                       ? day.amount >= 1000
                         ? `${(day.amount / 1000).toFixed(1)}k`
@@ -693,19 +463,12 @@ const FinancialPulse: React.FC = () => {
                         styles.weeklyBar,
                         {
                           height: Math.max(barHeight, day.amount > 0 ? 4 : 0),
-                          backgroundColor: isHeaviest
-                            ? C.accent
-                            : withAlpha(C.accent, 0.3),
+                          backgroundColor: isHeaviest ? C.accent : withAlpha(C.accent, 0.3),
                         },
                       ]}
                     />
                   </View>
-                  <Text
-                    style={[
-                      styles.weeklyLabel,
-                      isHeaviest && { color: C.accent, fontWeight: TYPOGRAPHY.weight.bold },
-                    ]}
-                  >
+                  <Text style={[styles.weeklyLabel, isHeaviest && { color: C.accent, fontWeight: TYPOGRAPHY.weight.bold }]}>
                     {day.label}
                   </Text>
                 </View>
@@ -719,56 +482,6 @@ const FinancialPulse: React.FC = () => {
           )}
         </Card>
 
-        {/* ── 7. UPCOMING BILLS ───────────────────────────── */}
-        {upcomingBills.list.length > 0 && (
-          <>
-            <Text style={styles.sectionLabel}>{t.pulse.comingUp}</Text>
-            <Card style={styles.card}>
-              {upcomingBills.list.slice(0, 5).map((sub) => {
-                const daysUntil = differenceInDays(
-                  startOfDay(sub.nextBillingDate),
-                  startOfDay(now)
-                );
-                return (
-                  <View key={sub.id} style={styles.billRow}>
-                    <View style={styles.billLeft}>
-                      <View
-                        style={[
-                          styles.billIconBg,
-                          { backgroundColor: withAlpha(C.accent, 0.1) },
-                        ]}
-                      >
-                        <Feather name="repeat" size={14} color={C.accent} />
-                      </View>
-                      <View style={styles.billInfo}>
-                        <Text style={styles.billName} numberOfLines={1}>
-                          {sub.name}
-                        </Text>
-                        <Text style={styles.billDue}>
-                          {daysUntil <= 0
-                            ? t.pulse.dueToday
-                            : daysUntil === 1
-                            ? t.pulse.tomorrow
-                            : `${daysUntil} ${t.pulse.days}`}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={styles.billAmount}>
-                      {currency} {sub.amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </Text>
-                  </View>
-                );
-              })}
-              <View style={styles.billFooter}>
-                <Text style={styles.billFooterText}>
-                  {currency} {upcomingBills.total.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t.pulse.dueInNext2Weeks}
-                </Text>
-              </View>
-            </Card>
-          </>
-        )}
-
-        {/* Bottom spacing */}
         <View style={{ height: SPACING['3xl'] }} />
       </ScrollView>
       <ScreenGuide
@@ -786,425 +499,285 @@ const FinancialPulse: React.FC = () => {
   );
 };
 
-// ─── STYLES ──────────────────────────────────────────────────
-const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: C.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: SPACING['2xl'],
-  },
+const makeStyles = (C: typeof CALM) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: C.background },
+    scrollView: { flex: 1 },
+    scrollContent: { padding: SPACING['2xl'] },
 
-  // Section labels: TYPE.label style (color from palette for dark-mode parity)
-  sectionLabel: {
-    fontSize: TYPE.label.fontSize,
-    color: C.textMuted,
-    textTransform: TYPE.label.textTransform,
-    letterSpacing: TYPE.label.letterSpacing,
-    marginTop: SPACING.xl,
-    marginBottom: SPACING.sm,
-  },
+    sectionLabel: {
+      fontSize: TYPE.label.fontSize,
+      color: C.textMuted,
+      textTransform: TYPE.label.textTransform,
+      letterSpacing: TYPE.label.letterSpacing,
+      marginTop: SPACING.xl,
+      marginBottom: SPACING.sm,
+    },
+    card: { marginBottom: SPACING.xs },
 
-  // Card base
-  card: {
-    marginBottom: SPACING.xs,
-  },
+    // Hero
+    heroCard: {
+      backgroundColor: C.surface,
+      borderRadius: RADIUS.xl,
+      padding: SPACING.xl,
+      marginBottom: SPACING.xs,
+      borderWidth: 1,
+      borderColor: C.border,
+      overflow: 'hidden',
+      alignItems: 'center',
+    },
+    ringWrap: { marginBottom: SPACING.lg },
+    ringCenter: { alignItems: 'center' },
+    ringNumber: {
+      fontSize: 32,
+      fontWeight: TYPOGRAPHY.weight.bold,
+      fontVariant: ['tabular-nums'],
+    },
+    ringLabel: {
+      fontSize: TYPOGRAPHY.size.xs,
+      color: C.textSecondary,
+      marginTop: 2,
+      textTransform: 'lowercase',
+    },
+    heroHeadline: {
+      fontSize: TYPOGRAPHY.size.lg,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textPrimary,
+      lineHeight: TYPOGRAPHY.size.lg * 1.35,
+      textAlign: 'center',
+    },
+    heroCta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.xs,
+      marginTop: SPACING.md,
+      paddingVertical: SPACING.sm,
+      paddingHorizontal: SPACING.lg,
+      borderRadius: RADIUS.full,
+      borderWidth: 1,
+      borderColor: C.accent,
+      backgroundColor: withAlpha(C.accent, 0.08),
+    },
+    heroCtaText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent },
+    heroStats: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'stretch',
+      paddingTop: SPACING.lg,
+      marginTop: SPACING.lg,
+      borderTopWidth: 1,
+      borderTopColor: C.border,
+    },
+    heroStat: { flex: 1, alignItems: 'center', gap: SPACING.xs },
+    heroStatValue: {
+      fontSize: TYPOGRAPHY.size.lg,
+      fontWeight: TYPOGRAPHY.weight.bold,
+      color: C.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    heroStatLabel: {
+      fontSize: TYPOGRAPHY.size.xs,
+      color: C.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      textAlign: 'center',
+    },
+    heroStatDivider: { width: 1, height: 32, backgroundColor: C.border },
 
-  // ── 1. Hero ───────────────────────────────────────────────
-  heroCard: {
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    marginBottom: SPACING.xs,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  heroWellnessBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-    marginBottom: SPACING.md,
-    gap: SPACING.xs,
-  },
-  heroWellnessDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  heroWellnessText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    letterSpacing: 0.3,
-  },
-  heroHeadline: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    lineHeight: TYPOGRAPHY.size.xl * 1.3,
-    marginBottom: SPACING.xl,
-  },
-  heroStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: SPACING.lg,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-  },
-  heroStat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  heroStatValue: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  heroStatLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  heroStatDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: C.border,
-  },
+    // Wellness breakdown
+    wbRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: SPACING.sm,
+      gap: SPACING.md,
+      borderBottomWidth: 1,
+      borderBottomColor: C.border,
+    },
+    wbRowLast: { borderBottomWidth: 0 },
+    wbLabel: { fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary, width: 110 },
+    wbBarTrack: {
+      flex: 1,
+      height: 8,
+      backgroundColor: C.border,
+      borderRadius: RADIUS.full,
+      overflow: 'hidden',
+    },
+    wbBarFill: { height: 8, borderRadius: RADIUS.full },
+    wbValue: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textSecondary,
+      fontVariant: ['tabular-nums'],
+      width: 44,
+      textAlign: 'right',
+    },
 
-  // ── 2. Cash Flow ──────────────────────────────────────────
-  cashFlowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-    gap: SPACING.sm,
-  },
-  cashFlowLabelCol: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: 72,
-    gap: SPACING.xs,
-  },
-  cashFlowLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-  },
-  cashFlowBarContainer: {
-    flex: 1,
-  },
-  cashFlowBar: {
-    height: 10,
-    borderRadius: RADIUS.xs,
-    overflow: 'hidden',
-  },
-  cashFlowBarFill: {
-    height: 10,
-    borderRadius: RADIUS.xs,
-  },
-  cashFlowAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-    width: 100,
-    textAlign: 'right',
-  },
-  cashFlowNet: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-  },
-  cashFlowNetLabel: {
-    fontSize: TYPE.insight.fontSize,
-    lineHeight: TYPE.insight.lineHeight,
-    color: C.textSecondary,
-  },
-  cashFlowNetAmount: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'],
-  },
+    // Month-end outlook gauge
+    gaugeWrap: { alignItems: 'center' },
+    gaugeNumber: {
+      fontSize: TYPE.balance.fontSize,
+      fontWeight: TYPOGRAPHY.weight.bold,
+      fontVariant: ['tabular-nums'],
+    },
+    gaugeLabel: {
+      fontSize: TYPE.insight.fontSize,
+      lineHeight: TYPE.insight.lineHeight,
+      color: C.textSecondary,
+      textAlign: 'center',
+      marginTop: SPACING.xs,
+      paddingHorizontal: SPACING.md,
+    },
+    outlookStatsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'stretch',
+      paddingTop: SPACING.md,
+      marginTop: SPACING.lg,
+      borderTopWidth: 1,
+      borderTopColor: C.border,
+    },
+    outlookStat: { flex: 1, alignItems: 'center', gap: SPACING.xs },
+    outlookStatValue: {
+      fontSize: TYPOGRAPHY.size.lg,
+      fontWeight: TYPOGRAPHY.weight.bold,
+      color: C.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    outlookStatLabel: {
+      fontSize: TYPOGRAPHY.size.xs,
+      color: C.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      textAlign: 'center',
+    },
+    outlookStatDivider: { width: 1, height: 36, backgroundColor: C.border },
+    outlookCaption: {
+      fontSize: TYPE.insight.fontSize,
+      lineHeight: TYPE.insight.lineHeight,
+      color: C.textMuted,
+      marginTop: SPACING.md,
+      textAlign: 'center',
+    },
+    outlookEarly: {
+      fontSize: TYPOGRAPHY.size.lg,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textPrimary,
+      lineHeight: TYPOGRAPHY.size.lg * 1.35,
+    },
 
-  // ── 3. Spending Velocity ──────────────────────────────────
-  velocityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  velocityTitle: {
-    fontSize: TYPE.insight.fontSize,
-    lineHeight: TYPE.insight.lineHeight,
-    color: C.textPrimary,
-    flex: 1,
-  },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: C.border,
-    borderRadius: RADIUS.xs,
-    overflow: 'hidden',
-    marginBottom: SPACING.sm,
-  },
-  progressBarFill: {
-    height: 8,
-    borderRadius: RADIUS.xs,
-  },
-  velocityMessage: {
-    fontSize: TYPE.insight.fontSize,
-    lineHeight: TYPE.insight.lineHeight,
-  },
+    // Upcoming bills
+    billRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: SPACING.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: C.border,
+    },
+    billLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: SPACING.md },
+    billIconBg: {
+      width: 32,
+      height: 32,
+      borderRadius: RADIUS.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    billInfo: { flex: 1 },
+    billName: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
+    billDue: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, marginTop: SPACING.xs },
+    billAmount: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.bold,
+      color: C.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    billFooter: { paddingTop: SPACING.md, marginTop: SPACING.xs },
+    billFooterText: {
+      fontSize: TYPE.insight.fontSize,
+      lineHeight: TYPE.insight.lineHeight,
+      color: C.textSecondary,
+      textAlign: 'center',
+    },
 
-  // ── 4. Category Breakdown ─────────────────────────────────
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  categoryLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: SPACING.md,
-  },
-  categoryDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: SPACING.sm,
-  },
-  categoryName: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textPrimary,
-    flex: 1,
-  },
-  categoryRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  categoryBarContainer: {
-    width: 60,
-    height: 6,
-    backgroundColor: C.border,
-    borderRadius: RADIUS.xs,
-    overflow: 'hidden',
-  },
-  categoryBarFill: {
-    height: 6,
-    borderRadius: RADIUS.xs,
-  },
-  categoryAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-    minWidth: 80,
-    textAlign: 'right',
-  },
+    // Heads up
+    unusualRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      paddingVertical: SPACING.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: C.border,
+    },
+    unusualRowLast: { borderBottomWidth: 0 },
+    unusualText: {
+      fontSize: TYPE.insight.fontSize,
+      lineHeight: TYPE.insight.lineHeight,
+      color: C.textSecondary,
+      flex: 1,
+    },
 
-  // ── 5. No-Spend Streak ────────────────────────────────────
-  streakRow: {
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  streakHero: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  streakNumber: {
-    fontSize: TYPOGRAPHY.size['3xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  streakUnit: {
-    fontSize: TYPE.insight.fontSize,
-    lineHeight: TYPE.insight.lineHeight,
-    color: C.textSecondary,
-  },
-  streakStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-  },
-  streakStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  streakStatValue: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-    marginBottom: SPACING.xs,
-  },
-  streakStatLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    textAlign: 'center',
-  },
-  streakDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: C.border,
-    marginHorizontal: SPACING.lg,
-  },
+    // No-spend streak
+    streakRow: { alignItems: 'center', marginBottom: SPACING.lg },
+    streakHero: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+    streakNumber: {
+      fontSize: TYPOGRAPHY.size['3xl'],
+      fontWeight: TYPOGRAPHY.weight.bold,
+      color: C.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    streakUnit: {
+      fontSize: TYPE.insight.fontSize,
+      lineHeight: TYPE.insight.lineHeight,
+      color: C.textSecondary,
+    },
+    streakStatsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingTop: SPACING.md,
+      borderTopWidth: 1,
+      borderTopColor: C.border,
+    },
+    streakStat: { flex: 1, alignItems: 'center' },
+    streakStatValue: {
+      fontSize: TYPOGRAPHY.size.xl,
+      fontWeight: TYPOGRAPHY.weight.bold,
+      color: C.textPrimary,
+      fontVariant: ['tabular-nums'],
+      marginBottom: SPACING.xs,
+    },
+    streakStatLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, textAlign: 'center' },
+    streakDivider: { width: 1, height: 36, backgroundColor: C.border, marginHorizontal: SPACING.lg },
 
-  // ── 6. Weekly Pattern ─────────────────────────────────────
-  weeklyChart: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    height: 170,
-    paddingTop: SPACING.lg,
-  },
-  weeklyColumn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    height: '100%',
-  },
-  weeklyAmount: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    fontVariant: ['tabular-nums'],
-    marginBottom: SPACING.xs,
-  },
-  weeklyBarTrack: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    width: '100%',
-  },
-  weeklyBar: {
-    width: '55%',
-    borderRadius: RADIUS.xs,
-    minWidth: 12,
-  },
-  weeklyLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    marginTop: SPACING.sm,
-  },
-  weeklyInsight: {
-    fontSize: TYPE.insight.fontSize,
-    lineHeight: TYPE.insight.lineHeight,
-    color: C.textSecondary,
-    textAlign: 'center',
-    marginTop: SPACING.lg,
-  },
-
-  // ── 7. Upcoming Bills ─────────────────────────────────────
-  billRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  billLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: SPACING.md,
-  },
-  billIconBg: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  billInfo: {
-    flex: 1,
-  },
-  billName: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  billDue: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    marginTop: SPACING.xs,
-  },
-  billAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  billFooter: {
-    paddingTop: SPACING.md,
-    borderTopWidth: 0,
-    marginTop: SPACING.xs,
-  },
-  billFooterText: {
-    fontSize: TYPE.insight.fontSize,
-    lineHeight: TYPE.insight.lineHeight,
-    color: C.textSecondary,
-    textAlign: 'center',
-  },
-
-  // ── Week-over-week ────────────────────────────────────────
-  weekCompareRow: {
-    gap: SPACING.sm,
-  },
-  weekCompareLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    flexWrap: 'wrap',
-  },
-  weekCompareAmount: {
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  weekChangePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-    gap: SPACING.xs,
-  },
-  weekChangeText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  weekLastWeek: {
-    fontSize: TYPE.insight.fontSize,
-    lineHeight: TYPE.insight.lineHeight,
-    color: C.textMuted,
-  },
-
-  // ── Projected spend ───────────────────────────────────────
-  projectedText: {
-    fontSize: TYPE.insight.fontSize,
-    lineHeight: TYPE.insight.lineHeight,
-    color: C.textSecondary,
-    marginTop: SPACING.sm,
-  },
-});
+    // Weekly pattern
+    weeklyChart: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      height: 170,
+      paddingTop: SPACING.lg,
+    },
+    weeklyColumn: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
+    weeklyAmount: {
+      fontSize: TYPOGRAPHY.size.xs,
+      color: C.textSecondary,
+      fontVariant: ['tabular-nums'],
+      marginBottom: SPACING.xs,
+    },
+    weeklyBarTrack: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', width: '100%' },
+    weeklyBar: {
+      width: '55%',
+      minWidth: 12,
+      borderTopLeftRadius: RADIUS.sm,
+      borderTopRightRadius: RADIUS.sm,
+    },
+    weeklyLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, marginTop: SPACING.sm },
+    weeklyInsight: {
+      fontSize: TYPE.insight.fontSize,
+      lineHeight: TYPE.insight.lineHeight,
+      color: C.textSecondary,
+      textAlign: 'center',
+      marginTop: SPACING.lg,
+    },
+  });
 
 export default FinancialPulse;

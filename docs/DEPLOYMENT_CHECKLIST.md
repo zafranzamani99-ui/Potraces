@@ -7,13 +7,14 @@
 ## Environment Variables
 
 ```bash
-# AI — Gemini 2.5 Flash (receipt scanning + spending mirror + money chat)
-EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key
-
 # Supabase (seller mode sync + order link)
 EXPO_PUBLIC_SUPABASE_URL=https://iydqeeonaljqapulboaz.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
+
+> **AI keys (Gemini/Anthropic) are SERVER secrets** used by the `ai-proxy` Edge Function —
+> set them with `supabase secrets set GEMINI_API_KEY=...`. NEVER ship them as `EXPO_PUBLIC_*`
+> (those are bundled into the client and extractable). See `docs/ai-proxy-deploy.md`.
 
 **Billing note:** Free tier = 250 RPD shared across all AI features. For 50+ users, enable Paid Tier 1 in Google AI Studio (RM 20 spend cap recommended).
 

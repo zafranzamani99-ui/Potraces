@@ -12,7 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { usePartTimeStore } from '../../../store/partTimeStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { successNotification } from '../../../services/haptics';
 
@@ -65,7 +65,7 @@ const PartTimeSetup: React.FC = () => {
           placeholderTextColor={C.textMuted}
           returnKeyType="next"
           keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={C.accent}
+          selectionColor={withAlpha(C.accent, 0.25)}
         />
 
         <View style={styles.amountRow}>
@@ -80,7 +80,7 @@ const PartTimeSetup: React.FC = () => {
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
 

@@ -366,7 +366,7 @@ const PastSeasons: React.FC = () => {
                 placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 autoFocus
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               {pastSeasons.length > 0 && (
                 <View style={styles.templateSection}>

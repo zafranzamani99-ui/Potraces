@@ -254,95 +254,95 @@ export const ANIMATION = {
 // Calm palette — no red, no orange, no bright green.
 
 export const EXPENSE_CATEGORIES: CategoryOption[] = [
-  { id: 'food', name: 'Food & Dining', icon: 'coffee', color: '#9B6A3A' },
-  { id: 'transport', name: 'Transportation', icon: 'truck', color: '#5E72E4' },
-  { id: 'shopping', name: 'Shopping', icon: 'shopping-bag', color: '#8B7000' },
-  { id: 'entertainment', name: 'Entertainment', icon: 'film', color: '#A06CD5' },
-  { id: 'bills', name: 'Bills & Utilities', icon: 'file-text', color: '#767A0A' },
-  { id: 'health', name: 'Healthcare', icon: 'heart', color: '#2E7A9A' },
-  { id: 'education', name: 'Education', icon: 'book', color: '#8B7355' },
-  { id: 'family', name: 'Family', icon: 'users', color: '#7C8DA4' },
-  { id: 'subscription', name: 'Subscriptions', icon: 'repeat', color: '#7C5CFC' },
-  { id: 'business cost', name: 'Business Cost', icon: 'briefcase', color: '#B2780A' },
-  { id: 'debt_payment', name: 'Debt Payment', icon: 'corner-up-left', color: '#7C8DA4' },
-  { id: 'savings', name: 'Savings Goal', icon: 'target', color: '#4F5104' },
-  { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#6B7596' },
+  { id: 'food', name: 'Food & Dining', icon: 'm/silverware-fork-knife', color: '#9B6A3A' },
+  { id: 'transport', name: 'Transportation', icon: 'm/car', color: '#5E72E4' },
+  { id: 'shopping', name: 'Shopping', icon: 'i/bag-handle', color: '#8B7000' },
+  { id: 'entertainment', name: 'Entertainment', icon: 'i/film', color: '#A06CD5' },
+  { id: 'bills', name: 'Bills & Utilities', icon: 'i/receipt', color: '#767A0A' },
+  { id: 'health', name: 'Healthcare', icon: 'm/heart-pulse', color: '#2E7A9A' },
+  { id: 'education', name: 'Education', icon: 'm/school', color: '#8B7355' },
+  { id: 'family', name: 'Family', icon: 'i/people', color: '#7C8DA4' },
+  { id: 'subscription', name: 'Subscriptions', icon: 'm/sync', color: '#7C5CFC' },
+  { id: 'business cost', name: 'Business Cost', icon: 'i/briefcase', color: '#B2780A' },
+  { id: 'debt_payment', name: 'Debt Payment', icon: 'm/cash-minus', color: '#7C8DA4' },
+  { id: 'savings', name: 'Savings Goal', icon: 'm/piggy-bank', color: '#4F5104' },
+  { id: 'other', name: 'Other', icon: 'i/ellipsis-horizontal', color: '#6B7596' },
 ];
 
 export const INCOME_CATEGORIES: CategoryOption[] = [
-  { id: 'salary', name: 'Salary', icon: 'dollar-sign', color: '#4F5104' },
-  { id: 'freelance', name: 'Freelance', icon: 'briefcase', color: '#5E72E4' },
-  { id: 'business', name: 'Business', icon: 'trending-up', color: '#B2780A' },
-  { id: 'investment', name: 'Investment', icon: 'pie-chart', color: '#A06CD5' },
-  { id: 'gift', name: 'Gift', icon: 'gift', color: '#C4956A' },
-  { id: 'from business', name: 'From Business', icon: 'refresh-cw', color: '#6BA3BE' },
-  { id: 'debt_paid', name: 'Debt Paid', icon: 'corner-down-left', color: '#6BA3BE' },
-  { id: 'savings_return', name: 'Goal Withdrawal', icon: 'target', color: '#4F5104' },
-  { id: 'other', name: 'Other', icon: 'plus-circle', color: '#6B7596' },
+  { id: 'salary', name: 'Salary', icon: 'm/cash-multiple', color: '#4F5104' },
+  { id: 'freelance', name: 'Freelance', icon: 'i/laptop', color: '#5E72E4' },
+  { id: 'business', name: 'Business', icon: 'm/storefront', color: '#B2780A' },
+  { id: 'investment', name: 'Investment', icon: 'm/finance', color: '#A06CD5' },
+  { id: 'gift', name: 'Gift', icon: 'i/gift', color: '#C4956A' },
+  { id: 'from business', name: 'From Business', icon: 'm/swap-horizontal', color: '#6BA3BE' },
+  { id: 'debt_paid', name: 'Debt Paid', icon: 'm/cash-plus', color: '#6BA3BE' },
+  { id: 'savings_return', name: 'Goal Withdrawal', icon: 'm/hand-coin', color: '#4F5104' },
+  { id: 'other', name: 'Other', icon: 'i/add-circle', color: '#6B7596' },
 ];
 
 export const BUSINESS_EXPENSE_CATEGORIES: CategoryOption[] = [
-  { id: 'rent', name: 'Rent & Lease', icon: 'home', color: '#5E72E4' },
-  { id: 'inventory', name: 'Inventory / COGS', icon: 'package', color: '#DEAB22' },
-  { id: 'payroll', name: 'Payroll & Wages', icon: 'users', color: '#4F5104' },
-  { id: 'marketing', name: 'Marketing & Ads', icon: 'target', color: '#C4956A' },
-  { id: 'utilities', name: 'Utilities', icon: 'zap', color: '#6BA3BE' },
-  { id: 'office', name: 'Office Supplies', icon: 'clipboard', color: '#A06CD5' },
-  { id: 'travel', name: 'Travel & Meetings', icon: 'map-pin', color: '#8B7355' },
-  { id: 'insurance', name: 'Insurance', icon: 'shield', color: '#7C8DA4' },
-  { id: 'maintenance', name: 'Maintenance', icon: 'tool', color: '#B2780A' },
-  { id: 'professional', name: 'Professional Services', icon: 'briefcase', color: '#7C5CFC' },
-  { id: 'shipping', name: 'Shipping & Delivery', icon: 'truck', color: '#6BA3BE' },
-  { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#6B7596' },
+  { id: 'rent', name: 'Rent & Lease', icon: 'm/home-city', color: '#5E72E4' },
+  { id: 'inventory', name: 'Inventory / COGS', icon: 'm/package-variant-closed', color: '#DEAB22' },
+  { id: 'payroll', name: 'Payroll & Wages', icon: 'm/account-group', color: '#4F5104' },
+  { id: 'marketing', name: 'Marketing & Ads', icon: 'm/bullhorn', color: '#C4956A' },
+  { id: 'utilities', name: 'Utilities', icon: 'i/flash', color: '#6BA3BE' },
+  { id: 'office', name: 'Office Supplies', icon: 'i/clipboard', color: '#A06CD5' },
+  { id: 'travel', name: 'Travel & Meetings', icon: 'm/airplane', color: '#8B7355' },
+  { id: 'insurance', name: 'Insurance', icon: 'i/shield-checkmark', color: '#7C8DA4' },
+  { id: 'maintenance', name: 'Maintenance', icon: 'm/wrench', color: '#B2780A' },
+  { id: 'professional', name: 'Professional Services', icon: 'i/briefcase', color: '#7C5CFC' },
+  { id: 'shipping', name: 'Shipping & Delivery', icon: 'm/truck-delivery', color: '#6BA3BE' },
+  { id: 'other', name: 'Other', icon: 'i/ellipsis-horizontal', color: '#6B7596' },
 ];
 
 export const BUSINESS_INCOME_CATEGORIES: CategoryOption[] = [
-  { id: 'sales', name: 'Sales Revenue', icon: 'shopping-cart', color: '#4F5104' },
-  { id: 'services', name: 'Service Income', icon: 'tool', color: '#5E72E4' },
-  { id: 'consulting', name: 'Consulting', icon: 'message-circle', color: '#A06CD5' },
-  { id: 'commission', name: 'Commission', icon: 'percent', color: '#DEAB22' },
-  { id: 'rental', name: 'Rental Income', icon: 'home', color: '#6BA3BE' },
-  { id: 'interest', name: 'Interest & Returns', icon: 'trending-up', color: '#B2780A' },
-  { id: 'other', name: 'Other', icon: 'plus-circle', color: '#6B7596' },
+  { id: 'sales', name: 'Sales Revenue', icon: 'm/cart', color: '#4F5104' },
+  { id: 'services', name: 'Service Income', icon: 'm/wrench', color: '#5E72E4' },
+  { id: 'consulting', name: 'Consulting', icon: 'i/chatbubble-ellipses', color: '#A06CD5' },
+  { id: 'commission', name: 'Commission', icon: 'm/percent', color: '#DEAB22' },
+  { id: 'rental', name: 'Rental Income', icon: 'm/home-city', color: '#6BA3BE' },
+  { id: 'interest', name: 'Interest & Returns', icon: 'i/trending-up', color: '#B2780A' },
+  { id: 'other', name: 'Other', icon: 'i/add-circle', color: '#6B7596' },
 ];
 
 // Universal seller cost categories — work for any seller (food, retail, services).
 // Stable ids are critical: random ids would duplicate on every device during sync.
 export const DEFAULT_COST_CATEGORIES: SellerCostCategory[] = [
-  { id: 'costcat_materials', name: 'Materials', nameBm: 'Bahan', icon: 'box', color: '#8B7355', isDefault: true, sortOrder: 0 },
-  { id: 'costcat_packaging', name: 'Packaging', nameBm: 'Pembungkusan', icon: 'package', color: '#DEAB22', isDefault: true, sortOrder: 1 },
-  { id: 'costcat_equipment', name: 'Equipment', nameBm: 'Peralatan', icon: 'tool', color: '#5E72E4', isDefault: true, sortOrder: 2 },
-  { id: 'costcat_utilities', name: 'Utilities', nameBm: 'Utiliti', icon: 'zap', color: '#6BA3BE', isDefault: true, sortOrder: 3 },
-  { id: 'costcat_rent', name: 'Rent', nameBm: 'Sewa', icon: 'home', color: '#A06CD5', isDefault: true, sortOrder: 4 },
-  { id: 'costcat_transport', name: 'Transport', nameBm: 'Pengangkutan', icon: 'truck', color: '#2E7A9A', isDefault: true, sortOrder: 5 },
-  { id: 'costcat_marketing', name: 'Marketing', nameBm: 'Pemasaran', icon: 'speaker', color: '#C4956A', isDefault: true, sortOrder: 6 },
-  { id: 'costcat_fees', name: 'Fees', nameBm: 'Yuran', icon: 'credit-card', color: '#7C5CFC', isDefault: true, sortOrder: 7 },
-  { id: 'costcat_labor', name: 'Labor', nameBm: 'Upah', icon: 'users', color: '#4F5104', isDefault: true, sortOrder: 8 },
-  { id: 'costcat_other', name: 'Other', nameBm: 'Lain-lain', icon: 'more-horizontal', color: '#6B7596', isDefault: true, isProtected: true, sortOrder: 9 },
+  { id: 'costcat_materials', name: 'Materials', nameBm: 'Bahan', icon: 'm/cube-outline', color: '#8B7355', isDefault: true, sortOrder: 0 },
+  { id: 'costcat_packaging', name: 'Packaging', nameBm: 'Pembungkusan', icon: 'm/package-variant-closed', color: '#DEAB22', isDefault: true, sortOrder: 1 },
+  { id: 'costcat_equipment', name: 'Equipment', nameBm: 'Peralatan', icon: 'm/wrench', color: '#5E72E4', isDefault: true, sortOrder: 2 },
+  { id: 'costcat_utilities', name: 'Utilities', nameBm: 'Utiliti', icon: 'i/flash', color: '#6BA3BE', isDefault: true, sortOrder: 3 },
+  { id: 'costcat_rent', name: 'Rent', nameBm: 'Sewa', icon: 'm/home-city', color: '#A06CD5', isDefault: true, sortOrder: 4 },
+  { id: 'costcat_transport', name: 'Transport', nameBm: 'Pengangkutan', icon: 'm/truck-delivery', color: '#2E7A9A', isDefault: true, sortOrder: 5 },
+  { id: 'costcat_marketing', name: 'Marketing', nameBm: 'Pemasaran', icon: 'm/bullhorn', color: '#C4956A', isDefault: true, sortOrder: 6 },
+  { id: 'costcat_fees', name: 'Fees', nameBm: 'Yuran', icon: 'i/card', color: '#7C5CFC', isDefault: true, sortOrder: 7 },
+  { id: 'costcat_labor', name: 'Labor', nameBm: 'Upah', icon: 'm/account-group', color: '#4F5104', isDefault: true, sortOrder: 8 },
+  { id: 'costcat_other', name: 'Other', nameBm: 'Lain-lain', icon: 'i/ellipsis-horizontal', color: '#6B7596', isDefault: true, isProtected: true, sortOrder: 9 },
 ];
 
 export const INVESTMENT_CATEGORIES: CategoryOption[] = [
-  { id: 'tng_plus', name: 'TNG+', icon: 'smartphone', color: '#005ABD' },
-  { id: 'robo_crypto', name: 'Robo Crypto', icon: 'cpu', color: '#B2780A' },
-  { id: 'esa', name: 'ESA', icon: 'shield', color: '#6BA3BE' },
-  { id: 'bank', name: 'Bank', icon: 'home', color: '#5E72E4' },
-  { id: 'asb', name: 'ASB', icon: 'lock', color: '#4F5104' },
-  { id: 'tabung_haji', name: 'Tabung Haji', icon: 'book', color: '#DEAB22' },
-  { id: 'stocks', name: 'Stocks', icon: 'trending-up', color: '#A06CD5' },
-  { id: 'gold', name: 'Gold', icon: 'star', color: '#C4956A' },
-  { id: 'other', name: 'Other', icon: 'briefcase', color: '#6B7596' },
+  { id: 'tng_plus', name: 'TNG+', icon: 'm/cellphone', color: '#005ABD' },
+  { id: 'robo_crypto', name: 'Robo Crypto', icon: 'm/chip', color: '#B2780A' },
+  { id: 'esa', name: 'ESA', icon: 'i/shield-checkmark', color: '#6BA3BE' },
+  { id: 'bank', name: 'Bank', icon: 'm/bank', color: '#5E72E4' },
+  { id: 'asb', name: 'ASB', icon: 'i/lock-closed', color: '#4F5104' },
+  { id: 'tabung_haji', name: 'Tabung Haji', icon: 'm/book', color: '#DEAB22' },
+  { id: 'stocks', name: 'Stocks', icon: 'm/chart-line', color: '#A06CD5' },
+  { id: 'gold', name: 'Gold', icon: 'm/gold', color: '#C4956A' },
+  { id: 'other', name: 'Other', icon: 'm/finance', color: '#6B7596' },
 ];
 
 export const PRODUCT_CATEGORIES: CategoryOption[] = [
-  { id: 'food', name: 'Food & Beverages', icon: 'coffee', color: '#9B6A3A' },
-  { id: 'clothing', name: 'Clothing', icon: 'shopping-bag', color: '#A06CD5' },
-  { id: 'electronics', name: 'Electronics', icon: 'smartphone', color: '#5E72E4' },
-  { id: 'accessories', name: 'Accessories', icon: 'watch', color: '#DEAB22' },
-  { id: 'books', name: 'Books', icon: 'book', color: '#8B7355' },
-  { id: 'toys', name: 'Toys', icon: 'gift', color: '#7C5CFC' },
-  { id: 'health', name: 'Health & Beauty', icon: 'heart', color: '#6BA3BE' },
-  { id: 'home', name: 'Home & Garden', icon: 'home', color: '#4F5104' },
-  { id: 'other', name: 'Other', icon: 'grid', color: '#6B7596' },
+  { id: 'food', name: 'Food & Beverages', icon: 'm/silverware-fork-knife', color: '#9B6A3A' },
+  { id: 'clothing', name: 'Clothing', icon: 'm/tshirt-crew', color: '#A06CD5' },
+  { id: 'electronics', name: 'Electronics', icon: 'm/cellphone', color: '#5E72E4' },
+  { id: 'accessories', name: 'Accessories', icon: 'i/watch', color: '#DEAB22' },
+  { id: 'books', name: 'Books', icon: 'm/book', color: '#8B7355' },
+  { id: 'toys', name: 'Toys', icon: 'm/teddy-bear', color: '#7C5CFC' },
+  { id: 'health', name: 'Health & Beauty', icon: 'm/heart-pulse', color: '#6BA3BE' },
+  { id: 'home', name: 'Home & Garden', icon: 'm/home', color: '#4F5104' },
+  { id: 'other', name: 'Other', icon: 'i/grid', color: '#6B7596' },
 ];
 
 export const BILLING_CYCLES = [
@@ -404,11 +404,6 @@ export const DEBT_STATUSES_SAFE = [
   { label: 'Partial', value: 'partial', color: { light: '#8A5C00', dark: '#D99441' } }, // 6.1 / 6.7
   { label: 'Settled', value: 'settled', color: { light: '#3F6E84', dark: '#8ABCD2' } }, // 5.2 / 7.6
 ] as const;
-
-export const RECEIPT_SCANNER_CONFIG = {
-  apiUrl: 'https://vision.googleapis.com/v1/images:annotate',
-  apiKey: process.env.EXPO_PUBLIC_GOOGLE_VISION_API_KEY || 'YOUR_API_KEY_HERE',
-};
 
 export const APP_CONFIG = {
   currency: 'RM',
@@ -542,4 +537,34 @@ export const withAlpha = (hex: string, alpha: number): string => {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+// Lighten a colour just enough to stay legible on the dark surface.
+// Fixed category/payment colours (e.g. olive #4F5104, deep #332D03) otherwise
+// disappear on the dark theme. Already-bright colours are returned unchanged.
+// Used by CategoryIcon in dark mode. Mixes the colour toward white in small
+// steps until it clears ~3.2:1 contrast against the dark surface (#1E1E1E).
+const _contrastCache: Record<string, string> = {};
+export const ensureContrastOnDark = (hex: string, target = 3.2): string => {
+  if (!hex || hex[0] !== '#' || hex.length < 7) return hex;
+  const cacheKey = `${hex}|${target}`;
+  const cached = _contrastCache[cacheKey];
+  if (cached !== undefined) return cached;
+  const toLin = (v: number) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const lum = (r: number, g: number, b: number) => 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b);
+  const bgL = lum(30, 30, 30); // #1E1E1E
+  const cr = (L: number) => (Math.max(L, bgL) + 0.05) / (Math.min(L, bgL) + 0.05);
+  let r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  let b = parseInt(hex.slice(5, 7), 16);
+  let guard = 0;
+  while (cr(lum(r, g, b)) < target && guard++ < 24) {
+    r = Math.round(r + (255 - r) * 0.12);
+    g = Math.round(g + (255 - g) * 0.12);
+    b = Math.round(b + (255 - b) * 0.12);
+  }
+  const h = (n: number) => n.toString(16).padStart(2, '0');
+  const out = `#${h(r)}${h(g)}${h(b)}`;
+  _contrastCache[cacheKey] = out;
+  return out;
 };

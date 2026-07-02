@@ -11,7 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useMixedStore } from '../../../store/mixedStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { successNotification, lightTap } from '../../../services/haptics';
@@ -119,7 +119,7 @@ const MixedSetup: React.FC = () => {
                 }
               }}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             {(streams.length > 1 || stream.trim().length > 0) && (
               <TouchableOpacity

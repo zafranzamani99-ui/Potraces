@@ -1,12 +1,12 @@
 import React, { useRef, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import Button from './Button';
+import CategoryIcon from './CategoryIcon';
 
 interface EmptyStateProps {
-  icon: keyof typeof Feather.glyphMap;
+  icon: string;
   title: string;
   message: string;
   actionLabel?: string;
@@ -39,7 +39,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
       accessibilityLabel={`${title}. ${message}`}
     >
       <View style={styles.iconContainer}>
-        <Feather name={icon} size={64} color={C.border} />
+        <CategoryIcon icon={icon} size={64} color={C.border} adaptDark={false} />
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>

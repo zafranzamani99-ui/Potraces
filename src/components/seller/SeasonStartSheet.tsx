@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, Modal, KeyboardAvoidingView, Platform, StyleSheet, Keyboard } from 'react-native';
+import { View, Text, TextInput, Pressable, Modal, StyleSheet, Keyboard } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useSellerStore } from '../../store/sellerStore';
@@ -58,7 +59,7 @@ const SeasonStartSheet: React.FC<Props> = ({ visible, onClose, onStarted, onView
   return (
     <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={{ flex: 1, backgroundColor: withAlpha(C.dimBg, 0.4) }}
       >
         <Pressable

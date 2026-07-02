@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, Modal, TextInput, TouchableOpacity,
   Keyboard, Dimensions, Pressable, Platform,
 } from 'react-native';
-import { ScrollView, GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { ScrollView, GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Reanimated, {
   useSharedValue, useAnimatedStyle, withSpring, withTiming,
@@ -531,7 +531,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
                 onFocus={() => setMultilineFocused(true)}
                 onBlur={() => setMultilineFocused(false)}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
             {quickText.trim().length > 0 && (
@@ -559,7 +559,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
             onSubmitEditing={Keyboard.dismiss}
             editable={!isComplete}
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
         {yearlyPreview ? (
@@ -627,7 +627,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
               placeholderTextColor={C.textMuted}
               returnKeyType="next"
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
           </View>
         </View>
@@ -686,7 +686,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
                 <Text style={styles.reminderSuffix}>days before</Text>
               </View>
@@ -822,7 +822,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
               onFocus={() => setMultilineFocused(true)}
               onBlur={() => setMultilineFocused(false)}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
           </View>
         </View>
@@ -926,6 +926,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
         closeSheet();
       }}
     >
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <Reanimated.View style={[styles.backdrop, backdropAnimatedStyle]}>
         <Pressable style={{ flex: 1 }} onPress={() => {
           if (subView !== 'form') { setSubView('form'); return; }
@@ -1138,7 +1139,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
 
@@ -1154,7 +1155,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
                 <View style={styles.instModalPillRow}>
                   {(['months', 'years'] as const).map(u => (
@@ -1183,7 +1184,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
                   placeholderTextColor={withAlpha(C.textMuted, 0.5)}
                   returnKeyType="done"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                   onSubmitEditing={Keyboard.dismiss}
                 />
                 <Text style={[styles.installCcy, { marginBottom: -2 }]}>months</Text>
@@ -1253,6 +1254,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
         </TouchableOpacity>
       )}
       <ModalToastHost />
+      </GestureHandlerRootView>
     </Modal>
   );
 };

@@ -27,6 +27,7 @@ import { lightTap, mediumTap, successNotification } from '../../services/haptics
 import { useToast } from '../../context/ToastContext';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import ModalToastHost from '../../components/common/ModalToastHost';
 
@@ -297,6 +298,8 @@ const SeasonSummary: React.FC = () => {
     showToast(t.seller.transferredToPersonal, 'success');
     setShowTransfer(false);
   }, [transferAmount, season, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast, t]);
+
+  const guardedTransferToPersonal = useSubmitGuard(handleTransferToPersonal);
 
   const handleEndSeason = useCallback(() => {
     mediumTap();
@@ -694,13 +697,13 @@ const SeasonSummary: React.FC = () => {
                       keyboardType="decimal-pad"
                       selectTextOnFocus
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                     />
                   </View>
                   <TouchableOpacity
                     style={styles.transferConfirmButton}
                     activeOpacity={0.7}
-                    onPress={handleTransferToPersonal}
+                    onPress={guardedTransferToPersonal}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <Text style={styles.transferConfirmText}>{t.seller.transfer}</Text>
@@ -1185,7 +1188,7 @@ const SeasonSummary: React.FC = () => {
               autoFocus
               selectTextOnFocus
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <View style={styles.renameModalActions}>
               <TouchableOpacity
@@ -1230,7 +1233,7 @@ const SeasonSummary: React.FC = () => {
               autoFocus
               selectTextOnFocus
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <View style={styles.renameModalActions}>
               <TouchableOpacity

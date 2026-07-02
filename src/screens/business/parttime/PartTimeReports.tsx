@@ -36,14 +36,12 @@ const PartTimeReports: React.FC = () => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
-  const { businessTransactions } = useBusinessStore();
-  const {
-    jobDetails,
-    getMonthlyBreakdown,
-    getCurrentMonthMainIncome,
-    getCurrentMonthSideIncome,
-    getAverageSidePercentage,
-  } = usePartTimeStore();
+  const businessTransactions = useBusinessStore((s) => s.businessTransactions);
+  const jobDetails = usePartTimeStore((s) => s.jobDetails);
+  const getMonthlyBreakdown = usePartTimeStore((s) => s.getMonthlyBreakdown);
+  const getCurrentMonthMainIncome = usePartTimeStore((s) => s.getCurrentMonthMainIncome);
+  const getCurrentMonthSideIncome = usePartTimeStore((s) => s.getCurrentMonthSideIncome);
+  const getAverageSidePercentage = usePartTimeStore((s) => s.getAverageSidePercentage);
 
   const [period, setPeriod] = useState<PeriodOption>('3months');
   const [aiSummary, setAiSummary] = useState<string | null>(null);

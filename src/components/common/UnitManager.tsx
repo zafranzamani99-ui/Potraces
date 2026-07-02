@@ -286,7 +286,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
                 autoCapitalize="none"
                 onSubmitEditing={handleSave}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
 

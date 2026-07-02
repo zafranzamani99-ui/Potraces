@@ -14,17 +14,18 @@ import {
   InteractionManager,
   Image,
   Dimensions,
-  KeyboardAvoidingView,
   Platform,
   Linking,
   Share,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
+import SettingRow from '../../components/common/SettingRow';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -35,6 +36,7 @@ import { usePremiumStore } from '../../store/premiumStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useReceiptStore } from '../../store/receiptStore';
 import { exportTransactionsCsv, exportWalletsCsv, exportSubscriptionsCsv, exportReceiptsCsv } from '../../services/exportService';
+import { isLiveAudioAvailable } from '../../services/liveAudioSource';
 import { exportMonthlyStatement, exportTaxYearPdf } from '../../services/pdfExport';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
@@ -467,9 +469,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
 const Settings: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-  const route = useRoute<RouteProp<{ Settings: { scrollTo?: string } }, 'Settings'>>();
+  const route = useRoute();
+  const section = (route.params as any)?.section as ('preferences' | 'money' | 'data' | 'security' | 'about' | undefined);
   const { showToast } = useToast();
   const [shortcutModalVisible, setShortcutModalVisible] = useState(false);
+  const [businessInfoVisible, setBusinessInfoVisible] = useState(false);
   const QUICK_ADD_LINK = 'potraces://add';
   const mode = useAppStore((state) => state.mode);
   const setMode = useAppStore((state) => state.setMode);
@@ -488,6 +492,17 @@ const Settings: React.FC = () => {
   const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
   const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment'>('expense');
   const [unitManagerVisible, setUnitManagerVisible] = useState(false);
+
+  // Malay voice (cloud) — works on any phone with no on-device model download. Toggling it on is the
+  // consent to send a short clip to the AI for transcription.
+  const malayCloudVoice = useSettingsStore((s) => s.malayCloudVoice);
+  const setMalayCloudVoice = useSettingsStore((s) => s.setMalayCloudVoice);
+  const setVoiceCloudNoticeSeen = useSettingsStore((s) => s.setVoiceCloudNoticeSeen);
+  // Live Malay (Stage 2): true words-as-you-speak. The toggle only appears once the native streaming
+  // module is built into the app (isLiveAudioAvailable); until then it stays dormant + hidden.
+  const malayLiveStreaming = useSettingsStore((s) => s.malayLiveStreaming);
+  const setMalayLiveStreaming = useSettingsStore((s) => s.setMalayLiveStreaming);
+  const liveAudioReady = isLiveAudioAvailable();
   const [paymentMethodManagerVisible, setPaymentMethodManagerVisible] = useState(false);
   const [qrActionIndex, setQrActionIndex] = useState<number | null>(null);
   const [qrLoadingIndex, setQrLoadingIndex] = useState<number | null>(null);
@@ -551,7 +566,7 @@ const Settings: React.FC = () => {
 
   useEffect(() => {
     if (ready) return;
-    if (route.params?.scrollTo) {
+    if ((route.params as any)?.scrollTo) {
       setReady(true);
       return;
     }
@@ -564,20 +579,34 @@ const Settings: React.FC = () => {
       task.cancel();
       clearTimeout(fallback);
     };
-  }, [route.params?.scrollTo]);
+  }, [(route.params as any)?.scrollTo]);
 
   useEffect(() => {
-    const target = route.params?.scrollTo;
+    const params = route.params as any;
+    const target = params?.scrollTo;
     if (!target || !ready) return;
     // Small delay to let onLayout fire after deferred sections render
     const timer = setTimeout(() => {
       if (sectionY.current[target] !== undefined) {
         scrollRef.current?.scrollTo({ y: sectionY.current[target], animated: true });
       }
-      navigation.setParams({ scrollTo: undefined });
+      navigation.setParams({ scrollTo: undefined } as never);
     }, 100);
     return () => clearTimeout(timer);
-  }, [route.params?.scrollTo, ready]);
+  }, [(route.params as any)?.scrollTo, ready]);
+
+  // Sub-page header title effect
+  useEffect(() => {
+    if (!section) return;
+    const titles: Record<string, string> = {
+      preferences: t.settings.preferences,
+      money: t.settings.moneySetup,
+      data: t.settings.data,
+      security: t.settings.security,
+      about: t.settings.aboutSection,
+    };
+    navigation.setOptions({ title: titles[section] });
+  }, [section, navigation, t]);
 
   const handleCurrencyPress = useCallback(() => {
     lightTap();
@@ -922,146 +951,376 @@ const Settings: React.FC = () => {
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
       >
-        {/* Profile */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.profile}</Text>
-        <Card style={styles.card}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingLabelRow}>
-              <Feather name="user" size={18} color={C.textSecondary} />
-              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.name}</Text>
+        {/* ── 1. PROFILE (hub only) ── */}
+        {!section && (
+          <Card style={styles.card}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingLabelRow}>
+                <Feather name="user" size={18} color={C.textSecondary} />
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.name}</Text>
+              </View>
+              <TextInput
+                value={userName}
+                onChangeText={setUserName}
+                placeholder={t.settings.enterYourName}
+                placeholderTextColor={C.neutral}
+                style={[styles.input, { color: C.textPrimary }]}
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={withAlpha(C.accent, 0.25)}
+              />
             </View>
-            <TextInput
-              value={userName}
-              onChangeText={setUserName}
-              placeholder={t.settings.enterYourName}
-              placeholderTextColor={C.neutral}
-              style={[styles.input, { color: C.textPrimary }]}
-              returnKeyType="done"
-              onSubmitEditing={Keyboard.dismiss}
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
-            />
+          </Card>
+        )}
+
+        {/* ── 1b. MODE (hub only) ── */}
+        {!section && (
+          <>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.modeSection}</Text>
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/briefcase"
+                chipColor="#5A5320"
+                label={t.settings.businessMode}
+                sublabel={t.settings.businessModeDesc}
+                rightElement={
+                  <Switch
+                    value={businessModeEnabled}
+                    onValueChange={handleBusinessModeToggle}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                }
+              />
+              <SettingRow
+                icon="i/information-circle-outline"
+                chipColor="#6BA3BE"
+                label={t.settings.businessModeHow}
+                onPress={() => { lightTap(); setBusinessInfoVisible(true); }}
+                last
+              />
+            </Card>
+          </>
+        )}
+
+        {/* ── 2. ACCOUNT (hub only) ── */}
+        {!section && (
+          <>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.accountSection}</Text>
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/person-circle-outline"
+                chipColor="#6BA3BE"
+                label={t.auth.acctTitle}
+                sublabel={isAuthenticated ? t.auth.acctManageEntry : t.auth.acctSignInEntry}
+                onPress={() => { lightTap(); navigation.navigate('Account' as never); }}
+                last
+              />
+            </Card>
+
+            {/* Subscription & usage */}
+            <Card style={styles.card}>
+              {tier === 'premium' ? (
+                <View style={[styles.premiumStatusRow, { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md }]}>
+                  <View style={styles.premiumBadge}>
+                    <Feather name="award" size={14} color={C.onAccent} />
+                    <Text style={styles.premiumBadgeText}>{t.settings.premiumBadge}</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        t.settings.unsubscribe,
+                        t.settings.unsubscribeConfirm,
+                        [
+                          { text: t.settings.keepPremium, style: 'cancel' },
+                          {
+                            text: t.settings.unsubscribe,
+                            style: 'destructive',
+                            onPress: () => {
+                              unsubscribe();
+                              showToast(t.settings.subscriptionCancelled, 'success');
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                  >
+                    <Text style={styles.unsubscribeText}>{t.settings.cancelSubscription}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md }}>
+                  <View style={styles.usageLimits}>
+                    <View style={styles.usageRow}>
+                      <View style={styles.settingLabelRow}>
+                        <Feather name="credit-card" size={16} color={C.textSecondary} />
+                        <Text style={styles.usageLabel}>{t.settings.walletsUsage}</Text>
+                      </View>
+                      <Text style={styles.usageValue}>{walletCount}/{FREE_TIER.maxWallets}</Text>
+                    </View>
+                    <View style={styles.usageRow}>
+                      <View style={styles.settingLabelRow}>
+                        <Feather name="pie-chart" size={16} color={C.textSecondary} />
+                        <Text style={styles.usageLabel}>{t.settings.budgetsUsage}</Text>
+                      </View>
+                      <Text style={styles.usageValue}>{budgetCount}/{FREE_TIER.maxBudgets}</Text>
+                    </View>
+                    <View style={styles.usageRow}>
+                      <View style={styles.settingLabelRow}>
+                        <Feather name="camera" size={16} color={C.textSecondary} />
+                        <Text style={styles.usageLabel}>{t.settings.scansThisMonth}</Text>
+                      </View>
+                      <Text style={styles.usageValue}>{scanCount}/{FREE_TIER.maxScansPerMonth}</Text>
+                    </View>
+                    <View style={styles.usageRow}>
+                      <View style={styles.settingLabelRow}>
+                        <Feather name="cpu" size={16} color={C.textSecondary} />
+                        <Text style={styles.usageLabel}>{t.settings.aiCallsThisMonth}</Text>
+                      </View>
+                      <Text style={styles.usageValue}>{aiCallsCount}/{FREE_TIER.maxAiCallsPerMonth}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.subscribeButton}
+                    onPress={() => {
+                      subscribe();
+                      showToast(t.settings.welcomeToPremium, 'success');
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="award" size={18} color={C.onAccent} />
+                    <Text style={styles.subscribeButtonText}>
+                      {t.settings.subscribeButton
+                        .replace('{currency}', PREMIUM_CONFIG.currency)
+                        .replace('{price}', String(PREMIUM_CONFIG.price))
+                        .replace('{period}', PREMIUM_CONFIG.period)}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </Card>
+
+            {/* Refer or invite friends */}
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/gift"
+                chipColor="#4F5104"
+                label={t.settings.inviteFriends}
+                onPress={async () => {
+                  lightTap();
+                  const code = await getOrCreateReferralCode();
+                  if (!code) {
+                    Alert.alert(
+                      t.settings.signInRequired,
+                      t.settings.signInRequiredInvite,
+                    );
+                    return;
+                  }
+                  try {
+                    await Share.share({ message: referralMessage(code) });
+                  } catch {
+                    // ignore user-cancelled
+                  }
+                }}
+                last
+              />
+            </Card>
+
+            {/* ── Hub nav card ── */}
+            <Card style={styles.card}>
+              <SettingRow
+                icon="m/tune-variant"
+                chipColor="#A688B8"
+                label={t.settings.preferences}
+                onPress={() => { lightTap(); navigation.navigate({ name: 'SettingsDetail', params: { section: 'preferences' } } as never); }}
+              />
+              <SettingRow
+                icon="i/wallet"
+                chipColor="#4F5104"
+                label={t.settings.moneySetup}
+                onPress={() => { lightTap(); navigation.navigate({ name: 'SettingsDetail', params: { section: 'money' } } as never); }}
+              />
+              <SettingRow
+                icon="m/database"
+                chipColor="#6BA3BE"
+                label={t.settings.data}
+                onPress={() => { lightTap(); navigation.navigate({ name: 'SettingsDetail', params: { section: 'data' } } as never); }}
+              />
+              <SettingRow
+                icon="i/shield-checkmark"
+                chipColor="#9A6400"
+                label={t.settings.security}
+                onPress={() => { lightTap(); navigation.navigate({ name: 'SettingsDetail', params: { section: 'security' } } as never); }}
+              />
+              <SettingRow
+                icon="i/information-circle-outline"
+                chipColor="#5A5320"
+                label={t.settings.aboutSection}
+                onPress={() => { lightTap(); navigation.navigate({ name: 'SettingsDetail', params: { section: 'about' } } as never); }}
+                last
+              />
+            </Card>
+          </>
+        )}
+
+        {/* ── 3. PREFERENCES (section === 'preferences') ── */}
+        {section === 'preferences' && <>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.preferences}</Text>
+
+        {/* Appearance: theme + language pills */}
+        <Card style={styles.card}>
+          {/* Theme */}
+          <View style={{ paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xs }}>
+            <View style={styles.settingLabelRow}>
+              <Feather name="moon" size={18} color={C.textSecondary} />
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.theme}</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.lg, paddingBottom: SPACING.md }}>
+            {(['light', 'dark', 'system'] as ThemePreference[]).map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                style={{
+                  flex: 1,
+                  paddingVertical: SPACING.sm,
+                  borderRadius: RADIUS.full,
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: themePreference === opt ? C.accent : C.border,
+                  backgroundColor: themePreference === opt ? withAlpha(C.accent, 0.1) : 'transparent',
+                }}
+                onPress={() => { lightTap(); setThemePreference(opt); }}
+                activeOpacity={0.6}
+              >
+                <Text style={{
+                  fontSize: TYPOGRAPHY.size.sm,
+                  fontWeight: themePreference === opt ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.medium,
+                  color: themePreference === opt ? C.accent : C.textSecondary,
+                }}>
+                  {opt === 'light' ? t.settings.themeLight : opt === 'dark' ? t.settings.themeDark : t.settings.themeSystem}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
+
+          {/* Language */}
+          <View style={{ paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xs }}>
+            <View style={styles.settingLabelRow}>
+              <Feather name="globe" size={18} color={C.textSecondary} />
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.language}</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.lg, paddingBottom: SPACING.md }}>
+            {([{ key: 'en' as AppLanguage, label: 'English' }, { key: 'ms' as AppLanguage, label: 'Bahasa Melayu' }]).map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={{
+                  flex: 1,
+                  paddingVertical: SPACING.sm,
+                  borderRadius: RADIUS.full,
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: language === opt.key ? C.accent : C.border,
+                  backgroundColor: language === opt.key ? withAlpha(C.accent, 0.1) : 'transparent',
+                }}
+                onPress={() => { lightTap(); setLanguage(opt.key); }}
+                activeOpacity={0.6}
+              >
+                <Text style={{
+                  fontSize: TYPOGRAPHY.size.sm,
+                  fontWeight: language === opt.key ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.medium,
+                  color: language === opt.key ? C.accent : C.textSecondary,
+                }}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </Card>
 
-        {/* Preferences */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.preferences}</Text>
+        {/* Preferences toggles */}
         <Card style={styles.card}>
-          <TouchableOpacity
-            style={styles.settingRow}
+          <SettingRow
+            icon="m/cash"
+            chipColor="#4F5104"
+            label={t.settings.currency}
+            value={currency}
             onPress={handleCurrencyPress}
-            activeOpacity={0.6}
-          >
-            <View style={styles.settingLabelRow}>
-              <Feather name="dollar-sign" size={18} color={C.textSecondary} />
-              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.currency}</Text>
-            </View>
-            <View style={styles.valueRow}>
-              <Text style={[styles.settingValue, { color: C.textSecondary }]}>{currency}</Text>
-              <Feather name="chevron-right" size={18} color={C.neutral} />
-            </View>
-          </TouchableOpacity>
-
+          />
+          <SettingRow
+            icon="i/notifications"
+            chipColor="#B2780A"
+            label={t.settings.notifications}
+            sublabel={t.settings.notificationsDesc}
+            rightElement={
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={handleNotificationsToggle}
+                trackColor={{ false: C.border, true: C.positive }}
+                thumbColor={C.surface}
+              />
+            }
+          />
+          <SettingRow
+            icon="i/trending-up"
+            chipColor="#B2780A"
+            label={t.settings.spendingAlerts}
+            sublabel={t.settings.spendingAlertsDesc}
+            rightElement={
+              <Switch
+                value={spendingAlertsEnabled}
+                onValueChange={(v) => { lightTap(); setSpendingAlertsEnabled(v); }}
+                trackColor={{ false: C.border, true: C.positive }}
+                thumbColor={C.surface}
+              />
+            }
+          />
+          <SettingRow
+            icon="m/vibrate"
+            chipColor="#6BA3BE"
+            label={t.settings.hapticFeedback}
+            rightElement={
+              <Switch
+                value={hapticEnabled}
+                onValueChange={handleHapticToggle}
+                trackColor={{ false: C.border, true: C.positive }}
+                thumbColor={C.surface}
+              />
+            }
+          />
+          <SettingRow
+            icon="i/checkmark-circle"
+            chipColor="#4F5104"
+            label={t.settings.quickAddConfirm}
+            sublabel={t.settings.quickAddConfirmDesc}
+            rightElement={
+              <Switch
+                value={quickAddConfirm}
+                onValueChange={(v) => { lightTap(); setQuickAddConfirm(v); }}
+                trackColor={{ false: C.border, true: C.positive }}
+                thumbColor={C.surface}
+              />
+            }
+          />
+          <SettingRow
+            icon="i/add-circle"
+            chipColor="#9A6400"
+            label={t.settings.quickAddTitle}
+            sublabel={t.settings.quickAddSubtitle}
+            onPress={() => { lightTap(); setShortcutModalVisible(true); }}
+          />
           {businessModeEnabled && (
-            <>
-              <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-              <TouchableOpacity
-                style={styles.settingRow}
-                onPress={handleDefaultModePress}
-                activeOpacity={0.6}
-              >
-                <View style={styles.settingLabelRow}>
-                  <Feather name="layout" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.defaultMode}</Text>
-                </View>
-                <View style={styles.valueRow}>
-                  <Text style={[styles.settingValue, { color: C.textSecondary }]}>
-                    {defaultMode === 'personal' ? t.settings.personal : t.settings.business}
-                  </Text>
-                  <Feather name="chevron-right" size={18} color={C.neutral} />
-                </View>
-              </TouchableOpacity>
-            </>
+            <SettingRow
+              icon="m/swap-horizontal"
+              chipColor="#5A5320"
+              label={t.settings.defaultMode}
+              value={defaultMode === 'personal' ? t.settings.personal : t.settings.business}
+              onPress={handleDefaultModePress}
+            />
           )}
-
-          <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-          <View style={styles.settingRow}>
-            <View style={styles.settingLabelRow}>
-              <Feather name="smartphone" size={18} color={C.textSecondary} />
-              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.hapticFeedback}</Text>
-            </View>
-            <Switch
-              value={hapticEnabled}
-              onValueChange={handleHapticToggle}
-              trackColor={{ false: C.border, true: C.positive }}
-              thumbColor={C.surface}
-            />
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.settingLabelRow}>
-                <Feather name="bell" size={18} color={C.textSecondary} />
-                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.notifications}</Text>
-              </View>
-              <Text style={styles.settingDescription}>
-                {t.settings.notificationsDesc}
-              </Text>
-            </View>
-            <Switch
-              value={notificationsEnabled}
-              onValueChange={handleNotificationsToggle}
-              trackColor={{ false: C.border, true: C.positive }}
-              thumbColor={C.surface}
-            />
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.settingLabelRow}>
-                <Feather name="trending-up" size={18} color={C.textSecondary} />
-                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.spendingAlerts}</Text>
-              </View>
-              <Text style={styles.settingDescription}>
-                {t.settings.spendingAlertsDesc}
-              </Text>
-            </View>
-            <Switch
-              value={spendingAlertsEnabled}
-              onValueChange={(v) => { lightTap(); setSpendingAlertsEnabled(v); }}
-              trackColor={{ false: C.border, true: C.positive }}
-              thumbColor={C.surface}
-            />
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.settingLabelRow}>
-                <Feather name="check-circle" size={18} color={C.textSecondary} />
-                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.quickAddConfirm}</Text>
-              </View>
-              <Text style={styles.settingDescription}>
-                {t.settings.quickAddConfirmDesc}
-              </Text>
-            </View>
-            <Switch
-              value={quickAddConfirm}
-              onValueChange={(v) => { lightTap(); setQuickAddConfirm(v); }}
-              trackColor={{ false: C.border, true: C.positive }}
-              thumbColor={C.surface}
-            />
-          </View>
-
-          {/* Card payments (Tap to Pay) — iOS only. Status reflects why it's
-              unavailable when the toggle is on but a gate isn't met. */}
           {Platform.OS === 'ios' && (() => {
             const av = tapToPayAvailable();
             const status = !tapToPayEnabled
@@ -1075,234 +1334,229 @@ const Settings: React.FC = () => {
                         : av.reason === 'platform' ? t.tapToPay.statusPlatform
                           : t.tapToPay.statusFlag;
             return (
-              <>
-                <View style={[styles.divider, { backgroundColor: C.border }]} />
-                <View style={styles.settingRow}>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.settingLabelRow}>
-                      <Feather name="wifi" size={18} color={C.textSecondary} />
-                      <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.tapToPay.settingsTitle}</Text>
-                    </View>
-                    <Text style={styles.settingDescription}>{status}</Text>
-                  </View>
+              <SettingRow
+                icon="i/card"
+                chipColor="#6BA3BE"
+                label={t.tapToPay.settingsTitle}
+                sublabel={status}
+                rightElement={
                   <Switch
                     value={tapToPayEnabled}
                     onValueChange={(v) => { lightTap(); setTapToPayEnabled(v); }}
                     trackColor={{ false: C.border, true: C.positive }}
                     thumbColor={C.surface}
                   />
-                </View>
-              </>
+                }
+                last
+              />
             );
           })()}
-
-          <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.settingLabelRow}>
-                <Feather name="briefcase" size={18} color={C.textSecondary} />
-                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.businessMode}</Text>
-              </View>
-              <Text style={styles.settingDescription}>
-                {t.settings.businessModeDesc}
-              </Text>
-            </View>
-            <Switch
-              value={businessModeEnabled}
-              onValueChange={handleBusinessModeToggle}
-              trackColor={{ false: C.border, true: C.positive }}
-              thumbColor={C.surface}
-            />
-          </View>
-        </Card>
-
-        {/* Security */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.security}</Text>
-        <Card style={styles.card}>
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.settingLabelRow}>
-                <Feather name="lock" size={18} color={C.textSecondary} />
-                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.appLock}</Text>
-              </View>
-              <Text style={styles.settingDescription}>
-                {t.settings.appLockDesc}
-              </Text>
-            </View>
-            <Switch
-              value={biometricLockEnabled}
-              onValueChange={handleBiometricToggle}
-              trackColor={{ false: C.border, true: C.positive }}
-              thumbColor={C.surface}
-            />
-          </View>
-
-          {biometricLockEnabled && (
-            <>
-              <View style={[styles.divider, { backgroundColor: C.border }]} />
-              <View style={styles.settingRow}>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.settingLabelRow}>
-                    <Feather name="clock" size={18} color={C.textSecondary} />
-                    <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.lockAfter}</Text>
-                  </View>
-                  <Text style={styles.settingDescription}>
-                    {t.settings.lockAfterDesc}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: SPACING.xs }}>
-                  {[0, 1, 5, 15].map((m) => (
-                    <TouchableOpacity
-                      key={m}
-                      onPress={() => { lightTap(); setBiometricLockTimeoutMin(m); }}
-                      style={{
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                        borderRadius: RADIUS.full,
-                        borderWidth: 1,
-                        borderColor: biometricLockTimeoutMin === m ? C.accent : C.border,
-                        backgroundColor: biometricLockTimeoutMin === m ? withAlpha(C.accent, 0.1) : 'transparent',
-                      }}
-                    >
-                      <Text style={{
-                        fontSize: TYPOGRAPHY.size.xs,
-                        fontWeight: TYPOGRAPHY.weight.medium,
-                        color: biometricLockTimeoutMin === m ? C.accent : C.textSecondary,
-                      }}>{m === 0 ? t.settings.always : `${m}m`}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            </>
+          {Platform.OS !== 'ios' && (
+            <View style={{ height: 0 }} />
           )}
         </Card>
 
-        {/* Account & cloud backup */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.auth.acctTitle}</Text>
+        </>}
+
+        {/* ── 4. MONEY SETUP (section === 'money') ── */}
+        {section === 'money' && <>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.moneySetup}</Text>
         <Card style={styles.card}>
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={() => { lightTap(); navigation.navigate('Account' as never); }}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={t.auth.acctTitle}
-          >
-            <View style={{ flex: 1 }}>
+          <SettingRow
+            icon="i/wallet"
+            chipColor="#4F5104"
+            label={t.settings.wallets}
+            onPress={() => { lightTap(); navigation.navigate('WalletManagement'); }}
+          />
+
+          {Platform.OS === 'android' && (
+            <SettingRow
+              icon="i/mic"
+              chipColor="#8B7355"
+              label={t.settings.malayVoice}
+              sublabel={t.settings.malayVoiceCloudDesc}
+              rightElement={
+                <Switch
+                  value={malayCloudVoice}
+                  onValueChange={(v) => {
+                    lightTap();
+                    setMalayCloudVoice(v);
+                    if (v) setVoiceCloudNoticeSeen(true); // turning it on IS the cloud-use consent
+                  }}
+                  trackColor={{ false: C.border, true: C.positive }}
+                  thumbColor={C.surface}
+                />
+              }
+            />
+          )}
+
+          {Platform.OS === 'android' && liveAudioReady && (
+            <SettingRow
+              icon="i/mic"
+              chipColor="#4F5104"
+              label={t.settings.liveMalayVoice}
+              sublabel={t.settings.liveMalayVoiceDesc}
+              rightElement={
+                <Switch
+                  value={malayLiveStreaming}
+                  onValueChange={(v) => {
+                    lightTap();
+                    setMalayLiveStreaming(v);
+                    if (v) setVoiceCloudNoticeSeen(true); // turning it on IS the cloud-use consent
+                  }}
+                  trackColor={{ false: C.border, true: C.positive }}
+                  thumbColor={C.surface}
+                />
+              }
+            />
+          )}
+
+          {ready && (mode === 'personal' || (incomeType !== 'seller' && incomeType !== 'stall')) && (
+            <View onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>
+              <SettingRow
+                icon="i/pricetags"
+                chipColor="#9A6400"
+                label={t.settings.expenseCategories}
+                onPress={() => {
+                  lightTap();
+                  setCategoryManagerType('expense');
+                  setCategoryManagerVisible(true);
+                }}
+              />
+              <SettingRow
+                icon="i/trending-up"
+                chipColor="#4F5104"
+                label={t.settings.incomeCategories}
+                onPress={() => {
+                  lightTap();
+                  setCategoryManagerType('income');
+                  setCategoryManagerVisible(true);
+                }}
+              />
+              <SettingRow
+                icon="i/pie-chart"
+                chipColor="#A688B8"
+                label={t.settings.investmentCategories}
+                onPress={() => {
+                  lightTap();
+                  setCategoryManagerType('investment');
+                  setCategoryManagerVisible(true);
+                }}
+              />
+              <SettingRow
+                icon="i/card"
+                chipColor="#6BA3BE"
+                label={t.settings.paymentMethods}
+                onPress={() => {
+                  lightTap();
+                  setPaymentMethodManagerVisible(true);
+                }}
+              />
+            </View>
+          )}
+
+          {ready && mode === 'business' && (incomeType === 'seller' || incomeType === 'stall') && (
+            <SettingRow
+              icon="i/cube-outline"
+              chipColor="#9A6400"
+              label={t.settings.manageUnits}
+              onPress={() => { lightTap(); setUnitManagerVisible(true); }}
+            />
+          )}
+
+          {/* Payment QR — keeps its sectionY onLayout */}
+          <View onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }}>
+            <View style={[styles.divider, { backgroundColor: C.border }]} />
+            <View style={{ paddingHorizontal: SPACING.lg, paddingTop: SPACING.md }}>
               <View style={styles.settingLabelRow}>
-                <Feather name="cloud" size={18} color={C.textSecondary} />
-                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.auth.acctTitle}</Text>
+                <View style={{ width: 34, height: 34, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha('#B2780A', isDark ? 0.2 : 0.12) }}>
+                  <Feather name="credit-card" size={18} color="#B2780A" />
+                </View>
+                <Text style={[styles.settingLabel, { color: C.textPrimary, marginLeft: 0 }]}>{t.settings.paymentQr}</Text>
               </View>
-              <Text style={styles.settingDescription}>
-                {isAuthenticated ? t.auth.acctManageEntry : t.auth.acctSignInEntry}
-              </Text>
+              <Text style={[styles.qrSubtitle, { marginTop: SPACING.sm }]}>{t.settings.qrSubtitle}</Text>
             </View>
-            <Feather name="chevron-right" size={20} color={C.textMuted} />
-          </TouchableOpacity>
-        </Card>
-
-        {/* Appearance */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.appearance}</Text>
-        <Card style={styles.card}>
-          {/* Theme */}
-          <View style={styles.settingRow}>
-            <View style={styles.settingLabelRow}>
-              <Feather name="moon" size={18} color={C.textSecondary} />
-              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>
-                {t.settings.theme}
-              </Text>
+            <View style={[styles.qrSlots, { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.md }]}>
+              {[0, 1].map((idx) => {
+                const qr = paymentQrs[idx];
+                return (
+                  <View key={idx} style={styles.qrSlot}>
+                    {qr ? (
+                      <TouchableOpacity
+                        style={styles.qrSlotFilled}
+                        onPress={() => setQrPreviewIndex(idx)}
+                        onLongPress={() => handleQrLongPress(idx)}
+                        delayLongPress={400}
+                        activeOpacity={0.7}
+                        disabled={qrLoadingIndex !== null}
+                      >
+                        <View style={styles.qrSlotIcon}>
+                          {qrLoadingIndex === idx ? (
+                            <ActivityIndicator size="small" color={C.accent} />
+                          ) : (
+                            <Feather name="check-circle" size={20} color={C.accent} />
+                          )}
+                        </View>
+                        <Text style={styles.qrSlotLabel} numberOfLines={1}>
+                          {qrLoadingIndex === idx ? t.settings.qrOpening : qr.label}
+                        </Text>
+                        {qrLoadingIndex !== idx && (
+                          <Feather name="more-vertical" size={16} color={C.textMuted} />
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.qrSlotEmpty}
+                        onPress={() => handlePickQrImage()}
+                        activeOpacity={0.6}
+                        disabled={qrLoadingIndex !== null}
+                      >
+                        {qrLoadingIndex === idx ? (
+                          <ActivityIndicator size="small" color={C.accent} />
+                        ) : (
+                          <Feather name="plus" size={22} color={C.accent} />
+                        )}
+                        <Text style={styles.qrSlotAddText}>
+                          {qrLoadingIndex === idx ? t.settings.qrOpening : t.settings.addQrShort}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
             </View>
-          </View>
-          <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
-            {(['light', 'dark', 'system'] as ThemePreference[]).map((opt) => (
-              <TouchableOpacity
-                key={opt}
-                style={[
-                  {
-                    flex: 1,
-                    paddingVertical: SPACING.sm,
-                    borderRadius: RADIUS.full,
-                    alignItems: 'center',
-                    borderWidth: 1,
-                    borderColor: themePreference === opt ? C.accent : C.border,
-                    backgroundColor: themePreference === opt ? withAlpha(C.accent, 0.1) : 'transparent',
-                  },
-                ]}
-                onPress={() => {
-                  lightTap();
-                  setThemePreference(opt);
-                }}
-                activeOpacity={0.6}
-              >
-                <Text
-                  style={{
-                    fontSize: TYPOGRAPHY.size.sm,
-                    fontWeight: themePreference === opt ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.medium,
-                    color: themePreference === opt ? C.accent : C.textSecondary,
-                  }}
-                >
-                  {opt === 'light' ? t.settings.themeLight : opt === 'dark' ? t.settings.themeDark : t.settings.themeSystem}
+            {paymentQrs.length < 2 && (
+              <View style={{ paddingHorizontal: SPACING.lg, paddingBottom: SPACING.sm }}>
+                <Button
+                  title={t.qrPay.scanStandee}
+                  onPress={() => { lightTap(); setScanModalVisible(true); }}
+                  variant="outline"
+                  icon="camera"
+                  fullWidth
+                  style={{ marginTop: SPACING.xs }}
+                />
+                <Text style={[styles.qrSubtitle, { marginTop: SPACING.sm, marginBottom: 0 }]}>
+                  {t.qrPay.scanStandeeHint}
                 </Text>
-              </TouchableOpacity>
-            ))}
+              </View>
+            )}
+            <Text style={[styles.qrSubtitle, { marginHorizontal: SPACING.lg, marginTop: SPACING.xs, marginBottom: SPACING.md }]}>
+              {t.qrPay.bankAppNote}
+            </Text>
           </View>
 
+          {/* Echo visibility */}
           <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-          {/* Language */}
-          <View style={styles.settingRow}>
+          <View style={{ paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xs }}>
             <View style={styles.settingLabelRow}>
-              <Feather name="globe" size={18} color={C.textSecondary} />
-              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>
-                {t.settings.language}
-              </Text>
+              <View style={{ width: 34, height: 34, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha('#B2780A', isDark ? 0.2 : 0.12) }}>
+                <Feather name="zap" size={18} color="#B2780A" />
+              </View>
+              <Text style={[styles.settingLabel, { color: C.textPrimary, marginLeft: 0 }]}>{t.settings.echoVisibility}</Text>
             </View>
           </View>
-          <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-            {([{ key: 'en' as AppLanguage, label: 'English' }, { key: 'ms' as AppLanguage, label: 'Bahasa Melayu' }]).map((opt) => (
-              <TouchableOpacity
-                key={opt.key}
-                style={[
-                  {
-                    flex: 1,
-                    paddingVertical: SPACING.sm,
-                    borderRadius: RADIUS.full,
-                    alignItems: 'center',
-                    borderWidth: 1,
-                    borderColor: language === opt.key ? C.accent : C.border,
-                    backgroundColor: language === opt.key ? withAlpha(C.accent, 0.1) : 'transparent',
-                  },
-                ]}
-                onPress={() => {
-                  lightTap();
-                  setLanguage(opt.key);
-                }}
-                activeOpacity={0.6}
-              >
-                <Text
-                  style={{
-                    fontSize: TYPOGRAPHY.size.sm,
-                    fontWeight: language === opt.key ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.medium,
-                    color: language === opt.key ? C.accent : C.textSecondary,
-                  }}
-                >
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-          {/* Echo assistant visibility */}
-          <View style={[styles.settingRow, { paddingBottom: 4 }]}>
-            <View style={styles.settingLabelRow}>
-              <Feather name="zap" size={18} color={C.textSecondary} />
-              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.echoVisibility}</Text>
-            </View>
-          </View>
-          <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: C.textSecondary, paddingLeft: 26 }]}>{t.settings.echoOnWallets}</Text>
+          <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg }]}>
+            <Text style={[styles.settingLabel, { color: C.textSecondary, flex: 1 }]}>{t.settings.echoOnWallets}</Text>
             <Switch
               value={!walletEchoHidden}
               onValueChange={(v) => { lightTap(); setWalletEchoHidden(!v); }}
@@ -1310,8 +1564,8 @@ const Settings: React.FC = () => {
               thumbColor={C.surface}
             />
           </View>
-          <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: C.textSecondary, paddingLeft: 26 }]}>{t.settings.echoOnBudgets}</Text>
+          <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg }]}>
+            <Text style={[styles.settingLabel, { color: C.textSecondary, flex: 1 }]}>{t.settings.echoOnBudgets}</Text>
             <Switch
               value={!budgetEchoHidden}
               onValueChange={(v) => { lightTap(); setBudgetEchoHidden(!v); }}
@@ -1319,8 +1573,8 @@ const Settings: React.FC = () => {
               thumbColor={C.surface}
             />
           </View>
-          <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: C.textSecondary, paddingLeft: 26 }]}>{t.settings.echoOnCommitments}</Text>
+          <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg }]}>
+            <Text style={[styles.settingLabel, { color: C.textSecondary, flex: 1 }]}>{t.settings.echoOnCommitments}</Text>
             <Switch
               value={!commitmentEchoHidden}
               onValueChange={(v) => { lightTap(); setCommitmentEchoHidden(!v); }}
@@ -1328,10 +1582,10 @@ const Settings: React.FC = () => {
               thumbColor={C.surface}
             />
           </View>
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1, paddingLeft: 26, paddingRight: 12 }}>
+          <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg }]}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
               <Text style={[styles.settingLabel, { color: C.textSecondary }]}>{t.settings.echoCheckin}</Text>
-              <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{t.settings.echoCheckinDesc}</Text>
+              <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2 }}>{t.settings.echoCheckinDesc}</Text>
             </View>
             <Switch
               value={echoDailyCheckin}
@@ -1342,486 +1596,215 @@ const Settings: React.FC = () => {
           </View>
         </Card>
 
-        {/* Quick add shortcut (Back Tap / Siri / Shortcuts) */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.quickAddShortcut}</Text>
+        {/* ── 5. BUSINESS (only when there's business config to show) ── */}
+        {ready && businessModeEnabled && mode === 'business' && incomeType !== 'seller' && (
+          <>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.businessSection}</Text>
+            <Card style={styles.card}>
+              <SettingRow
+                icon="m/storefront"
+                chipColor="#9A6400"
+                label={t.settings.changeIncomeType}
+                value={incomeType || t.settings.notSet}
+                onPress={() => { lightTap(); useBusinessStore.getState().resetSetup(); }}
+                last
+              />
+            </Card>
+          </>
+        )}
+        </>}
+
+        {/* ── 6. SECURITY & PRIVACY (section === 'security') ── */}
+        {section === 'security' && <>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.security}</Text>
         <Card style={styles.card}>
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={() => { lightTap(); setShortcutModalVisible(true); }}
-            activeOpacity={0.6}
-            accessibilityRole="button"
-            accessibilityLabel={t.settings.quickAddTitle}
-          >
-            <View style={[styles.settingLabelRow, { flex: 1 }]}>
-              <Feather name="smartphone" size={18} color={C.textSecondary} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.quickAddTitle}</Text>
-                <Text style={[styles.settingDescription, { color: C.textSecondary, marginLeft: 0 }]}>{t.settings.quickAddSubtitle}</Text>
+          <SettingRow
+            icon="i/lock-closed"
+            chipColor="#6BA3BE"
+            label={t.settings.appLock}
+            sublabel={t.settings.appLockDesc}
+            rightElement={
+              <Switch
+                value={biometricLockEnabled}
+                onValueChange={handleBiometricToggle}
+                trackColor={{ false: C.border, true: C.positive }}
+                thumbColor={C.surface}
+              />
+            }
+            last={!biometricLockEnabled}
+          />
+          {biometricLockEnabled && (
+            <View style={{ paddingHorizontal: SPACING.lg, paddingBottom: SPACING.md }}>
+              <Text style={[styles.settingLabel, { color: C.textSecondary, marginBottom: SPACING.sm }]}>{t.settings.lockAfter}</Text>
+              <View style={{ flexDirection: 'row', gap: SPACING.xs }}>
+                {[0, 1, 5, 15].map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    onPress={() => { lightTap(); setBiometricLockTimeoutMin(m); }}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: RADIUS.full,
+                      borderWidth: 1,
+                      borderColor: biometricLockTimeoutMin === m ? C.accent : C.border,
+                      backgroundColor: biometricLockTimeoutMin === m ? withAlpha(C.accent, 0.1) : 'transparent',
+                    }}
+                  >
+                    <Text style={{
+                      fontSize: TYPOGRAPHY.size.xs,
+                      fontWeight: TYPOGRAPHY.weight.medium,
+                      color: biometricLockTimeoutMin === m ? C.accent : C.textSecondary,
+                    }}>{m === 0 ? t.settings.always : `${m}m`}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
-            <Feather name="chevron-right" size={20} color={C.textMuted} />
-          </TouchableOpacity>
-        </Card>
-
-        {ready && <>
-        {/* Business Income Type — seller mode has this on the Manage screen instead */}
-        {businessModeEnabled && mode === 'business' && incomeType !== 'seller' && (
-          <>
-            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.businessSetup}</Text>
-            <Card style={styles.card}>
-              <TouchableOpacity
-                style={styles.settingRow}
-                onPress={() => {
-                  lightTap();
-                  useBusinessStore.getState().resetSetup();
-                }}
-                activeOpacity={0.6}
-              >
-                <View style={styles.settingLabelRow}>
-                  <Feather name="briefcase" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.changeIncomeType}</Text>
-                </View>
-                <View style={styles.valueRow}>
-                  <Text style={[styles.settingValue, { color: C.textSecondary }]}>
-                    {incomeType || t.settings.notSet}
-                  </Text>
-                  <Feather name="chevron-right" size={18} color={C.neutral} />
-                </View>
-              </TouchableOpacity>
-            </Card>
-          </>
-        )}
-
-        {/* Categories — show in personal mode, hide for seller & stall in business mode */}
-        {(mode === 'personal' || (incomeType !== 'seller' && incomeType !== 'stall')) && (
-          <>
-            <Text style={[styles.sectionHeader, { color: C.textSecondary }]} onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>{t.settings.categories}</Text>
-            <Card style={styles.card}>
-              <TouchableOpacity
-                style={styles.settingRow}
-                onPress={() => {
-                  lightTap();
-                  setCategoryManagerType('expense');
-                  setCategoryManagerVisible(true);
-                }}
-                activeOpacity={0.6}
-              >
-                <View style={styles.settingLabelRow}>
-                  <Feather name="tag" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.expenseCategories}</Text>
-                </View>
-                <Feather name="chevron-right" size={18} color={C.neutral} />
-              </TouchableOpacity>
-
-              <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-              <TouchableOpacity
-                style={styles.settingRow}
-                onPress={() => {
-                  lightTap();
-                  setCategoryManagerType('income');
-                  setCategoryManagerVisible(true);
-                }}
-                activeOpacity={0.6}
-              >
-                <View style={styles.settingLabelRow}>
-                  <Feather name="trending-up" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.incomeCategories}</Text>
-                </View>
-                <Feather name="chevron-right" size={18} color={C.neutral} />
-              </TouchableOpacity>
-
-              <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-              <TouchableOpacity
-                style={styles.settingRow}
-                onPress={() => {
-                  lightTap();
-                  setCategoryManagerType('investment');
-                  setCategoryManagerVisible(true);
-                }}
-                activeOpacity={0.6}
-              >
-                <View style={styles.settingLabelRow}>
-                  <Feather name="pie-chart" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.investmentCategories}</Text>
-                </View>
-                <Feather name="chevron-right" size={18} color={C.neutral} />
-              </TouchableOpacity>
-
-              <View style={[styles.divider, { backgroundColor: C.border }]} />
-
-              <TouchableOpacity
-                style={styles.settingRow}
-                onPress={() => {
-                  lightTap();
-                  setPaymentMethodManagerVisible(true);
-                }}
-                activeOpacity={0.6}
-              >
-                <View style={styles.settingLabelRow}>
-                  <Feather name="credit-card" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.paymentMethods}</Text>
-                </View>
-                <Feather name="chevron-right" size={18} color={C.neutral} />
-              </TouchableOpacity>
-            </Card>
-          </>
-        )}
-
-        {/* Product Units — only for seller & stall in business mode */}
-        {mode === 'business' && (incomeType === 'seller' || incomeType === 'stall') && (
-          <>
-            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.productUnits}</Text>
-            <Card style={styles.card}>
-              <TouchableOpacity
-                style={styles.settingRow}
-                onPress={() => {
-                  lightTap();
-                  setUnitManagerVisible(true);
-                }}
-                activeOpacity={0.6}
-              >
-                <View style={styles.settingLabelRow}>
-                  <Feather name="box" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.manageUnits}</Text>
-                </View>
-                <Feather name="chevron-right" size={18} color={C.neutral} />
-              </TouchableOpacity>
-            </Card>
-          </>
-        )}
-
-        {categoryManagerVisible && (
-        <CategoryManager
-          visible
-          onClose={() => setCategoryManagerVisible(false)}
-          type={categoryManagerType}
-          mode={mode}
-        />
-        )}
-
-        {unitManagerVisible && (
-        <UnitManager
-          visible
-          onClose={() => setUnitManagerVisible(false)}
-        />
-        )}
-
-        {paymentMethodManagerVisible && (
-        <PaymentMethodManager
-          visible
-          onClose={() => setPaymentMethodManagerVisible(false)}
-        />
-        )}
-
-        <QrCaptureModal
-          visible={scanModalVisible}
-          onClose={() => setScanModalVisible(false)}
-          onCaptured={handleScannedQr}
-        />
-
-        {/* Subscription */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.subscription}</Text>
-        <Card style={styles.card}>
-          {tier === 'premium' ? (
-            <View style={styles.premiumStatusRow}>
-              <View style={styles.premiumBadge}>
-                <Feather name="award" size={14} color={C.onAccent} />
-                <Text style={styles.premiumBadgeText}>{t.settings.premiumBadge}</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  Alert.alert(
-                    t.settings.unsubscribe,
-                    t.settings.unsubscribeConfirm,
-                    [
-                      { text: t.settings.keepPremium, style: 'cancel' },
-                      {
-                        text: t.settings.unsubscribe,
-                        style: 'destructive',
-                        onPress: () => {
-                          unsubscribe();
-                          showToast(t.settings.subscriptionCancelled, 'success');
-                        },
-                      },
-                    ]
-                  );
-                }}
-              >
-                <Text style={styles.unsubscribeText}>{t.settings.cancelSubscription}</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <View style={styles.usageLimits}>
-                <View style={styles.usageRow}>
-                  <View style={styles.settingLabelRow}>
-                    <Feather name="credit-card" size={16} color={C.textSecondary} />
-                    <Text style={styles.usageLabel}>{t.settings.walletsUsage}</Text>
-                  </View>
-                  <Text style={styles.usageValue}>{walletCount}/{FREE_TIER.maxWallets}</Text>
-                </View>
-                <View style={styles.usageRow}>
-                  <View style={styles.settingLabelRow}>
-                    <Feather name="pie-chart" size={16} color={C.textSecondary} />
-                    <Text style={styles.usageLabel}>{t.settings.budgetsUsage}</Text>
-                  </View>
-                  <Text style={styles.usageValue}>{budgetCount}/{FREE_TIER.maxBudgets}</Text>
-                </View>
-                <View style={styles.usageRow}>
-                  <View style={styles.settingLabelRow}>
-                    <Feather name="camera" size={16} color={C.textSecondary} />
-                    <Text style={styles.usageLabel}>{t.settings.scansThisMonth}</Text>
-                  </View>
-                  <Text style={styles.usageValue}>{scanCount}/{FREE_TIER.maxScansPerMonth}</Text>
-                </View>
-                <View style={styles.usageRow}>
-                  <View style={styles.settingLabelRow}>
-                    <Feather name="cpu" size={16} color={C.textSecondary} />
-                    <Text style={styles.usageLabel}>{t.settings.aiCallsThisMonth}</Text>
-                  </View>
-                  <Text style={styles.usageValue}>{aiCallsCount}/{FREE_TIER.maxAiCallsPerMonth}</Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                style={styles.subscribeButton}
-                onPress={() => {
-                  subscribe();
-                  showToast(t.settings.welcomeToPremium, 'success');
-                }}
-                activeOpacity={0.7}
-              >
-                <Feather name="award" size={18} color={C.onAccent} />
-                <Text style={styles.subscribeButtonText}>
-                  {t.settings.subscribeButton
-                    .replace('{currency}', PREMIUM_CONFIG.currency)
-                    .replace('{price}', String(PREMIUM_CONFIG.price))
-                    .replace('{period}', PREMIUM_CONFIG.period)}
-                </Text>
-              </TouchableOpacity>
-            </>
           )}
-        </Card>
-
-        {/* Wallets */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.wallets}</Text>
-        <Card style={styles.card}>
-          <Button
-            title={t.settings.manageWallets}
-            onPress={() => {
-              lightTap();
-              navigation.navigate('WalletManagement');
-            }}
-            variant="outline"
-            icon="credit-card"
-            fullWidth
+          <SettingRow
+            icon="i/shield-checkmark"
+            chipColor="#4F5104"
+            label={t.settings.privacyPolicy}
+            onPress={() => Linking.openURL('https://jejakbaki.my/privacy.html')}
+            external
+            last
           />
         </Card>
 
-        {/* Payment QR */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]} onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }}>{t.settings.paymentQr}</Text>
-        <Card style={styles.card}>
-          <Text style={styles.qrSubtitle}>
-            {t.settings.qrSubtitle}
-          </Text>
-          <View style={styles.qrSlots}>
-            {[0, 1].map((idx) => {
-              const qr = paymentQrs[idx];
-              return (
-                <View key={idx} style={styles.qrSlot}>
-                  {qr ? (
-                    <TouchableOpacity
-                      style={styles.qrSlotFilled}
-                      onPress={() => setQrPreviewIndex(idx)}
-                      onLongPress={() => handleQrLongPress(idx)}
-                      delayLongPress={400}
-                      activeOpacity={0.7}
-                      disabled={qrLoadingIndex !== null}
-                    >
-                      <View style={styles.qrSlotIcon}>
-                        {qrLoadingIndex === idx ? (
-                          <ActivityIndicator size="small" color={C.accent} />
-                        ) : (
-                          <Feather name="check-circle" size={20} color={C.accent} />
-                        )}
-                      </View>
-                      <Text style={styles.qrSlotLabel} numberOfLines={1}>
-                        {qrLoadingIndex === idx ? t.settings.qrOpening : qr.label}
-                      </Text>
-                      {qrLoadingIndex !== idx && (
-                        <Feather name="more-vertical" size={16} color={C.textMuted} />
-                      )}
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.qrSlotEmpty}
-                      onPress={() => handlePickQrImage()}
-                      activeOpacity={0.6}
-                      disabled={qrLoadingIndex !== null}
-                    >
-                      {qrLoadingIndex === idx ? (
-                        <ActivityIndicator size="small" color={C.accent} />
-                      ) : (
-                        <Feather name="plus" size={22} color={C.accent} />
-                      )}
-                      <Text style={styles.qrSlotAddText}>
-                        {qrLoadingIndex === idx ? t.settings.qrOpening : t.settings.addQrShort}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-          {paymentQrs.length < 2 && (
-            <>
-              <Button
-                title={t.qrPay.scanStandee}
-                onPress={() => { lightTap(); setScanModalVisible(true); }}
-                variant="outline"
-                icon="camera"
-                fullWidth
-                style={{ marginTop: SPACING.md }}
-              />
-              <Text style={[styles.qrSubtitle, { marginTop: SPACING.sm, marginBottom: 0 }]}>
-                {t.qrPay.scanStandeeHint}
-              </Text>
-            </>
-          )}
-          <Text style={[styles.qrSubtitle, { marginTop: SPACING.md, marginBottom: 0 }]}>
-            {t.qrPay.bankAppNote}
-          </Text>
-        </Card>
+        </>}
 
-        {/* Data */}
+        {/* ── 7. DATA (section === 'data') ── */}
+        {section === 'data' && <>
         <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.data}</Text>
         <Card style={styles.card}>
-          <Button
-            title={t.settings.viewReports}
+          <SettingRow
+            icon="i/stats-chart"
+            chipColor="#4F5104"
+            label={t.settings.viewReports}
             onPress={handleViewReports}
-            variant="outline"
-            icon="bar-chart-2"
-            fullWidth
-            style={{ marginBottom: SPACING.md }}
           />
-          <Button
-            title={t.settings.exportData}
+          <SettingRow
+            icon="i/download"
+            chipColor="#9A6400"
+            label={t.settings.exportData}
             onPress={handleExportData}
-            variant="outline"
-            icon="download"
-            fullWidth
-            style={{ marginBottom: SPACING.md }}
           />
-          <Button
-            title={t.settings.importFromStatement}
+          <SettingRow
+            icon="i/document-text-outline"
+            chipColor="#6BA3BE"
+            label={t.settings.importFromStatement}
             onPress={() => { lightTap(); navigation.navigate('ImportFromStatement' as never); }}
-            variant="outline"
-            icon="upload"
-            fullWidth
-            style={{ marginBottom: SPACING.md }}
           />
-          <Button
-            title={t.settings.importFromCsv}
+          <SettingRow
+            icon="i/document-attach-outline"
+            chipColor="#6BA3BE"
+            label={t.settings.importFromCsv}
             onPress={() => { lightTap(); navigation.navigate('ImportFromCsv' as never); }}
-            variant="outline"
-            icon="file-plus"
-            fullWidth
-            style={{ marginBottom: SPACING.md }}
           />
-          <Button
-            title={t.settings.backupsRestore}
+          <SettingRow
+            icon="i/cloud-upload-outline"
+            chipColor="#4F5104"
+            label={t.settings.backupsRestore}
             onPress={() => { lightTap(); navigation.navigate('BackupRestore' as never); }}
-            variant="outline"
-            icon="shield"
-            fullWidth
-            style={{ marginBottom: SPACING.md }}
           />
-          <Button
-            title={t.settings.inviteFriends}
-            onPress={async () => {
-              lightTap();
-              const code = await getOrCreateReferralCode();
-              if (!code) {
-                Alert.alert(
-                  t.settings.signInRequired,
-                  t.settings.signInRequiredInvite,
-                );
-                return;
-              }
-              try {
-                await Share.share({ message: referralMessage(code) });
-              } catch {
-                // ignore user-cancelled
-              }
-            }}
-            variant="outline"
-            icon="user-plus"
-            fullWidth
-            style={{ marginBottom: SPACING.md }}
-          />
-          <Button
-            title={t.settings.loadSampleData}
+          <SettingRow
+            icon="m/database"
+            chipColor="#A688B8"
+            label={t.settings.loadSampleData}
             onPress={handleLoadSampleData}
-            variant="outline"
-            icon="database"
-            fullWidth
-            style={{ marginBottom: SPACING.md }}
-          />
-          {mode === 'business' && (
-            <Button
-              title={t.settings.signOut}
-              onPress={handleSignOut}
-              variant="outline"
-              icon="log-out"
-              fullWidth
-              style={{ marginBottom: SPACING.md }}
-            />
-          )}
-          {mode === 'business' && (
-            <Button
-              title={t.settings.clearBusinessDataBtn}
-              onPress={handleClearBusinessData}
-              variant="danger"
-              icon="trash-2"
-              fullWidth
-              style={{ marginBottom: SPACING.md }}
-            />
-          )}
-          <Button
-            title={t.settings.deleteAccount}
-            onPress={handleDeleteAccount}
-            variant="danger"
-            icon="trash-2"
-            fullWidth
+            last
           />
         </Card>
 
-        {/* About */}
+        </>}
+
+        {/* ── 8. ABOUT (section === 'about') ── */}
+        {section === 'about' && <>
         <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.aboutSection}</Text>
         <Card style={styles.card}>
-          <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.appLabel}</Text>
-            <Text style={[styles.settingValue, { color: C.textSecondary }]}>{t.settings.potracesApp}</Text>
-          </View>
-          <View style={[styles.divider, { backgroundColor: C.border }]} />
-          <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.version}</Text>
-            <Text style={[styles.settingValue, { color: C.textSecondary }]}>1.0.0</Text>
-          </View>
-          <View style={[styles.divider, { backgroundColor: C.border }]} />
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={() => Linking.openURL('https://jejakbaki.my/privacy.html')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.privacyPolicy}</Text>
-            <Feather name="external-link" size={16} color={C.textSecondary} />
-          </TouchableOpacity>
+          <SettingRow
+            icon="i/information-circle-outline"
+            chipColor="#5A5320"
+            label={t.settings.appLabel}
+            value={t.settings.potracesApp}
+          />
+          <SettingRow
+            icon="i/information-circle-outline"
+            chipColor="#5A5320"
+            label={t.settings.version}
+            value="1.0.0"
+            last
+          />
         </Card>
 
-        <View style={{ height: SPACING['3xl'] }} />
         </>}
+
+        <Text style={{ fontSize: TYPOGRAPHY.size.xs, lineHeight: 18, color: C.textMuted, textAlign: 'center', paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
+          {t.settings.financialDisclaimer}
+        </Text>
+
+        {/* ── 9. DANGER ZONE (hub only) ── */}
+        {!section && (
+          <>
+            <Text style={[styles.sectionHeader, { color: '#B5705A' }]}>{t.settings.dangerZone}</Text>
+            <Card style={styles.card}>
+              {mode === 'business' && (
+                <SettingRow
+                  icon="i/log-out-outline"
+                  chipColor="#B5705A"
+                  label={t.settings.signOut}
+                  onPress={handleSignOut}
+                />
+              )}
+              {mode === 'business' && (
+                <SettingRow
+                  icon="m/broom"
+                  chipColor="#B5705A"
+                  label={t.settings.clearBusinessDataBtn}
+                  onPress={handleClearBusinessData}
+                />
+              )}
+              <SettingRow
+                icon="i/trash-outline"
+                chipColor="#B5705A"
+                label={t.settings.deleteAccount}
+                onPress={handleDeleteAccount}
+                last
+              />
+            </Card>
+          </>
+        )}
+
+        <View style={{ height: SPACING['3xl'] }} />
+
+        {ready && (
+          <>
+            {categoryManagerVisible && (
+              <CategoryManager
+                visible
+                onClose={() => setCategoryManagerVisible(false)}
+                type={categoryManagerType}
+                mode={mode}
+              />
+            )}
+            {unitManagerVisible && (
+              <UnitManager
+                visible
+                onClose={() => setUnitManagerVisible(false)}
+              />
+            )}
+            {paymentMethodManagerVisible && (
+              <PaymentMethodManager
+                visible
+                onClose={() => setPaymentMethodManagerVisible(false)}
+              />
+            )}
+            <QrCaptureModal
+              visible={scanModalVisible}
+              onClose={() => setScanModalVisible(false)}
+              onCaptured={handleScannedQr}
+            />
+          </>
+        )}
       </ScrollView>
 
       {/* Quick add shortcut setup */}
@@ -1888,6 +1871,39 @@ const Settings: React.FC = () => {
               />
             </ScrollView>
             <ModalToastHost />
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Business mode explainer — "how it works" for curious users */}
+      <Modal
+        visible={businessInfoVisible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setBusinessInfoVisible(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: withAlpha('#000000', isDark ? 0.6 : 0.4), justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}
+          onPress={() => setBusinessInfoVisible(false)}
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{ width: '100%', maxWidth: 440, backgroundColor: C.surface, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: C.border, padding: SPACING.xl }}
+          >
+            <View style={{ width: 52, height: 52, borderRadius: RADIUS.lg, backgroundColor: withAlpha(C.accent, 0.12), alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
+              <Feather name="briefcase" size={24} color={C.accent} />
+            </View>
+            <Text style={{ fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, marginBottom: SPACING.sm }}>{t.settings.businessModeInfoTitle}</Text>
+            <Text style={{ fontSize: TYPOGRAPHY.size.sm, lineHeight: 22, color: C.textSecondary, marginBottom: SPACING.lg }}>{t.settings.businessModeInfoBody}</Text>
+            <TouchableOpacity
+              onPress={() => { lightTap(); setBusinessInfoVisible(false); }}
+              style={{ backgroundColor: C.accent, paddingVertical: SPACING.md, borderRadius: RADIUS.md, alignItems: 'center' }}
+              accessibilityRole="button"
+              accessibilityLabel={t.settings.businessModeInfoGotIt}
+            >
+              <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.onAccent }}>{t.settings.businessModeInfoGotIt}</Text>
+            </TouchableOpacity>
           </View>
         </Pressable>
       </Modal>
@@ -1972,7 +1988,7 @@ const Settings: React.FC = () => {
               autoFocus
               selectTextOnFocus
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <View style={{ flexDirection: 'row', gap: SPACING.md, justifyContent: 'flex-end' }}>
               <TouchableOpacity

@@ -11,7 +11,7 @@ import { Feather } from '@expo/vector-icons';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { RiderCost } from '../../types';
@@ -148,7 +148,7 @@ const RiderCostsScreen: React.FC = () => {
               placeholderTextColor={C.textSecondary}
               autoFocus
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <TouchableOpacity onPress={handleAdd} style={styles.doneButton}>
               <Text style={styles.doneText}>{t.business.riderDone}</Text>

@@ -1,8 +1,9 @@
 import { AIMessage, Transaction, IncomeType, BusinessTransaction, RiderCost, Client, SellerProduct, FreelancerClient, PartTimeJobDetails, OnTheRoadDetails, MixedModeDetails } from '../types';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants';
-import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { readAsStringAsync, deleteAsync, EncodingType } from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { aiProxyFetch, isAiProxyConfigured } from './aiProxy';
+import { streamGeminiText } from './geminiClient';
 
 // ─── Anthropic API Types ────────────────────────────────
 
@@ -450,6 +451,90 @@ export async function parseProductImage(
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) return null;
   return parseParsedProducts(text);
+}
+
+const TRANSCRIBE_PROMPT =
+  'Transcribe this audio VERBATIM. The speaker is Malaysian and mixes Malay and ' +
+  'English (Manglish). Output ONLY the exact spoken words in the language(s) spoken. ' +
+  'Do NOT translate. Do NOT add quotes, labels, punctuation commentary, or any notes. ' +
+  'Keep numbers as digits and money as written (e.g. RM 50, 12.50). ' +
+  'If nothing intelligible was said, output nothing.';
+
+/**
+ * VERBATIM transcription of a short speech clip via the AI proxy → Gemini (the same backend Echo chat
+ * uses; provider keys stay server-side). Reads the persisted WAV at `uri`, sends it as audio inlineData,
+ * returns the spoken words ONLY, or null. ALWAYS deletes the temp clip afterward (success or failure) so
+ * audio never lingers on disk. Never throws.
+ */
+export async function transcribeAudio(
+  uri: string,
+  mimeType: string = 'audio/wav',
+  onPartial?: (text: string) => void,
+): Promise<string | null> {
+  if (!isAiProxyConfigured() || !uri) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
+    if (!base64) return null;
+
+    // Live "types in" reveal: when a partial sink is given, STREAM the transcript word-by-word (the
+    // proxy already supports SSE). On any stream failure / empty result, fall through to the batch call.
+    if (onPartial) {
+      try {
+        let soFar = '';
+        for await (const partial of streamGeminiText({
+          contents: [{
+            role: 'user',
+            parts: [{ text: TRANSCRIBE_PROMPT }, { inlineData: { mimeType, data: base64 } }],
+          }],
+          generationConfig: { temperature: 0, maxOutputTokens: 512 },
+        })) {
+          soFar = partial;
+          onPartial(soFar);
+        }
+        if (soFar.trim()) return soFar.trim();
+      } catch {
+        // stream unavailable/aborted → batch request below
+      }
+    }
+
+    const response = await aiProxyFetch(
+      {
+        provider: 'gemini',
+        mode: 'generate',
+        model: GEMINI_MODEL, // gemini-2.5-flash-lite — accepts audio inlineData
+        payload: {
+          contents: [{
+            parts: [
+              { text: TRANSCRIBE_PROMPT },
+              { inlineData: { mimeType, data: base64 } },
+            ],
+          }],
+          generationConfig: { temperature: 0, maxOutputTokens: 512 }, // plain text, no responseMimeType
+        },
+      },
+      controller.signal,
+    );
+
+    if (!response.ok) {
+      if (__DEV__) {
+        const err = await response.text().catch(() => '');
+        console.warn('[transcribeAudio]', response.status, err.slice(0, 200));
+      }
+      return null; // includes 403 budget / 429 cooldown
+    }
+
+    const data: GeminiVisionResponse = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    return text || null;
+  } catch {
+    return null; // includes the 30s abort
+  } finally {
+    clearTimeout(timeout);
+    deleteAsync(uri, { idempotent: true }).catch(() => {}); // privacy: the clip never lingers
+  }
 }
 
 /**

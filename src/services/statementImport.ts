@@ -48,6 +48,7 @@ export async function pickStatementPdf(): Promise<{ base64: string; filename: st
 export async function parseStatement(
   pdfBase64: string,
   filename: string,
+  password?: string,
 ): Promise<StatementParseResult | StatementParseError> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
@@ -56,7 +57,7 @@ export async function parseStatement(
 
   const invokePromise = supabase.functions.invoke<StatementParseResult | StatementParseError>(
     'parse-statement',
-    { body: { pdfBase64, filename } },
+    { body: { pdfBase64, filename, ...(password ? { password } : {}) } },
   );
 
   const timeoutPromise = new Promise<never>((_, reject) =>

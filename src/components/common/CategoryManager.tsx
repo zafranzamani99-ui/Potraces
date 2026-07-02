@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   Modal,
   TextInput,
@@ -14,8 +15,9 @@ import DraggableFlatList, {
   ScaleDecorator,
   RenderItemParams,
 } from 'react-native-draggable-flatlist';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
+import CategoryIcon from './CategoryIcon';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import ModalToastHost from './ModalToastHost';
@@ -26,11 +28,12 @@ import { lightTap } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 
 const ICON_OPTIONS: string[] = [
-  'coffee', 'truck', 'shopping-bag', 'film', 'file-text', 'heart',
-  'book', 'users', 'repeat', 'dollar-sign', 'briefcase', 'trending-up',
-  'pie-chart', 'gift', 'home', 'wifi', 'phone', 'music',
-  'camera', 'map-pin', 'scissors', 'tool', 'umbrella', 'globe',
-  'star', 'zap', 'feather', 'award', 'tag', 'package',
+  'm/silverware-fork-knife', 'm/coffee', 'm/car', 'm/bus', 'm/cart', 'i/bag-handle',
+  'm/tshirt-crew', 'm/home', 'm/lightbulb-on', 'm/water', 'm/wifi', 'm/cellphone',
+  'm/laptop', 'm/medical-bag', 'm/heart-pulse', 'm/school', 'm/book-open-page-variant', 'm/gamepad-variant',
+  'm/music', 'm/airplane', 'm/map-marker', 'm/gift', 'm/piggy-bank', 'm/hand-coin',
+  'm/wallet', 'm/cash-multiple', 'm/bank', 'm/briefcase', 'm/bullhorn', 'm/chart-line',
+  'm/wrench', 'm/paw',
 ];
 
 const COLOR_OPTIONS: string[] = [
@@ -163,8 +166,8 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
             { backgroundColor: withAlpha(item.color, 0.15) },
           ]}
         >
-          <Feather
-            name={item.icon as keyof typeof Feather.glyphMap}
+          <CategoryIcon
+            icon={item.icon}
             size={20}
             color={item.color}
           />
@@ -232,15 +235,12 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
         animationType="fade"
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <TouchableOpacity
-          style={styles.overlay}
-          activeOpacity={1}
-          onPress={() => setEditModalVisible(false)}
-        >
-          <View
-            style={styles.editModal}
-            onStartShouldSetResponder={() => true}
-          >
+        <View style={styles.overlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setEditModalVisible(false)}
+          />
+          <View style={styles.editModal}>
             <View style={styles.header}>
               <Text style={styles.title}>
                 {isNewCategory ? 'New Category' : 'Edit Category'}
@@ -250,7 +250,13 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
               </TouchableOpacity>
             </View>
 
-            <View style={styles.editContent}>
+            <ScrollView
+              style={styles.editContentScroll}
+              contentContainerStyle={styles.editContent}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+            >
               {/* Name */}
               <Text style={styles.fieldLabel}>Name</Text>
               <TextInput
@@ -262,7 +268,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               {/* Icon Picker */}
@@ -283,8 +289,8 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                       setEditIcon(iconName);
                     }}
                   >
-                    <Feather
-                      name={iconName as keyof typeof Feather.glyphMap}
+                    <CategoryIcon
+                      icon={iconName}
                       size={20}
                       color={editIcon === iconName ? editColor : C.textSecondary}
                     />
@@ -315,7 +321,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                   </View>
                 </>
               )}
-            </View>
+            </ScrollView>
 
             {/* Actions */}
             <View style={styles.editActions}>
@@ -335,7 +341,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
               </TouchableOpacity>
             </View>
           </View>
-        </TouchableOpacity>
+        </View>
         <ModalToastHost />
       </Modal>
       <ModalToastHost />
@@ -434,6 +440,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.accent,
+  },
+  editContentScroll: {
+    flexShrink: 1,
   },
   editContent: {
     padding: SPACING.lg,

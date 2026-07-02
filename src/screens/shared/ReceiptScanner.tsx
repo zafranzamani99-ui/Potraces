@@ -53,6 +53,7 @@ import CalendarPicker from '../../components/common/CalendarPicker';
 // CollapsibleSection removed — always show content expanded
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import CategoryManager from '../../components/common/CategoryManager';
+import CategoryIcon from '../../components/common/CategoryIcon';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useWalletStore } from '../../store/walletStore';
 import type { RootStackParamList, ExtractedReceipt, ReceiptItem, MyTaxCategory } from '../../types';
@@ -559,8 +560,8 @@ const ReceiptScanner: React.FC = () => {
         activeOpacity={0.7}
       >
         <View style={[styles.taxItemIcon, { backgroundColor: isSelected ? itemColor : withAlpha(itemColor, 0.15) }]}>
-          <Feather
-            name={item.icon as keyof typeof Feather.glyphMap}
+          <CategoryIcon
+            icon={item.icon}
             size={18}
             color={isSelected ? C.onAccent : itemColor}
           />
@@ -778,7 +779,7 @@ const ReceiptScanner: React.FC = () => {
                   onSubmitEditing={Keyboard.dismiss}
                   accessibilityLabel={t.receipts.totalLabel}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
               <View style={styles.heroMetaRow}>
@@ -794,7 +795,7 @@ const ReceiptScanner: React.FC = () => {
                     onSubmitEditing={Keyboard.dismiss}
                     accessibilityLabel={t.receipts.title}
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
                 </View>
                 <TouchableOpacity
@@ -823,8 +824,8 @@ const ReceiptScanner: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel={t.receipts.expenseCategory}
               >
-                <Feather
-                  name={(selectedCat?.icon || 'tag') as keyof typeof Feather.glyphMap}
+                <CategoryIcon
+                  icon={selectedCat?.icon || 'tag'}
                   size={14}
                   color={selectedCat?.color || C.textSecondary}
                 />
@@ -842,8 +843,8 @@ const ReceiptScanner: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel={t.receipts.taxRelief}
               >
-                <Feather
-                  name={selectedTaxCat.icon as keyof typeof Feather.glyphMap}
+                <CategoryIcon
+                  icon={selectedTaxCat.icon}
                   size={14}
                   color={selectedTaxCat.id === 'none' ? C.textSecondary : C.accent}
                 />
@@ -873,7 +874,7 @@ const ReceiptScanner: React.FC = () => {
                       blurOnSubmit
                       accessibilityLabel={`${t.receipts.itemsLabel} ${index + 1}`}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                     />
                     <TextInput
                       style={styles.itemAmountInput}
@@ -884,7 +885,7 @@ const ReceiptScanner: React.FC = () => {
                       onSubmitEditing={Keyboard.dismiss}
                       accessibilityLabel={`${t.receipts.itemsLabel} ${index + 1} amount`}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                     />
                     <TouchableOpacity
                       onPress={() => handleRemoveItem(index)}
@@ -911,7 +912,7 @@ const ReceiptScanner: React.FC = () => {
                   multiline
                   blurOnSubmit
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
                 <TextInput
                   style={[styles.itemAmountInput, styles.itemPlaceholderInput]}
@@ -923,7 +924,7 @@ const ReceiptScanner: React.FC = () => {
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
                 <TouchableOpacity
                   style={styles.addItemBtn}
@@ -970,7 +971,7 @@ const ReceiptScanner: React.FC = () => {
                   blurOnSubmit
                   accessibilityLabel={t.receipts.location}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
 
@@ -1108,7 +1109,7 @@ const ReceiptScanner: React.FC = () => {
                     activeOpacity={0.7}
                   >
                     <View style={[styles.taxItemIcon, { backgroundColor: isSelected ? cat.color : withAlpha(cat.color, 0.15) }]}>
-                      <Feather name={cat.icon as keyof typeof Feather.glyphMap} size={18} color={isSelected ? C.onAccent : cat.color} />
+                      <CategoryIcon icon={cat.icon} size={18} color={isSelected ? C.onAccent : cat.color} />
                     </View>
                     <Text style={[styles.taxItemName, isSelected && { color: cat.color, fontWeight: TYPOGRAPHY.weight.bold }]}>{cat.name}</Text>
                     {isSelected && <Feather name="check" size={18} color={cat.color} />}

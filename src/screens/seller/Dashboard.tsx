@@ -12,7 +12,6 @@ import {
   RefreshControl,
   Modal,
   TextInput,
-  KeyboardAvoidingView,
   Keyboard,
   Image,
   StatusBar,
@@ -20,6 +19,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, subMonths, subDays, isWithinInterval, isToday, isTomorrow, isPast, startOfDay, differenceInDays, format, isSameDay, formatDistanceToNow, isValid } from 'date-fns';
@@ -736,7 +736,7 @@ const SellerDashboard: React.FC = () => {
                     'Add your payment QR code in Settings so you can show it here.',
                     [
                       { text: 'Later', style: 'cancel' },
-                      { text: 'Go to Settings', onPress: () => navigation.navigate('SellerSettings', { scrollTo: 'qr' }) },
+                      { text: 'Go to Settings', onPress: () => navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'qr' }) },
                     ]
                   );
                 }

@@ -34,21 +34,21 @@ export const PREMIUM_CONFIG = {
 
 // Wallet icon presets (Feather icon names) — generic fallback
 export const WALLET_ICONS = [
-  'credit-card',
-  'dollar-sign',
-  'briefcase',
-  'home',
-  'gift',
-  'trending-up',
-  'smartphone',
-  'globe',
+  'i/card',
+  'm/cash',
+  'i/briefcase',
+  'm/bank',
+  'i/gift',
+  'i/trending-up',
+  'm/cellphone',
+  'm/web',
 ] as const;
 
 // Type-specific wallet icons — 12 per type for meaningful choices
 export const WALLET_ICONS_BY_TYPE: Record<WalletType, string[]> = {
-  bank: ['home', 'briefcase', 'dollar-sign', 'shield', 'lock', 'globe', 'trending-up', 'award', 'umbrella', 'bookmark', 'archive', 'key'],
-  ewallet: ['smartphone', 'zap', 'send', 'wifi', 'gift', 'globe', 'coffee', 'shopping-bag', 'truck', 'music', 'camera', 'credit-card'],
-  credit: ['credit-card', 'shopping-bag', 'tag', 'percent', 'shopping-cart', 'gift', 'star', 'clock', 'repeat', 'layers', 'bookmark', 'award'],
+  bank: ['m/bank', 'i/briefcase', 'm/cash', 'i/shield-checkmark', 'i/lock-closed', 'm/web', 'i/trending-up', 'm/trophy', 'm/umbrella', 'i/bookmark', 'm/archive', 'm/key'],
+  ewallet: ['m/cellphone', 'i/flash', 'i/send', 'm/wifi', 'i/gift', 'm/web', 'm/coffee', 'i/bag-handle', 'm/truck-delivery', 'm/music', 'i/camera', 'i/card'],
+  credit: ['i/card', 'i/bag-handle', 'i/pricetag', 'm/percent', 'm/cart', 'i/gift', 'i/star', 'i/time', 'i/repeat', 'm/layers', 'i/bookmark', 'm/trophy'],
 };
 
 // Wallet color presets — earthy + muted tones, no harsh reds/pinks

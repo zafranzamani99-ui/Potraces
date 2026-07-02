@@ -15,7 +15,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CostCategory } from '../../../types';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
@@ -170,7 +170,7 @@ const AddCost: React.FC = () => {
                 placeholderTextColor={C.textMuted}
                 returnKeyType="next"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             )}
 
@@ -188,7 +188,7 @@ const AddCost: React.FC = () => {
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
 
@@ -229,7 +229,7 @@ const AddCost: React.FC = () => {
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
 

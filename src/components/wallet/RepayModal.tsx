@@ -186,7 +186,7 @@ const RepayModal: React.FC<RepayModalProps> = ({
                   placeholderTextColor={withAlpha(C.textPrimary, 0.12)}
                   keyboardType="decimal-pad"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                   accessibilityLabel={t.wallets.repaymentAmount.toLowerCase()}
                 />
               </View>

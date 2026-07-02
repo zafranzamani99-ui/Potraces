@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import * as Sentry from '@sentry/react-native';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import Button from './Button';
 
@@ -39,8 +40,15 @@ class ErrorBoundary extends Component<Props, State> {
     // Log error to console in development
     if (__DEV__) console.error('ErrorBoundary caught error:', error, errorInfo);
 
-    // In production, you could log to an error tracking service
-    // Example: Sentry.captureException(error);
+    // Report to Sentry. Guarded: if Sentry isn't initialized this is a no-op,
+    // and we never let the reporter itself throw inside the boundary.
+    try {
+      Sentry.captureException(error, {
+        contexts: { react: { componentStack: errorInfo.componentStack } },
+      });
+    } catch {
+      // best-effort — error reporting must never crash the fallback UI
+    }
   }
 
   handleReset = () => {

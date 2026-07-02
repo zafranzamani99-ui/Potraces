@@ -5,6 +5,7 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  Pressable,
   Alert,
   Dimensions,
 } from 'react-native';
@@ -19,6 +20,10 @@ import { useT } from '../../i18n';
 import { NotePage } from '../../types';
 import ScreenGuide from '../../components/common/ScreenGuide';
 import { lightTap, mediumTap, warningNotification } from '../../services/haptics';
+
+// Delete is the one place we allow a true red — a clear, expected destructive
+// signal that only appears while the user is actively pressing Delete.
+const DELETE_RED = '#E5484D';
 
 const NotesHome: React.FC = () => {
   const C = useCalm();
@@ -197,6 +202,7 @@ const NotesHome: React.FC = () => {
         windowSize={5}
         initialNumToRender={10}
       />
+      {/* Selection bar — floating bordered bar: cancel · N selected · delete (red on press) */}
       {selectMode && (
         <View style={styles.selectBar}>
           <TouchableOpacity
@@ -209,14 +215,27 @@ const NotesHome: React.FC = () => {
           <Text style={styles.selectBarCount}>
             {selectedIds.size} {t.notes.selected}
           </Text>
-          <TouchableOpacity
-            style={styles.selectBarDeleteBtn}
+          <Pressable
             onPress={handleBulkDelete}
-            activeOpacity={0.7}
+            style={({ pressed }) => [
+              styles.selectBarDeleteBtn,
+              pressed && styles.selectBarDeleteBtnPressed,
+            ]}
           >
-            <Feather name="trash-2" size={15} color={C.textMuted} />
-            <Text style={styles.selectBarDeleteText}>{t.common.delete}</Text>
-          </TouchableOpacity>
+            {({ pressed }) => (
+              <>
+                <Feather name="trash-2" size={15} color={pressed ? DELETE_RED : C.textMuted} />
+                <Text
+                  style={[
+                    styles.selectBarDeleteText,
+                    pressed && styles.selectBarDeleteTextPressed,
+                  ]}
+                >
+                  {t.common.delete}
+                </Text>
+              </>
+            )}
+          </Pressable>
         </View>
       )}
       {!selectMode && (
@@ -337,10 +356,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: 5,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
+    borderRadius: RADIUS.md,
+  },
+  selectBarDeleteBtnPressed: {
+    backgroundColor: withAlpha(DELETE_RED, 0.12),
   },
   selectBarDeleteText: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textMuted,
+  },
+  selectBarDeleteTextPressed: {
+    color: DELETE_RED,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
   pageRowSelected: {
     backgroundColor: withAlpha(C.bronze, 0.06),

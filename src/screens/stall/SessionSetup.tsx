@@ -6,9 +6,8 @@ import {
   TouchableOpacity,
   TextInput,
   Switch,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -139,7 +138,7 @@ const SessionSetup: React.FC = () => {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
       <ScrollView
         style={styles.scrollView}
@@ -192,7 +191,7 @@ const SessionSetup: React.FC = () => {
             accessibilityLabel="Session name, optional"
             accessibilityHint="Enter a name for this selling session"
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
 
@@ -211,7 +210,7 @@ const SessionSetup: React.FC = () => {
               returnKeyType="done"
               accessibilityLabel="Starting cash float, optional"
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
           </View>
           <Text style={styles.floatHint}>{t.stall.floatHint}</Text>
@@ -288,7 +287,7 @@ const SessionSetup: React.FC = () => {
                     accessibilityLabel={`Starting quantity for ${item.name}`}
                     accessibilityHint="Optional. Enter how many you brought to sell"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
                 )}
               </View>

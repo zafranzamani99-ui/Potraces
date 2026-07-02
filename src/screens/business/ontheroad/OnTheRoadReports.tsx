@@ -50,18 +50,16 @@ const OnTheRoadReports: React.FC = () => {
     { label: t.onTheRoad.period3Months, value: '3months' },
     { label: t.onTheRoad.period6Months, value: '6months' },
   ], [t]);
-  const { businessTransactions } = useBusinessStore();
-  const {
-    roadDetails,
-    getMonthlyBreakdown,
-    getSixMonthAverageNet,
-    getSixMonthAverageCostPercentage,
-    getCurrentMonthEarnings,
-    getCurrentMonthCosts,
-    getCurrentMonthNet,
-    getCostsByCategory,
-    getEarningsByPlatform,
-  } = useOnTheRoadStore();
+  const businessTransactions = useBusinessStore((s) => s.businessTransactions);
+  const roadDetails = useOnTheRoadStore((s) => s.roadDetails);
+  const getMonthlyBreakdown = useOnTheRoadStore((s) => s.getMonthlyBreakdown);
+  const getSixMonthAverageNet = useOnTheRoadStore((s) => s.getSixMonthAverageNet);
+  const getSixMonthAverageCostPercentage = useOnTheRoadStore((s) => s.getSixMonthAverageCostPercentage);
+  const getCurrentMonthEarnings = useOnTheRoadStore((s) => s.getCurrentMonthEarnings);
+  const getCurrentMonthCosts = useOnTheRoadStore((s) => s.getCurrentMonthCosts);
+  const getCurrentMonthNet = useOnTheRoadStore((s) => s.getCurrentMonthNet);
+  const getCostsByCategory = useOnTheRoadStore((s) => s.getCostsByCategory);
+  const getEarningsByPlatform = useOnTheRoadStore((s) => s.getEarningsByPlatform);
 
   const [period, setPeriod] = useState<PeriodOption>('month');
   const [aiSummary, setAiSummary] = useState<string | null>(null);

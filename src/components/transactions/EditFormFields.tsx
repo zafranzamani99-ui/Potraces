@@ -114,7 +114,7 @@ const EditFormFields: React.FC<EditFormFieldsProps> = ({
           onFocus={onMultilineFocus}
           onBlur={onMultilineBlur}
           keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={C.accent}
+          selectionColor={withAlpha(C.accent, 0.25)}
           accessibilityLabel={t.transaction.description.toLowerCase()}
         />
       </View>
@@ -177,7 +177,7 @@ const EditFormFields: React.FC<EditFormFieldsProps> = ({
           onFocus={onMultilineFocus}
           onBlur={onMultilineBlur}
           keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={C.accent}
+          selectionColor={withAlpha(C.accent, 0.25)}
           accessibilityLabel={t.transaction.tagsOptional.toLowerCase()}
         />
       </View>

@@ -10,14 +10,17 @@ import {
   Modal,
   Animated,
   Image,
+  Linking,
+  Platform,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, KeyboardStickyView, KeyboardEvents } from 'react-native-keyboard-controller';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
+import { useHeaderHeight } from '@react-navigation/elements';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { useHeaderHeight } from '@react-navigation/elements';
 import * as ImagePicker from 'expo-image-picker';
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
@@ -30,6 +33,7 @@ import { useLearningStore } from '../../store/learningStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useToast } from '../../context/ToastContext';
@@ -59,9 +63,30 @@ import {
 } from '../../services/chatActions';
 import { useDebtStore } from '../../store/debtStore';
 import { usePersonalStore } from '../../store/personalStore';
+import { useCategoryStore } from '../../store/categoryStore';
 import ReviewEntriesSheet from '../../components/common/ReviewEntriesSheet';
 import { lightTap, successNotification } from '../../services/haptics';
-import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useVoiceInput, VoiceErrorKind } from '../../hooks/useVoiceInput';
+import { isLiveAudioAvailable } from '../../services/liveAudioSource';
+import { isSttTokenConfigured } from '../../services/sttToken';
+import { normalizeSpokenAmount } from '../../utils/spokenAmount';
+import { getMalayVoiceState, type MalayVoiceState } from '../../services/voiceModel';
+import { transcribeAudio } from '../../services/aiService';
+
+// Static MY money/merchant lexicon — merged with the user's real merchants/wallets/categories to
+// bias the speech recognizer toward what Malaysians actually say. Best-effort (≤100 total, capped below).
+const MY_MONEY_LEXICON = [
+  'ringgit', 'sen', 'mamak', 'kedai', 'makan', 'nasi lemak', 'teh tarik', 'roti canai', 'kopi',
+  'grab', 'GrabFood', 'foodpanda', 'Shopee', 'Lazada', 'TnG', 'Touch n Go', 'DuitNow', 'Setel',
+  'Boost', 'petrol', 'tol', 'parking', 'Maybank', 'CIMB', 'Public Bank', 'RHB', 'Bank Islam',
+  'Watsons', 'Guardian', 'Speedmart', 'Jaya Grocer', 'Lotus', 'AEON', 'Mydin', 'Shell', 'Petronas',
+];
+
+function formatSecs(total: number): string {
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 const ACTION_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   add_expense: 'arrow-up-right',
@@ -370,7 +395,7 @@ const ActionEditModal = ({
     setModalAnim('none');
     onClose();
     setTimeout(() => {
-      navigation.navigate('Settings', { scrollTo: 'categories' });
+      navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'categories' });
       setModalAnim('fade');
     }, 50);
   }, [onClose, navigation]);
@@ -429,9 +454,8 @@ const ActionEditModal = ({
     }
   }, [action]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!action) return null;
-
   const handleConfirm = () => {
+    if (!action) return;
     const selectedCat = categories.find((c) => c.id === categoryId);
     const selectedWallet = wallets.find((w) => w.id === walletId);
     const finalDesc = desc.trim() || action.description;
@@ -459,6 +483,9 @@ const ActionEditModal = ({
       debtType: showPerson ? debtType : action.debtType,
     });
   };
+  const guardedConfirm = useSubmitGuard(handleConfirm);
+
+  if (!action) return null;
 
   return (
     <Modal visible={visible} transparent animationType={modalAnim} onRequestClose={onClose}>
@@ -643,7 +670,7 @@ const ActionEditModal = ({
               {/* Save — canonical primary action verb (UX-C1 swap-in) */}
               <TouchableOpacity
                 style={styles.confirmBtnFull}
-                onPress={handleConfirm}
+                onPress={guardedConfirm}
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={t.moneyChat.save}
@@ -873,24 +900,33 @@ const MoneyChat: React.FC = () => {
   const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<any>();
   const navigation = useNavigation();
+  // Per-mount keyboard handling (each is the config proven correct for its mount):
+  //  - bottom-tab (navbar): KeyboardAvoidingView shrinks content, keyboardVerticalOffset = headerHeight.
+  //  - root native-stack (quick action): KeyboardStickyView pins the input to the keyboard top (the
+  //    only thing that lands it right there); empty state is a ScrollView so content stays reachable.
+  const isRootStack = useContext(BottomTabBarHeightContext) === undefined;
   const headerHeight = useHeaderHeight();
-  // Echo is mounted in two navigators: a bottom-tab screen (navbar) and a root native-stack
-  // screen (opened from quick actions, no tab bar). KeyboardAvoidingView's keyboardVerticalOffset
-  // must equal the chat container's top position in the window. For the tab screen that's exactly
-  // headerHeight (content sits below the JS header). For the native-stack screen on edge-to-edge
-  // Android the content draws partly under the native header — headerHeight over-shoots (gap) and
-  // 0 under-shoots (input hidden) — so we measure the real top in the window instead of guessing.
-  const tabBarHeight = useContext(BottomTabBarHeightContext);
-  const isRootStack = tabBarHeight === undefined;
-  const containerRef = useRef<View>(null);
-  const [measuredTop, setMeasuredTop] = useState(0);
-  const onContainerLayout = useCallback(() => {
-    if (!isRootStack) return;
-    containerRef.current?.measureInWindow((_x, y) => {
-      if (typeof y === 'number' && !Number.isNaN(y)) setMeasuredTop(y);
+  const ChatContainer: any = isRootStack ? View : KeyboardAvoidingView;
+  const chatContainerProps: any = isRootStack
+    ? { style: styles.chatContainer }
+    : { style: styles.chatContainer, behavior: 'padding', keyboardVerticalOffset: headerHeight };
+  const BottomWrapper: any = isRootStack ? KeyboardStickyView : React.Fragment;
+  const bottomWrapperProps: any = isRootStack ? { offset: { opened: 0 } } : {};
+  // Native-stack mount doesn't shrink (KeyboardStickyView only moves the input), so pad the scroll
+  // content by the keyboard height while it's open — that's what makes the suggestions/messages
+  // scrollable up above the keyboard. The tab mount uses KeyboardAvoidingView (shrinks) so it pads 0.
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    const show = KeyboardEvents.addListener('keyboardDidShow', (e) => {
+      setKbHeight(e.height);
+      // Chatbox behaviour: opening the keyboard scrolls to the latest message (slight delay so the
+      // keyboard-height padding has applied first, landing the newest message just above the keyboard).
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
     });
-  }, [isRootStack]);
-  const kavOffset = isRootStack ? measuredTop : headerHeight;
+    const hide = KeyboardEvents.addListener('keyboardDidHide', () => setKbHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+  const contentPad = isRootStack ? kbHeight : 0;
   const initialContext = route.params?.noteContext as string | undefined;
   const extractionContext = route.params?.extractionContext as string | undefined;
   const budgetContext = route.params?.budgetContext as string | undefined;
@@ -931,6 +967,7 @@ const MoneyChat: React.FC = () => {
   const [selectTextContent, setSelectTextContent] = useState<string | null>(null);
   const [lastFailedSend, setLastFailedSend] = useState<{ text: string; base64?: string } | null>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [attachVisible, setAttachVisible] = useState(false);
   const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [showReviewSheet, setShowReviewSheet] = useState(false);
   const flatListRef = useRef<FlatList>(null);
@@ -941,8 +978,105 @@ const MoneyChat: React.FC = () => {
   const requestIdRef = useRef(0);
 
   // Voice input
-  const { isRecording, isTranscribing, error: voiceError, startRecording, stopAndTranscribe } = useVoiceInput();
+  const inputRef = useRef<TextInput>(null);
+  // Biasing vocabulary for the recognizer: recent merchants + wallet names + category names + MY lexicon.
+  // Snapshot at mount via getState() — best-effort, decoupled from the reactive selectors that live in
+  // a different component in this file.
+  const voiceContextStrings = useMemo(() => {
+    const txns = usePersonalStore.getState().transactions || [];
+    const safeTime = (d: any) => { const t = new Date(d).getTime(); return Number.isFinite(t) ? t : 0; };
+    const recent = [...txns].sort((a, b) => safeTime(b.date) - safeTime(a.date)).slice(0, 40);
+    const merchants: string[] = [];
+    const mseen = new Set<string>();
+    for (const tx of recent) {
+      const d = (tx.description || '').trim();
+      if (d && d.length <= 30 && !mseen.has(d.toLowerCase())) {
+        mseen.add(d.toLowerCase());
+        merchants.push(d);
+        if (merchants.length >= 30) break;
+      }
+    }
+    const walletNames = (useWalletStore.getState().wallets || []).map((w) => w.name).filter(Boolean);
+    const catStore = useCategoryStore.getState();
+    const catNames = [...catStore.getExpenseCategories('personal'), ...catStore.getIncomeCategories('personal')]
+      .map((c) => c.name)
+      .filter(Boolean);
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const s of [...merchants, ...walletNames, ...catNames, ...MY_MONEY_LEXICON]) {
+      const trimmed = s.trim();
+      if (!trimmed) continue;
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(trimmed);
+      if (out.length >= 100) break; // Apple's contextualStrings hard cap
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Bias the recognizer toward the user's app language: Malay → ms-MY, English → en-MY. The hook only
+  // USES a locale that's actually installed (and prefers ms-MY when present), so this never hard-fails.
+  const language = useSettingsStore((s) => s.language);
+  const voiceModelEpoch = useSettingsStore((s) => s.voiceModelEpoch); // bumps when ms-MY installs → hook re-probes
+  const malayCloudVoice = useSettingsStore((s) => s.malayCloudVoice); // explicit "use the cloud for Malay" toggle
+  const malayLiveStreaming = useSettingsStore((s) => s.malayLiveStreaming); // Stage 2: true words-as-you-speak
+  // Server transcription engages when the user turned on cloud Malay (works on any phone, no download),
+  // OR when the app language is Malay and the on-device ms-MY model isn't installed.
+  const [malayModelState, setMalayModelState] = useState<MalayVoiceState>('absent');
+  useEffect(() => {
+    let alive = true;
+    getMalayVoiceState().then((s) => { if (alive) setMalayModelState(s); });
+    return () => { alive = false; };
+  }, [voiceModelEpoch]);
+  // Streaming (live words) takes priority, but only when the native capture module is present AND the
+  // token endpoint is configured — otherwise it's dormant and we fall through to the cloud-clip path.
+  const preferStreaming = malayLiveStreaming && isLiveAudioAvailable() && isSttTokenConfigured();
+  const preferServer = !preferStreaming && (malayCloudVoice || (language === 'ms' && malayModelState !== 'ready'));
+  const { isRecording, isTranscribing, serverMode, streaming, metering, liveTranscript, error: voiceError, startRecording, stopAndTranscribe, cancelRecording } = useVoiceInput({
+    onResult: (text) => {
+      // Spoken "dua puluh ringgit" → "20 ringgit" (gated on money cue; never corrupts names).
+      setInput(normalizeSpokenAmount(text));
+      inputRef.current?.focus();
+    },
+    // Server streaming: the accurate Malay "types in" to the composer word-by-word (raw; the final
+    // onResult applies number normalization). Never auto-sends — confirmation-first.
+    onPartial: (text) => setInput(text),
+    contextualStrings: voiceContextStrings,
+    lang: language === 'ms' ? 'ms-MY' : 'en-MY',
+    localesEpoch: voiceModelEpoch,
+    // Inject the transcriber for Malay server mode AND streaming (so a dropped socket can degrade to the
+    // accurate clip→Gemini path). English / capable devices pass undefined → no clip written, nothing
+    // leaves the phone.
+    transcribeAudio: (preferServer || preferStreaming) ? transcribeAudio : undefined,
+    preferServer,
+    preferStreaming,
+  });
   const recordingAnim = useRef(new Animated.Value(1)).current;
+  const listenAnim = useRef(new Animated.Value(0)).current; // 0 = composer idle, 1 = listening surface present
+  const ampAnim = useRef(new Animated.Value(0)).current; // eased amplitude → the breathing blob
+  const [voiceErrorKind, setVoiceErrorKind] = useState<VoiceErrorKind | null>(null);
+  const [recordSecs, setRecordSecs] = useState(0);
+
+  // Malay voice nudge (Android only): when voice fails for a Malay speaker, offer a one-time tap to turn
+  // on cloud Malay voice (no download — works on any phone). Never blocks typing.
+  const malayVoicePromptSeen = useSettingsStore((s) => s.malayVoicePromptSeen);
+  const setMalayVoicePromptSeen = useSettingsStore((s) => s.setMalayVoicePromptSeen);
+  const voiceCloudNoticeSeen = useSettingsStore((s) => s.voiceCloudNoticeSeen);
+  const setVoiceCloudNoticeSeen = useSettingsStore((s) => s.setVoiceCloudNoticeSeen);
+  const setMalayCloudVoice = useSettingsStore((s) => s.setMalayCloudVoice);
+  const [showMalayPrompt, setShowMalayPrompt] = useState(false);
+  const [showCloudConsent, setShowCloudConsent] = useState(false); // one-time pre-upload consent
+
+  // One tap → turn on cloud Malay voice (enabling IS the cloud-use consent). No download.
+  const handleGetMalay = useCallback(() => {
+    setMalayVoicePromptSeen(true);
+    setShowMalayPrompt(false);
+    setMalayCloudVoice(true);
+    setVoiceCloudNoticeSeen(true);
+    successNotification();
+  }, [setMalayVoicePromptSeen, setMalayCloudVoice, setVoiceCloudNoticeSeen]);
 
   const isBusinessMode = mode === 'business';
   const suggestions = useMemo(
@@ -961,6 +1095,30 @@ const MoneyChat: React.FC = () => {
     ),
     [isBusinessMode, t],
   );
+
+  // Contextual placeholder — reflects the user's money pulse this month, with evergreen fallbacks.
+  const currency = useSettingsStore((s) => s.currency);
+  const dynamicPlaceholder = useMemo(() => {
+    if (isBusinessMode) return t.chat.askPlaceholder;
+    const txns = usePersonalStore.getState().transactions || [];
+    const now = new Date();
+    let spend = 0, income = 0;
+    for (const tx of txns) {
+      const d = new Date(tx.date);
+      if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+        if (tx.type === 'expense') spend += tx.amount || 0;
+        else if (tx.type === 'income') income += tx.amount || 0;
+      }
+    }
+    const net = income - spend;
+    const money = (n: number) => currency + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const prompts: string[] = [];
+    if (spend > 0) prompts.push(t.moneyChat.phSpent.replace('{amount}', money(spend)));
+    if (net > 0) prompts.push(t.moneyChat.phKept.replace('{amount}', money(net)));
+    else if (net < 0) prompts.push(t.moneyChat.phDown.replace('{amount}', money(-net)));
+    prompts.push(t.moneyChat.suggestionWhereGoes, t.moneyChat.suggestionFoodSpend);
+    return prompts[now.getDate() % prompts.length] || t.chat.askPlaceholder;
+  }, [isBusinessMode, currency, t]);
 
   // The live chat resumes across screen opens / app backgrounding. It only
   // resets on a true cold start (app swiped away in the task switcher), which
@@ -1052,9 +1210,11 @@ const MoneyChat: React.FC = () => {
     errorTimerRef.current = setTimeout(() => setErrorNotice(null), 4000);
   }, []);
 
-  // Recording pulse animation
+  // Recording pulse animation + elapsed timer
   useEffect(() => {
     if (isRecording) {
+      setRecordSecs(0);
+      const ticker = setInterval(() => setRecordSecs((s) => s + 1), 1000);
       const pulse = Animated.loop(
         Animated.sequence([
           Animated.timing(recordingAnim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
@@ -1062,16 +1222,54 @@ const MoneyChat: React.FC = () => {
         ])
       );
       pulse.start();
-      return () => pulse.stop();
+      return () => { pulse.stop(); clearInterval(ticker); };
     } else {
       recordingAnim.setValue(1);
+      setRecordSecs(0);
     }
   }, [isRecording, recordingAnim]);
 
-  // Show voice errors
+  // Morph the listening surface in/out (cross-fade + subtle rise). Stays up through the brief
+  // server-transcribing beat so the card doesn't flash out and back in.
   useEffect(() => {
-    if (voiceError) showError(voiceError);
-  }, [voiceError, showError]);
+    Animated.timing(listenAnim, { toValue: (isRecording || isTranscribing) ? 1 : 0, duration: 200, useNativeDriver: true }).start();
+  }, [isRecording, isTranscribing, listenAnim]);
+
+  // Ease the 300ms-stepped metering so the blob breathes instead of jumping (on-device path).
+  useEffect(() => {
+    if ((serverMode || streaming) && isRecording) return; // server/streaming breathe on their own (below)
+    Animated.timing(ampAnim, { toValue: metering, duration: 260, useNativeDriver: true }).start();
+  }, [metering, ampAnim, serverMode, streaming, isRecording]);
+
+  // Server / streaming mode: no usable volumechange (server flatlines on some OEMs; Soniox gives none), so
+  // the real meter is dead. Drive a calm self-breathing pulse while listening.
+  useEffect(() => {
+    if (!((serverMode || streaming) && isRecording)) return;
+    const breathe = Animated.loop(
+      Animated.sequence([
+        Animated.timing(ampAnim, { toValue: 0.55, duration: 900, useNativeDriver: true }),
+        Animated.timing(ampAnim, { toValue: 0.15, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    breathe.start();
+    return () => breathe.stop();
+  }, [serverMode, streaming, isRecording, ampAnim]);
+  const blobScale = ampAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] });
+  const surfaceTranslate = listenAnim.interpolate({ inputRange: [0, 1], outputRange: [6, 0] });
+
+  // Surface voice errors as a calm, persistent row (kind-mapped copy + affordance)
+  useEffect(() => {
+    if (voiceError) setVoiceErrorKind(voiceError.kind);
+  }, [voiceError]);
+
+  // Offer the cloud-Malay nudge once, when voice fails for a Malay speaker and cloud isn't already on.
+  // 'setup' (mic heard audio but couldn't transcribe) → offer to anyone; a plain 'no-speech' (often a
+  // silent tap) → only nudge Malay-language users, so English users aren't mis-targeted.
+  useEffect(() => {
+    if (Platform.OS !== 'android' || malayVoicePromptSeen || malayCloudVoice) return;
+    const eligible = voiceErrorKind === 'setup' || (language === 'ms' && voiceErrorKind === 'no-speech');
+    if (eligible) setShowMalayPrompt(true);
+  }, [voiceErrorKind, malayVoicePromptSeen, malayCloudVoice, language]);
 
   // Photo — direct launch with permission request
   const handlePickImage = useCallback(async (source: 'camera' | 'gallery') => {
@@ -1096,16 +1294,43 @@ const MoneyChat: React.FC = () => {
   const handlePickCamera = useCallback(() => handlePickImage('camera'), [handlePickImage]);
   const handlePickGallery = useCallback(() => handlePickImage('gallery'), [handlePickImage]);
 
-  // Mic — toggle recording
+  // Mic — start recording. While recording, the listening surface owns stop/cancel, so this only
+  // ever starts (transcript lands in the composer for review; never auto-sends).
   const handleMicPress = useCallback(async () => {
-    if (isRecording) {
-      const text = await stopAndTranscribe();
-      if (text) setInput(text);
-    } else {
-      lightTap();
-      await startRecording();
+    lightTap();
+    setVoiceErrorKind(null);
+    // First cloud voice use (server clip OR live streaming) → one-time consent BEFORE any audio leaves the device.
+    if ((preferServer || preferStreaming) && !voiceCloudNoticeSeen) {
+      setShowCloudConsent(true);
+      return;
     }
-  }, [isRecording, startRecording, stopAndTranscribe]);
+    await startRecording();
+  }, [preferServer, preferStreaming, voiceCloudNoticeSeen, startRecording]);
+
+  // User acknowledged the one-time cloud note → remember it, then start the server recording.
+  const handleCloudConsent = useCallback(async () => {
+    setVoiceCloudNoticeSeen(true);
+    setShowCloudConsent(false);
+    setVoiceErrorKind(null);
+    await startRecording();
+  }, [setVoiceCloudNoticeSeen, startRecording]);
+
+  const handleCancelVoice = useCallback(() => {
+    lightTap();
+    cancelRecording();
+  }, [cancelRecording]);
+
+  const voiceErrorCopy = useCallback((kind: VoiceErrorKind): string => {
+    switch (kind) {
+      case 'permission': return t.moneyChat.voicePermDenied;
+      case 'no-speech': return t.moneyChat.voiceNoSpeech;
+      case 'network': return t.moneyChat.voiceNetwork;
+      case 'setup': return t.moneyChat.voiceSetup;
+      case 'unavailable': return t.moneyChat.voiceSetup;
+      case 'quota': return t.moneyChat.voiceLimit;
+      default: return t.moneyChat.voiceNoSpeech;
+    }
+  }, [t]);
 
   // Header buttons — history + new chat
   useLayoutEffect(() => {
@@ -1702,15 +1927,17 @@ const MoneyChat: React.FC = () => {
   }, [undoReceipts, clearLastSave, t, showToast]);
 
   return (
-    <View ref={containerRef} style={styles.container} onLayout={onContainerLayout}>
-      <KeyboardAvoidingView
-        style={styles.chatContainer}
-        behavior="padding"
-        keyboardVerticalOffset={kavOffset}
-      >
+    <View style={styles.container}>
+      <ChatContainer {...chatContainerProps}>
         {chatMessages.length === 0 && !isLoading ? (
-          <View style={styles.emptyState}>
-            <Feather name="message-circle" size={48} color={C.border} />
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={[styles.emptyState, { paddingBottom: SPACING['2xl'] + contentPad }]}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+          >
+            <Feather name="zap" size={48} color={C.accent} />
             <Text style={styles.emptyTitle}>{t.chat.echo}</Text>
             <Text style={styles.emptySubtitle}>
               {isBusinessMode
@@ -1728,7 +1955,7 @@ const MoneyChat: React.FC = () => {
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
+          </ScrollView>
         ) : (
           <FlatList
             ref={flatListRef}
@@ -1736,7 +1963,7 @@ const MoneyChat: React.FC = () => {
             data={chatMessages}
             renderItem={renderMessage}
             keyExtractor={keyExtractor}
-            contentContainerStyle={styles.messageList}
+            contentContainerStyle={[styles.messageList, { paddingBottom: SPACING.lg + contentPad }]}
             keyboardShouldPersistTaps="handled"
             removeClippedSubviews
             maxToRenderPerBatch={8}
@@ -1762,6 +1989,10 @@ const MoneyChat: React.FC = () => {
           </TouchableOpacity>
         )}
 
+        {attachVisible && (
+          <Pressable style={styles.attachBackdrop} onPress={() => setAttachVisible(false)} />
+        )}
+        <BottomWrapper {...bottomWrapperProps}>
         {/* Cross-nav undo of the last save — survives leaving + reopening Echo,
             within a short TTL (B10). Hidden while chips are queued to avoid clutter. */}
         {lastSaveFresh && pendingActions.length === 0 && (
@@ -1924,54 +2155,197 @@ const MoneyChat: React.FC = () => {
           </View>
         )}
 
-        {/* Recording indicator */}
-        {isRecording && (
-          <View style={styles.recordingBar}>
-            <Animated.View style={[styles.recordingDot, { opacity: recordingAnim }]} />
-            <Text style={styles.recordingText}>recording...</Text>
+        {/* ── Listening surface — one calm card; morphs in over the composer footprint ── */}
+        {(isRecording || isTranscribing) && (
+          <Animated.View
+            style={[styles.listeningSurface, { opacity: listenAnim, transform: [{ translateY: surfaceTranslate }] }]}
+            onStartShouldSetResponder={() => true}
+          >
+            {/* HERO — "tengah dengar…", the live caption, or the calm prompt. In server mode the live
+                caption is an EPHEMERAL grey preview (shown muted so it reads as a draft); the accurate
+                Malay replaces it in the composer on stop. */}
+            <View style={styles.listeningTranscriptWrap}>
+              <Text
+                style={[styles.listeningTranscript, (isTranscribing || serverMode || !liveTranscript) && styles.listeningPrompt]}
+                numberOfLines={3}
+              >
+                {isTranscribing
+                  ? t.moneyChat.voiceTranscribing
+                  : serverMode
+                    ? t.moneyChat.voicePrompt
+                    : (liveTranscript || t.moneyChat.voicePrompt)}
+              </Text>
+            </View>
+
+            {/* HINT — Manglish reassurance, only while listening with no words yet */}
+            {isRecording && !isTranscribing && !liveTranscript && (
+              <Text style={styles.listeningHint} numberOfLines={1}>{t.moneyChat.voiceHint}</Text>
+            )}
+
+            {isRecording ? (
+              /* CONTROL ROW — discard · breathing meter+dot+timer · finish(commit) */
+              <View style={styles.listeningControls}>
+                <TouchableOpacity
+                  style={styles.voiceCancelCircle}
+                  onPress={handleCancelVoice}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.moneyChat.voiceCancel}
+                >
+                  <Feather name="x" size={20} color={C.bronze} />
+                </TouchableOpacity>
+
+                <View style={styles.listeningMeter}>
+                  <View style={styles.listeningMeterCore}>
+                    <Animated.View style={[styles.meterBlob, { transform: [{ scale: blobScale }] }]} />
+                    <Animated.View style={[styles.meterDot, { opacity: recordingAnim }]} />
+                  </View>
+                  <Text style={styles.listeningTimer}>{formatSecs(recordSecs)}</Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.voiceStopCircle}
+                  onPress={() => { lightTap(); stopAndTranscribe(); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.moneyChat.voiceStop}
+                >
+                  <Feather name="check" size={24} color={C.onAccent} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              /* TRANSCRIBING — server is writing it down; just a calm breathing dot, no buttons. */
+              <View style={styles.listeningMeter}>
+                <View style={styles.listeningMeterCore}>
+                  <Animated.View style={[styles.meterDot, { opacity: recordingAnim }]} />
+                </View>
+              </View>
+            )}
+
+            {/* FOOTER — the confirmation-first promise, in copy */}
+            <Text style={styles.listeningFooter} numberOfLines={1}>{t.moneyChat.voiceReviewHint}</Text>
+          </Animated.View>
+        )}
+
+        {/* One-time CLOUD CONSENT — shown BEFORE the first Malay server recording (pre-capture, pre-upload).
+            "got it" remembers the choice + starts recording; ✕ backs out without recording. */}
+        {showCloudConsent && !isRecording && !isTranscribing && (
+          <View style={styles.errorNotice}>
+            <Feather name="cloud" size={14} color={C.bronze} />
+            <Text style={styles.errorNoticeText}>{t.moneyChat.voiceCloudNote}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={handleCloudConsent}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.voiceActionText}>{t.moneyChat.voiceCloudOk}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowCloudConsent(false)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.moneyChat.voiceCancel}
+            >
+              <Feather name="x" size={14} color={C.bronze} />
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Transcribing indicator */}
-        {isTranscribing && (
-          <View style={styles.recordingBar}>
-            <Text style={styles.recordingText}>transcribing...</Text>
+        {/* Voice error — calm, persistent, never red */}
+        {voiceErrorKind && !isRecording && !isTranscribing && (
+          <View style={styles.errorNotice}>
+            <Feather name="alert-circle" size={14} color={C.bronze} />
+            <Text style={styles.errorNoticeText}>{voiceErrorCopy(voiceErrorKind)}</Text>
+            {voiceErrorKind === 'permission' && (
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => { setVoiceErrorKind(null); Linking.openSettings(); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.voiceActionText}>{t.moneyChat.voiceOpenSettings}</Text>
+              </TouchableOpacity>
+            )}
+            {(voiceErrorKind === 'network' || voiceErrorKind === 'generic') && (
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => { setVoiceErrorKind(null); inputRef.current?.focus(); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.voiceActionText}>{t.moneyChat.voiceTypeInstead}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={() => setVoiceErrorKind(null)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.moneyChat.voiceCancel}
+            >
+              <Feather name="x" size={14} color={C.bronze} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Cloud-Malay nudge — one tap turns it on (no download); calm, bronze, never blocks typing */}
+        {showMalayPrompt && !isRecording && !isTranscribing && (
+          <View style={styles.errorNotice}>
+            <Feather name="cloud" size={14} color={C.bronze} />
+            <Text style={styles.errorNoticeText}>{t.moneyChat.voiceMalayPrep}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={handleGetMalay}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.voiceActionText}>{t.moneyChat.voiceGetMalay}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => { setMalayVoicePromptSeen(true); setShowMalayPrompt(false); }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.moneyChat.voiceCancel}
+            >
+              <Feather name="x" size={14} color={C.bronze} />
+            </TouchableOpacity>
           </View>
         )}
 
         <View ref={guideTargetRef} style={styles.inputBar} collapsable={false}>
-          {/* Camera + Gallery buttons */}
+          {attachVisible && (
+            <View style={styles.attachPopover} onStartShouldSetResponder={() => true}>
+              <TouchableOpacity style={styles.attachRow} onPress={() => { setAttachVisible(false); setTimeout(handlePickCamera, 50); }}>
+                <Feather name="camera" size={16} color={C.textSecondary} />
+                <Text style={styles.attachLabel}>{t.moneyChat.takePhoto}</Text>
+              </TouchableOpacity>
+              <View style={styles.attachDivider} />
+              <TouchableOpacity style={styles.attachRow} onPress={() => { setAttachVisible(false); setTimeout(handlePickGallery, 50); }}>
+                <Feather name="image" size={16} color={C.textSecondary} />
+                <Text style={styles.attachLabel}>{t.moneyChat.chooseFromGallery}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {/* Attach — single button opens a camera / gallery choice */}
           <TouchableOpacity
             style={styles.inputIconButton}
-            onPress={handlePickCamera}
+            onPress={() => { lightTap(); setAttachVisible((v) => !v); }}
             disabled={isLoading || isRecording}
+            accessibilityRole="button"
+            accessibilityLabel={t.moneyChat.attach}
           >
             <Feather
-              name="camera"
-              size={18}
-              color={isLoading || isRecording ? C.border : C.textSecondary}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.inputIconButton}
-            onPress={handlePickGallery}
-            disabled={isLoading || isRecording}
-          >
-            <Feather
-              name="image"
-              size={18}
+              name="plus"
+              size={22}
               color={isLoading || isRecording ? C.border : C.textSecondary}
             />
           </TouchableOpacity>
 
           <TextInput
+            ref={inputRef}
             style={styles.textInput}
             value={input}
             onChangeText={setInput}
-            placeholder={isRecording ? '' : t.chat.askPlaceholder}
+            placeholder={isRecording ? '' : dynamicPlaceholder}
             placeholderTextColor={C.textSecondary}
             multiline
-            editable={!isLoading && !isRecording}
+            editable={!isLoading && !isRecording && !isTranscribing}
           />
 
           {/* Mic / Send toggle */}
@@ -1988,21 +2362,26 @@ const MoneyChat: React.FC = () => {
               style={[
                 styles.sendButton,
                 isRecording ? styles.micButtonActive : styles.micButton,
-                (isLoading || isTranscribing) && styles.sendButtonDisabled,
+                isLoading && styles.sendButtonDisabled,
               ]}
               onPress={handleMicPress}
-              disabled={isLoading || isTranscribing}
+              disabled={isLoading || isRecording}
+              accessibilityRole="button"
+              accessibilityLabel={t.moneyChat.voiceStart}
+              accessibilityState={{ selected: isRecording }}
             >
+              {/* Stays a mic; the listening surface above shows the live state + owns stop/cancel. */}
               <Feather
-                name={isRecording ? 'square' : 'mic'}
-                size={isRecording ? 16 : 20}
-                color={isRecording ? '#fff' : (isLoading || isTranscribing ? C.textSecondary : C.accent)}
+                name="mic"
+                size={20}
+                color={isRecording ? C.onAccent : (isLoading ? C.textSecondary : C.accent)}
               />
             </TouchableOpacity>
           )}
         </View>
+        </BottomWrapper>
 
-      </KeyboardAvoidingView>
+      </ChatContainer>
 
       {/* Conversation history modal */}
       <Modal
@@ -2144,7 +2523,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // Empty state
   emptyState: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING['2xl'],
@@ -2702,6 +3081,41 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: C.border,
   },
+  attachBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  attachPopover: {
+    position: 'absolute',
+    bottom: '100%',
+    left: SPACING.sm,
+    marginBottom: SPACING.sm,
+    minWidth: 210,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    overflow: 'hidden',
+    paddingVertical: SPACING.xs,
+    zIndex: 50,
+    ...SHADOWS.lg,
+  },
+  attachRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md + 2,
+    paddingHorizontal: SPACING.lg,
+  },
+  attachLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  attachDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+    marginHorizontal: SPACING.lg,
+  },
   inputIconButton: {
     width: 44,
     height: 44,
@@ -2736,7 +3150,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderColor: C.border,
   },
   micButtonActive: {
-    backgroundColor: '#C1694F',
+    backgroundColor: C.accent,
   },
 
   // Image preview
@@ -2774,24 +3188,108 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.xs,
   },
 
-  // Recording indicator
-  recordingBar: {
+  // ── Listening surface (voice) ──────────────────────────────────────────
+  listeningSurface: {
+    width: '100%',
+    maxWidth: 640, // tablet cap — same idiom as the old recordingBar
+    alignSelf: 'center',
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border, // floats in dark (modal-outline rule)
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+    marginHorizontal: SPACING.md, // aligns with the inputBar inset
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+    ...SHADOWS.sm,
+  },
+  listeningTranscriptWrap: {
+    minHeight: 26, // reserve one line so the card doesn't jump on the first word
+    justifyContent: 'flex-start',
+  },
+  listeningTranscript: {
+    fontSize: TYPOGRAPHY.size.lg, // HERO — the trust signal
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    lineHeight: TYPOGRAPHY.size.lg * 1.4,
+  },
+  listeningPrompt: {
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.regular,
+  },
+  listeningHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: -SPACING.xs,
+  },
+  listeningControls: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+  },
+  listeningMeter: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: 6,
-    backgroundColor: C.surface,
+    height: 36,
   },
-  recordingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#C1694F',
+  listeningMeterCore: {
+    width: 44, // fixed box so the scaling blob doesn't reflow the timer
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  recordingText: {
+  meterBlob: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: withAlpha(C.accent, 0.16),
+  },
+  meterDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: C.accent,
+  },
+  listeningTimer: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: '#C1694F',
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'],
+    minWidth: 34,
+    textAlign: 'left',
+  },
+  voiceCancelCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(C.bronze, 0.1),
+  },
+  voiceStopCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.accent,
+    ...SHADOWS.sm,
+  },
+  listeningFooter: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
+  },
+  voiceActionText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 

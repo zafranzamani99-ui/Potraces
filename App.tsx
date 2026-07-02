@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform } from 'react-native';
-import { requestTrackingPermissionsAsync, getTrackingPermissionsAsync } from 'expo-tracking-transparency';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -13,7 +12,7 @@ import { ToastProvider } from './src/context/ToastContext';
 import { supabase, getAuthSession } from './src/services/supabase';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId, clearProfileCache } from './src/services/sellerSync';
 import { useAuthStore } from './src/store/authStore';
-import { registerPushNotifications } from './src/services/pushNotifications';
+import { registerPushNotifications, registerAndroidNotificationChannels } from './src/services/pushNotifications';
 import * as Notifications from 'expo-notifications';
 import { globalShowToast } from './src/context/ToastContext';
 import { useSellerStore } from './src/store/sellerStore';
@@ -23,6 +22,8 @@ import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
 import BiometricGate from './src/components/common/BiometricGate';
+import ErrorBoundary from './src/components/common/ErrorBoundary';
+import ForcedUpdateGate from './src/components/common/ForcedUpdateGate';
 import PersonalSyncManager from './src/components/common/PersonalSyncManager';
 import TapToPayProvider from './src/components/common/TapToPayProvider';
 import { checkStorageIntegrity, clearCorruptedStores } from './src/services/storageIntegrity';
@@ -42,6 +43,21 @@ import { autoReconcileWallets } from './src/utils/walletReconcile';
 import { useTombstoneStore } from './src/store/tombstoneStore';
 import { maybeCheckStorage } from './src/utils/storageMonitor';
 import { configureGoogleSignIn } from './src/services/googleAuth';
+import { checkForcedUpdate, UpdateStatus } from './src/services/appConfig';
+import * as Sentry from '@sentry/react-native';
+
+// Crash + error reporting. The DSN comes from env (EXPO_PUBLIC_SENTRY_DSN) so it
+// can be set per-build via EAS secrets; init() no-ops entirely when the DSN is
+// absent, so dev/local builds report nothing. ErrorBoundary already forwards
+// caught React errors via Sentry.captureException — they activate once init runs.
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    enabled: !__DEV__,
+    sendDefaultPii: false, // never attach PII / money data by default
+  });
+}
 
 // Debounced auto-sync — pushes to Supabase ~1.5s after any data mutation
 let _autoSyncTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -49,9 +65,10 @@ let _unsubAutoSync: (() => void) | null = null;
 let _unsubSubSched: (() => void) | null = null;
 let _lastForegroundSync = 0;
 
-export default function App() {
+function App() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [update, setUpdate] = React.useState<UpdateStatus | null>(null);
   const mode = useAppStore((s) => s.mode);
   const isDark = useIsDark();
 
@@ -140,6 +157,12 @@ export default function App() {
       // Record first-run timestamp for the review-prompt gate.
       recordFirstRun().catch(() => {});
 
+      // Ensure Android notification channels exist for ALL notification types
+      // (seller orders + personal spending alerts / bills / QR reminders) so
+      // personal local notifications render with the right importance/sound.
+      // Independent of permission; no-op off Android.
+      registerAndroidNotificationChannels().catch(() => {});
+
       // Schedule local bill reminders for active subscriptions.
       try {
         scheduleSubBehavior();
@@ -177,19 +200,6 @@ export default function App() {
         }
       });
 
-      // iOS ATT: request tracking permission after onboarding (once, non-blocking).
-      // Only meaningful on iOS 14.5+; harmless no-op elsewhere.
-      if (Platform.OS === 'ios' && useSettingsStore.getState().hasCompletedOnboarding) {
-        try {
-          const current = await getTrackingPermissionsAsync();
-          if (current.status === 'undetermined') {
-            await requestTrackingPermissionsAsync();
-          }
-        } catch {
-          // ignore — App Store requires the prompt; if system denies we fall through
-        }
-      }
-
       // Sync + push for any authenticated session (anonymous or verified)
       if (session) {
         try {
@@ -204,8 +214,12 @@ export default function App() {
           // Pull any order_link orders placed while app was closed
           await pullOrderLinkOrders();
 
-          // Register push notifications (saves token to Supabase)
-          registerPushNotifications().catch(() => {});
+          // Register push notifications (saves token to Supabase) WITHOUT
+          // firing a cold OS permission prompt at session startup. Returning
+          // users who already granted still get their token + channel
+          // registered; new users are prompted later from a contextual moment
+          // (first order created) via registerPushNotifications({ promptIfNeeded: true }).
+          registerPushNotifications({ promptIfNeeded: false }).catch(() => {});
 
           // Auto-sync: push to Supabase ~1.5s after any data mutation
           _unsubAutoSync?.();
@@ -444,6 +458,19 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
+  // Forced-update / kill-switch gate — fail-open (see services/appConfig.ts).
+  React.useEffect(() => {
+    checkForcedUpdate().then(setUpdate).catch(() => {});
+  }, []);
+
+  if (update?.required) {
+    return (
+      <SafeAreaProvider>
+        <ForcedUpdateGate storeUrl={update.storeUrl} message={update.message} />
+      </SafeAreaProvider>
+    );
+  }
+
   if (error) {
     return (
       <View style={styles.errorContainer}>
@@ -463,27 +490,29 @@ export default function App() {
   }
 
   return (
-    <RootSiblingParent>
-      <SafeAreaProvider>
-        <KeyboardProvider>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-              <View style={{ flex: 1 }}>
-                <ToastProvider>
-                  <StatusBar style={isDark ? 'light' : 'dark'} />
-                  <BiometricGate>
-                    <PersonalSyncManager />
-                    <TapToPayProvider>
-                      <RootNavigator />
-                    </TapToPayProvider>
-                  </BiometricGate>
-                </ToastProvider>
-              </View>
-            </TouchableWithoutFeedback>
-          </GestureHandlerRootView>
-        </KeyboardProvider>
-      </SafeAreaProvider>
-    </RootSiblingParent>
+    <ErrorBoundary>
+      <RootSiblingParent>
+        <SafeAreaProvider>
+          <KeyboardProvider>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+                <View style={{ flex: 1 }}>
+                  <ToastProvider>
+                    <StatusBar style={isDark ? 'light' : 'dark'} />
+                    <BiometricGate>
+                      <PersonalSyncManager />
+                      <TapToPayProvider>
+                        <RootNavigator />
+                      </TapToPayProvider>
+                    </BiometricGate>
+                  </ToastProvider>
+                </View>
+              </TouchableWithoutFeedback>
+            </GestureHandlerRootView>
+          </KeyboardProvider>
+        </SafeAreaProvider>
+      </RootSiblingParent>
+    </ErrorBoundary>
   );
 }
 
@@ -518,3 +547,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+// Wrap with Sentry only when active so there is zero overhead without a DSN.
+export default SENTRY_DSN ? Sentry.wrap(App) : App;

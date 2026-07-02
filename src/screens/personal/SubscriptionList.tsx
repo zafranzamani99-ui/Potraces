@@ -3,9 +3,10 @@ import React, {
 } from 'react';
 import {
   View, Text, StyleSheet, TextInput, Modal, TouchableOpacity,
-  Pressable, Switch, Keyboard, KeyboardAvoidingView, Platform,
+  Pressable, Switch, Keyboard,
   Animated, Dimensions, Alert,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useEchoFabPan } from '../../hooks/useEchoFabPan';
 import EchoDragHideZone from '../../components/wallet/EchoDragHideZone';
@@ -43,6 +44,7 @@ import { useWalletStore } from '../../store/walletStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, BILLING_CYCLES, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import CalendarPicker from '../../components/common/CalendarPicker';
@@ -1217,6 +1219,8 @@ const SubscriptionList: React.FC = () => {
     showToast('cleared.', 'success');
   }, [markPaidSub, markPaidDate, markSubscriptionPaid, addTransaction, deductFromWallet, showToast, markSharedSubPayment, ensureMonthRecord]);
 
+  const guardedMarkPaid = useSubmitGuard(handleMarkPaid);
+
   // ─── Render helpers ────────────────────────────────────
 
   const renderWalletChip = useCallback((wId?: string) => {
@@ -2134,7 +2138,7 @@ const SubscriptionList: React.FC = () => {
                 placeholderTextColor={C.textMuted}
                 returnKeyType="next"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
             <View style={styles.fgDivider} />
@@ -2153,7 +2157,7 @@ const SubscriptionList: React.FC = () => {
                   onSubmitEditing={Keyboard.dismiss}
                   editable={!isEditingComplete}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
             </View>
@@ -2201,7 +2205,7 @@ const SubscriptionList: React.FC = () => {
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
                 <Text style={styles.fgReminderSuffix}>days before</Text>
               </View>
@@ -2250,7 +2254,7 @@ const SubscriptionList: React.FC = () => {
                 placeholderTextColor={withAlpha(C.textMuted, 0.5)}
                 returnKeyType="next"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
           </View>
@@ -2290,7 +2294,7 @@ const SubscriptionList: React.FC = () => {
                 onSubmitEditing={Keyboard.dismiss}
                 editable={!isEditingComplete}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               <Text style={styles.fieldLabel}>outstanding balance <Text style={styles.fieldLabelOptional}>(optional)</Text></Text>
               <View style={styles.amountRow}>
@@ -2305,7 +2309,7 @@ const SubscriptionList: React.FC = () => {
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
             </>
@@ -2502,7 +2506,7 @@ const SubscriptionList: React.FC = () => {
           setModalVisible(false); resetForm();
         }}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.kavWrapper}>
+        <KeyboardAvoidingView behavior="padding" style={styles.kavWrapper}>
           <View
             style={[styles.modalCard, modalView !== 'form' && { maxHeight: undefined }]}
             onStartShouldSetResponder={() => true}
@@ -2601,7 +2605,7 @@ const SubscriptionList: React.FC = () => {
                   {linkedWallet && (
                     <TouchableOpacity
                       style={[styles.markPaidBtn, { backgroundColor: withAlpha(linkedWallet.color, 0.15), borderWidth: 1, borderColor: withAlpha(linkedWallet.color, 0.25) }]}
-                      onPress={() => handleMarkPaid(true)}
+                      onPress={() => guardedMarkPaid(true)}
                       activeOpacity={0.8}
                     >
                       <WalletLogo wallet={linkedWallet} size={18} />
@@ -2611,7 +2615,7 @@ const SubscriptionList: React.FC = () => {
                     </TouchableOpacity>
                   )}
 
-                  <TouchableOpacity style={linkedWallet ? styles.mpWalletBtn : styles.markPaidBtn} onPress={() => handleMarkPaid(false)} activeOpacity={0.8}>
+                  <TouchableOpacity style={linkedWallet ? styles.mpWalletBtn : styles.markPaidBtn} onPress={() => guardedMarkPaid(false)} activeOpacity={0.8}>
                     <Feather name="check" size={18} color={linkedWallet ? C.textSecondary : C.onAccent} />
                     <Text style={linkedWallet ? styles.mpWalletBtnText : styles.markPaidBtnText}>mark as paid</Text>
                   </TouchableOpacity>
@@ -3385,7 +3389,7 @@ const SubscriptionList: React.FC = () => {
   // ─── Empty state ─────────────────────────────────────
   const renderEmptyState = () => (
     <EmptyState
-      icon="calendar"
+      icon="i/calendar-outline"
       title={t.subscriptions.noBills}
       message={t.subscriptions.trackRecurring}
       actionLabel={t.subscriptions.addBill}
@@ -3420,7 +3424,7 @@ const SubscriptionList: React.FC = () => {
                   returnKeyType="search"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
                 {searchQuery.length > 0 && (
                   <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>

@@ -82,7 +82,7 @@ const SelectedItemRow = React.memo(({ item, index, currency, qty, isEditing, edi
           onSubmitEditing={() => onEditSubmit(item.productId)}
           onBlur={() => onEditSubmit(item.productId)}
           keyboardType="decimal-pad" selectTextOnFocus autoFocus maxLength={6}
-          keyboardAppearance={isDark ? 'dark' : 'light'} selectionColor={C.accent}
+          keyboardAppearance={isDark ? 'dark' : 'light'} selectionColor={withAlpha(C.accent, 0.25)}
         />
       ) : (
         <TouchableOpacity onPress={() => onEditStart(item.productId, item.quantity)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -713,7 +713,7 @@ const NewOrder: React.FC = () => {
                 placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 accessibilityLabel="Customer name"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               {!customerName.trim() && (
                 <TouchableOpacity
@@ -754,7 +754,7 @@ const NewOrder: React.FC = () => {
                     keyboardType="phone-pad"
                     accessibilityLabel="Phone"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
                 </View>
                 <View style={styles.customerFieldDivider} />
@@ -768,7 +768,7 @@ const NewOrder: React.FC = () => {
                     placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     accessibilityLabel="Address"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
                 </View>
               </>
@@ -894,7 +894,7 @@ const NewOrder: React.FC = () => {
                   numberOfLines={2}
                   accessibilityLabel="WhatsApp message"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
                 {detectedSections.length > 1 && (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectionChipsRow}>
@@ -1103,7 +1103,7 @@ const NewOrder: React.FC = () => {
                 multiline
                 scrollEnabled={false}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
           </View>
@@ -1330,7 +1330,7 @@ const NewOrder: React.FC = () => {
                 placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 accessibilityLabel="Search products"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               {productSearch.length > 0 && (
                 <TouchableOpacity
@@ -1428,7 +1428,7 @@ const NewOrder: React.FC = () => {
                                 autoFocus
                                 maxLength={6}
                                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                                selectionColor={C.accent}
+                                selectionColor={withAlpha(C.accent, 0.25)}
                               />
                             ) : (
                               <TouchableOpacity
@@ -1520,7 +1520,7 @@ const NewOrder: React.FC = () => {
                 onChangeText={setContactSearch}
                 autoFocus
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               {contactSearch.length > 0 && (
                 <TouchableOpacity onPress={() => setContactSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>

@@ -12,6 +12,10 @@ import { getDeviceId } from '../utils/deviceId';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+// supabase.auth.getSession() has no internal timeout and can hang on a gotrue-js storage-lock contention,
+// which would freeze EVERY proxy call (and any caller of aiProxyHeaders, e.g. the STT token fetch). Cap it:
+// a stalled auth read falls back to the anon key rather than blocking forever.
+const AUTH_TIMEOUT_MS = 3000;
 
 export const AI_PROXY_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/ai-proxy` : '';
 
@@ -35,7 +39,12 @@ export async function aiProxyHeaders(): Promise<Record<string, string>> {
   const deviceId = await getDeviceId();
   let bearer = ANON_KEY;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    // Race getSession against a timeout so a stalled auth read can't hang the call (.catch on the
+    // getSession branch prevents an unhandled rejection if it settles after the timeout wins).
+    const session = await Promise.race([
+      supabase.auth.getSession().then((r) => r.data.session).catch(() => null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), AUTH_TIMEOUT_MS)),
+    ]);
     if (session?.access_token) bearer = session.access_token;
   } catch {
     /* no session → anon */

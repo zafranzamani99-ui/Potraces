@@ -1,6 +1,10 @@
 import React, { useRef, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+// The swipe action's tap is handled by an RNGH Gesture.Tap (not a touchable):
+// ReanimatedSwipeable (RNGH 2.25+) swallows touchable presses inside renderRightActions
+// on Android, routing the tap to the row underneath. A sibling Tap gesture fires reliably.
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { format, isValid, isToday, isYesterday } from 'date-fns';
 import Reanimated, { FadeIn } from 'react-native-reanimated';
@@ -8,6 +12,7 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, SHADOWS, withA
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import WalletLogo from './WalletLogo';
+import CategoryIcon from './CategoryIcon';
 import { Transaction, CategoryOption, Wallet } from '../../types';
 import { lightTap } from '../../services/haptics';
 
@@ -25,6 +30,8 @@ interface TransactionItemProps {
   isLast?: boolean;
   /** Row position in initial render — used for staggered entrance animation. */
   index?: number;
+  /** Set false to skip the entrance fade (paginated lists — avoids recycle jank). */
+  animateEntrance?: boolean;
 }
 
 /**
@@ -49,6 +56,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   isFirst = false,
   isLast = false,
   index = 0,
+  animateEntrance = true,
 }) => {
   const swipeableRef = useRef<SwipeableMethods>(null);
   const C = useCalm();
@@ -121,17 +129,24 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     onSwipeDelete?.(transaction.id);
   }, [onSwipeDelete, transaction.id]);
 
+  // Tap handled by RNGH directly (runs on JS thread) — reliable inside the
+  // swipeable's gesture tree where touchables get swallowed on Android.
+  const deleteTapGesture = useMemo(
+    () => Gesture.Tap().runOnJS(true).onEnd(() => handleSwipeDelete()),
+    [handleSwipeDelete]
+  );
+
   const renderRightActions = useCallback(() => (
-    <TouchableOpacity
-      style={styles.swipeDeleteBtn}
-      onPress={handleSwipeDelete}
-      activeOpacity={0.8}
-      accessibilityRole="button"
-      accessibilityLabel={t.common.delete}
-    >
-      <Feather name="trash-2" size={20} color={C.surface} />
-    </TouchableOpacity>
-  ), [handleSwipeDelete, styles.swipeDeleteBtn, t, C.surface]);
+    <GestureDetector gesture={deleteTapGesture}>
+      <View
+        style={styles.swipeDeleteBtn}
+        accessibilityRole="button"
+        accessibilityLabel={t.common.delete}
+      >
+        <Feather name="trash-2" size={20} color={C.surface} />
+      </View>
+    </GestureDetector>
+  ), [deleteTapGesture, styles.swipeDeleteBtn, t, C.surface]);
 
   // Format amount — RM tight-kerned to digits.
   const sign = isExpense ? '−' : '+';
@@ -164,8 +179,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
         {/* Left: 42px circular icon, color-extracted background tint, prominent. */}
         <View style={[styles.iconWrap, { backgroundColor: iconBgColor }]}>
-          <Feather
-            name={(category?.icon as keyof typeof Feather.glyphMap) || (isExpense ? 'arrow-up-right' : 'arrow-down-left')}
+          <CategoryIcon
+            icon={category?.icon || (isExpense ? 'arrow-up-right' : 'arrow-down-left')}
             size={ICON_SIZE.sm}
             color={iconColor}
           />
@@ -222,8 +237,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
   // Staggered entrance — first 12 cards cascade at 50ms intervals (~600ms total),
   // subsequent cards just fade in. Motion: M4 unfold-stagger.
+  // Skipped when animateEntrance=false (paginated lists): the entrance replaying
+  // on every recycle/scroll is what caused the stutter & half-rendered frames.
   const stagger = Math.min(index, 11) * 50;
-  const enteringAnim = FadeIn.duration(420).delay(stagger);
+  const enteringAnim = animateEntrance ? FadeIn.duration(420).delay(stagger) : undefined;
 
   if (onSwipeDelete && !selectMode) {
     return (
@@ -270,6 +287,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.sm,
+    // Card top-aligns (flex-start) to keep the 42px icon on row 1; nudge the
+    // 22px checkbox down by (42-22)/2 so its centre matches the icon's centre.
+    marginTop: 10,
   },
   checkboxChecked: {
     backgroundColor: C.accent,
