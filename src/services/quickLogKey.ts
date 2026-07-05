@@ -27,8 +27,9 @@ async function currentUserId(): Promise<string | null> {
 export async function registerQuickLogKey(): Promise<string> {
   const userId = await currentUserId();
   if (!userId) throw new Error('not-signed-in');
-  await supabase.from('quick_log_keys').update({ revoked: true })
+  const { error: revokeErr } = await supabase.from('quick_log_keys').update({ revoked: true })
     .eq('user_id', userId).eq('revoked', false);
+  if (revokeErr) throw revokeErr;
   const key = generateQuickLogKey();
   const key_hash = await hashKey(key);
   const { error } = await supabase.from('quick_log_keys')

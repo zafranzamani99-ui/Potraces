@@ -75,7 +75,7 @@ export default function QuickLogSetup() {
         </Pressable>
 
         <Pressable style={[styles.btn, styles.secondary, { borderColor: C.border }]}
-          onPress={() => Linking.openURL(SHORTCUT_URL)}>
+          onPress={() => Linking.openURL(SHORTCUT_URL).catch(() => {})}>
           <Text style={[styles.btnText, { color: C.textPrimary }]}>{t.settings.quickLog.getShortcut}</Text>
         </Pressable>
 
