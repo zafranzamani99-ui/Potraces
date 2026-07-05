@@ -89,14 +89,34 @@ const SecureStoreAdapter = {
   },
 };
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-    storage: SecureStoreAdapter,
-  },
-});
+export type Mode = 'business' | 'personal';
+
+/**
+ * Build a Supabase client bound to its own encrypted session slot. Two clients
+ * (business + personal) run against the SAME project, each with a distinct
+ * `storageKey`, so their sessions persist and auto-refresh independently — that
+ * is what lets a user stay signed into two different accounts at once.
+ */
+function makeClient(namespace: Mode) {
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+      storageKey: `sb-${namespace}-auth`,
+      storage: SecureStoreAdapter,
+    },
+  });
+}
+
+export const supabaseBusiness = makeClient('business');
+export const supabasePersonal = makeClient('personal');
+export const clientForMode = (m: Mode) => (m === 'business' ? supabaseBusiness : supabasePersonal);
+
+/** Transitional alias — removed in Task 9 once every call site is routed. */
+export const supabase = supabaseBusiness;
+
+type Client = typeof supabaseBusiness;
 
 // ─── Auth helpers ────────────────────────────────────────────────────────────
 
@@ -107,38 +127,38 @@ export function phoneToEmail(phone: string): string {
 }
 
 /** Get existing auth session (no auto-creation). */
-export async function getAuthSession() {
-  const { data: { session } } = await supabase.auth.getSession();
+export async function getAuthSession(client: Client = supabaseBusiness) {
+  const { data: { session } } = await client.auth.getSession();
   return session;
 }
 
 /** Sign up with phone + password. */
-export async function signUpWithPhone(phone: string, password: string) {
+export async function signUpWithPhone(phone: string, password: string, client: Client = supabaseBusiness) {
   const email = phoneToEmail(phone);
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  const { data, error } = await client.auth.signUp({ email, password });
   if (error) throw error;
   return data;
 }
 
 /** Sign in with phone + password. */
-export async function signInWithPhone(phone: string, password: string) {
+export async function signInWithPhone(phone: string, password: string, client: Client = supabaseBusiness) {
   const email = phoneToEmail(phone);
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await client.auth.signInWithPassword({ email, password });
   if (error) throw error;
   return data;
 }
 
-/** Sign out (also clears Google SDK session if present). */
-export async function signOut() {
+/** Sign out of ONE client (also clears the Google SDK session if present). */
+export async function signOut(client: Client = supabaseBusiness) {
   const { signOutGoogle } = require('./googleAuth');
   signOutGoogle();
-  const { error } = await supabase.auth.signOut();
+  const { error } = await client.auth.signOut();
   if (error) throw error;
 }
 
-/** Request OTP code for Telegram verification. */
-export async function requestOtp(phone: string): Promise<{ code: string; expiresAt: string }> {
-  const { data: { session } } = await supabase.auth.getSession();
+/** Request OTP code for Telegram verification (business only). */
+export async function requestOtp(phone: string, client: Client = supabaseBusiness): Promise<{ code: string; expiresAt: string }> {
+  const { data: { session } } = await client.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/request-otp`, {
@@ -153,12 +173,12 @@ export async function requestOtp(phone: string): Promise<{ code: string; expires
   return res.json();
 }
 
-/** Check if the current user's seller profile is verified. */
-export async function checkVerification(): Promise<boolean> {
-  const { data: { session } } = await supabase.auth.getSession();
+/** Check if the current user's seller profile is verified (business only). */
+export async function checkVerification(client: Client = supabaseBusiness): Promise<boolean> {
+  const { data: { session } } = await client.auth.getSession();
   if (!session) return false;
 
-  const { data } = await supabase
+  const { data } = await client
     .from('seller_profiles')
     .select('is_verified')
     .eq('user_id', session.user.id)
@@ -168,8 +188,8 @@ export async function checkVerification(): Promise<boolean> {
 }
 
 /** Delete all business data on server and delete the auth user. */
-export async function clearBusinessDataRemote() {
-  const { data: { session } } = await supabase.auth.getSession();
+export async function clearBusinessDataRemote(client: Client = supabaseBusiness) {
+  const { data: { session } } = await client.auth.getSession();
   if (!session) return;
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/clear-business-data`, {
@@ -190,8 +210,8 @@ export async function clearBusinessDataRemote() {
  * delete to the signed-in user. A personal-only user who never signed in has no
  * session and therefore no remote data — that's a no-op, not an error.
  */
-export async function clearPersonalDataRemote(): Promise<void> {
-  const { data: { session } } = await supabase.auth.getSession();
+export async function clearPersonalDataRemote(client: Client = supabasePersonal): Promise<void> {
+  const { data: { session } } = await client.auth.getSession();
   if (!session) return;
   const userId = session.user.id;
   const tables = [
@@ -208,7 +228,7 @@ export async function clearPersonalDataRemote(): Promise<void> {
     'personal_receipts',
   ];
   await Promise.allSettled(
-    tables.map((t) => supabase.from(t).delete().eq('user_id', userId)),
+    tables.map((t) => client.from(t).delete().eq('user_id', userId)),
   );
 }
 
@@ -221,8 +241,8 @@ export async function clearPersonalDataRemote(): Promise<void> {
  * retry, rather than wiping the device while the account still lives on the server.
  * A user with no session (never signed in → no server account) is a no-op.
  */
-export async function deleteAccountRemote(): Promise<void> {
-  const { data: { session } } = await supabase.auth.getSession();
+export async function deleteAccountRemote(client: Client = supabaseBusiness): Promise<void> {
+  const { data: { session } } = await client.auth.getSession();
   if (!session) return;
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {

@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabaseBusiness } from './supabase';
 
 // Lazy-load native module — crashes in Expo Go if imported statically
 let GoogleSignin: any = null;
@@ -30,7 +30,7 @@ export function configureGoogleSignIn() {
   });
 }
 
-export async function signInWithGoogle(): Promise<{ userId: string }> {
+export async function signInWithGoogle(client = supabaseBusiness): Promise<{ userId: string }> {
   if (!GoogleSignin) throw new Error('Google Sign-In not available (dev build required)');
   if (!WEB_CLIENT_ID) throw new Error('Google Sign-In is not configured (missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID).');
   await GoogleSignin.hasPlayServices();
@@ -38,7 +38,7 @@ export async function signInWithGoogle(): Promise<{ userId: string }> {
   const idToken = response.data?.idToken;
   if (!idToken) throw new Error('No ID token from Google');
 
-  const { data, error } = await supabase.auth.signInWithIdToken({
+  const { data, error } = await client.auth.signInWithIdToken({
     provider: 'google',
     token: idToken,
   });

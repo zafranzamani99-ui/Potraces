@@ -1,8 +1,8 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
-import { supabase } from './supabase';
+import { supabaseBusiness } from './supabase';
 
-export async function signInWithApple(): Promise<{ userId: string }> {
+export async function signInWithApple(client = supabaseBusiness): Promise<{ userId: string }> {
   const rawNonce = Array.from(Crypto.getRandomBytes(32))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
@@ -21,7 +21,7 @@ export async function signInWithApple(): Promise<{ userId: string }> {
 
   if (!credential.identityToken) throw new Error('No identity token from Apple');
 
-  const { data, error } = await supabase.auth.signInWithIdToken({
+  const { data, error } = await client.auth.signInWithIdToken({
     provider: 'apple',
     token: credential.identityToken,
     nonce: rawNonce,

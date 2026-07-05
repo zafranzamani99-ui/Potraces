@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "postinstall": "patch-package",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
@@ -13,7 +14,10 @@
     "lint:i18n": "bash scripts/check-hardcoded-strings.sh",
     "lint:i18n:staged": "bash scripts/check-hardcoded-strings.sh --staged",
     "test:sync": "tsx scripts/test-personal-sync-roundtrip.ts",
-    "test:wallet": "tsx scripts/test-wallet-reconcile.ts"
+    "test:wallet": "tsx scripts/test-wallet-reconcile.ts",
+    "test:accountlink": "tsx scripts/test-account-link.ts",
+    "test:authmigrate": "tsx scripts/test-authstore-migrate.ts",
+    "test:deleteflow": "tsx scripts/test-delete-flow.ts"
   },
   "dependencies": {
     "@dr.pogodin/react-native-audio": "^1.18.2",
@@ -100,6 +104,7 @@
     "@types/react": "~19.1.0",
     "eslint": "^9.39.4",
     "eslint-config-expo": "^56.0.4",
+    "patch-package": "^8.0.1",
     "prettier": "^3.8.4",
     "tsx": "^4.22.4",
     "typescript": "^5.3.0"
