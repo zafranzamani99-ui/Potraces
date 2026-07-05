@@ -393,6 +393,11 @@ verify_jwt = false
 [functions.waitlist-blast]
 verify_jwt = false
 
+# Public Background Quick-Log endpoint hit by the Back Tap Shortcut (no user session).
+# Security is enforced inside the function via the per-user Quick-Log key (SHA-256 hashed).
+[functions.quick-log]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
