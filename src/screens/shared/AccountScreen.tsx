@@ -23,6 +23,7 @@ import { signInWithApple } from '../../services/appleAuth';
 import { clearProfileCache } from '../../services/sellerSync';
 import { signOut, getAuthSession, signInWithPhone, signUpWithPhone, deleteAccountRemote, supabasePersonal } from '../../services/supabase';
 import { syncPersonal, disablePersonalSync } from '../../services/personalSync';
+import { confirmReuse } from '../../services/reuseAccount';
 import { resetBackoff } from '../../services/syncBackoff';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
@@ -122,6 +123,7 @@ export default function AccountScreen() {
         isAuthenticated: true, userId: result.userId, provider: 'google',
       });
       await enableBackup();
+      confirmReuse('business', { provider: 'google' }, tr);
     } catch (e: any) {
       if (e?.code === statusCodes.SIGN_IN_CANCELLED) return;
       if (e?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) showToast(tr.auth.playServicesRequired, 'info');
@@ -141,6 +143,7 @@ export default function AccountScreen() {
         isAuthenticated: true, userId: result.userId, provider: 'apple',
       });
       await enableBackup();
+      confirmReuse('business', { provider: 'apple' }, tr);
     } catch (e: any) {
       if (e?.code === 'ERR_CANCELED' || e?.code === '1001') return;
       showToast(tr.auth.socialSignInFailed, 'info');
@@ -178,6 +181,7 @@ export default function AccountScreen() {
           isAuthenticated: true, userId: data.session.user.id, phone: cleaned, provider: 'phone',
         });
         await enableBackup();
+        confirmReuse('business', { provider: 'phone', phone: cleaned, password }, tr);
       }
     } catch (e: any) {
       const msg = e?.message || tr.auth.errSomethingWrong;

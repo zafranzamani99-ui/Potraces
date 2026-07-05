@@ -157,6 +157,13 @@ export const en = {
     acctDeleteDone: 'Your account and data were deleted.',
     acctManageEntry: 'Manage account & cloud backup',
     acctSignInEntry: 'Sign in to back up & sync',
+    acctReuseBizTitle: 'Use this account for business too?',
+    acctReusePersonalTitle: 'Use this account for personal too?',
+    acctReuseMsg: 'You’ll be signed into both modes with the same account, so your data is shared. You can still sign out of either one separately.',
+    acctReuseConfirm: 'Use same account',
+    acctReuseFailed: 'Could not use this account for the other mode. You can sign in manually anytime.',
+    acctDeleteSharedTitle: 'This account is shared',
+    acctDeleteSharedMsg: 'This account is also signed in on the other mode. We’ll remove this mode’s data only and keep the account for the other mode.',
 
     // OtpVerificationScreen
     otpTitle: 'verify your account',

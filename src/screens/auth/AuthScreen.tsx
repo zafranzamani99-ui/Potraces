@@ -18,6 +18,7 @@ import { signUpWithPhone, signInWithPhone, requestOtp, supabaseBusiness } from '
 import { ensureProfile } from '../../services/sellerSync';
 import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
 import { signInWithApple } from '../../services/appleAuth';
+import { confirmReuse } from '../../services/reuseAccount';
 import { useAuthStore } from '../../store/authStore';
 import { useAppStore } from '../../store/appStore';
 import { useT } from '../../i18n';
@@ -88,6 +89,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
           if (profile?.is_verified) {
             useAuthStore.getState().setBusinessAuth({ isVerified: true });
             onAuthenticated();
+            confirmReuse('personal', { provider: 'phone', phone: cleaned, password }, tr);
           } else {
             const otp = await requestOtp(cleaned, supabaseBusiness);
             onVerificationNeeded(otp.code, cleaned);
@@ -127,6 +129,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
       });
       await ensureProfile();
       onAuthenticated();
+      confirmReuse('personal', { provider: 'google' }, tr);
     } catch (e: any) {
       if (e?.code === statusCodes.SIGN_IN_CANCELLED) return;
       if (e?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
@@ -150,6 +153,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
       });
       await ensureProfile();
       onAuthenticated();
+      confirmReuse('personal', { provider: 'apple' }, tr);
     } catch (e: any) {
       if (e?.code === 'ERR_CANCELED' || e?.code === '1001') return;
       setError(tr.auth.socialSignInFailed);

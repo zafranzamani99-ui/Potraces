@@ -156,6 +156,13 @@ export const ms: Translations = {
     acctDeleteDone: 'Akaun & data anda dah dipadam.',
     acctManageEntry: 'Urus akaun & backup awan',
     acctSignInEntry: 'Log masuk untuk backup & segerak',
+    acctReuseBizTitle: 'Guna akaun ini untuk bisnes juga?',
+    acctReusePersonalTitle: 'Guna akaun ini untuk peribadi juga?',
+    acctReuseMsg: 'Anda akan log masuk kedua-dua mod dengan akaun sama, jadi data anda dikongsi. Anda masih boleh log keluar mana-mana satu secara berasingan.',
+    acctReuseConfirm: 'Guna akaun sama',
+    acctReuseFailed: 'Tak dapat guna akaun ini untuk mod lain. Anda boleh log masuk manual bila-bila.',
+    acctDeleteSharedTitle: 'Akaun ini dikongsi',
+    acctDeleteSharedMsg: 'Akaun ini juga log masuk pada mod satu lagi. Kami akan buang data mod ini sahaja dan kekalkan akaun untuk mod satu lagi.',
 
     // OtpVerificationScreen
     otpTitle: 'sahkan akaun anda',
