@@ -10,7 +10,7 @@ import { useAuthStore } from '../store/authStore';
 import { useCalm, useIsDark } from '../hooks/useCalm';
 import AuthScreen from '../screens/auth/AuthScreen';
 import OtpVerificationScreen from '../screens/auth/OtpVerificationScreen';
-import { requestOtp, signOut, getAuthSession } from '../services/supabase';
+import { requestOtp, signOut, getAuthSession, supabaseBusiness } from '../services/supabase';
 import { clearProfileCache } from '../services/sellerSync';
 import PersonalNavigator from './PersonalNavigator';
 import BusinessNavigator from './BusinessNavigator';
@@ -120,9 +120,9 @@ function makeBackHeader(
 
 /** Wraps business mode with auth gating + setup gating. */
 const AuthGatedBusiness: React.FC = () => {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isVerified = useAuthStore((s) => s.isVerified);
-  const provider = useAuthStore((s) => s.provider);
+  const isAuthenticated = useAuthStore((s) => s.business.isAuthenticated);
+  const isVerified = useAuthStore((s) => s.business.isVerified);
+  const provider = useAuthStore((s) => s.business.provider);
   const businessSetupComplete = useBusinessStore((s) => s.businessSetupComplete);
   const incomeType = useBusinessStore((s) => s.incomeType);
   const [otpCode, setOtpCode] = useState<string | null>(null);
@@ -134,9 +134,9 @@ const AuthGatedBusiness: React.FC = () => {
   // Only relevant for phone auth — social providers are pre-verified
   useEffect(() => {
     if (isAuthenticated && !isVerified && provider === 'phone') {
-      getAuthSession().then((session) => {
+      getAuthSession(supabaseBusiness).then((session) => {
         if (!session) {
-          useAuthStore.getState().reset();
+          useAuthStore.getState().resetBusiness();
         }
       });
     }
@@ -149,17 +149,17 @@ const AuthGatedBusiness: React.FC = () => {
     if (isAuthenticated && !isVerified && !otpCode) {
       const now = Date.now();
       if (now - lastOtpAtRef.current < 30_000) return;
-      const phone = useAuthStore.getState().phone;
+      const phone = useAuthStore.getState().business.phone;
       if (phone) {
         lastOtpAtRef.current = now;
         setOtpError(null);
-        requestOtp(phone).then((otp) => {
+        requestOtp(phone, supabaseBusiness).then((otp) => {
           setOtpCode(otp.code);
           setOtpPhone(phone);
         }).catch((err) => {
           if (__DEV__) console.warn('[OTP request failed]', err?.message || err);
           if (err?.message?.includes('Not authenticated')) {
-            useAuthStore.getState().reset();
+            useAuthStore.getState().resetBusiness();
           } else {
             setOtpError(err?.message || 'Failed to request verification code');
           }
@@ -186,10 +186,10 @@ const AuthGatedBusiness: React.FC = () => {
     // Invalidate server-side cache immediately — don't depend on SIGNED_OUT event
     // which won't fire if signOut fails offline.
     clearProfileCache();
-    signOut().catch((err) => {
+    signOut(supabaseBusiness).catch((err) => {
       if (__DEV__) console.warn('[signOut] failed:', err?.message || err);
     });
-    useAuthStore.getState().reset();
+    useAuthStore.getState().resetBusiness();
     setOtpCode(null);
     setOtpPhone('');
   }, []);

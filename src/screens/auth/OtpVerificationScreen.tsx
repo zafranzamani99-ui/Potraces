@@ -14,7 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
-import { supabase, requestOtp, checkVerification } from '../../services/supabase';
+import { supabaseBusiness, requestOtp, checkVerification } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
 import { useT } from '../../i18n';
 
@@ -56,10 +56,10 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
 
   // Realtime subscription for instant OTP verification detection
   useEffect(() => {
-    const userId = useAuthStore.getState().userId;
+    const userId = useAuthStore.getState().business.userId;
     if (!userId) return;
 
-    const channel = supabase
+    const channel = supabaseBusiness
       .channel('otp-status')
       .on(
         'postgres_changes',
@@ -71,7 +71,7 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
         },
         (payload) => {
           if ((payload.new as any).status === 'verified') {
-            useAuthStore.getState().setVerified(true);
+            useAuthStore.getState().setBusinessAuth({ isVerified: true });
             onVerified();
           }
         }
@@ -79,16 +79,16 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabaseBusiness.removeChannel(channel);
     };
   }, [onVerified]);
 
   // Fallback polling every 5s
   useEffect(() => {
     pollRef.current = setInterval(async () => {
-      const verified = await checkVerification();
+      const verified = await checkVerification(supabaseBusiness);
       if (verified) {
-        useAuthStore.getState().setVerified(true);
+        useAuthStore.getState().setBusinessAuth({ isVerified: true });
         onVerified();
       }
     }, 5000);
@@ -102,9 +102,9 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (state) => {
       if (state === 'active') {
-        const verified = await checkVerification();
+        const verified = await checkVerification(supabaseBusiness);
         if (verified) {
-          useAuthStore.getState().setVerified(true);
+          useAuthStore.getState().setBusinessAuth({ isVerified: true });
           onVerified();
         }
       }
@@ -129,7 +129,7 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
     setRequesting(true);
     setError(null);
     try {
-      const otp = await requestOtp(phone);
+      const otp = await requestOtp(phone, supabaseBusiness);
       setCode(otp.code);
     } catch (err: any) {
       setError(err?.message || tr.auth.otpFailedNewCode);
@@ -141,9 +141,9 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   const handleCheckNow = useCallback(async () => {
     setChecking(true);
     try {
-      const verified = await checkVerification();
+      const verified = await checkVerification(supabaseBusiness);
       if (verified) {
-        useAuthStore.getState().setVerified(true);
+        useAuthStore.getState().setBusinessAuth({ isVerified: true });
         onVerified();
       }
     } catch {

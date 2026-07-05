@@ -7,7 +7,7 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
 import { useAuthStore } from '../../store/authStore';
-import { signOut } from '../../services/supabase';
+import { signOut, supabaseBusiness } from '../../services/supabase';
 import { syncAll, clearProfileCache } from '../../services/sellerSync';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
@@ -48,18 +48,18 @@ const SellerManage: React.FC = () => {
         {
           text: t.settings.signOut,
           onPress: () => {
-            const { isAuthenticated, isVerified } = useAuthStore.getState();
+            const { isAuthenticated, isVerified } = useAuthStore.getState().business;
             let syncData: any = null;
             if (isAuthenticated && isVerified) {
               const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
               syncData = { products, orders, seasons, sellerCustomers };
             }
-            useAuthStore.getState().reset();
+            useAuthStore.getState().resetBusiness();
             clearProfileCache();
             if (navigation.canGoBack()) navigation.goBack();
             if (syncData) syncAll(syncData.products, syncData.orders, syncData.seasons, syncData.sellerCustomers).catch(() => {});
             clearBusinessLocalData().catch(() => {});
-            signOut().catch(() => {});
+            signOut(supabaseBusiness).catch(() => {});
           },
         },
       ],

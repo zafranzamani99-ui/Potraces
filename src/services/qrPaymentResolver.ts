@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabaseBusiness as supabase } from './supabase'; // business client (seller payments)
 import { usePendingPaymentsStore, type PendingCharge } from '../store/pendingPaymentsStore';
 import { qrProviderConfigured } from './qrProvider';
 

@@ -22,7 +22,7 @@ import NetInfo from '@react-native-community/netinfo';
 import type { PaymentIntent, StripeError } from '@stripe/stripe-terminal-react-native';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
-import { supabase } from './supabase';
+import { supabaseBusiness as supabase } from './supabase'; // business client (seller card payments)
 
 // ─── Build-time config (EXPO_PUBLIC_* is inlined by Metro at build) ──────────
 /** Master pilot flag. When false, nothing Stripe-related ever initializes. */
@@ -205,7 +205,7 @@ export async function chargeCard(opts: {
   }
   _charging = true;
   try {
-    const userId = useAuthStore.getState().userId || '';
+    const userId = useAuthStore.getState().business.userId || '';
     const metadata: Record<string, string> = {
       mode: opts.metadata.mode,
       refId: opts.metadata.refId,

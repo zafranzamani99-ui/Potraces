@@ -54,7 +54,7 @@ import { lightTap } from '../../services/haptics';
 import { tapToPayAvailable } from '../../services/tapToPay';
 import * as Clipboard from 'expo-clipboard';
 import { openQuickAdd } from '../../components/common/QuickAddExpense';
-import { signOut } from '../../services/supabase';
+import { signOut, supabaseBusiness } from '../../services/supabase';
 import { clearProfileCache, syncAll } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
 import { useSellerStore } from '../../store/sellerStore';
@@ -859,22 +859,22 @@ const Settings: React.FC = () => {
           text: t.settings.signOut,
           onPress: () => {
             // Snapshot data for fire-and-forget sync before clearing stores.
-            const { isAuthenticated, isVerified } = useAuthStore.getState();
+            const { isAuthenticated, isVerified } = useAuthStore.getState().business;
             let syncData: { products: any; orders: any; seasons: any; sellerCustomers: any } | null = null;
             if (isAuthenticated && isVerified) {
               const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
               syncData = { products, orders, seasons, sellerCustomers };
             }
 
-            // Reset auth + navigate IMMEDIATELY so sign-out feels instant.
-            useAuthStore.getState().reset();
+            // Reset business auth + navigate IMMEDIATELY so sign-out feels instant.
+            useAuthStore.getState().resetBusiness();
             clearProfileCache();
             if (navigation.canGoBack()) navigation.goBack();
 
             // Background cleanup — user already sees AuthScreen.
             if (syncData) syncAll(syncData.products, syncData.orders, syncData.seasons, syncData.sellerCustomers).catch(() => {});
             clearBusinessLocalData().catch(() => {});
-            signOut().catch(() => {});
+            signOut(supabaseBusiness).catch(() => {});
           },
         },
       ]

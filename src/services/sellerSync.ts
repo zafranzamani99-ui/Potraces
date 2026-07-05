@@ -1,4 +1,6 @@
-import { supabase } from './supabase';
+// Seller sync is a wholly-business module — bind the local `supabase` name to the
+// business client so every seller_* / storage call routes to the business account.
+import { supabaseBusiness as supabase } from './supabase';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { SellerProduct, SellerOrder, Season, SellerCustomer, IngredientCost, RecurringCost, CostTemplate, StockAdjustment, OrderStatus, SellerPaymentMethod, RecurringFrequency, SellerCostCategory } from '../types';
 import { useSellerStore } from '../store/sellerStore';

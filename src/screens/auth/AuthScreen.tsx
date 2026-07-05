@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
-import { signUpWithPhone, signInWithPhone, requestOtp } from '../../services/supabase';
+import { signUpWithPhone, signInWithPhone, requestOtp, supabaseBusiness } from '../../services/supabase';
 import { ensureProfile } from '../../services/sellerSync';
 import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
 import { signInWithApple } from '../../services/appleAuth';
@@ -72,40 +72,36 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
     setLoading(true);
     try {
       if (isLogin) {
-        const data = await signInWithPhone(cleaned, password);
+        const data = await signInWithPhone(cleaned, password, supabaseBusiness);
         if (data.session) {
-          const auth = useAuthStore.getState();
-          auth.setAuthenticated(true);
-          auth.setUserId(data.session.user.id);
-          auth.setPhone(cleaned);
-          auth.setProvider('phone');
+          useAuthStore.getState().setBusinessAuth({
+            isAuthenticated: true, userId: data.session.user.id, phone: cleaned, provider: 'phone',
+          });
 
           await ensureProfile();
-          const { data: profile } = await (await import('../../services/supabase')).supabase
+          const { data: profile } = await supabaseBusiness
             .from('seller_profiles')
             .select('is_verified')
             .eq('user_id', data.session.user.id)
             .maybeSingle();
 
           if (profile?.is_verified) {
-            useAuthStore.getState().setVerified(true);
+            useAuthStore.getState().setBusinessAuth({ isVerified: true });
             onAuthenticated();
           } else {
-            const otp = await requestOtp(cleaned);
+            const otp = await requestOtp(cleaned, supabaseBusiness);
             onVerificationNeeded(otp.code, cleaned);
           }
         }
       } else {
-        const data = await signUpWithPhone(cleaned, password);
+        const data = await signUpWithPhone(cleaned, password, supabaseBusiness);
         if (data.session) {
-          const auth = useAuthStore.getState();
-          auth.setAuthenticated(true);
-          auth.setUserId(data.session.user.id);
-          auth.setPhone(cleaned);
-          auth.setProvider('phone');
+          useAuthStore.getState().setBusinessAuth({
+            isAuthenticated: true, userId: data.session.user.id, phone: cleaned, provider: 'phone',
+          });
 
           await ensureProfile();
-          const otp = await requestOtp(cleaned);
+          const otp = await requestOtp(cleaned, supabaseBusiness);
           onVerificationNeeded(otp.code, cleaned);
         }
       }
@@ -125,12 +121,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
     setError('');
     setSocialLoading('google');
     try {
-      const result = await signInWithGoogle();
-      const auth = useAuthStore.getState();
-      auth.setAuthenticated(true);
-      auth.setVerified(true);
-      auth.setUserId(result.userId);
-      auth.setProvider('google');
+      const result = await signInWithGoogle(supabaseBusiness);
+      useAuthStore.getState().setBusinessAuth({
+        isAuthenticated: true, isVerified: true, userId: result.userId, provider: 'google',
+      });
       await ensureProfile();
       onAuthenticated();
     } catch (e: any) {
@@ -150,12 +144,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
     setError('');
     setSocialLoading('apple');
     try {
-      const result = await signInWithApple();
-      const auth = useAuthStore.getState();
-      auth.setAuthenticated(true);
-      auth.setVerified(true);
-      auth.setUserId(result.userId);
-      auth.setProvider('apple');
+      const result = await signInWithApple(supabaseBusiness);
+      useAuthStore.getState().setBusinessAuth({
+        isAuthenticated: true, isVerified: true, userId: result.userId, provider: 'apple',
+      });
       await ensureProfile();
       onAuthenticated();
     } catch (e: any) {

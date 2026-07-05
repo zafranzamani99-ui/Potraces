@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { supabase } from './supabase';
+import { supabaseBusiness as supabase } from './supabase'; // business client (seller push)
 import { useSettingsStore } from '../store/settingsStore';
 
 // Configure how notifications appear when app is in foreground

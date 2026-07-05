@@ -22,7 +22,7 @@ import { usePlaybookStore } from './playbookStore';
 import { useAIInsightsStore } from './aiInsightsStore';
 import { useReceiptStore } from './receiptStore';
 import { useSavingsStore } from './savingsStore';
-import { clearBusinessDataRemote, clearPersonalDataRemote, signOut } from '../services/supabase';
+import { clearBusinessDataRemote, clearPersonalDataRemote, signOut, supabaseBusiness } from '../services/supabase';
 import { purgeBackups, PERSONAL_BACKUP_KEYS } from '../services/storageBackup';
 import { clearProfileCache } from '../services/sellerSync';
 import { DEFAULT_PAYMENT_METHODS } from '../constants/taxCategories';
@@ -540,15 +540,15 @@ export const useSettingsStore = create<SettingsState>()(
           // continue even if remote clear fails
         }
 
-        // 3. Sign out
+        // 3. Sign out (business account)
         try {
-          await signOut();
+          await signOut(supabaseBusiness);
         } catch {
           // continue even if sign out fails
         }
 
-        // 4. Reset auth store + clear profile cache
-        useAuthStore.getState().reset();
+        // 4. Reset business auth store + clear profile cache
+        useAuthStore.getState().resetBusiness();
         clearProfileCache();
 
         // 5. Switch to personal mode

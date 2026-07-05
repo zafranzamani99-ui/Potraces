@@ -1397,7 +1397,7 @@ const SellerDashboard: React.FC = () => {
                 </View>
               </View>
               <Text style={styles.slmFieldValue}>
-                {useAuthStore.getState().phone ?? '(not set)'}
+                {useAuthStore.getState().business.phone ?? '(not set)'}
               </Text>
               <Text style={[styles.slmFieldHint, { marginTop: 4 }]}>
                 customers tap this to whatsapp you
