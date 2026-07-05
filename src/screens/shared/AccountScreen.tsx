@@ -20,8 +20,8 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
 import { signInWithApple } from '../../services/appleAuth';
-import { ensureProfile, clearProfileCache } from '../../services/sellerSync';
-import { signOut, getAuthSession, signInWithPhone, signUpWithPhone, deleteAccountRemote } from '../../services/supabase';
+import { clearProfileCache } from '../../services/sellerSync';
+import { signOut, getAuthSession, signInWithPhone, signUpWithPhone, deleteAccountRemote, supabasePersonal } from '../../services/supabase';
 import { syncPersonal, disablePersonalSync } from '../../services/personalSync';
 import { resetBackoff } from '../../services/syncBackoff';
 import { useAuthStore } from '../../store/authStore';
@@ -55,8 +55,8 @@ export default function AccountScreen() {
   const navigation = useNavigation<any>();
   const { showToast } = useToast();
 
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const provider = useAuthStore((s) => s.provider);
+  const isAuthenticated = useAuthStore((s) => s.personal.isAuthenticated);
+  const provider = useAuthStore((s) => s.personal.provider);
   const personalSyncEnabled = useSettingsStore((s) => s.personalSyncEnabled);
   const lastPersonalSyncAt = useSettingsStore((s) => s.lastPersonalSyncAt);
 
@@ -82,7 +82,7 @@ export default function AccountScreen() {
   useEffect(() => {
     let alive = true;
     if (isAuthenticated) {
-      getAuthSession()
+      getAuthSession(supabasePersonal)
         .then((s) => { if (alive) setEmail((s?.user as any)?.email ?? null); })
         .catch(() => {});
     } else {
@@ -117,13 +117,10 @@ export default function AccountScreen() {
     lightTap();
     setSocialLoading('google');
     try {
-      const result = await signInWithGoogle();
-      const auth = useAuthStore.getState();
-      auth.setAuthenticated(true);
-      auth.setVerified(true);
-      auth.setUserId(result.userId);
-      auth.setProvider('google');
-      ensureProfile().catch(() => {});
+      const result = await signInWithGoogle(supabasePersonal);
+      useAuthStore.getState().setPersonalAuth({
+        isAuthenticated: true, userId: result.userId, provider: 'google',
+      });
       await enableBackup();
     } catch (e: any) {
       if (e?.code === statusCodes.SIGN_IN_CANCELLED) return;
@@ -139,13 +136,10 @@ export default function AccountScreen() {
     lightTap();
     setSocialLoading('apple');
     try {
-      const result = await signInWithApple();
-      const auth = useAuthStore.getState();
-      auth.setAuthenticated(true);
-      auth.setVerified(true);
-      auth.setUserId(result.userId);
-      auth.setProvider('apple');
-      ensureProfile().catch(() => {});
+      const result = await signInWithApple(supabasePersonal);
+      useAuthStore.getState().setPersonalAuth({
+        isAuthenticated: true, userId: result.userId, provider: 'apple',
+      });
       await enableBackup();
     } catch (e: any) {
       if (e?.code === 'ERR_CANCELED' || e?.code === '1001') return;
@@ -175,17 +169,14 @@ export default function AccountScreen() {
     setPhoneLoading(true);
     try {
       const data = isLogin
-        ? await signInWithPhone(cleaned, password)
-        : await signUpWithPhone(cleaned, password);
+        ? await signInWithPhone(cleaned, password, supabasePersonal)
+        : await signUpWithPhone(cleaned, password, supabasePersonal);
       if (data.session) {
-        const auth = useAuthStore.getState();
-        auth.setAuthenticated(true);
-        auth.setUserId(data.session.user.id);
-        auth.setPhone(cleaned);
-        auth.setProvider('phone');
-        // Deliberately NOT setVerified — personal backup needs only a session;
-        // business mode keeps its own Telegram seller-verification gate.
-        ensureProfile().catch(() => {});
+        // Personal backup needs only a session — no seller profile, no OTP.
+        // Business mode keeps its own independent account + verification gate.
+        useAuthStore.getState().setPersonalAuth({
+          isAuthenticated: true, userId: data.session.user.id, phone: cleaned, provider: 'phone',
+        });
         await enableBackup();
       }
     } catch (e: any) {
@@ -240,9 +231,8 @@ export default function AccountScreen() {
         style: 'destructive',
         onPress: async () => {
           await disablePersonalSync(false);
-          clearProfileCache();
-          signOut().catch(() => {});
-          useAuthStore.getState().reset();
+          signOut(supabasePersonal).catch(() => {});
+          useAuthStore.getState().resetPersonal();
         },
       },
     ]);

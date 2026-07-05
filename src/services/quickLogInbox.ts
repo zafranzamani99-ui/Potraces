@@ -4,7 +4,7 @@
  * foreground/login. Idempotent: only rows with consumed_at IS NULL are logged,
  * and each is stamped consumed_at immediately after.
  */
-import { supabase } from './supabase';
+import { supabasePersonal as supabase } from './supabase'; // personal client (quick-log inbox)
 import { logQuickExpense, undoQuickExpense } from './quickLog';
 import { mapInboxRowToQuickLog, type QuickLogInboxRow } from './quickLogInboxMap';
 

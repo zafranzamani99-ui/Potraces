@@ -5,7 +5,7 @@
  * Shortcut. See docs/superpowers/specs/2026-07-05-background-quick-log-design.md.
  */
 import * as Crypto from 'expo-crypto';
-import { supabase } from './supabase';
+import { supabasePersonal as supabase } from './supabase'; // personal client (quick-log keys)
 import { encodeQuickLogKey } from '../utils/quickLogKeyFormat';
 
 /** 24-char Crockford base32 body with a QLOG- prefix, from expo-crypto randomness. */

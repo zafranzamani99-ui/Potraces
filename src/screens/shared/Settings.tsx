@@ -538,7 +538,7 @@ const Settings: React.FC = () => {
   const setBiometricLockEnabled = useSettingsStore((s) => s.setBiometricLockEnabled);
   const biometricLockTimeoutMin = useSettingsStore((s) => s.biometricLockTimeoutMin);
   const setBiometricLockTimeoutMin = useSettingsStore((s) => s.setBiometricLockTimeoutMin);
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isAuthenticated = useAuthStore((s) => s.personal.isAuthenticated);
   const spendingAlertsEnabled = useSettingsStore((s) => s.spendingAlertsEnabled);
   const setSpendingAlertsEnabled = useSettingsStore((s) => s.setSpendingAlertsEnabled);
   const quickAddConfirm = useSettingsStore((s) => s.quickAddConfirm);

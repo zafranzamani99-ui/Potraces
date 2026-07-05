@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
-import { supabase } from './supabase';
+import { supabasePersonal as supabase } from './supabase'; // personal client (statement import)
 
 export interface ParsedTransaction {
   date: string;              // YYYY-MM-DD

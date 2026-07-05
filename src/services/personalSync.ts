@@ -1,4 +1,6 @@
-import { supabase } from './supabase';
+// Personal sync is a wholly-personal module — bind `supabase` to the personal
+// client so every personal_* call routes to the personal account.
+import { supabasePersonal as supabase } from './supabase';
 import { usePersonalStore } from '../store/personalStore';
 import { useWalletStore } from '../store/walletStore';
 import { useDebtStore } from '../store/debtStore';
