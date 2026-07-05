@@ -455,6 +455,17 @@ function App() {
   React.useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as { type?: string; orderId?: string } | undefined;
+      if (data?.type === 'quick_log') {
+        // Switch to personal mode (RootNavigator re-renders to PersonalNavigator) and
+        // land on the Dashboard tab, where the month's transactions are shown.
+        useAppStore.getState().setMode('personal');
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            (navigationRef as any).navigate('PersonalMain', { screen: 'Dashboard' });
+          }
+        }, 300);
+        return;
+      }
       if ((data?.type === 'new_order' || data?.type === 'payment_received') && data.orderId) {
         // Switch to business mode and navigate to order
         useAppStore.getState().setMode('business');
