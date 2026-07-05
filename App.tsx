@@ -9,7 +9,7 @@ import RootNavigator from './src/navigation/RootNavigator';
 import { COLORS, SPACING, TYPOGRAPHY } from './src/constants';
 import { useIsDark } from './src/hooks/useCalm';
 import { ToastProvider } from './src/context/ToastContext';
-import { supabase, getAuthSession } from './src/services/supabase';
+import { supabaseBusiness, supabasePersonal, getAuthSession } from './src/services/supabase';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId, clearProfileCache } from './src/services/sellerSync';
 import { useAuthStore } from './src/store/authStore';
 import { registerPushNotifications, registerAndroidNotificationChannels } from './src/services/pushNotifications';
@@ -130,20 +130,26 @@ function App() {
         // best-effort — don't block startup
       }
 
-      // Check existing auth session
-      const session = await getAuthSession();
+      // Check existing auth sessions — business + personal are independent.
+      const [bizSession, perSession] = await Promise.all([
+        getAuthSession(supabaseBusiness),
+        getAuthSession(supabasePersonal),
+      ]);
       const authStore = useAuthStore.getState();
-      if (session) {
-        authStore.setAuthenticated(true);
-        authStore.setUserId(session.user.id);
-      } else if (authStore.isAuthenticated) {
-        // Stale local auth — session no longer valid
-        authStore.reset();
+      if (bizSession) {
+        authStore.setBusinessAuth({ isAuthenticated: true, userId: bizSession.user.id });
+      } else if (authStore.business.isAuthenticated) {
+        authStore.resetBusiness(); // stale local business auth — session gone
+      }
+      if (perSession) {
+        authStore.setPersonalAuth({ isAuthenticated: true, userId: perSession.user.id });
+      } else if (authStore.personal.isAuthenticated) {
+        authStore.resetPersonal(); // stale local personal auth — session gone
       }
 
-      // Apply default mode on launch (only if authenticated for business)
+      // Apply default mode on launch (only if authenticated + verified for business)
       const { defaultMode, businessModeEnabled } = useSettingsStore.getState();
-      if (businessModeEnabled && defaultMode === 'business' && session && authStore.isVerified) {
+      if (businessModeEnabled && defaultMode === 'business' && bizSession && useAuthStore.getState().business.isVerified) {
         useAppStore.getState().setMode('business');
       }
 
@@ -201,8 +207,8 @@ function App() {
         }
       });
 
-      // Sync + push for any authenticated session (anonymous or verified)
-      if (session) {
+      // Sync + push for any authenticated business session (anonymous or verified)
+      if (bizSession) {
         try {
           useSellerStore.getState().setSyncing(true);
           try {
@@ -270,13 +276,13 @@ function App() {
     };
   }, []);
 
-  // Auth state change listener — sync authStore with Supabase session
+  // Business auth listener — keeps the business slot + seller sync in step with
+  // the business Supabase session only.
   React.useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabaseBusiness.auth.onAuthStateChange((event, session) => {
       const auth = useAuthStore.getState();
       if (event === 'SIGNED_IN' && session) {
-        auth.setAuthenticated(true);
-        auth.setUserId(session.user.id);
+        auth.setBusinessAuth({ isAuthenticated: true, userId: session.user.id });
         // Trigger sync so data loads immediately after re-login.
         const store = useSellerStore.getState();
         store.setSyncing(true);
@@ -286,15 +292,31 @@ function App() {
           .catch(() => {})
           .finally(() => useSellerStore.getState().setSyncing(false));
       } else if (event === 'SIGNED_OUT') {
-        auth.reset();
+        auth.resetBusiness();
         clearProfileCache();
-        // Disable personal sync — it can't run without a session.
-        useSettingsStore.getState().setPersonalSyncEnabled(false);
         // Clear business-mode local data so a forced/expired sign-out (not just
         // the explicit Settings one) can't leave the previous seller's data for
-        // the next user on a shared device. Personal data is left intact — its
-        // sync is opt-in, so it may be the only copy.
+        // the next user on a shared device. Personal data is untouched — it has
+        // its own independent session now.
         clearBusinessLocalData().catch(() => {});
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Personal auth listener — keeps the personal slot + personal cloud backup in
+  // step with the personal Supabase session only.
+  React.useEffect(() => {
+    const { data: { subscription } } = supabasePersonal.auth.onAuthStateChange((event, session) => {
+      const auth = useAuthStore.getState();
+      if (event === 'SIGNED_IN' && session) {
+        auth.setPersonalAuth({ isAuthenticated: true, userId: session.user.id });
+        // Pull/push personal data immediately, only if the user opted into backup.
+        if (useSettingsStore.getState().personalSyncEnabled) syncPersonal().catch(() => {});
+      } else if (event === 'SIGNED_OUT') {
+        auth.resetPersonal();
+        // Personal sync can't run without a session.
+        useSettingsStore.getState().setPersonalSyncEnabled(false);
       }
     });
     return () => subscription.unsubscribe();
@@ -312,7 +334,7 @@ function App() {
         // Drain any receipt scans that were queued while offline
         withBackoff('receiptDrain', runReceiptDrain).catch(() => {});
         // Seller sync if authenticated
-        const { isAuthenticated, isVerified } = useAuthStore.getState();
+        const { isAuthenticated, isVerified } = useAuthStore.getState().business;
         if (isAuthenticated && isVerified) {
           const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
           withBackoff('sellerSync', () =>
@@ -333,7 +355,8 @@ function App() {
         // Keep the Supabase session refresh timer alive while foregrounded so the
         // rotating refresh token can't lapse on an idle device (which would make
         // sync silently stop). Supabase RN requires start/stop tied to AppState.
-        supabase.auth.startAutoRefresh();
+        supabaseBusiness.auth.startAutoRefresh();
+        supabasePersonal.auth.startAutoRefresh();
         // Spending alerts — daily cadence, no-op if disabled or recent.
         maybeRunSpendingAlertCheck().catch(() => {});
         // Retry any queued receipt scans.
@@ -342,15 +365,16 @@ function App() {
         const now = Date.now();
         if (now - _lastForegroundSync < 10000) return; // Skip if synced within 10s
         _lastForegroundSync = now;
-        const { isAuthenticated, isVerified } = useAuthStore.getState();
+        const { isAuthenticated, isVerified } = useAuthStore.getState().business;
         if (!isAuthenticated || !isVerified) return;
         const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
         withBackoff('sellerSync', () =>
           syncAll(products, orders, seasons, sellerCustomers),
         ).catch(() => {});
       } else {
-        // Backgrounded / inactive: stop the refresh timer (Supabase RN guidance).
-        supabase.auth.stopAutoRefresh();
+        // Backgrounded / inactive: stop the refresh timers (Supabase RN guidance).
+        supabaseBusiness.auth.stopAutoRefresh();
+        supabasePersonal.auth.stopAutoRefresh();
       }
     });
     return () => sub.remove();
