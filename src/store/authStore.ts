@@ -25,56 +25,17 @@ interface AuthState {
   setPersonalAuth: (p: Partial<ModeAuth>) => void;
   resetBusiness: () => void;
   resetPersonal: () => void;
-
-  // ── Transitional flat mirror (mirrors the business slot). Removed in Task 9. ──
-  isAuthenticated: boolean;
-  isVerified: boolean;
-  phone: string | null;
-  userId: string | null;
-  provider: AuthProvider;
-  setAuthenticated: (v: boolean) => void;
-  setVerified: (v: boolean) => void;
-  setPhone: (v: string | null) => void;
-  setUserId: (v: string | null) => void;
-  setProvider: (v: AuthProvider) => void;
-  reset: () => void;
 }
-
-/** Keep the flat mirror fields in sync with the business slot (transitional). */
-const mirror = (business: BusinessAuth) => ({
-  isAuthenticated: business.isAuthenticated,
-  isVerified: business.isVerified,
-  phone: business.phone,
-  userId: business.userId,
-  provider: business.provider,
-});
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       business: { ...EMPTY_BUSINESS },
       personal: { ...EMPTY_PERSONAL },
-      setBusinessAuth: (p) =>
-        set((s) => {
-          const business = { ...s.business, ...p };
-          return { business, ...mirror(business) };
-        }),
+      setBusinessAuth: (p) => set((s) => ({ business: { ...s.business, ...p } })),
       setPersonalAuth: (p) => set((s) => ({ personal: { ...s.personal, ...p } })),
-      resetBusiness: () => set({ business: { ...EMPTY_BUSINESS }, ...mirror(EMPTY_BUSINESS) }),
+      resetBusiness: () => set({ business: { ...EMPTY_BUSINESS } }),
       resetPersonal: () => set({ personal: { ...EMPTY_PERSONAL } }),
-
-      // Transitional mirror → business slot
-      isAuthenticated: false,
-      isVerified: false,
-      phone: null,
-      userId: null,
-      provider: null,
-      setAuthenticated: (v) => get().setBusinessAuth({ isAuthenticated: v }),
-      setVerified: (v) => get().setBusinessAuth({ isVerified: v }),
-      setPhone: (v) => get().setBusinessAuth({ phone: v }),
-      setUserId: (v) => get().setBusinessAuth({ userId: v }),
-      setProvider: (v) => get().setBusinessAuth({ provider: v }),
-      reset: () => get().resetBusiness(),
     }),
     {
       name: 'auth-storage',
@@ -87,8 +48,7 @@ export const useAuthStore = create<AuthState>()(
             version === 0 || !version
               ? { ...persisted, provider: persisted?.isAuthenticated ? 'phone' : null }
               : persisted;
-          const slots = migrateAuthV1toV2(flat);
-          return { ...slots, ...mirror(slots.business) };
+          return migrateAuthV1toV2(flat);
         }
         return persisted;
       },

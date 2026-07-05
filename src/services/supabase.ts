@@ -113,9 +113,6 @@ export const supabaseBusiness = makeClient('business');
 export const supabasePersonal = makeClient('personal');
 export const clientForMode = (m: Mode) => (m === 'business' ? supabaseBusiness : supabasePersonal);
 
-/** Transitional alias — removed in Task 9 once every call site is routed. */
-export const supabase = supabaseBusiness;
-
 type Client = typeof supabaseBusiness;
 
 // ─── Auth helpers ────────────────────────────────────────────────────────────
