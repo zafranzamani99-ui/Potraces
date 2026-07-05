@@ -21,6 +21,7 @@ import { useSettingsStore, clearBusinessLocalData } from './src/store/settingsSt
 import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
+import { drainQuickLogInbox } from './src/services/quickLogInbox';
 import BiometricGate from './src/components/common/BiometricGate';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import ForcedUpdateGate from './src/components/common/ForcedUpdateGate';
@@ -351,6 +352,16 @@ function App() {
         // Backgrounded / inactive: stop the refresh timer (Supabase RN guidance).
         supabase.auth.stopAutoRefresh();
       }
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Drain any entries the Back Tap Shortcut logged while the app was closed.
+  React.useEffect(() => {
+    const run = () => { drainQuickLogInbox().catch(() => {}); };
+    run(); // cold start
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') run();
     });
     return () => sub.remove();
   }, []);
