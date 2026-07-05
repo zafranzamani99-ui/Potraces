@@ -24,6 +24,7 @@ import DebtTracking from '../screens/shared/DebtTracking';
 import ReceiptScanner from '../screens/shared/ReceiptScanner';
 import ReceiptHistory from '../screens/shared/ReceiptHistory';
 import ReceiptDetail from '../screens/shared/ReceiptDetail';
+import QuickLogSetup from '../screens/personal/QuickLogSetup';
 import BackupRestore from '../screens/shared/BackupRestore';
 import AccountScreen from '../screens/shared/AccountScreen';
 import Onboarding from '../screens/shared/Onboarding';
@@ -340,6 +341,11 @@ const RootNavigator: React.FC = () => {
           name="ReceiptDetail"
           component={ReceiptDetail}
           options={makeBackHeader(C, mode, 'Receipt')}
+        />
+        <Stack.Screen
+          name="QuickLogSetup"
+          component={QuickLogSetup}
+          options={makeBackHeader(C, mode, 'Quick Log')}
         />
         <Stack.Screen
           name="ImportFromStatement"

@@ -208,9 +208,9 @@ export const ms: Translations = {
     data: 'Data',
     reports: 'Laporan',
     exportData: 'Eksport Data',
-    loadSampleData: 'Muat Data Contoh',
-    loadSampleDataConfirm: 'Ini akan tambah contoh dompet, transaksi, bajet, hutang, simpanan, nota, dan resit ke data sedia ada. Teruskan?',
-    loadSampleDataSuccess: 'Data contoh dimuatkan! Terokai aplikasi anda.',
+    loadSampleData: 'Muat Data Demo',
+    loadSampleDataConfirm: 'Ini akan tambah demo dompet, transaksi, bajet, hutang, simpanan, nota, dan resit ke data sedia ada. Teruskan?',
+    loadSampleDataSuccess: 'Data demo dimuatkan! Terokai aplikasi anda.',
     clearData: 'Padam Semua Data',
     clearDataConfirm: 'Ini akan memadam semua data anda. Tidak boleh dipulihkan.',
     clearBusinessData: 'Padam Data Perniagaan',
@@ -410,6 +410,22 @@ export const ms: Translations = {
     potracesApp: 'Potraces',
     shareFailed: 'Kongsi gagal',
     shareFailedMsg: 'Tidak dapat jana fail kongsi.',
+
+    quickLog: {
+      row: 'Log Pantas (Ketik Belakang)',
+      title: 'Log Pantas',
+      intro: 'Log perbelanjaan dengan mengetik dua kali belakang telefon — tanpa membuka aplikasi.',
+      generate: 'Jana kunci saya',
+      regenerate: 'Jana semula kunci',
+      copyKey: 'Salin kunci',
+      copied: 'Kunci disalin',
+      keyOnceWarning: 'Salin sekarang — anda tak akan lihat semula. Tampal ke dalam Shortcut kali pertama.',
+      getShortcut: 'Dapatkan Shortcut',
+      revoke: 'Matikan Log Pantas',
+      active: 'Log Pantas sudah disediakan.',
+      inactive: 'Log Pantas belum disediakan.',
+      signInFirst: 'Log masuk ke Potraces dahulu.',
+    },
   },
 
   business: {
@@ -2823,7 +2839,7 @@ export const ms: Translations = {
   },
 
   sampleData: {
-    bannerTitle: 'tengah guna data contoh',
+    bannerTitle: 'tengah guna data demo',
     bannerSubtitle: 'clear bila-bila bila nak mula dengan data sendiri',
     cta: 'clear & mula baru',
     confirmTitle: 'clear & mula baru?',
@@ -2898,6 +2914,20 @@ export const ms: Translations = {
     walletsWalk: 'tekan + — jom buat dompet pertama',
     walletsPayoffTitle: 'itu dia',
     walletsPayoffBody: 'setiap belanja tolak dari dompet yang betul sendiri. leret mana-mana dompet untuk topup atau betulkan baki.',
+    // Panduan langkah bajet (buat sama-sama).
+    budgetWalk: 'tekan + — jom letak had pertama',
+    budgetPayoffTitle: 'itu dia',
+    budgetPayoffBody: 'bila anda belanja, bar kategori ini penuh menuju had — kami ingatkan sebelum terlebih.',
+    // Panduan langkah matlamat (buat sama-sama).
+    yourGoals: 'matlamat simpanan anda',
+    descGoals: 'pilih sesuatu yang berbaloi disimpan — setiap deposit isi cincin sedikit demi sedikit',
+    goalsWalk: 'tekan sini — jom set matlamat pertama',
+    goalsPayoffTitle: 'itu dia',
+    goalsPayoffBody: 'tambah bila-bila — cincin penuh sambil anda jalan. tekan mana-mana matlamat untuk sumbang atau letak tarikh akhir.',
+    // Panduan langkah gema (buat sama-sama).
+    chatWalk: "taip apa-apa — 'nasi lemak rm8' atau soalan — dan hantar",
+    chatPayoffTitle: 'gema faham',
+    chatPayoffBody: 'tanya guna ayat sendiri, catat belanja, atau hantar gambar resit — gema baca dan ingat perbualannya.',
     savingsPoint1: 'tekan + untuk tambah akaun simpanan atau pelaburan',
     savingsPoint2: 'kemas kini nilai untuk jejak pertumbuhannya',
     subscriptionPoint1: 'tekan + untuk tambah bil berulang atau keahlian',

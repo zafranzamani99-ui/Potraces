@@ -209,9 +209,9 @@ export const en = {
     data: 'Data',
     reports: 'Reports',
     exportData: 'Export Data',
-    loadSampleData: 'Load Sample Data',
-    loadSampleDataConfirm: 'This will add sample wallets, transactions, budgets, debts, savings, notes, and receipts to your existing data. Continue?',
-    loadSampleDataSuccess: 'Sample data loaded! Explore your app.',
+    loadSampleData: 'Load Demo Data',
+    loadSampleDataConfirm: 'This will add demo wallets, transactions, budgets, debts, savings, notes, and receipts to your existing data. Continue?',
+    loadSampleDataSuccess: 'Demo data loaded! Explore your app.',
     clearData: 'Clear All Data',
     clearDataConfirm: 'This will delete all your data. This cannot be undone.',
     clearBusinessData: 'Clear Business Data',
@@ -411,6 +411,22 @@ export const en = {
     potracesApp: 'Potraces',
     shareFailed: 'Share failed',
     shareFailedMsg: 'Could not generate share file.',
+
+    quickLog: {
+      row: 'Quick Log (Back Tap)',
+      title: 'Quick Log',
+      intro: 'Log an expense by double-tapping the back of your phone — without opening the app.',
+      generate: 'Generate my key',
+      regenerate: 'Regenerate key',
+      copyKey: 'Copy key',
+      copied: 'Key copied',
+      keyOnceWarning: 'Copy it now — you won’t see it again. Paste it into the Shortcut on first run.',
+      getShortcut: 'Get the Shortcut',
+      revoke: 'Turn off Quick Log',
+      active: 'Quick Log is set up.',
+      inactive: 'Quick Log is not set up yet.',
+      signInFirst: 'Sign in to Potraces first.',
+    },
   },
 
   business: {
@@ -2852,7 +2868,7 @@ export const en = {
   },
 
   sampleData: {
-    bannerTitle: 'exploring with sample data',
+    bannerTitle: 'exploring with demo data',
     bannerSubtitle: 'clear it whenever you want to start with your own',
     cta: 'clear & start fresh',
     confirmTitle: 'clear & start fresh?',
@@ -2927,6 +2943,20 @@ export const en = {
     walletsWalk: "tap + — let's make your first wallet",
     walletsPayoffTitle: 'there it is',
     walletsPayoffBody: 'every spend now leaves the right wallet on its own. swipe any wallet to top up or fix a balance.',
+    // Budget walk-through (do-it-with-me).
+    budgetWalk: "tap + — let's set your first limit",
+    budgetPayoffTitle: 'there it is',
+    budgetPayoffBody: "as you spend, this category's bar fills toward the line — we nudge you before you cross it.",
+    // Goals walk-through (do-it-with-me).
+    yourGoals: 'your savings goals',
+    descGoals: 'pick something worth saving for — every deposit fills the ring a little more',
+    goalsWalk: "tap here — let's set your first goal",
+    goalsPayoffTitle: 'there it is',
+    goalsPayoffBody: 'add to it anytime — the ring fills as you go. tap any goal to contribute or set a deadline.',
+    // Echo walk-through (do-it-with-me).
+    chatWalk: "type anything — 'nasi lemak rm8' or a question — and send",
+    chatPayoffTitle: "echo's got it",
+    chatPayoffBody: 'ask in your own words, log a spend, or send a receipt photo — echo reads it and remembers the thread.',
     savingsPoint1: 'tap + to add a savings or investment account',
     savingsPoint2: 'log a new value to track how it grows',
     subscriptionPoint1: 'tap + to add a recurring bill or membership',

@@ -718,7 +718,7 @@ const Settings: React.FC = () => {
                 loadDummyData();
                 showToast(t.settings.loadSampleDataSuccess, 'success');
               } catch {
-                showToast('Failed to load sample data', 'error');
+                showToast('Failed to load demo data', 'error');
               }
             }, 50);
           },
@@ -1367,6 +1367,12 @@ const Settings: React.FC = () => {
             chipColor="#4F5104"
             label={t.settings.wallets}
             onPress={() => { lightTap(); navigation.navigate('WalletManagement'); }}
+          />
+          <SettingRow
+            icon="i/flash"
+            chipColor="#DEAB22"
+            label={t.settings.quickLog.row}
+            onPress={() => { lightTap(); navigation.navigate('QuickLogSetup' as never); }}
           />
 
           {Platform.OS === 'android' && (
