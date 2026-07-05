@@ -20,13 +20,13 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
 import { signInWithApple } from '../../services/appleAuth';
-import { clearProfileCache } from '../../services/sellerSync';
-import { signOut, getAuthSession, signInWithPhone, signUpWithPhone, deleteAccountRemote, supabasePersonal } from '../../services/supabase';
+import { signOut, getAuthSession, signInWithPhone, signUpWithPhone, deleteAccountRemote, clearPersonalDataRemote, supabasePersonal } from '../../services/supabase';
 import { syncPersonal, disablePersonalSync } from '../../services/personalSync';
 import { confirmReuse } from '../../services/reuseAccount';
+import { planDelete } from '../../services/deleteAccountFlow';
 import { resetBackoff } from '../../services/syncBackoff';
 import { useAuthStore } from '../../store/authStore';
-import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { useT } from '../../i18n';
@@ -253,18 +253,25 @@ export default function AccountScreen() {
         onPress: async () => {
           setDeleting(true);
           try {
-            // Server FIRST (needs the live session): deletes all cloud rows, owned
-            // storage objects, and the Supabase auth user itself. Throws on failure
-            // so we never wipe the device while the account still lives server-side.
-            await deleteAccountRemote();
-            // Then wipe everything on-device — personal + business stores.
+            const { business, personal } = useAuthStore.getState();
+            const plan = planDelete('personal', business.userId, personal.userId);
+            // Server FIRST (needs the live session). Throws on failure so we never
+            // wipe the device while the account still lives server-side.
+            if (plan === 'data-only') {
+              // Same account is also signed into business — deleting the auth user
+              // would orphan business. Wipe only personal cloud rows, keep the user.
+              Alert.alert(tr.auth.acctDeleteSharedTitle, tr.auth.acctDeleteSharedMsg);
+              await clearPersonalDataRemote(supabasePersonal);
+            } else {
+              // Distinct (or personal-only) account — safe to delete the auth user.
+              await deleteAccountRemote(supabasePersonal);
+            }
+            // Wipe personal on-device data + sign the personal client out. Business
+            // stores are left intact — that's a separate account now.
             await useSettingsStore.getState().clearPersonalData();
-            await clearBusinessLocalData();
             await disablePersonalSync(false);
-            clearProfileCache();
-            await signOut().catch(() => {});
-            useAuthStore.getState().reset();
-            // RootNavigator returns to Onboarding reactively (hasCompletedOnboarding=false).
+            await signOut(supabasePersonal).catch(() => {});
+            useAuthStore.getState().resetPersonal();
             showToast(tr.auth.acctDeleteDone, 'success');
           } catch {
             setDeleting(false);

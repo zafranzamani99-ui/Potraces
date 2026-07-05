@@ -23,6 +23,7 @@ import { useAIInsightsStore } from './aiInsightsStore';
 import { useReceiptStore } from './receiptStore';
 import { useSavingsStore } from './savingsStore';
 import { clearBusinessDataRemote, clearPersonalDataRemote, signOut, supabaseBusiness } from '../services/supabase';
+import { isSharedAccount } from '../services/accountLink';
 import { purgeBackups, PERSONAL_BACKUP_KEYS } from '../services/storageBackup';
 import { clearProfileCache } from '../services/sellerSync';
 import { DEFAULT_PAYMENT_METHODS } from '../constants/taxCategories';
@@ -533,11 +534,19 @@ export const useSettingsStore = create<SettingsState>()(
           AsyncStorage.removeItem('auth-storage'),
         ]);
 
-        // 2. Delete remote data + auth user
-        try {
-          await clearBusinessDataRemote();
-        } catch {
-          // continue even if remote clear fails
+        // 2. Delete remote business data + auth user — but ONLY if this account
+        // isn't shared with personal. If personal signed into the SAME Supabase
+        // user (reuse), deleting it would orphan personal, so we skip the server
+        // nuke and just detach business locally below.
+        {
+          const { business, personal } = useAuthStore.getState();
+          if (!isSharedAccount(business.userId, personal.userId)) {
+            try {
+              await clearBusinessDataRemote();
+            } catch {
+              // continue even if remote clear fails
+            }
+          }
         }
 
         // 3. Sign out (business account)
