@@ -7,7 +7,8 @@
 // else the Supabase anon key (server falls back to the x-device-id identity). The
 // `apikey` header is required by the Supabase gateway regardless.
 
-import { supabase } from './supabase';
+import { clientForMode } from './supabase';
+import { useAppStore } from '../store/appStore';
 import { getDeviceId } from '../utils/deviceId';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
@@ -37,6 +38,8 @@ export function isAiProxyConfigured(): boolean {
 /** Build the headers for a proxy call: user JWT if available, else anon key. */
 export async function aiProxyHeaders(): Promise<Record<string, string>> {
   const deviceId = await getDeviceId();
+  // Meter AI usage against whichever account the user is currently acting as.
+  const supabase = clientForMode(useAppStore.getState().mode);
   let bearer = ANON_KEY;
   try {
     // Race getSession against a timeout so a stalled auth read can't hang the call (.catch on the

@@ -1,4 +1,5 @@
-import { supabase } from './supabase';
+import { clientForMode } from './supabase';
+import { useAppStore } from '../store/appStore';
 
 const BASE_URL = 'https://jejakbaki.my/r';
 
@@ -18,6 +19,8 @@ function generateCode(): string {
 /** Fetch (or create) the current user's referral code. Returns null if
  *  not authenticated. Idempotent — safe to call on every launch. */
 export async function getOrCreateReferralCode(): Promise<string | null> {
+  // Referral code belongs to whichever account the user is currently acting as.
+  const supabase = clientForMode(useAppStore.getState().mode);
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
 
