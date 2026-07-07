@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Linking } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useT } from '../../i18n';
 import { useCalm } from '../../hooks/useCalm';
 import { useToast } from '../../context/ToastContext';
+import { useSettingsStore } from '../../store/settingsStore';
 import { SPACING, RADIUS } from '../../constants';
 import {
   registerQuickLogKey, getQuickLogKeyStatus, revokeQuickLogKey,
@@ -16,12 +18,18 @@ const SHORTCUT_URL = 'https://www.icloud.com/shortcuts/REPLACE_ME';
 export default function QuickLogSetup() {
   const t = useT();
   const C = useCalm();
+  const navigation = useNavigation<any>();
   const { showToast } = useToast();
+  // Quick Log is a cloud feature (it logs to the account via the server), so it
+  // requires Cloud Backup — which AccountScreen turns on by setting this flag.
+  const cloudOn = useSettingsStore((s) => s.personalSyncEnabled);
   const [hasKey, setHasKey] = useState(false);
   const [shownKey, setShownKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { getQuickLogKeyStatus().then((s) => setHasKey(s.hasActiveKey)); }, []);
+  useEffect(() => {
+    if (cloudOn) getQuickLogKeyStatus().then((s) => setHasKey(s.hasActiveKey));
+  }, [cloudOn]);
 
   const onGenerate = async () => {
     setBusy(true);
@@ -46,43 +54,76 @@ export default function QuickLogSetup() {
     setShownKey(null);
   };
 
+  const stepLabel = (text: string) => (
+    <Text style={[styles.step, { color: C.textPrimary }]}>{text}</Text>
+  );
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.background }} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={[styles.intro, { color: C.textSecondary }]}>
           {t.settings.quickLog.intro}
         </Text>
-        <Text style={[styles.status, { color: C.textPrimary }]}>
-          {hasKey ? t.settings.quickLog.active : t.settings.quickLog.inactive}
-        </Text>
 
-        {shownKey && (
-          <View style={[styles.keyBox, { borderColor: C.border, backgroundColor: C.surface }]}>
-            <Text selectable style={[styles.key, { color: C.textPrimary }]}>{shownKey}</Text>
-            <Text style={[styles.warn, { color: C.textSecondary }]}>
-              {t.settings.quickLog.keyOnceWarning}
+        {!cloudOn ? (
+          // ── Gate: Quick Log needs Cloud Backup ──────────────────────────────
+          <View style={[styles.gateCard, { borderColor: C.border, backgroundColor: C.surface }]}>
+            <Text style={[styles.gateTitle, { color: C.textPrimary }]}>
+              {t.settings.quickLog.cloudTitle}
             </Text>
-            <Pressable style={[styles.btn, { backgroundColor: C.accent }]} onPress={onCopy}>
-              <Text style={styles.btnText}>{t.settings.quickLog.copyKey}</Text>
+            <Text style={[styles.gateBody, { color: C.textSecondary }]}>
+              {t.settings.quickLog.cloudBody}
+            </Text>
+            <Pressable style={[styles.btn, { backgroundColor: C.accent }]}
+              onPress={() => navigation.navigate('Account')}>
+              <Text style={styles.btnText}>{t.settings.quickLog.setupCloud}</Text>
             </Pressable>
           </View>
-        )}
+        ) : (
+          <>
+            <Text style={[styles.status, { color: C.textPrimary }]}>
+              {hasKey ? t.settings.quickLog.active : t.settings.quickLog.inactive}
+            </Text>
+            <Text style={[styles.stepsTitle, { color: C.textPrimary }]}>
+              {t.settings.quickLog.stepsTitle}
+            </Text>
 
-        <Pressable disabled={busy} style={[styles.btn, { backgroundColor: C.accent }]} onPress={onGenerate}>
-          <Text style={styles.btnText}>
-            {hasKey ? t.settings.quickLog.regenerate : t.settings.quickLog.generate}
-          </Text>
-        </Pressable>
+            {/* Step 1 — copy your key */}
+            {stepLabel(t.settings.quickLog.step1)}
+            <Pressable disabled={busy} style={[styles.btn, { backgroundColor: C.accent }]} onPress={onGenerate}>
+              <Text style={styles.btnText}>
+                {hasKey ? t.settings.quickLog.regenerate : t.settings.quickLog.generate}
+              </Text>
+            </Pressable>
+            {shownKey && (
+              <View style={[styles.keyBox, { borderColor: C.border, backgroundColor: C.surface }]}>
+                <Text selectable style={[styles.key, { color: C.textPrimary }]}>{shownKey}</Text>
+                <Text style={[styles.warn, { color: C.textSecondary }]}>
+                  {t.settings.quickLog.keyOnceWarning}
+                </Text>
+                <Pressable style={[styles.btn, { backgroundColor: C.accent }]} onPress={onCopy}>
+                  <Text style={styles.btnText}>{t.settings.quickLog.copyKey}</Text>
+                </Pressable>
+              </View>
+            )}
 
-        <Pressable style={[styles.btn, styles.secondary, { borderColor: C.border }]}
-          onPress={() => Linking.openURL(SHORTCUT_URL).catch(() => {})}>
-          <Text style={[styles.btnText, { color: C.textPrimary }]}>{t.settings.quickLog.getShortcut}</Text>
-        </Pressable>
+            {/* Step 2 — get the Shortcut */}
+            {stepLabel(t.settings.quickLog.step2)}
+            <Pressable style={[styles.btn, styles.secondary, { borderColor: C.border }]}
+              onPress={() => Linking.openURL(SHORTCUT_URL).catch(() => {})}>
+              <Text style={[styles.btnText, { color: C.textPrimary }]}>{t.settings.quickLog.getShortcut}</Text>
+            </Pressable>
 
-        {hasKey && (
-          <Pressable style={styles.revoke} onPress={onRevoke}>
-            <Text style={{ color: C.overdue }}>{t.settings.quickLog.revoke}</Text>
-          </Pressable>
+            {/* Steps 3 & 4 — happen outside the app */}
+            {stepLabel(t.settings.quickLog.step3)}
+            {stepLabel(t.settings.quickLog.step4)}
+
+            {hasKey && (
+              <Pressable style={styles.revoke} onPress={onRevoke}>
+                <Text style={{ color: C.overdue }}>{t.settings.quickLog.revoke}</Text>
+              </Pressable>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -93,6 +134,11 @@ const styles = StyleSheet.create({
   container: { padding: SPACING.lg, gap: SPACING.md },
   intro: { fontSize: 15, lineHeight: 22 },
   status: { fontSize: 15, fontWeight: '600' },
+  stepsTitle: { fontSize: 16, fontWeight: '700', marginTop: SPACING.sm },
+  step: { fontSize: 15, lineHeight: 22, marginTop: SPACING.xs },
+  gateCard: { borderWidth: 1, borderRadius: RADIUS.md, padding: SPACING.md, gap: SPACING.sm },
+  gateTitle: { fontSize: 16, fontWeight: '700' },
+  gateBody: { fontSize: 14, lineHeight: 20 },
   keyBox: { borderWidth: 1, borderRadius: RADIUS.md, padding: SPACING.md, gap: SPACING.sm },
   key: { fontSize: 18, fontWeight: '700', letterSpacing: 1 },
   warn: { fontSize: 13, lineHeight: 18 },

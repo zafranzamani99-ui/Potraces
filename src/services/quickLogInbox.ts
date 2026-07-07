@@ -7,6 +7,7 @@
 import { supabasePersonal as supabase } from './supabase'; // personal client (quick-log inbox)
 import { logQuickExpense, undoQuickExpense } from './quickLog';
 import { mapInboxRowToQuickLog, type QuickLogInboxRow } from './quickLogInboxMap';
+import { useSettingsStore } from '../store/settingsStore';
 
 let draining = false;
 
@@ -18,6 +19,8 @@ export async function drainQuickLogInbox(): Promise<number> {
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id;
     if (!userId) return 0;
+    // Quick Log is a cloud feature — respect a user who has Cloud Backup off.
+    if (!useSettingsStore.getState().personalSyncEnabled) return 0;
 
     const { data: rows, error } = await supabase
       .from('quick_log_inbox')
