@@ -127,9 +127,17 @@ export default function QuickLogSetup() {
               <Text style={[styles.caption, { color: C.textSecondary }]}>{t.settings.quickLog.shortcutSoon}</Text>
             )}
 
-            {/* Steps 3 & 4 — happen outside the app */}
+            {/* Steps 3–5 — happen outside the app, so spell out every tap */}
             {stepLabel(t.settings.quickLog.step3)}
             {stepLabel(t.settings.quickLog.step4)}
+            {stepLabel(t.settings.quickLog.step5)}
+
+            <Text style={[styles.afterSetup, { color: C.textPrimary }]}>
+              {t.settings.quickLog.afterSetup}
+            </Text>
+            <Text style={[styles.caption, { color: C.textSecondary }]}>
+              {t.settings.quickLog.regenNote}
+            </Text>
 
             {hasKey && (
               <Pressable style={styles.revoke} onPress={onRevoke}>
@@ -159,5 +167,6 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   secondary: { backgroundColor: 'transparent', borderWidth: 1 },
   caption: { fontSize: 13, fontStyle: 'italic', marginTop: -SPACING.xs },
+  afterSetup: { fontSize: 15, lineHeight: 22, fontWeight: '600', marginTop: SPACING.sm },
   revoke: { alignItems: 'center', paddingVertical: 12 },
 });

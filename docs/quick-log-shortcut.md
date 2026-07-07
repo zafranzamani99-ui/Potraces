@@ -7,15 +7,23 @@ key), and the app materializes the entry on next open.
 
 ## User setup (what the in-app Quick Log screen walks through)
 
-1. In Potraces: Settings → **Quick Log (Back Tap)** → **Generate my key** →
-   **Copy key**. (Requires Cloud Backup — the screen gates on it.)
-2. Tap **Get the Shortcut** — Safari downloads the signed file; open the
-   download and tap **Add Shortcut**.
-3. Run it once — the copied key appears **pre-filled** (read from the
-   clipboard); just tap Done. It's saved to iCloud Drive/Shortcuts as
-   `potraces-key.txt` and never asked again.
-4. iOS Settings → Accessibility → Touch → **Back Tap** → **Double Tap** →
-   choose **Potraces Quick Log**.
+In Potraces: Settings → Money → **Quick Log (Back Tap)**. (Requires Cloud
+Backup — the screen gates on it.) Every step names the app + exact button:
+
+1. Tap **Generate my key**, then **Copy key**.
+2. Tap **Get the Shortcut** — Safari opens and downloads the file.
+3. In Safari, tap **↓** (top-right) → tap **Potraces Quick Log** → tap
+   **Add Shortcut**.
+4. Open the **Shortcuts** app, tap the **Potraces Quick Log** card. The copied
+   key is **pre-filled** (read from the clipboard) — tap Done and log a test
+   expense. The key is saved to iCloud Drive/Shortcuts as `potraces-key.txt`
+   and never asked again.
+5. iPhone **Settings** → Accessibility → Touch → **Back Tap** → **Double Tap**
+   → choose **Potraces Quick Log**.
+
+Regenerating the key later: the installed Shortcut fails once (the failure
+auto-deletes the stale saved key), then asks for the new key on the next run —
+copy the new key first.
 
 Offline note: if the POST fails there's no retry in v1 — the entry is not
 logged (the notification shows the error instead of `"ok":true`).
