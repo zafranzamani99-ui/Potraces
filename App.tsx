@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform, Appearance } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -12,7 +12,7 @@ import { ToastProvider } from './src/context/ToastContext';
 import { supabaseBusiness, supabasePersonal, getAuthSession } from './src/services/supabase';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId, clearProfileCache } from './src/services/sellerSync';
 import { useAuthStore } from './src/store/authStore';
-import { registerPushNotifications, registerAndroidNotificationChannels } from './src/services/pushNotifications';
+import { registerPushNotifications, registerPersonalDeviceToken, registerAndroidNotificationChannels } from './src/services/pushNotifications';
 import * as Notifications from 'expo-notifications';
 import { globalShowToast } from './src/context/ToastContext';
 import { useSellerStore } from './src/store/sellerStore';
@@ -72,6 +72,14 @@ function App() {
   const [update, setUpdate] = React.useState<UpdateStatus | null>(null);
   const mode = useAppStore((s) => s.mode);
   const isDark = useIsDark();
+  const themePreference = useSettingsStore((s) => s.themePreference);
+
+  // Native UIKit chrome (the iOS 26 system tab bar, native-stack headers) follows
+  // the OS appearance, not our in-app theme — sync the override so both match.
+  // 'system' clears the override back to the device setting.
+  React.useEffect(() => {
+    Appearance.setColorScheme(themePreference === 'system' ? null : themePreference);
+  }, [themePreference]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -384,6 +392,10 @@ function App() {
   React.useEffect(() => {
     const run = () => { drainQuickLogInbox().catch(() => {}); };
     run(); // cold start
+    // Keep the PERSONAL user's device token registered (quick-log pushes are
+    // sent to the personal account; the seller path registers business only).
+    // Silent: never prompts — QuickLogSetup owns the contextual prompt.
+    registerPersonalDeviceToken().catch(() => {});
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') run();
     });
@@ -480,12 +492,12 @@ function App() {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as { type?: string; orderId?: string } | undefined;
       if (data?.type === 'quick_log') {
-        // Switch to personal mode (RootNavigator re-renders to PersonalNavigator) and
-        // land on the Dashboard tab, where the month's transactions are shown.
+        // Switch to personal mode (RootNavigator re-renders to PersonalNavigator)
+        // and open the full transactions list, where the new entry is visible.
         useAppStore.getState().setMode('personal');
         setTimeout(() => {
           if (navigationRef.isReady()) {
-            (navigationRef as any).navigate('PersonalMain', { screen: 'Dashboard' });
+            (navigationRef as any).navigate('TransactionsList');
           }
         }, 300);
         return;

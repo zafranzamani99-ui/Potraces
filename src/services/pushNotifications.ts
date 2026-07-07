@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { supabaseBusiness as supabase } from './supabase'; // business client (seller push)
+import { supabaseBusiness as supabase, supabasePersonal } from './supabase'; // per-mode clients
 import { useSettingsStore } from '../store/settingsStore';
 
 // Configure how notifications appear when app is in foreground
@@ -152,4 +152,43 @@ export async function registerPushNotifications(
   }
 
   return token;
+}
+
+/**
+ * Personal-mode counterpart. Quick-log pushes are sent to device_tokens rows
+ * belonging to the PERSONAL auth user — the seller path above registers under
+ * the business user only (two-account split), so without this a personal-only
+ * user never receives them. Same permission etiquette as above: silent unless
+ * promptIfNeeded (QuickLogSetup passes true — a contextual, earned prompt).
+ */
+export async function registerPersonalDeviceToken(
+  opts: { promptIfNeeded?: boolean } = {},
+): Promise<void> {
+  const { promptIfNeeded = false } = opts;
+  if (!Device.isDevice) return;
+
+  const { data: { session } } = await supabasePersonal.auth.getSession();
+  const userId = session?.user?.id;
+  if (!userId) return;
+
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  let finalStatus = existing;
+  if (existing !== 'granted') {
+    if (!promptIfNeeded) return;
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== 'granted') return;
+
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+  registerAndroidNotificationChannels();
+  try {
+    await supabasePersonal.from('device_tokens').upsert(
+      { user_id: userId, token: tokenData.data, platform: Platform.OS, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,token' },
+    );
+  } catch (e) {
+    if (__DEV__) console.warn('[push] Failed to save personal token:', e);
+  }
 }

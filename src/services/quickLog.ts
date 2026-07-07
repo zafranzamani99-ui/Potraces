@@ -12,7 +12,7 @@ import { useWalletStore } from '../store/walletStore';
 import { useCategoryStore } from '../store/categoryStore';
 import { nowMYT } from '../utils/datetime';
 import { CALM } from '../constants';
-import type { CategoryOption } from '../types';
+import type { CategoryOption, WalletType } from '../types';
 
 export interface QuickLogParams {
   amount: number;
@@ -59,16 +59,56 @@ function resolveCategory(raw: string | undefined, type: 'expense' | 'income'): C
  * deductFromWallet/addToWallet handle credit wallets correctly, so a credit
  * card / BNPL passed here behaves as expected (uses/repays credit).
  */
+/**
+ * Payment-method aliases: the shared Shortcut offers generic labels (Cash /
+ * TNG / Card / Bank) but users name their wallets anything ("Touch 'n Go",
+ * "Maybank Savings"). Each alias lists name tokens to look for, and a wallet
+ * TYPE to fall back to — so "TNG" finds the user's e-wallet even when no name
+ * matches, instead of silently landing on the default (usually Bank).
+ */
+const WALLET_ALIASES: Record<string, { tokens: string[]; type?: WalletType }> = {
+  tng: { tokens: ['tng', 'touchngo', 'touch'], type: 'ewallet' },
+  ewallet: { tokens: ['tng', 'touchngo', 'grab', 'boost', 'shopee'], type: 'ewallet' },
+  cash: { tokens: ['cash', 'tunai'] },
+  card: { tokens: ['card', 'credit', 'kad'], type: 'credit' },
+  creditcard: { tokens: ['card', 'credit', 'kad'], type: 'credit' },
+  bank: { tokens: ['bank'], type: 'bank' },
+};
+
 function resolveWallet(raw?: string): { id: string; name: string } | undefined {
   const ws = useWalletStore.getState();
   const wallets = ws.wallets;
-  if (wallets.length > 0 && raw) {
-    const n = normalize(raw);
+  const n = raw ? normalize(raw) : '';
+  if (wallets.length > 0 && n) {
     const match =
       wallets.find((w) => normalize(w.id) === n) ||
       wallets.find((w) => normalize(w.name) === n) ||
       wallets.find((w) => normalize(w.name).includes(n) || n.includes(normalize(w.name)));
     if (match) return { id: match.id, name: match.name };
+    // Alias layer: match by known name tokens, then by wallet type.
+    const alias = WALLET_ALIASES[n];
+    if (alias) {
+      const byToken = wallets.find((w) => alias.tokens.some((t) => normalize(w.name).includes(t)));
+      if (byToken) return { id: byToken.id, name: byToken.name };
+      if (alias.type) {
+        const byType = wallets.find((w) => w.type === alias.type);
+        if (byType) return { id: byType.id, name: byType.name };
+      }
+    }
+  }
+  // Explicitly chose Cash but no cash-like wallet exists → create one rather
+  // than silently charging the default (usually a bank) wallet.
+  if (n === 'cash') {
+    ws.addWallet({
+      name: 'Cash',
+      type: 'ewallet',
+      balance: 0,
+      icon: 'dollar-sign',
+      color: CALM.accent,
+      isDefault: wallets.length === 0,
+    });
+    const created = useWalletStore.getState().wallets.find((w) => normalize(w.name) === 'cash');
+    if (created) return { id: created.id, name: created.name };
   }
   let existing = wallets.find((w) => w.isDefault) ?? wallets[0];
   if (!existing) {

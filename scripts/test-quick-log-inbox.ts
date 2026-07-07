@@ -39,6 +39,27 @@ const after = useWalletStore.getState().wallets[0].balance;
 check('wallet deducted by amount', Math.round((before - after) * 100) / 100 === 23.9);
 check('transaction written', usePersonalStore.getState().transactions.some((t: any) => t.amount === 23.9));
 
+// ── Wallet alias resolution (field bug: "TNG"/"Cash" silently hit Bank) ──────
+// User wallets named nothing like the Shortcut's labels: "Touch 'n Go" +
+// default "Maybank" bank. Choosing "📱 TNG" must hit the e-wallet, not Bank.
+useWalletStore.setState({ wallets: [
+  { id: 'b1', name: 'Maybank', type: 'bank', balance: 1000, icon: 'home', color: '#000', isDefault: true } as any,
+  { id: 'e1', name: "Touch 'n Go", type: 'ewallet', balance: 50, icon: 'phone', color: '#000', isDefault: false } as any,
+] });
+const tngResult = logQuickExpense({ amount: 5, type: 'expense', wallet: '📱 TNG' });
+check('TNG resolves to the e-wallet (type fallback), not default Bank', tngResult?.walletId === 'e1');
+check('bank untouched by TNG log', useWalletStore.getState().wallets.find((w) => w.id === 'b1')!.balance === 1000);
+
+// Choosing "💵 Cash" with NO cash-like wallet must create one — never charge Bank.
+const cashResult = logQuickExpense({ amount: 7, type: 'expense', wallet: '💵 Cash' });
+check('Cash auto-creates a Cash wallet instead of hitting Bank', cashResult?.walletName === 'Cash');
+check('bank untouched by Cash log', useWalletStore.getState().wallets.find((w) => w.id === 'b1')!.balance === 1000);
+check('created Cash wallet carries the deduction', useWalletStore.getState().wallets.find((w) => w.name === 'Cash')!.balance === -7);
+
+// Unknown label still falls back to the default wallet (unchanged behaviour).
+const unknownResult = logQuickExpense({ amount: 3, type: 'expense', wallet: 'Duitku' });
+check('unknown label falls back to default wallet', unknownResult?.walletId === 'b1');
+
 if (failures) { console.error(`${failures} failures`); process.exit(1); }
 console.log('all passed');
 // Explicit exit: usePersonalStore/useWalletStore are zustand `persist` stores

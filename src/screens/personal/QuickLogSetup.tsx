@@ -11,6 +11,7 @@ import { SPACING, RADIUS } from '../../constants';
 import {
   registerQuickLogKey, getQuickLogKeyStatus, revokeQuickLogKey,
 } from '../../services/quickLogKey';
+import { registerPersonalDeviceToken } from '../../services/pushNotifications';
 
 // Signed shortcut built by scripts/build-quick-log-shortcut.py and hosted on
 // the public `web` bucket — re-run that pipeline to update it in place.
@@ -31,7 +32,12 @@ export default function QuickLogSetup() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (cloudOn) getQuickLogKeyStatus().then((s) => setHasKey(s.hasActiveKey));
+    if (cloudOn) {
+      getQuickLogKeyStatus().then((s) => setHasKey(s.hasActiveKey));
+      // Contextual permission moment: the user is setting up a notification-
+      // driven feature, so this is where the push prompt has earned context.
+      registerPersonalDeviceToken({ promptIfNeeded: true }).catch(() => {});
+    }
   }, [cloudOn]);
 
   const onGenerate = async () => {
