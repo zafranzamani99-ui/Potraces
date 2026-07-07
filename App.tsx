@@ -396,10 +396,28 @@ function App() {
     // sent to the personal account; the seller path registers business only).
     // Silent: never prompts — QuickLogSetup owns the contextual prompt.
     registerPersonalDeviceToken().catch(() => {});
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') run();
+      if (s === 'active') {
+        run();
+        // Back Tap race: when the Shortcut runs OVER the open app, we return
+        // to 'active' before its POST lands — sweep again so the new entry
+        // appears on the visible screen without a reopen.
+        if (graceTimer) clearTimeout(graceTimer);
+        graceTimer = setTimeout(run, 2500);
+      }
     });
-    return () => sub.remove();
+    // A quick-log push arriving while the app is foregrounded means a row just
+    // landed — drain immediately so the list updates in place.
+    const recvSub = Notifications.addNotificationReceivedListener((n) => {
+      const data = n.request.content.data as { type?: string } | undefined;
+      if (data?.type === 'quick_log') run();
+    });
+    return () => {
+      sub.remove();
+      recvSub.remove();
+      if (graceTimer) clearTimeout(graceTimer);
+    };
   }, []);
 
   // Deep link / Back Tap / Apple Shortcut: log or open Quick Add from outside.
