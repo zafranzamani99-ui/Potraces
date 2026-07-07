@@ -25,6 +25,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SettingRow from '../../components/common/SettingRow';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
@@ -52,8 +53,6 @@ import UnitManager from '../../components/common/UnitManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { tapToPayAvailable } from '../../services/tapToPay';
-import * as Clipboard from 'expo-clipboard';
-import { openQuickAdd } from '../../components/common/QuickAddExpense';
 import { signOut, supabaseBusiness } from '../../services/supabase';
 import { clearProfileCache, syncAll } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
@@ -470,11 +469,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 const Settings: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const section = (route.params as any)?.section as ('preferences' | 'money' | 'data' | 'security' | 'about' | undefined);
   const { showToast } = useToast();
-  const [shortcutModalVisible, setShortcutModalVisible] = useState(false);
   const [businessInfoVisible, setBusinessInfoVisible] = useState(false);
-  const QUICK_ADD_LINK = 'potraces://add';
   const mode = useAppStore((state) => state.mode);
   const setMode = useAppStore((state) => state.setMode);
   const incomeType = useBusinessStore((s) => s.incomeType);
@@ -946,7 +944,7 @@ const Settings: React.FC = () => {
       <ScrollView
         ref={scrollRef}
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
@@ -1304,13 +1302,6 @@ const Settings: React.FC = () => {
                 thumbColor={C.surface}
               />
             }
-          />
-          <SettingRow
-            icon="i/add-circle"
-            chipColor="#9A6400"
-            label={t.settings.quickAddTitle}
-            sublabel={t.settings.quickAddSubtitle}
-            onPress={() => { lightTap(); setShortcutModalVisible(true); }}
           />
           {businessModeEnabled && (
             <SettingRow
@@ -1812,74 +1803,6 @@ const Settings: React.FC = () => {
           </>
         )}
       </ScrollView>
-
-      {/* Quick add shortcut setup */}
-      <Modal
-        visible={shortcutModalVisible}
-        transparent
-        statusBarTranslucent
-        animationType="fade"
-        onRequestClose={() => setShortcutModalVisible(false)}
-      >
-        <Pressable
-          style={{ flex: 1, backgroundColor: withAlpha('#000000', isDark ? 0.6 : 0.4), justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}
-          onPress={() => setShortcutModalVisible(false)}
-        >
-          <View
-            onStartShouldSetResponder={() => true}
-            style={{ width: '100%', maxWidth: 460, maxHeight: '86%', backgroundColor: C.surface, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: C.border, overflow: 'hidden' }}
-          >
-            <ScrollView contentContainerStyle={{ padding: SPACING.xl }} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.sm }}>
-                <View style={{ width: 40, height: 40, borderRadius: RADIUS.lg, backgroundColor: withAlpha(C.accent, 0.12), alignItems: 'center', justifyContent: 'center' }}>
-                  <Feather name="smartphone" size={20} color={C.accent} />
-                </View>
-                <Text style={{ flex: 1, fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary }}>{t.settings.quickAddModalTitle}</Text>
-                <TouchableOpacity onPress={() => setShortcutModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={t.settings.quickAddDone}>
-                  <Feather name="x" size={22} color={C.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={{ fontSize: TYPOGRAPHY.size.sm, lineHeight: 21, color: C.textSecondary, marginBottom: SPACING.lg }}>{t.settings.quickAddModalIntro}</Text>
-
-              <Text style={{ fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.xs }}>{t.settings.quickAddLinkLabel}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.lg }}>
-                <View style={{ flex: 1, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: withAlpha(C.accent, isDark ? 0.1 : 0.06), borderWidth: 1, borderColor: C.border }}>
-                  <Text style={{ fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>{QUICK_ADD_LINK}</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={async () => { lightTap(); await Clipboard.setStringAsync(QUICK_ADD_LINK); showToast(t.settings.quickAddCopied, 'success'); }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, backgroundColor: withAlpha(C.accent, 0.12) }}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.settings.quickAddCopy}
-                >
-                  <Feather name="copy" size={15} color={C.accent} />
-                  <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent }}>{t.settings.quickAddCopy}</Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, marginBottom: SPACING.sm }}>{t.settings.quickAddStepsTitle}</Text>
-              {[t.settings.quickAddStep1, t.settings.quickAddStep2, t.settings.quickAddStep3].map((step, i) => (
-                <Text key={i} style={{ fontSize: TYPOGRAPHY.size.sm, lineHeight: 21, color: C.textSecondary, marginBottom: SPACING.sm }}>{step}</Text>
-              ))}
-
-              <View style={{ flexDirection: 'row', gap: SPACING.sm, padding: SPACING.md, borderRadius: RADIUS.md, backgroundColor: withAlpha(C.bronze, isDark ? 0.14 : 0.08), marginTop: SPACING.xs, marginBottom: SPACING.md }}>
-                <Feather name="info" size={15} color={C.bronze} style={{ marginTop: 2 }} />
-                <Text style={{ flex: 1, fontSize: TYPOGRAPHY.size.xs, lineHeight: 18, color: C.textSecondary }}>{t.settings.quickAddAndroid}</Text>
-              </View>
-
-              <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginBottom: SPACING.lg }}>{t.settings.quickAddTip}</Text>
-
-              <Button
-                title={t.settings.quickAddTest}
-                icon="zap"
-                onPress={() => { lightTap(); setShortcutModalVisible(false); setTimeout(() => openQuickAdd('expense'), 350); }}
-              />
-            </ScrollView>
-            <ModalToastHost />
-          </View>
-        </Pressable>
-      </Modal>
 
       {/* Business mode explainer — "how it works" for curious users */}
       <Modal
