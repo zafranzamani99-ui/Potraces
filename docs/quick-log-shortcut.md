@@ -1,25 +1,82 @@
 # Potraces Quick Log — Back Tap Shortcut
 
-One-time setup for a user:
-1. In Potraces: Settings → **Quick Log (Back Tap)** → **Generate my key** → **Copy key**.
-2. Open the shared Shortcut link (the "Get the Shortcut" button) and **Add Shortcut**.
-3. On first run it asks for your key — **paste** it. (Stored in the Shortcut forever.)
-4. Settings (iOS) → Accessibility → Touch → **Back Tap** → **Double Tap** → choose **Potraces Quick Log**.
+Log an expense by double-tapping the back of the iPhone — without opening the
+app. The Shortcut collects amount/category/payment/note with native prompts,
+POSTs to the `quick-log` edge function (authenticated by the user's Quick-Log
+key), and the app materializes the entry on next open.
 
-## Shortcut actions (build once, share as an iCloud link)
-1. **Text** → your Quick-Log key (or an Import Question "Your Potraces key").
-2. **Ask for Input** — Number — "Amount" → var `Amount`.
-3. **Choose from Menu** — Food & Dining / Transportation / Shopping / Entertainment /
-   Healthcare / Other. Each branch sets `Category` to the matching id:
-   `food` / `transport` / `shopping` / `entertainment` / `health` / `other`.
-4. **Choose from Menu** — Cash / Maybank / TNG / Card / … → set `Wallet` to the label text.
-5. **Ask for Input** — Text — "Note" → var `Note`.
-6. **Get Contents of URL**
-   - URL: `https://iydqeeonaljqapulboaz.supabase.co/functions/v1/quick-log`
-   - Method: POST, Headers: `Content-Type: application/json`
-   - Request Body (JSON):
-     `{ "key": Key, "amount": Amount, "category": Category, "wallet": Wallet, "note": Note }`
-7. **If** the response contains `"ok":true` → **Show Notification** "Logged RM[Amount] to [Category]".
-   **Otherwise** (offline / error) → **Open URL**
-   `potraces://add?amount=[Amount]&category=[Category]&wallet=[Wallet]&note=[Note]`
-   (the offline fallback — opens the app and logs locally).
+## User setup (what the in-app Quick Log screen walks through)
+
+1. In Potraces: Settings → **Quick Log (Back Tap)** → **Generate my key** →
+   **Copy key**. (Requires Cloud Backup — the screen gates on it.)
+2. Tap **Get the Shortcut** — Safari downloads the signed file; open the
+   download and tap **Add Shortcut**.
+3. Run it once — the copied key appears **pre-filled** (read from the
+   clipboard); just tap Done. It's saved to iCloud Drive/Shortcuts as
+   `potraces-key.txt` and never asked again.
+4. iOS Settings → Accessibility → Touch → **Back Tap** → **Double Tap** →
+   choose **Potraces Quick Log**.
+
+Offline note: if the POST fails there's no retry in v1 — the entry is not
+logged (the notification shows the error instead of `"ok":true`).
+
+## Maintainer pipeline (no iPhone needed)
+
+The Shortcut is **generated from source**, signed on a Mac, and hosted on the
+public `web` storage bucket — so it can be updated in place at a stable URL
+(unlike iCloud share links, which mint a new URL on every re-share).
+
+```bash
+python3 scripts/build-quick-log-shortcut.py     # source of truth → unsigned plist
+plutil -lint shortcut/PotracesQuickLog-unsigned.shortcut
+shortcuts sign --mode anyone \
+  -i shortcut/PotracesQuickLog-unsigned.shortcut \
+  -o "shortcut/Potraces Quick Log.shortcut"
+npx supabase storage cp "shortcut/Potraces Quick Log.shortcut" \
+  ss:///web/PotracesQuickLog.shortcut --experimental \
+  --content-type application/x-apple-shortcut
+```
+
+Public URL (wired into `QuickLogSetup.tsx` as `SHORTCUT_URL`):
+
+```
+https://iydqeeonaljqapulboaz.supabase.co/storage/v1/object/public/web/PotracesQuickLog.shortcut?download=Potraces%20Quick%20Log.shortcut
+```
+
+Gotchas learned the hard way:
+- `shortcuts sign` routes on the input **file extension** — it must be
+  `.shortcut` or `.wflow`; a `.plist` extension fails with "isn't in the
+  correct format" regardless of contents.
+- The `web` bucket has a MIME allowlist (SEC-H4);
+  `application/x-apple-shortcut` was added for this file
+  (migration `20260708000000_web_bucket_shortcut_mime.sql`).
+- Shortcuts attachment ranges are UTF-16 offsets; the builder handles this.
+
+## What the Shortcut does (actions, in order)
+
+1. **Get File** `potraces-key.txt` (Shortcuts folder, no picker, no error).
+2. **If** it has no value (first run): **Get Clipboard** → **Ask for Input**
+   "Your Potraces Quick Log key" with the clipboard pre-filled → **Save File**
+   → set variable `PotracesKey`. **Otherwise** `PotracesKey` = file contents.
+3. **Ask for Input** (Number) — "Amount (RM)".
+4. **List** → **Choose from List** — Category (labels carry emoji; the server's
+   `resolveCategory` strips non-alphanumerics, so `🍔 Food & Dining` → `food`).
+5. **List** → **Choose from List** — Payment (`💵 Cash`, `🏦 Maybank`, …;
+   `resolveWallet` fuzzy-matches by name, falls back to the default wallet).
+6. **Ask for Input** (Text) — note, optional.
+7. **Get Contents of URL** — POST JSON `{key, amount, category, wallet, note}`
+   to `https://iydqeeonaljqapulboaz.supabase.co/functions/v1/quick-log`.
+8. **Show Notification** — `RM<amount> · <category>` + the server response.
+
+First run also shows a one-time iOS prompt to allow connecting to
+`*.supabase.co` — tap **Always Allow**.
+
+## Roadmap (v2): native App Intent
+
+The zero-key, zero-server route: a Swift `AppIntent` in the main app target
+(iOS 16+) that prompts for amount/category/note natively, writes to the
+`group.com.potraces.app` App Group, and the app drains it on next open — works
+offline and without Cloud Backup. Back Tap still needs a one-action wrapper
+shortcut (Back Tap only lists personal shortcuts). Prereqs: add the App Group
+to the MAIN app entitlements (currently only the share extension has it);
+deliver Swift via a config plugin to survive `expo prebuild --clean`.

@@ -12,8 +12,10 @@ import {
   registerQuickLogKey, getQuickLogKeyStatus, revokeQuickLogKey,
 } from '../../services/quickLogKey';
 
-// TODO(Task 8): replace with the published iCloud Shortcut link.
-const SHORTCUT_URL = 'https://www.icloud.com/shortcuts/REPLACE_ME';
+// Signed shortcut built by scripts/build-quick-log-shortcut.py and hosted on
+// the public `web` bucket — re-run that pipeline to update it in place.
+const SHORTCUT_URL =
+  'https://iydqeeonaljqapulboaz.supabase.co/storage/v1/object/public/web/PotracesQuickLog.shortcut?download=Potraces%20Quick%20Log.shortcut';
 const SHORTCUT_READY = !SHORTCUT_URL.includes('REPLACE_ME');
 
 export default function QuickLogSetup() {
