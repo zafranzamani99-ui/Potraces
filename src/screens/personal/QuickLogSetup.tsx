@@ -14,6 +14,7 @@ import {
 
 // TODO(Task 8): replace with the published iCloud Shortcut link.
 const SHORTCUT_URL = 'https://www.icloud.com/shortcuts/REPLACE_ME';
+const SHORTCUT_READY = !SHORTCUT_URL.includes('REPLACE_ME');
 
 export default function QuickLogSetup() {
   const t = useT();
@@ -114,9 +115,15 @@ export default function QuickLogSetup() {
             {/* Step 2 — get the Shortcut */}
             {stepLabel(t.settings.quickLog.step2)}
             <Pressable style={[styles.btn, styles.secondary, { borderColor: C.border }]}
-              onPress={() => Linking.openURL(SHORTCUT_URL).catch(() => {})}>
+              onPress={() => {
+                if (!SHORTCUT_READY) { showToast(t.settings.quickLog.shortcutSoon, 'info'); return; }
+                Linking.openURL(SHORTCUT_URL).catch(() => {});
+              }}>
               <Text style={[styles.btnText, { color: C.textPrimary }]}>{t.settings.quickLog.getShortcut}</Text>
             </Pressable>
+            {!SHORTCUT_READY && (
+              <Text style={[styles.caption, { color: C.textSecondary }]}>{t.settings.quickLog.shortcutSoon}</Text>
+            )}
 
             {/* Steps 3 & 4 — happen outside the app */}
             {stepLabel(t.settings.quickLog.step3)}
@@ -149,5 +156,6 @@ const styles = StyleSheet.create({
   btn: { borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center' },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   secondary: { backgroundColor: 'transparent', borderWidth: 1 },
+  caption: { fontSize: 13, fontStyle: 'italic', marginTop: -SPACING.xs },
   revoke: { alignItems: 'center', paddingVertical: 12 },
 });
