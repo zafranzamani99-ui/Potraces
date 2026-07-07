@@ -257,8 +257,16 @@ actions = [
     action("is.workflow.actions.notification", {
         "WFNotificationActionBody": token_string([
             "⚠️ Not logged — ", out_ref(U_RESP, "Contents of URL"),
-            ". Check your key in Potraces → Settings → Quick Log.",
+            ". Copy a fresh key in Potraces → Settings → Quick Log, then run me again.",
         ]),
+    }),
+    # Self-heal: forget the saved key so the next run re-asks (clipboard
+    # pre-filled). Runs AFTER the notification so a first-run failure (no file
+    # to delete) can't suppress the warning. Immediately delete = no
+    # Recently Deleted clutter.
+    action("is.workflow.actions.file.delete", {
+        "WFInput": token_attachment(out_ref(U_GETFILE, "File")),
+        "WFDeleteImmediatelyDelete": True,
     }),
     conditional(G_RESULT, 2),
 ]
