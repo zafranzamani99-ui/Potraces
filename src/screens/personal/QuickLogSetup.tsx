@@ -49,9 +49,13 @@ export default function QuickLogSetup() {
   };
 
   const onRevoke = async () => {
-    await revokeQuickLogKey();
-    setHasKey(false);
-    setShownKey(null);
+    try {
+      await revokeQuickLogKey();
+      setHasKey(false);
+      setShownKey(null);
+    } catch {
+      showToast(t.settings.quickLog.revokeFailed, 'error');
+    }
   };
 
   const stepLabel = (text: string) => (

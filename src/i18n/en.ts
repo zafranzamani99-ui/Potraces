@@ -430,6 +430,7 @@ export const en = {
       keyOnceWarning: 'Copy it now — you won’t see it again. Paste it into the Shortcut on first run.',
       getShortcut: 'Get the Shortcut',
       revoke: 'Turn off Quick Log',
+      revokeFailed: 'Couldn’t turn off Quick Log. Try again.',
       active: 'Quick Log is set up.',
       inactive: 'Quick Log is not set up yet.',
       signInFirst: 'Sign in to Potraces first.',

@@ -10,6 +10,7 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type, apikey',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -91,7 +92,7 @@ Deno.serve(async (req: Request) => {
       }));
       await fetch(EXPO_PUSH_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify(messages),
       });
     }

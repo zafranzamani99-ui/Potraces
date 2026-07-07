@@ -429,6 +429,7 @@ export const ms: Translations = {
       keyOnceWarning: 'Salin sekarang — anda tak akan lihat semula. Tampal ke dalam Shortcut kali pertama.',
       getShortcut: 'Dapatkan Shortcut',
       revoke: 'Matikan Log Pantas',
+      revokeFailed: 'Gagal matikan Log Pantas. Cuba lagi.',
       active: 'Log Pantas sudah disediakan.',
       inactive: 'Log Pantas belum disediakan.',
       signInFirst: 'Log masuk ke Potraces dahulu.',

@@ -50,6 +50,7 @@ export async function getQuickLogKeyStatus(): Promise<{ hasActiveKey: boolean }>
 export async function revokeQuickLogKey(): Promise<void> {
   const userId = await currentUserId();
   if (!userId) return;
-  await supabase.from('quick_log_keys').update({ revoked: true })
+  const { error } = await supabase.from('quick_log_keys').update({ revoked: true })
     .eq('user_id', userId).eq('revoked', false);
+  if (error) throw error;
 }
