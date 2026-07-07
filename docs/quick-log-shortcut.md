@@ -51,6 +51,15 @@ Gotchas learned the hard way:
   `application/x-apple-shortcut` was added for this file
   (migration `20260708000000_web_bucket_shortcut_mime.sql`).
 - Shortcuts attachment ranges are UTF-16 offsets; the builder handles this.
+- **Updating in place:** `storage cp` refuses to overwrite (409) and
+  `storage rm` is silently broken in supabase CLI 2.109 (`deleted: []`).
+  Working update dance:
+  `storage mv ss:///web/PotracesQuickLog.shortcut ss:///web/PotracesQuickLog-old.shortcut`
+  then `storage cp` the new file. Stale `-old` objects accumulate — clear
+  them from the dashboard occasionally.
+- Users who already added the Shortcut do NOT auto-update — they must
+  re-download and re-add (their saved `potraces-key.txt` survives, so the
+  key is not re-asked).
 
 ## What the Shortcut does (actions, in order)
 

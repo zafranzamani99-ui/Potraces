@@ -69,7 +69,9 @@ U_WALLIST = new_uuid()
 U_WAL = new_uuid()
 U_NOTE = new_uuid()
 U_RESP = new_uuid()
-G_FIRSTRUN = new_uuid()  # GroupingIdentifier for the single If/Otherwise/End If
+U_OK = new_uuid()
+G_FIRSTRUN = new_uuid()  # GroupingIdentifier: first-run key bootstrap If/Otherwise
+G_RESULT = new_uuid()    # GroupingIdentifier: success/failure notification If/Otherwise
 
 VAR_KEY = "PotracesKey"
 
@@ -128,8 +130,8 @@ def dict_item(key: str, value_parts) -> dict:
     }
 
 
-def conditional(mode: int, extra: dict = None) -> dict:
-    params = {"GroupingIdentifier": G_FIRSTRUN, "WFControlFlowMode": mode}
+def conditional(group: str, mode: int, extra: dict = None) -> dict:
+    params = {"GroupingIdentifier": group, "WFControlFlowMode": mode}
     if extra:
         params.update(extra)
     return action("is.workflow.actions.conditional", params)
@@ -145,7 +147,7 @@ actions = [
         "WFFileErrorIfNotFound": False,
     }),
     # 2. If <file> has no value  → first run
-    conditional(0, {
+    conditional(G_FIRSTRUN, 0, {
         "WFCondition": 101,  # "does not have any value"
         "WFInput": {
             "Type": "Variable",
@@ -173,12 +175,12 @@ actions = [
         "WFInput": token_attachment(out_ref(U_ASKKEY, "Provided Input")),
     }),
     # Otherwise → returning run: key comes from the saved file.
-    conditional(1),
+    conditional(G_FIRSTRUN, 1),
     action("is.workflow.actions.setvariable", {
         "WFVariableName": VAR_KEY,
         "WFInput": token_attachment(out_ref(U_GETFILE, "File")),
     }),
-    conditional(2),
+    conditional(G_FIRSTRUN, 2),
 
     # ── Collect the entry ────────────────────────────────────────────────────
     action("is.workflow.actions.ask", {
@@ -230,14 +232,35 @@ actions = [
             },
         },
     }),
+    # Branch on the server's `ok` field so failures never read as success.
+    # (Only uses the well-attested condition enums 100/101 = has/has-no value.)
+    action("is.workflow.actions.getvalueforkey", {
+        "UUID": U_OK,
+        "WFInput": token_attachment(out_ref(U_RESP, "Contents of URL")),
+        "WFDictionaryKey": "ok",
+    }),
+    conditional(G_RESULT, 0, {
+        "WFCondition": 100,  # "has any value" → server said ok
+        "WFInput": {
+            "Type": "Variable",
+            "Variable": token_attachment(out_ref(U_OK, "Dictionary Value")),
+        },
+    }),
     action("is.workflow.actions.notification", {
-        "WFNotificationActionTitle": "Potraces",
         "WFNotificationActionBody": token_string([
-            "RM", out_ref(U_AMT, "Provided Input"),
+            "✅ RM", out_ref(U_AMT, "Provided Input"),
             " · ", out_ref(U_CAT, "Chosen Item"),
-            "\n", out_ref(U_RESP, "Contents of URL"),
+            " logged",
         ]),
     }),
+    conditional(G_RESULT, 1),
+    action("is.workflow.actions.notification", {
+        "WFNotificationActionBody": token_string([
+            "⚠️ Not logged — ", out_ref(U_RESP, "Contents of URL"),
+            ". Check your key in Potraces → Settings → Quick Log.",
+        ]),
+    }),
+    conditional(G_RESULT, 2),
 ]
 
 workflow = {

@@ -10,7 +10,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>CE021E6D-9D4F-41CA-ACAC-D182BD7A6D52</string>
+				<string>E6ADAC59-292F-43D9-B056-A38C09028C54</string>
 				<key>WFFileErrorIfNotFound</key>
 				<false/>
 				<key>WFGetFilePath</key>
@@ -25,7 +25,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>2B7AF1BA-E7E4-416E-9C90-A9A2ACD29613</string>
+				<string>A9AFC137-A77A-4DB6-B9B7-40366FE29EFD</string>
 				<key>WFCondition</key>
 				<integer>101</integer>
 				<key>WFControlFlowMode</key>
@@ -41,7 +41,7 @@
 							<key>OutputName</key>
 							<string>File</string>
 							<key>OutputUUID</key>
-							<string>CE021E6D-9D4F-41CA-ACAC-D182BD7A6D52</string>
+							<string>E6ADAC59-292F-43D9-B056-A38C09028C54</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -57,7 +57,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>08C98C35-230F-4797-BE37-E49DA0457301</string>
+				<string>4C989E34-7CCD-4725-9FFD-EE275CD4B362</string>
 			</dict>
 		</dict>
 		<dict>
@@ -66,7 +66,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>1EB12627-F579-4D22-B668-EAC96CFC1260</string>
+				<string>8D4885B1-EE73-4DB4-8A1F-F7B965C2865B</string>
 				<key>WFAskActionDefaultAnswer</key>
 				<dict>
 					<key>Value</key>
@@ -78,7 +78,7 @@
 								<key>OutputName</key>
 								<string>Clipboard</string>
 								<key>OutputUUID</key>
-								<string>08C98C35-230F-4797-BE37-E49DA0457301</string>
+								<string>4C989E34-7CCD-4725-9FFD-EE275CD4B362</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -111,7 +111,7 @@
 						<key>OutputName</key>
 						<string>Provided Input</string>
 						<key>OutputUUID</key>
-						<string>1EB12627-F579-4D22-B668-EAC96CFC1260</string>
+						<string>8D4885B1-EE73-4DB4-8A1F-F7B965C2865B</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -134,7 +134,7 @@
 						<key>OutputName</key>
 						<string>Provided Input</string>
 						<key>OutputUUID</key>
-						<string>1EB12627-F579-4D22-B668-EAC96CFC1260</string>
+						<string>8D4885B1-EE73-4DB4-8A1F-F7B965C2865B</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -151,7 +151,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>2B7AF1BA-E7E4-416E-9C90-A9A2ACD29613</string>
+				<string>A9AFC137-A77A-4DB6-B9B7-40366FE29EFD</string>
 				<key>WFControlFlowMode</key>
 				<integer>1</integer>
 			</dict>
@@ -168,7 +168,7 @@
 						<key>OutputName</key>
 						<string>File</string>
 						<key>OutputUUID</key>
-						<string>CE021E6D-9D4F-41CA-ACAC-D182BD7A6D52</string>
+						<string>E6ADAC59-292F-43D9-B056-A38C09028C54</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -185,7 +185,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>2B7AF1BA-E7E4-416E-9C90-A9A2ACD29613</string>
+				<string>A9AFC137-A77A-4DB6-B9B7-40366FE29EFD</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -196,7 +196,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>DBB88360-63E7-4DFE-A5EB-F8F44243C51E</string>
+				<string>5EAFF15F-A00C-4ECE-873C-D2B8C3F15FA9</string>
 				<key>WFAskActionPrompt</key>
 				<string>Amount (RM)</string>
 				<key>WFInputType</key>
@@ -209,7 +209,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>409DE5D7-9B83-4725-A83C-6547DA31EC87</string>
+				<string>CBCE02BF-6005-4D57-A270-25EF20B0005A</string>
 				<key>WFItems</key>
 				<array>
 					<string>🍔 Food &amp; Dining</string>
@@ -227,7 +227,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>2A21FB1C-0074-4F51-9EFC-7AA576FDB89C</string>
+				<string>4B1353BF-341E-4AEF-9888-9717D4013361</string>
 				<key>WFChooseFromListActionPrompt</key>
 				<string>Category</string>
 				<key>WFInput</key>
@@ -237,7 +237,7 @@
 						<key>OutputName</key>
 						<string>List</string>
 						<key>OutputUUID</key>
-						<string>409DE5D7-9B83-4725-A83C-6547DA31EC87</string>
+						<string>CBCE02BF-6005-4D57-A270-25EF20B0005A</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -252,7 +252,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>6ACA1D43-5C8C-4A9C-9D0E-5DE355EBE2DB</string>
+				<string>05EEDF95-F631-4AE5-8C8C-FCE8306E42F1</string>
 				<key>WFItems</key>
 				<array>
 					<string>💵 Cash</string>
@@ -269,7 +269,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>81566F24-823B-4E3A-83EC-CCCD0E8A0EB3</string>
+				<string>3B7E2824-1904-4B9D-BF5C-ECA38D517576</string>
 				<key>WFChooseFromListActionPrompt</key>
 				<string>Payment</string>
 				<key>WFInput</key>
@@ -279,7 +279,7 @@
 						<key>OutputName</key>
 						<string>List</string>
 						<key>OutputUUID</key>
-						<string>6ACA1D43-5C8C-4A9C-9D0E-5DE355EBE2DB</string>
+						<string>05EEDF95-F631-4AE5-8C8C-FCE8306E42F1</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -294,7 +294,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>3F632D2C-F200-43F4-B02B-882B548FE168</string>
+				<string>69A7FAB0-78B1-4029-A3B9-66216C03D38E</string>
 				<key>WFAskActionDefaultAnswer</key>
 				<dict>
 					<key>Value</key>
@@ -317,7 +317,7 @@
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>DDC20BC0-D858-4024-9295-3E9659269DDA</string>
+				<string>B194019E-D5C1-4B37-8D49-783AC025ABF5</string>
 				<key>WFHTTPBodyType</key>
 				<string>JSON</string>
 				<key>WFHTTPMethod</key>
@@ -386,7 +386,7 @@
 												<key>OutputName</key>
 												<string>Provided Input</string>
 												<key>OutputUUID</key>
-												<string>DBB88360-63E7-4DFE-A5EB-F8F44243C51E</string>
+												<string>5EAFF15F-A00C-4ECE-873C-D2B8C3F15FA9</string>
 												<key>Type</key>
 												<string>ActionOutput</string>
 											</dict>
@@ -422,7 +422,7 @@
 												<key>OutputName</key>
 												<string>Chosen Item</string>
 												<key>OutputUUID</key>
-												<string>2A21FB1C-0074-4F51-9EFC-7AA576FDB89C</string>
+												<string>4B1353BF-341E-4AEF-9888-9717D4013361</string>
 												<key>Type</key>
 												<string>ActionOutput</string>
 											</dict>
@@ -458,7 +458,7 @@
 												<key>OutputName</key>
 												<string>Chosen Item</string>
 												<key>OutputUUID</key>
-												<string>81566F24-823B-4E3A-83EC-CCCD0E8A0EB3</string>
+												<string>3B7E2824-1904-4B9D-BF5C-ECA38D517576</string>
 												<key>Type</key>
 												<string>ActionOutput</string>
 											</dict>
@@ -494,7 +494,7 @@
 												<key>OutputName</key>
 												<string>Provided Input</string>
 												<key>OutputUUID</key>
-												<string>3F632D2C-F200-43F4-B02B-882B548FE168</string>
+												<string>69A7FAB0-78B1-4029-A3B9-66216C03D38E</string>
 												<key>Type</key>
 												<string>ActionOutput</string>
 											</dict>
@@ -517,6 +517,63 @@
 		</dict>
 		<dict>
 			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.getvalueforkey</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>UUID</key>
+				<string>A67ECDD8-E906-4E85-8F73-98902C9491F5</string>
+				<key>WFDictionaryKey</key>
+				<string>ok</string>
+				<key>WFInput</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>OutputName</key>
+						<string>Contents of URL</string>
+						<key>OutputUUID</key>
+						<string>B194019E-D5C1-4B37-8D49-783AC025ABF5</string>
+						<key>Type</key>
+						<string>ActionOutput</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenAttachment</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>E8752C96-ECFD-44A2-903E-19A53A3B3DC2</string>
+				<key>WFCondition</key>
+				<integer>100</integer>
+				<key>WFControlFlowMode</key>
+				<integer>0</integer>
+				<key>WFInput</key>
+				<dict>
+					<key>Type</key>
+					<string>Variable</string>
+					<key>Variable</key>
+					<dict>
+						<key>Value</key>
+						<dict>
+							<key>OutputName</key>
+							<string>Dictionary Value</string>
+							<key>OutputUUID</key>
+							<string>A67ECDD8-E906-4E85-8F73-98902C9491F5</string>
+							<key>Type</key>
+							<string>ActionOutput</string>
+						</dict>
+						<key>WFSerializationType</key>
+						<string>WFTextTokenAttachment</string>
+					</dict>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
 			<string>is.workflow.actions.notification</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>
@@ -526,43 +583,82 @@
 					<dict>
 						<key>attachmentsByRange</key>
 						<dict>
-							<key>{2, 1}</key>
+							<key>{4, 1}</key>
 							<dict>
 								<key>OutputName</key>
 								<string>Provided Input</string>
 								<key>OutputUUID</key>
-								<string>DBB88360-63E7-4DFE-A5EB-F8F44243C51E</string>
-								<key>Type</key>
-								<string>ActionOutput</string>
-							</dict>
-							<key>{6, 1}</key>
-							<dict>
-								<key>OutputName</key>
-								<string>Chosen Item</string>
-								<key>OutputUUID</key>
-								<string>2A21FB1C-0074-4F51-9EFC-7AA576FDB89C</string>
+								<string>5EAFF15F-A00C-4ECE-873C-D2B8C3F15FA9</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
 							<key>{8, 1}</key>
 							<dict>
 								<key>OutputName</key>
-								<string>Contents of URL</string>
+								<string>Chosen Item</string>
 								<key>OutputUUID</key>
-								<string>DDC20BC0-D858-4024-9295-3E9659269DDA</string>
+								<string>4B1353BF-341E-4AEF-9888-9717D4013361</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
 						</dict>
 						<key>string</key>
-						<string>RM￼ · ￼
-￼</string>
+						<string>✅ RM￼ · ￼ logged</string>
 					</dict>
 					<key>WFSerializationType</key>
 					<string>WFTextTokenString</string>
 				</dict>
-				<key>WFNotificationActionTitle</key>
-				<string>Potraces</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>E8752C96-ECFD-44A2-903E-19A53A3B3DC2</string>
+				<key>WFControlFlowMode</key>
+				<integer>1</integer>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.notification</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>WFNotificationActionBody</key>
+				<dict>
+					<key>Value</key>
+					<dict>
+						<key>attachmentsByRange</key>
+						<dict>
+							<key>{16, 1}</key>
+							<dict>
+								<key>OutputName</key>
+								<string>Contents of URL</string>
+								<key>OutputUUID</key>
+								<string>B194019E-D5C1-4B37-8D49-783AC025ABF5</string>
+								<key>Type</key>
+								<string>ActionOutput</string>
+							</dict>
+						</dict>
+						<key>string</key>
+						<string>⚠️ Not logged — ￼. Check your key in Potraces → Settings → Quick Log.</string>
+					</dict>
+					<key>WFSerializationType</key>
+					<string>WFTextTokenString</string>
+				</dict>
+			</dict>
+		</dict>
+		<dict>
+			<key>WFWorkflowActionIdentifier</key>
+			<string>is.workflow.actions.conditional</string>
+			<key>WFWorkflowActionParameters</key>
+			<dict>
+				<key>GroupingIdentifier</key>
+				<string>E8752C96-ECFD-44A2-903E-19A53A3B3DC2</string>
+				<key>WFControlFlowMode</key>
+				<integer>2</integer>
 			</dict>
 		</dict>
 	</array>
