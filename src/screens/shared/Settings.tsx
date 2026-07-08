@@ -1359,12 +1359,14 @@ const Settings: React.FC = () => {
             label={t.settings.wallets}
             onPress={() => { lightTap(); navigation.navigate('WalletManagement'); }}
           />
-          <SettingRow
-            icon="i/flash"
-            chipColor="#DEAB22"
-            label={t.settings.quickLog.row}
-            onPress={() => { lightTap(); navigation.navigate('QuickLogSetup' as never); }}
-          />
+          {Platform.OS === 'ios' && (
+            <SettingRow
+              icon="i/flash"
+              chipColor="#DEAB22"
+              label={t.settings.quickLog.row}
+              onPress={() => { lightTap(); navigation.navigate('QuickLogSetup' as never); }}
+            />
+          )}
 
           {Platform.OS === 'android' && (
             <SettingRow

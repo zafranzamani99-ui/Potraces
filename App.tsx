@@ -389,9 +389,15 @@ function App() {
   }, []);
 
   // Drain any entries the Back Tap Shortcut logged while the app was closed.
+  // Gated on Cloud Backup: without it Quick Log can't function, and gating
+  // avoids holding a realtime websocket open for every user who never uses
+  // the feature (concurrent-connection quota at scale). Toggling Cloud Backup
+  // re-runs the effect, so the subscription attaches/detaches live.
+  const quickLogCloudOn = useSettingsStore((s) => s.personalSyncEnabled);
   React.useEffect(() => {
+    if (!quickLogCloudOn) return;
     const run = () => { drainQuickLogInbox().catch(() => {}); };
-    run(); // cold start
+    run(); // cold start / just enabled
     // Keep the PERSONAL user's device token registered (quick-log pushes are
     // sent to the personal account; the seller path registers business only).
     // Silent: never prompts — QuickLogSetup owns the contextual prompt.
@@ -422,7 +428,7 @@ function App() {
       unsubRealtime();
       if (graceTimer) clearTimeout(graceTimer);
     };
-  }, []);
+  }, [quickLogCloudOn]);
 
   // Deep link / Back Tap / Apple Shortcut: log or open Quick Add from outside.
   //   potraces://add                                  → open Quick Add (expense)
