@@ -13,6 +13,11 @@
       "source": "/shortcut",
       "destination": "https://iydqeeonaljqapulboaz.supabase.co/storage/v1/object/public/web/PotracesQuickLog.shortcut?download=Potraces%20Quick%20Log.shortcut",
       "permanent": false
+    },
+    {
+      "source": "/autolog",
+      "destination": "https://iydqeeonaljqapulboaz.supabase.co/storage/v1/object/public/web/PotracesAutoLog.shortcut?download=Potraces%20Auto%20Log.shortcut",
+      "permanent": false
     }
   ]
 }

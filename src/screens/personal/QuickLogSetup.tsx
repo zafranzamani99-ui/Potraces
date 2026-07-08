@@ -24,6 +24,7 @@ import { getQuickLogRealtimeStatus } from '../../services/quickLogInbox';
 // (vercel.json /shortcut → storage URL). NOTE: the redirect goes live on the
 // next git push (Vercel deploys from this repo) — ship both together.
 const SHORTCUT_URL = 'https://jejakbaki.my/shortcut';
+const AUTOLOG_URL = 'https://jejakbaki.my/autolog';
 const SHORTCUT_READY = !SHORTCUT_URL.includes('REPLACE_ME');
 
 export default function QuickLogSetup() {
@@ -298,6 +299,31 @@ export default function QuickLogSetup() {
             <Text style={[styles.caption, { color: C.textSecondary }]}>
               {t.settings.quickLog.regenNote}
             </Text>
+
+            {/* Apple Pay auto-log — optional/advanced, collapsed by default */}
+            <CollapsibleSection title={t.settings.quickLog.apTitle}>
+              <View style={[styles.stepCard, neu.raisedSoft, { backgroundColor: C.surface }]}>
+                <Text style={[styles.stepBody, { color: C.textSecondary }]}>
+                  {t.settings.quickLog.apIntro}
+                </Text>
+                <Text style={[styles.caption, { color: C.overdue }]}>
+                  {t.settings.quickLog.apNeedBackTap}
+                </Text>
+                <NeuButton
+                  label={t.settings.quickLog.apGet}
+                  icon="download"
+                  onPress={() => Linking.openURL(AUTOLOG_URL).catch(() => {})}
+                />
+                {[t.settings.quickLog.apS1, t.settings.quickLog.apS2, t.settings.quickLog.apS3,
+                  t.settings.quickLog.apS4, t.settings.quickLog.apS5, t.settings.quickLog.apS6]
+                  .map((s, i) => (
+                    <Text key={i} style={[styles.stepBody, { color: C.textPrimary }]}>{s}</Text>
+                  ))}
+                <Text style={[styles.afterSetup, { color: C.textPrimary }]}>
+                  {t.settings.quickLog.apDone}
+                </Text>
+              </View>
+            </CollapsibleSection>
 
             {/* Diagnostics — on-device truth for push + live-update delivery.
                 Collapsed by default: power-user/debug content, not setup. */}

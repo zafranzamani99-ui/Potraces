@@ -100,6 +100,38 @@ First run also shows a one-time iOS prompt to allow connecting to
 > `WFDeleteFileConfirmDeletion` (default TRUE → pops a confirm dialog);
 > `WFDeleteImmediatelyDelete` is a no-op. Set the former to `False`.
 
+## Apple Pay auto-log (advanced, optional)
+
+A SECOND hosted shortcut, **Potraces Auto Log** (`scripts/build-autolog-shortcut.py`,
+hosted at `jejakbaki.my/autolog` → `web/PotracesAutoLog.shortcut`), logs Apple
+Pay taps automatically. Same pipeline (build → `shortcuts sign` → `storage cp`).
+
+**Architecture (forced by iOS):** a Wallet/Transaction personal automation
+CANNOT be shared, and the live transaction object does NOT survive being passed
+into a called shortcut (documented `$0`-amount bug). So:
+- The **user hand-builds** a Transaction (iOS 17/18) / Wallet (iOS 26)
+  automation: Run Immediately, Notify off → a **Text** action that reads the
+  three fields via the double-tap "Shortcut Input → Amount/Merchant/Card"
+  gesture, joined as `Amount|Merchant|Card` → **Run Shortcut "Potraces Auto Log"**
+  with that text.
+- **Potraces Auto Log** (hosted, `WFWorkflowInputContentItemClasses:
+  [WFStringContentItem]`) splits the text, regex-cleans the currency amount
+  (`[^0-9.,]` — also strips the +/- sign so the server's negative-reject never
+  bites), reads the saved `potraces-key.txt` key, and POSTs
+  `{key, amount, category:"other", wallet:<card>, note:<merchant>}`. Headless →
+  no interactive prompts (category defaults to Other; user categorises in-app).
+  Requires Back Tap set up first (that's what saves the key file).
+
+**Caveats:** fires only on Apple Pay NFC taps (not DuitNow QR / TNG / cash);
+Apple's Transaction trigger has documented flakiness on iOS 17/18 (can miss a
+tap when the issuer delivers the transaction slowly); Malaysia has few
+Apple-Pay-supported banks — this is a power-user extra, not the headline.
+
+Plist param names (Split Text `WFTextSeparator`=Custom + `WFTextCustomSeparator`;
+Get Item `WFItemSpecifier`=Item At Index + `WFItemIndex`, 1-based; Replace Text
+`WFReplaceTextFind/Replace/RegularExpression`; `{Type:ExtensionInput}` for the
+shortcut input) were adversarially verified against ScPL/Jellycuts/zachary7829.
+
 ## Roadmap (v2): native App Intent
 
 The zero-key, zero-server route: a Swift `AppIntent` in the main app target
