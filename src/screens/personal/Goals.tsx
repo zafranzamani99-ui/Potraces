@@ -40,7 +40,7 @@ import {
   endOfMonth,
   subMonths,
 } from 'date-fns';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useWalletStore } from '../../store/walletStore';
@@ -59,7 +59,7 @@ import { useT } from '../../i18n';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import EmptyState from '../../components/common/EmptyState';
 import FAB from '../../components/common/FAB';
-import ScreenGuide from '../../components/common/ScreenGuide';
+import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
 import CollapsibleSection from '../../components/common/CollapsibleSection';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -395,6 +395,7 @@ const Goals: React.FC = () => {
   const styles = useMemo(() => makeStyles(C), [C]);
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
 
   // ── Observation helper (i18n) ──
   const getObservation = useCallback((percentage: number): string => {
@@ -788,6 +789,23 @@ const Goals: React.FC = () => {
     contribSheetY.value = SCREEN_H;
     setContributeModalVisible(true);
   }, [SCREEN_H, contribSheetY]);
+
+  // ── Preset contribution from Calculator hand-off ──
+  // Navigated here as Goals({ contributeGoalId, contributeAmount }) → open the
+  // contribute sheet for that goal with the amount pre-filled.
+  useEffect(() => {
+    const goalId = route.params?.contributeGoalId;
+    const amt = route.params?.contributeAmount;
+    if (goalId && amt != null && amt > 0) {
+      const g = goals.find((x) => x.id === goalId && !x.isArchived);
+      if (g) {
+        // Defer so the screen finishes mounting before the sheet animates in
+        // (mirrors the highlightId hand-off) and avoids setState-in-effect.
+        const timer = setTimeout(() => openContribute(g, amt), 280);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [route.params?.contributeGoalId, route.params?.contributeAmount, goals, openContribute]);
 
   // ── Handle Contribution ──
   const handleContribute = useCallback(() => {
@@ -1358,14 +1376,19 @@ const Goals: React.FC = () => {
     <View style={styles.container}>
       <ScreenGuide
         id="goals-guide"
-        title={t.goals.screenGuideTitle ?? 'track your savings goals'}
-        description={t.goals.screenGuideDesc ?? 'set targets, contribute regularly, and watch your progress grow'}
-        icon="flag"
-        points={[
-          { icon: 'plus', text: t.guide.goalsPoint1 },
-          { icon: 'trending-up', text: t.guide.goalsPoint2 },
+        // Do-it-with-me: on first visit the hole lands on the empty-state CTA
+        // (the FAB only mounts once a goal exists); the guide advances to the
+        // payoff the moment the first goal is saved.
+        steps={[
+          { kind: 'intro', title: t.guide.yourGoals, icon: 'flag', body: t.guide.descGoals },
+          {
+            kind: 'doWithMe',
+            targetRef: guideTargetRef,
+            label: t.guide.goalsWalk,
+            watch: whenStore(usePersonalStore, (s) => s.goals.length, (n, base) => n > base),
+          },
+          { kind: 'payoff', title: t.guide.goalsPayoffTitle, body: t.guide.goalsPayoffBody, icon: 'check-circle' },
         ]}
-        spotlight={{ targetRef: guideTargetRef, label: t.guide.goalsPoint1, sublabel: t.guide.goalsPoint2 }}
       />
       <ScrollView
         style={styles.scrollView}
@@ -1510,6 +1533,7 @@ const Goals: React.FC = () => {
             title={t.goals.whatSavingFor}
             message={t.goals.setGoalWatch}
             actionLabel={t.goals.addGoal}
+            actionRef={guideTargetRef}
             onAction={() => { lightTap(); openAddGoal(); }}
           />
         )}

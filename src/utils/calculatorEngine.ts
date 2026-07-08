@@ -107,6 +107,23 @@ export function clearAll(): CalcState {
 }
 
 /**
+ * Insert a numeric value (e.g. a tapped history result) into the current
+ * expression. On a fresh/just-evaluated/empty state it becomes the start;
+ * right after a value it inserts an implicit "×"; after an operator or "(" it
+ * simply appends. `valueStr` is a plain number string (no separators).
+ */
+export function insertValue(s: CalcState, valueStr: string): CalcState {
+  if (isError(s) || s.justEvaluated || s.expr === '') {
+    return { expr: valueStr, justEvaluated: false };
+  }
+  const last = s.expr.slice(-1);
+  if (/[0-9.)%]/.test(last)) {
+    return { expr: s.expr + '×' + valueStr, justEvaluated: false };
+  }
+  return { expr: s.expr + valueStr, justEvaluated: false };
+}
+
+/**
  * Evaluate on "=". On success the expression is replaced by the plain result
  * string (so the user can keep operating on it). A math failure (e.g. ÷0)
  * becomes the `Error` state; an incomplete expression is a no-op.

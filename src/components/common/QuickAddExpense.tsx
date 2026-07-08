@@ -68,16 +68,16 @@ interface QuickAddExpenseProps {
 // Module-level ref for deep link trigger.
 // Accepts an optional direction override so external callers (GettingStarted,
 // future deep links) can request the sheet pre-flipped to income.
-let _quickAddOpenRef: ((dir?: Direction) => void) | null = null;
+let _quickAddOpenRef: ((dir?: Direction, amount?: string) => void) | null = null;
 // When the sheet isn't mounted yet (deep link / Back Tap from cold start, from
 // business mode, or from a non-Dashboard tab), remember the request and honour
 // it the moment the sheet mounts. Prevents the deep link from silently no-op-ing.
-let _pendingQuickAdd: Direction | null = null;
-export function openQuickAdd(direction?: Direction) {
+let _pendingQuickAdd: { dir: Direction; amount?: string } | null = null;
+export function openQuickAdd(direction?: Direction, initialAmount?: string) {
   if (_quickAddOpenRef) {
-    _quickAddOpenRef(direction);
+    _quickAddOpenRef(direction, initialAmount);
   } else {
-    _pendingQuickAdd = direction ?? 'expense';
+    _pendingQuickAdd = { dir: direction ?? 'expense', amount: initialAmount };
   }
 }
 
@@ -246,9 +246,9 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
   // Accepts an optional direction override (used by external openers like
   // GettingStarted "log money in") so the sheet doesn't always default to
   // expense. Falls back to the prop, then 'expense'.
-  const handleOpen = useCallback((dirOverride?: Direction) => {
+  const handleOpen = useCallback((dirOverride?: Direction, amountOverride?: string) => {
     lightTap();
-    setAmount('');
+    setAmount(amountOverride || '');
     setCategoryId('');
     setTxType(dirOverride || defaultDirection);
     setStep('amount');
@@ -269,10 +269,10 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
     _quickAddOpenRef = handleOpen;
     let pendingTimer: ReturnType<typeof setTimeout> | undefined;
     if (_pendingQuickAdd) {
-      const dir = _pendingQuickAdd;
+      const { dir, amount } = _pendingQuickAdd;
       _pendingQuickAdd = null;
       // Defer so the screen finishes mounting before the sheet animates in.
-      pendingTimer = setTimeout(() => handleOpen(dir), 250);
+      pendingTimer = setTimeout(() => handleOpen(dir, amount), 250);
     }
     return () => {
       if (pendingTimer) clearTimeout(pendingTimer);

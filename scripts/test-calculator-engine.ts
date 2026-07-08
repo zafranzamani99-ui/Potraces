@@ -6,6 +6,7 @@ import {
   initialCalc, inputDigit, inputDoubleZero, inputDot, inputOp, inputBracket,
   inputPercent, backspace, clearAll, equals, evaluate, result, liveResult,
   isError, hasOperation, formatNumber, numberToPlainString, formatExpressionString,
+  insertValue,
 } from '../src/utils/calculatorEngine';
 
 const failures: string[] = [];
@@ -100,6 +101,13 @@ check('numberToPlainString has no commas', numberToPlainString(5874) === '5874')
 check('formatExpressionString spaces ops', formatExpressionString('5553+321') === '5,553 + 321');
 check('hasOperation true for 5+3', hasOperation('5+3') === true);
 check('hasOperation false for 553', hasOperation('553') === false);
+
+// insertValue (history tap-to-insert)
+check('insert on empty → sets value', insertValue(initialCalc, '874').expr === '874');
+check('insert after operator appends', insertValue({ expr: '5+', justEvaluated: false }, '3').expr === '5+3');
+check('insert after value → implicit ×', insertValue({ expr: '5', justEvaluated: false }, '3').expr === '5×3');
+check('insert after = starts fresh', insertValue({ expr: '8', justEvaluated: true }, '3').expr === '3');
+check('insert after ( appends', insertValue({ expr: '(', justEvaluated: false }, '3').expr === '(3');
 
 if (failures.length) { console.error('FAIL:\n' + failures.join('\n')); process.exit(1); }
 console.log(`calculator-engine OK (${passed} checks)`);
