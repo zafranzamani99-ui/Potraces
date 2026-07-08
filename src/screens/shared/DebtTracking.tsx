@@ -51,6 +51,7 @@ import * as Contacts from 'expo-contacts';
 import * as Sharing from 'expo-sharing';
 import * as Clipboard from 'expo-clipboard';
 import { scanReceipt, scanReceiptStream } from '../../services/receiptScanner';
+import { commitSplit } from '../../services/splitCommit';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useAppStore } from '../../store/appStore';
@@ -2269,88 +2270,17 @@ const DebtTracking: React.FC = () => {
 
       showToast('Split updated!', 'success');
     } else {
-      const splitId = addSplit({
+      commitSplit({
         description: splitDescription.trim(),
         totalAmount: total,
         splitMethod,
         participants,
         items: splitMethod === 'item_based' ? splitItems : [],
         paidBy: splitPaidBy.length > 0 ? splitPaidBy[0] : undefined,
-        dueDate: splitDueDateObj ? splitDueDateObj.toISOString() : undefined,
+        walletId: splitWalletId || undefined,
+        dueDate: splitDueDateObj || undefined,
         mode,
-      } as any);
-
-      const selfId = '__self__';
-      const desc = splitDescription.trim();
-      const payer = splitPaidBy.length > 0 ? splitPaidBy[0] : null;
-
-      if (payer?.id === selfId) {
-        // I paid — create expense transaction + deduct wallet + create debts for others
-        let txId: string | undefined;
-        if (mode === 'personal') {
-          txId = addTransaction({
-            amount: total,
-            category: 'split_expense',
-            description: desc,
-            date: new Date(),
-            type: 'expense',
-            mode,
-            walletId: splitWalletId || undefined,
-            inputMethod: 'manual',
-          });
-        } else {
-          txId = addBusinessTransaction({
-            date: new Date(),
-            amount: total,
-            type: 'cost',
-            category: 'split_expense',
-            note: desc,
-            inputMethod: 'manual',
-          });
-        }
-        if (txId || splitWalletId) {
-          updateSplit(splitId, {
-            linkedTransactionId: txId,
-            walletId: splitWalletId || undefined,
-          });
-        }
-        if (splitWalletId) {
-          const selectedWallet = wallets.find((w) => w.id === splitWalletId);
-          if (selectedWallet?.type === 'credit') {
-            useCredit(splitWalletId, total);
-          } else {
-            deductFromWallet(splitWalletId, total);
-          }
-        }
-        // Others owe me
-        participants
-          .filter((p) => p.contact.id !== selfId && p.amount > 0)
-          .forEach((p) => {
-            addDebt({
-              contact: p.contact,
-              type: 'they_owe',
-              totalAmount: p.amount,
-              description: desc,
-              splitId,
-              mode,
-              dueDate: splitDueDateObj || undefined,
-            });
-          });
-      } else if (payer && payer.id !== selfId) {
-        // Someone else paid — I owe them my share
-        const myShare = participants.find((p) => p.contact.id === selfId);
-        if (myShare && myShare.amount > 0) {
-          addDebt({
-            contact: payer,
-            type: 'i_owe',
-            totalAmount: myShare.amount,
-            description: desc,
-            splitId,
-            mode,
-            dueDate: splitDueDateObj || undefined,
-          });
-        }
-      }
+      });
 
       showToast('Split created!', 'success');
     }
