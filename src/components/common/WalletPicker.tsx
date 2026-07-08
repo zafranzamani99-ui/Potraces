@@ -12,6 +12,7 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { WALLET_TYPE_CONFIG } from '../../constants/premium';
 import WalletLogo from './WalletLogo';
+import { useNeu } from './neu';
 import { Wallet, WalletType } from '../../types';
 import { lightTap } from '../../services/haptics';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -27,7 +28,7 @@ interface WalletPickerProps {
   typeFilter?: WalletType;
 }
 
-const TYPE_ORDER: WalletType[] = ['bank', 'ewallet', 'credit'];
+const TYPE_ORDER: WalletType[] = ['bank', 'ewallet', 'credit', 'cash'];
 
 const WalletPicker: React.FC<WalletPickerProps> = ({
   wallets,
@@ -41,6 +42,8 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // Rows sit on the modal sheet (C.surface), not the screen — base the neu on it.
+  const neu = useNeu(C.surface);
   const currency = useSettingsStore((s) => s.currency);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -92,6 +95,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             key={item.id}
             style={[
               styles.item,
+              neu.raisedSoft,
               isSelected && {
                 backgroundColor: withAlpha(item.color, 0.1),
               },
@@ -103,7 +107,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             }}
             activeOpacity={0.7}
           >
-            <View style={[styles.itemIcon, { backgroundColor: item.presetId ? 'transparent' : isSelected ? item.color : withAlpha(item.color, 0.15) }]}>
+            <View style={[styles.itemIcon, !item.presetId && neu.well, { backgroundColor: item.presetId ? 'transparent' : isSelected ? item.color : withAlpha(item.color, 0.15) }]}>
               <WalletLogo wallet={item} size={32} />
             </View>
             <View style={styles.itemTextGroup}>
@@ -134,7 +138,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
         );
       })}
     </View>
-  ), [selectedId, onSelect, typeFilter, currency]);
+  ), [selectedId, onSelect, typeFilter, currency, neu, styles]);
 
   if (wallets.length === 0) return null;
 
@@ -150,6 +154,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
       case 'bank': return '#0052A5';
       case 'ewallet': return '#00B14F';
       case 'credit': return C.bronze;
+      case 'cash': return '#7A8B69';
     }
   };
 
@@ -158,7 +163,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
       {label && <Text style={styles.label}>{label}</Text>}
 
       <TouchableOpacity
-        style={styles.trigger}
+        style={[styles.trigger, neu.raised]}
         onPress={() => {
           lightTap();
           setDropdownOpen(true);
@@ -168,7 +173,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
         <View style={styles.selectedRow}>
           {selectedWallet ? (
             <>
-              <View style={[styles.iconCircle, { backgroundColor: selectedWallet.presetId ? 'transparent' : withAlpha(selectedWallet.color, 0.15) }]}>
+              <View style={[styles.iconCircle, !selectedWallet.presetId && neu.well, { backgroundColor: selectedWallet.presetId ? 'transparent' : withAlpha(selectedWallet.color, 0.15) }]}>
                 <WalletLogo wallet={selectedWallet} size={32} />
               </View>
               <View style={styles.textGroup}>
@@ -187,7 +192,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             </>
           ) : (
             <>
-              <View style={[styles.iconCircle, { backgroundColor: withAlpha(C.textMuted, 0.08) }]}>
+              <View style={[styles.iconCircle, neu.well, { backgroundColor: withAlpha(C.textMuted, 0.08) }]}>
                 <Feather name={allowNone ? 'slash' : 'credit-card'} size={18} color={C.textMuted} />
               </View>
               <Text style={styles.placeholder}>{allowNone ? noneLabel : 'Select wallet'}</Text>
@@ -226,11 +231,11 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
               renderItem={renderGroupItem}
               ListHeaderComponent={allowNone ? (
                 <TouchableOpacity
-                  style={[styles.item, !selectedId && { backgroundColor: withAlpha(C.accent, 0.07) }]}
+                  style={[styles.item, neu.raisedSoft, !selectedId && { backgroundColor: withAlpha(C.accent, 0.07) }]}
                   onPress={() => { lightTap(); onClear?.(); setDropdownOpen(false); }}
                   activeOpacity={0.7}
                 >
-                  <View style={[styles.itemIcon, { backgroundColor: withAlpha(C.textMuted, 0.08) }]}>
+                  <View style={[styles.itemIcon, neu.well, { backgroundColor: withAlpha(C.textMuted, 0.08) }]}>
                     <Feather name="slash" size={18} color={C.textMuted} />
                   </View>
                   <View style={styles.itemTextGroup}>
@@ -262,12 +267,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,   // match the open rows (was md + hard border)
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
+    // neu.raised (bg + shadow) spread at the call site
   },
   selectedRow: {
     flexDirection: 'row',
@@ -325,16 +328,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
-    borderWidth: 1,
-    borderColor: C.border,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: SPACING.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(C.textPrimary, 0.06),
   },
   title: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -359,9 +360,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     gap: SPACING.md,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderRadius: RADIUS.lg,
   },
   itemIcon: {
     width: 36,

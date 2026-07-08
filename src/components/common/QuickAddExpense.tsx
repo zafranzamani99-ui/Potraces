@@ -29,6 +29,7 @@ import { CALM, CALM_DARK, SHADOWS, withAlpha, RADIUS, SPACING, TYPOGRAPHY } from
 import WalletLogo from './WalletLogo';
 import CategoryIcon from './CategoryIcon';
 import ModalToastHost from './ModalToastHost';
+import { NeuSurface } from './neu';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { lightTap, successNotification } from '../../services/haptics';
@@ -43,10 +44,10 @@ const FAB_SIZE = 56;
 const FAB_STORAGE_KEY = '@potraces/fab-position';
 const FAB_HINT_KEY = '@potraces/fab-hint-shown';
 const SNAP_MARGIN = 16;
-// Height of the bottom CustomTabBar ABOVE the safe-area inset (tabButton
-// minHeight 56 + padding). Reserved in the FAB's bottom clamp so it can never
+// Height of the floating LiquidGlassNavBar ABOVE the safe-area inset (capsule
+// ~73 + breathing room). Reserved in the FAB's bottom clamp so it can never
 // be dragged/snapped behind the bottom navigation.
-const TAB_BAR_HEIGHT = 64;
+const TAB_BAR_HEIGHT = 88;
 const CARD_WIDTH = SCREEN_WIDTH - 48;
 const CARD_PADDING = 20;
 const CONTENT_WIDTH = CARD_WIDTH - CARD_PADDING * 2;
@@ -526,12 +527,11 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
     const existing = wallets.find((w) => w.isDefault) || wallets[0];
     if (existing) return existing.id;
     if (wallets.length === 0) {
-      // Auto-create a Cash wallet on first transaction.
-      // WalletType has no 'cash' member — 'ewallet' is the closest fit
-      // for informal physical cash holdings; this matches dummyData seeds.
+      // Auto-create a Cash wallet on first transaction — now a real 'cash'
+      // wallet type (no longer masquerading as e-wallet).
       addWallet({
         name: t.quickAdd.cashWalletName,
-        type: 'ewallet',
+        type: 'cash',
         balance: 0,
         icon: 'dollar-sign',
         color: C.accent,
@@ -622,14 +622,17 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
         ]}
         {...panResponder.panHandlers}
       >
-        <View
+        {/* Neumorphic face only — the PanResponder stays on the wrapper above,
+            so the drag behaviour is untouched. Icon goes olive (neu face is
+            background-toned, not solid accent). */}
+        <NeuSurface
           style={styles.fab}
           accessibilityLabel={t.quickAdd.fabLabel}
           accessibilityHint={t.quickAdd.fabHint}
           accessibilityRole="button"
         >
-          <Ionicons name="add" size={30} color={C.onAccent} />
-        </View>
+          <Ionicons name="add" size={30} color={C.accent} />
+        </NeuSurface>
         {showHint && (
           <Animated.View style={[styles.hint, { opacity: hintOpacity }]} pointerEvents="none">
             <Text style={styles.hintText}>{t.quickAdd.fabDragHint}</Text>
@@ -1005,9 +1008,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   fabWrap: { position: 'absolute', zIndex: 999, ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg) },
   fab: {
     width: 56, height: 56, borderRadius: 28,
-    backgroundColor: C.accent,
+    // backgroundColor comes from NeuSurface (screen-toned neu face)
     alignItems: 'center', justifyContent: 'center',
-    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   hint: {
     position: 'absolute',

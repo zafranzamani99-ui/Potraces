@@ -79,7 +79,7 @@ export interface ChatAction {
   deleteAll?: boolean;     // for delete_transaction — delete all matches
   budgetCategory?: string; // for budget actions — category name to match
   newPerson?: string;      // for edit_debt — rename person
-  walletType?: 'bank' | 'ewallet' | 'credit'; // for add_wallet
+  walletType?: 'bank' | 'ewallet' | 'credit' | 'cash'; // for add_wallet
   walletColor?: string;    // for add_wallet
   walletIcon?: string;     // for add_wallet
   amend?: boolean;         // re-emit to update an existing pending chip (same description)
@@ -698,12 +698,28 @@ export function executeAction(action: ChatAction): ExecuteResult {
           const missing = !fromId ? action.fromWallet : action.toWallet;
           return { success: false, message: `Wallet "${missing}" not found.`, action };
         }
+        // Same guards the manual Transfer modal enforces (WalletManagement.handleTransfer):
+        // no same-wallet, no credit-card source, no overdraw. Without these, Echo can
+        // fabricate money into the destination and drive the source silently negative.
+        if (fromId === toId) {
+          return { success: false, message: `Source and destination are the same wallet.`, action };
+        }
+        const src = useWalletStore.getState().wallets.find((w) => w.id === fromId);
+        if (!src) {
+          return { success: false, message: `Wallet "${action.fromWallet}" not found.`, action };
+        }
+        if (src.type === 'credit') {
+          return { success: false, message: `Can't transfer FROM a credit card ("${src.name}") — use "repay credit" instead.`, action };
+        }
+        if (action.amount > src.balance) {
+          return { success: false, message: `${src.name} only has RM ${src.balance.toFixed(2)} — not enough to transfer RM ${action.amount.toFixed(2)}.`, action };
+        }
         useWalletStore.getState().transferBetweenWallets(
           fromId, toId, action.amount, action.description || 'transfer via chat'
         );
         return {
           success: true,
-          message: `Transferred RM ${action.amount.toFixed(2)} from ${action.fromWallet} to ${action.toWallet}`,
+          message: `Transferred RM ${action.amount.toFixed(2)} from ${src.name} to ${action.toWallet}`,
           action,
         };
       }
@@ -718,7 +734,29 @@ export function executeAction(action: ChatAction): ExecuteResult {
         if (!goal) {
           return { success: false, message: `No savings goal matching "${goalName}" found.`, action };
         }
-        usePersonalStore.getState().contributeToGoal(goal.id, action.amount, action.description || 'contribution via chat');
+        // Mirror the Goals UI (handleContribute): money must actually leave a wallet
+        // + create a linked 'savings' expense, or the goal grows against no real money
+        // — phantom savings that overstate net worth and let the user double-spend.
+        const cWallets = useWalletStore.getState().wallets;
+        const cSrcId = (action.fromWallet && findWalletId(action.fromWallet))
+          || (action.wallet && findWalletId(action.wallet))
+          || cWallets.find((w) => w.isDefault)?.id
+          || cWallets[0]?.id;
+        let cLinkedTxId: string | undefined;
+        if (cSrcId) {
+          cLinkedTxId = usePersonalStore.getState().addTransaction({
+            amount: action.amount,
+            category: 'savings',
+            description: goal.name,
+            type: 'expense',
+            date: actionDate,
+            mode,
+            walletId: cSrcId,
+            linkedGoalId: goal.id,
+          }) || undefined;
+          useWalletStore.getState().deductFromWallet(cSrcId, action.amount);
+        }
+        usePersonalStore.getState().contributeToGoal(goal.id, action.amount, action.description || 'contribution via chat', cSrcId || undefined, cLinkedTxId);
         const newAmount = Math.min(goal.currentAmount + action.amount, goal.targetAmount);
         const pct = goal.targetAmount > 0 ? Math.round((newAmount / goal.targetAmount) * 100) : 0;
         return {
@@ -838,21 +876,31 @@ export function executeAction(action: ChatAction): ExecuteResult {
         if (!creditWallet || creditWallet.type !== 'credit') {
           return { success: false, message: `"${action.creditWallet || action.wallet}" is not a credit wallet.`, action };
         }
-        // Deduct from source bank wallet if specified
+        // Same guards the UI Repay modal enforces (WalletManagement.handleRepay):
+        // never repay more than is owed, and never overdraw the source wallet.
+        const owed = creditWallet.usedCredit || 0;
+        const capped = Math.min(Math.max(0, action.amount), owed);
+        if (capped <= 0) {
+          return { success: false, message: `${creditWallet.name} has nothing to repay.`, action };
+        }
         const fromId = findWalletId(action.fromWallet);
         if (fromId) {
-          useWalletStore.getState().deductFromWallet(fromId, action.amount);
+          const src = useWalletStore.getState().wallets.find((w) => w.id === fromId);
+          if (src && src.type !== 'credit' && src.balance < capped) {
+            return { success: false, message: `${src.name} only has RM ${src.balance.toFixed(2)} — not enough to repay RM ${capped.toFixed(2)}.`, action };
+          }
+          useWalletStore.getState().deductFromWallet(fromId, capped);
         }
-        useWalletStore.getState().repayCredit(creditId, action.amount);
+        useWalletStore.getState().repayCredit(creditId, capped);
         // Record the source→credit movement so reconcileWalletBalances accounts
         // for the source deduction (mirrors WalletManagement.handleRepay).
         if (fromId) {
-          useWalletStore.getState().logActivity(fromId, creditId, action.amount, 'repayment');
+          useWalletStore.getState().logActivity(fromId, creditId, capped, 'repayment');
         }
-        const newUsed = Math.max(0, (creditWallet.usedCredit || 0) - action.amount);
+        const newUsed = owed - capped;
         return {
           success: true,
-          message: `Paid RM ${action.amount.toFixed(2)} to ${creditWallet.name} — RM ${newUsed.toFixed(2)} remaining`,
+          message: `Paid RM ${capped.toFixed(2)} to ${creditWallet.name} — RM ${newUsed.toFixed(2)} remaining`,
           action,
         };
       }
@@ -944,7 +992,28 @@ export function executeAction(action: ChatAction): ExecuteResult {
         if (action.amount > goal.currentAmount) {
           return { success: false, message: `Can't withdraw RM ${action.amount.toFixed(2)} — goal only has RM ${goal.currentAmount.toFixed(2)}.`, action };
         }
-        usePersonalStore.getState().withdrawFromGoal(goal.id, action.amount, action.description || 'withdrawn via chat');
+        // Mirror the Goals UI (handleWithdraw): money returns to a wallet + a linked
+        // 'savings' income tx, or the withdrawn amount vanishes from net worth.
+        const wWallets = useWalletStore.getState().wallets;
+        const wDstId = (action.fromWallet && findWalletId(action.fromWallet))
+          || (action.wallet && findWalletId(action.wallet))
+          || wWallets.find((w) => w.isDefault)?.id
+          || wWallets[0]?.id;
+        let wLinkedTxId: string | undefined;
+        if (wDstId) {
+          wLinkedTxId = usePersonalStore.getState().addTransaction({
+            amount: action.amount,
+            category: 'savings',
+            description: goal.name,
+            type: 'income',
+            date: actionDate,
+            mode,
+            walletId: wDstId,
+            linkedGoalId: goal.id,
+          }) || undefined;
+          useWalletStore.getState().addToWallet(wDstId, action.amount);
+        }
+        usePersonalStore.getState().withdrawFromGoal(goal.id, action.amount, action.description || 'withdrawn via chat', wDstId || undefined, wLinkedTxId);
         const newAmount = goal.currentAmount - action.amount;
         const pct = goal.targetAmount > 0 ? Math.round((newAmount / goal.targetAmount) * 100) : 0;
         return {
@@ -1386,7 +1455,7 @@ AVAILABLE ACTIONS:
 
 29. add_wallet — Create a new wallet
    {"type":"add_wallet","description":"Emergency Fund","amount":0,"walletType":"ewallet"}
-   walletType: bank, ewallet, credit. Use when user says "add wallet", "tambah wallet", "create wallet".
+   walletType: bank, ewallet, credit, cash. Use when user says "add wallet", "tambah wallet", "create wallet".
 
 DATE OVERRIDE:
 Any action can include "date":"YYYY-MM-DD" to record for a past/future date.

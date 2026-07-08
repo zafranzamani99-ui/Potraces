@@ -16,6 +16,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { Gesture, GestureDetector, GestureHandlerRootView, ScrollView, ComposedGesture, GestureType } from 'react-native-gesture-handler';
 import ModalToastHost from '../common/ModalToastHost';
 import CategoryIcon from '../common/CategoryIcon';
+import NeuButton from '../common/NeuButton';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Reanimated, {
   useAnimatedStyle,
@@ -27,8 +28,10 @@ import Reanimated, {
   runOnJS,
   SharedValue,
 } from 'react-native-reanimated';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
+import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
 import { WalletType } from '../../types';
@@ -160,6 +163,8 @@ const AddEditWalletModal: React.FC<Props> = ({
   const t = useT();
   const { height: SCREEN_H } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // Tiles sit on the modal sheet (C.surface), not the screen — base the neu on it.
+  const neu = useNeu(C.surface);
   const balanceInputRef = useRef<TextInput>(null);
 
   const isBottomSheet = addStep === 'details' || !!editingWallet;
@@ -273,28 +278,16 @@ const AddEditWalletModal: React.FC<Props> = ({
       {addStep === 'type' && !editingWallet && (
         <GestureDetector gesture={typeSwipeGesture}>
         <View>
-          <View style={styles.typeTabs}>
-            {(['bank', 'ewallet', 'credit'] as WalletType[]).map((type) => {
-              const canAdd = canAddType(type);
-              const isActive = selectedType === type;
-              return (
-                <TouchableOpacity
-                  key={type}
-                  style={[styles.typeTab, isActive && styles.typeTabActive]}
-                  onPress={() => goToType(type)}
-                  activeOpacity={0.75}
-                  accessibilityRole="tab"
-                  accessibilityLabel={WALLET_TYPE_CONFIG[type].label.toLowerCase()}
-                  accessibilityState={{ selected: isActive }}
-                >
-                  <Text style={[styles.typeTabText, isActive && styles.typeTabTextActive]}>
-                    {WALLET_TYPE_CONFIG[type].label.split(' ')[0]}
-                  </Text>
-                  {!canAdd && <Feather name="lock" size={9} color={isActive ? C.textSecondary : C.textMuted} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          {/* Wallet-type toggle — the real iOS 26 glass segmented control (draggable
+              bubble), same as the Personal/Business mode toggle. */}
+          <SegmentedControl
+            style={styles.typeSegmented}
+            values={(['bank', 'ewallet', 'credit', 'cash'] as WalletType[]).map((type) => WALLET_TYPE_CONFIG[type].label.split(' ')[0])}
+            selectedIndex={(['bank', 'ewallet', 'credit', 'cash'] as WalletType[]).indexOf(selectedType)}
+            onChange={(e) => goToType((['bank', 'ewallet', 'credit', 'cash'] as WalletType[])[e.nativeEvent.selectedSegmentIndex])}
+            fontStyle={{ color: C.textSecondary, fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium as any }}
+            activeFontStyle={{ color: C.accent, fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold as any }}
+          />
 
           <View
             style={{ overflow: 'hidden' }}
@@ -306,7 +299,7 @@ const AddEditWalletModal: React.FC<Props> = ({
           >
             {panelWidth > 0 && (
               <Reanimated.View style={[{ flexDirection: 'row' }, railAnimatedStyle]}>
-                {(['bank', 'ewallet', 'credit'] as WalletType[]).map((panelType) => (
+                {(['bank', 'ewallet', 'credit', 'cash'] as WalletType[]).map((panelType) => (
                   <View key={panelType} style={{ width: panelWidth }}>
                     <ScrollView style={{ maxHeight: 332 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                       <View style={styles.providerGrid}>
@@ -315,12 +308,7 @@ const AddEditWalletModal: React.FC<Props> = ({
                           return (
                             <TouchableOpacity
                               key={preset.id}
-                              style={[
-                                styles.providerTile,
-                                logo
-                                  ? { backgroundColor: C.surface, borderColor: withAlpha(C.textPrimary, 0.08), borderWidth: 1 }
-                                  : { backgroundColor: withAlpha(preset.color, 0.07), borderTopColor: preset.color, borderTopWidth: 2 },
-                              ]}
+                              style={[styles.providerTile, neu.raised]}
                               onPress={() => {
                                 if (!canAddType(panelType)) { showTypePaywall(panelType); return; }
                                 handleChooseTypeAndPreset(panelType, preset.id);
@@ -352,7 +340,7 @@ const AddEditWalletModal: React.FC<Props> = ({
                         })}
                         {panelType === 'credit' && (
                           <TouchableOpacity
-                            style={[styles.providerTile, { backgroundColor: C.surface, borderColor: withAlpha(C.textPrimary, 0.08), borderWidth: 1 }]}
+                            style={[styles.providerTile, neu.raised]}
                             onPress={() => {
                               if (!canAddType('credit')) { showTypePaywall('credit'); return; }
                               lightTap();
@@ -414,7 +402,7 @@ const AddEditWalletModal: React.FC<Props> = ({
               {(['visa', 'mastercard', 'amex'] as const).map((network) => (
                 <TouchableOpacity
                   key={network}
-                  style={[styles.providerTile, styles.networkTile, { backgroundColor: C.surface, borderColor: withAlpha(C.textPrimary, 0.08), borderWidth: 1 }]}
+                  style={[styles.providerTile, styles.networkTile, neu.raised]}
                   onPress={() => {
                     lightTap();
                     setSelectedNetwork(network);
@@ -438,7 +426,7 @@ const AddEditWalletModal: React.FC<Props> = ({
                 return (
                   <TouchableOpacity
                     key={preset.id}
-                    style={[styles.providerTile, { backgroundColor: C.surface, borderColor: withAlpha(C.textPrimary, 0.08), borderWidth: 1 }]}
+                    style={[styles.providerTile, neu.raised]}
                     onPress={() => {
                       lightTap();
                       const networkLabel = selectedNetwork === 'visa' ? 'Visa' : selectedNetwork === 'mastercard' ? 'Mastercard' : 'Amex';
@@ -573,7 +561,7 @@ const AddEditWalletModal: React.FC<Props> = ({
                   {WALLET_ICONS_BY_TYPE[selectedType].map((icon) => (
                     <TouchableOpacity
                       key={icon}
-                      style={[styles.pickerItem, selectedIcon === icon && { backgroundColor: withAlpha(selectedColor, 0.15), borderColor: selectedColor }]}
+                      style={[styles.pickerItem, selectedIcon === icon ? neu.inset : neu.raised, selectedIcon === icon && { backgroundColor: withAlpha(selectedColor, 0.15) }]}
                       onPress={() => { lightTap(); setSelectedIcon(icon); }}
                       accessibilityRole="button"
                       accessibilityLabel={icon}
@@ -638,12 +626,12 @@ const AddEditWalletModal: React.FC<Props> = ({
               {scrollContent}
 
               <View style={[styles.saveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
-                <Pressable style={styles.saveBtn} onPress={onSave} accessibilityRole="button" accessibilityLabel={editingWallet ? 'save' : 'create'}>
-                  <View style={styles.saveBtnInner}>
-                    <Feather name={editingWallet ? 'check' : 'plus'} size={16} color={C.onAccent} />
-                    <Text style={styles.saveBtnText}>{(editingWallet ? t.wallets.saveChanges : t.wallets.createWallet).toLowerCase()}</Text>
-                  </View>
-                </Pressable>
+                <NeuButton
+                  onPress={onSave}
+                  icon={editingWallet ? 'check' : 'plus'}
+                  label={(editingWallet ? t.wallets.saveChanges : t.wallets.createWallet).toLowerCase()}
+                  accessibilityLabel={editingWallet ? 'save' : 'create'}
+                />
                 <Pressable style={styles.closeLink} onPress={closeSheet} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}>
                   {({ pressed }: { pressed: boolean }) => (
                     <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
@@ -742,33 +730,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.regular,
     color: C.accent,
   },
-  typeTabs: {
-    flexDirection: 'row',
-    backgroundColor: withAlpha(C.accent, 0.06),
-    borderRadius: RADIUS.md,
-    padding: 3,
+  typeSegmented: {
     marginBottom: SPACING.md,
-  },
-  typeTab: {
-    flex: 1,
-    paddingVertical: SPACING.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    borderRadius: RADIUS.sm + 2,
-  },
-  typeTabActive: {
-    backgroundColor: C.surface,
-  },
-  typeTabText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-  },
-  typeTabTextActive: {
-    color: C.textPrimary,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    height: 34,
   },
   providerGrid: {
     flexDirection: 'row',
@@ -922,11 +886,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: RADIUS.sm + 2,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
+    // neu.raised (bg + shadow) spread at the call site
   },
   colorItem: {
     width: 28,
@@ -945,26 +907,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
     backgroundColor: C.surface,
-  },
-  saveBtn: {
-    width: '100%',
-    paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  saveBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  saveBtnText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-    letterSpacing: 0.3,
   },
   closeLink: {
     marginTop: SPACING.lg,

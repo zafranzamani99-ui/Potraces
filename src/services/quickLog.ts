@@ -69,7 +69,7 @@ function resolveCategory(raw: string | undefined, type: 'expense' | 'income'): C
 const WALLET_ALIASES: Record<string, { tokens: string[]; type?: WalletType }> = {
   tng: { tokens: ['tng', 'touchngo', 'touch'], type: 'ewallet' },
   ewallet: { tokens: ['tng', 'touchngo', 'grab', 'boost', 'shopee'], type: 'ewallet' },
-  cash: { tokens: ['cash', 'tunai'] },
+  cash: { tokens: ['cash', 'tunai'], type: 'cash' },
   card: { tokens: ['card', 'credit', 'kad'], type: 'credit' },
   creditcard: { tokens: ['card', 'credit', 'kad'], type: 'credit' },
   bank: { tokens: ['bank'], type: 'bank' },
@@ -101,7 +101,7 @@ function resolveWallet(raw?: string): { id: string; name: string } | undefined {
   if (n === 'cash') {
     ws.addWallet({
       name: 'Cash',
-      type: 'ewallet',
+      type: 'cash',
       balance: 0,
       icon: 'dollar-sign',
       color: CALM.accent,
@@ -114,7 +114,7 @@ function resolveWallet(raw?: string): { id: string; name: string } | undefined {
   if (!existing) {
     ws.addWallet({
       name: 'Cash',
-      type: 'ewallet',
+      type: 'cash',
       balance: 0,
       icon: 'dollar-sign',
       color: CALM.accent,

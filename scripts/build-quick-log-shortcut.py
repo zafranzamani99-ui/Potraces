@@ -23,13 +23,15 @@ Shortcut behaviour (all native Shortcuts actions, no third-party deps):
      Ask (clipboard PRE-FILLED, user just taps Done) -> variable only.
      Otherwise: variable = file. The key is persisted ONLY after the server
      accepts it (success branch), so clipboard garbage never gets stored.
-  2. Ask amount (number) -> choose category -> choose payment -> ask note.
+  2. Ask amount (number) -> choose category -> FETCH the user's real wallets
+     (POST {key, action:'wallets'}) -> choose payment from them -> ask note.
   3. POST JSON {key, amount, category, wallet, note} to the quick-log function.
      Offline: this aborts the shortcut (visible iOS error) — no silent loss,
      no duplicate risk. Offline retry is deferred (needs server idempotency).
   4. If the response has no "ok": warn + self-heal a revoked key (delete the
-     saved key file so the next run re-asks). Otherwise SILENT — the Potraces
-     push is the confirmation — and save the now-validated key.
+     saved key file so the next run re-asks). Otherwise show a confirmation
+     card (amount · category · wallet) and save the now-validated key; the
+     Potraces push is the secondary "it's in your app" confirmation.
 
 Category labels carry emoji for looks; the server's resolveCategory() strips
 non-alphanumerics, so "🍔 Food & Dining" still matches the food category.
@@ -49,10 +51,18 @@ CATEGORIES = [
     "🚗 Transportation",
     "🛍️ Shopping",
     "🎬 Entertainment",
+    "🧾 Bills & Utilities",
     "❤️ Healthcare",
+    "🎓 Education",
+    "👪 Family",
+    "🔁 Subscriptions",
+    "💼 Business Cost",
+    "💳 Debt Payment",
+    "🐷 Savings Goal",
     "💸 Other",
 ]
-WALLETS = ["💵 Cash", "🏦 Maybank", "📱 TNG", "💳 Card", "🏛️ Bank"]
+# Payment methods are NOT a static list — the Shortcut fetches the user's REAL
+# wallets live (see the {key, action:'wallets'} call below).
 
 OBJ = "￼"  # object-replacement char used by WFTextTokenString attachments
 
@@ -68,7 +78,8 @@ U_ASKKEY = new_uuid()
 U_AMT = new_uuid()
 U_CATLIST = new_uuid()
 U_CAT = new_uuid()
-U_WALLIST = new_uuid()
+U_WALRESP = new_uuid()
+U_WALLETS = new_uuid()
 U_WAL = new_uuid()
 U_NOTE = new_uuid()
 U_RESP = new_uuid()
@@ -196,14 +207,35 @@ actions = [
         "WFChooseFromListActionPrompt": "Category",
         "WFInput": token_attachment(out_ref(U_CATLIST, "List")),
     }),
-    action("is.workflow.actions.list", {
-        "UUID": U_WALLIST,
-        "WFItems": WALLETS,
+    # Payment picker = the user's REAL wallets, fetched live from the endpoint
+    # (default-first). The server returns a generic Cash/Bank/E-wallet/Credit
+    # list when the user has no wallets yet, so the picker is never empty.
+    # Offline aborts here (before the POST) — offline logging is unsupported
+    # anyway, so failing at the picker is no worse than failing at the send.
+    action("is.workflow.actions.downloadurl", {
+        "UUID": U_WALRESP,
+        "WFURL": ENDPOINT,
+        "WFHTTPMethod": "POST",
+        "WFHTTPBodyType": "JSON",
+        "WFJSONValues": {
+            "WFSerializationType": "WFDictionaryFieldValue",
+            "Value": {
+                "WFDictionaryFieldValueItems": [
+                    dict_item("key", [var_ref(VAR_KEY)]),
+                    dict_item("action", ["wallets"]),
+                ],
+            },
+        },
+    }),
+    action("is.workflow.actions.getvalueforkey", {
+        "UUID": U_WALLETS,
+        "WFInput": token_attachment(out_ref(U_WALRESP, "Contents of URL")),
+        "WFDictionaryKey": "wallets",
     }),
     action("is.workflow.actions.choosefromlist", {
         "UUID": U_WAL,
         "WFChooseFromListActionPrompt": "Payment",
-        "WFInput": token_attachment(out_ref(U_WALLIST, "List")),
+        "WFInput": token_attachment(out_ref(U_WALLETS, "Dictionary Value")),
     }),
     action("is.workflow.actions.ask", {
         "UUID": U_NOTE,
@@ -235,10 +267,10 @@ actions = [
             },
         },
     }),
-    # Success is announced by the Potraces PUSH notification (tappable → the
-    # transactions list), so the Shortcut itself stays silent on success.
-    # Failure is the one case the app can never announce (the server never got
-    # a valid request) — the Shortcut warns, and only then.
+    # On success the Shortcut shows a confirmation card (below) AND the Potraces
+    # push arrives (tappable → the transactions list). Failure is the one case
+    # the app can never announce (the server never got a valid request) — the
+    # Shortcut warns instead.
     action("is.workflow.actions.getvalueforkey", {
         "UUID": U_OK,
         "WFInput": token_attachment(out_ref(U_RESP, "Contents of URL")),
@@ -285,6 +317,17 @@ actions = [
         "WFAskWhereToSave": False,
         "WFFileDestinationPath": KEY_FILE,
         "WFSaveFileOverwrite": True,
+    }),
+    # Confirmation card (Finny-style): what was logged — amount · category · the
+    # real wallet — with a single OK button. A modal Show-Alert, NOT a
+    # notification, so it respects "only Potraces sends notifications". The
+    # amount is the number the user typed; the wallet is the real one they picked.
+    action("is.workflow.actions.alert", {
+        "WFAlertActionTitle": token_string(["✅ Logged RM", out_ref(U_AMT, "Provided Input")]),
+        "WFAlertActionMessage": token_string([
+            out_ref(U_CAT, "Chosen Item"), "  ·  ", out_ref(U_WAL, "Chosen Item"),
+        ]),
+        "WFAlertActionCancelButtonShown": False,
     }),
     conditional(G_RESULT, 2),
 ]

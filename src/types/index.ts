@@ -1448,7 +1448,7 @@ export interface SavingsState {
 
 // Wallet Types
 export type PremiumTier = 'free' | 'premium';
-export type WalletType = 'bank' | 'ewallet' | 'credit';
+export type WalletType = 'bank' | 'ewallet' | 'credit' | 'cash';
 
 export interface Wallet {
   id: string;

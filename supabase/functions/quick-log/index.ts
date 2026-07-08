@@ -81,6 +81,26 @@ Deno.serve(async (req: Request) => {
   if (!keyRow || keyRow.revoked) return json({ error: 'invalid-key' }, 401);
   const userId = keyRow.user_id as string;
 
+  // Dynamic Payment picker: the Shortcut POSTs {key, action:'wallets'} to fetch
+  // the user's REAL wallet names (default-first) so it can list actual wallets
+  // and the confirmation card shows the exact one. Read-only — returns early,
+  // before any inbox write. Empty list → the Shortcut falls back to generic
+  // payment types, so logging still works before the first cloud sync.
+  if (payload.action === 'wallets') {
+    const { data: rows } = await admin.from('personal_wallets')
+      .select('name, is_default')
+      .eq('user_id', userId)
+      .order('is_default', { ascending: false })
+      .order('name', { ascending: true });
+    const names = Array.from(
+      new Set((rows ?? []).map((w: { name: string }) => (w.name ?? '').trim()).filter(Boolean))
+    );
+    // No wallets synced yet → hand back the generic types so the Shortcut's
+    // picker is never empty (the app auto-creates the matching wallet on log).
+    const wallets = names.length ? names : ['Cash', 'Bank', 'E-wallet', 'Credit'];
+    return json({ ok: true, wallets });
+  }
+
   // Rate limit: a Back Tap human logs a handful per minute; a leaked key
   // hammering the endpoint burns push fanout + DB writes. 30/min is generous.
   {

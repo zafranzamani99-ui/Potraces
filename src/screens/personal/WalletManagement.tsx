@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { ScrollView, Gesture } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { useNeu } from '../../components/common/neu';
 import Reanimated, {
   useAnimatedReaction,
   useAnimatedStyle,
@@ -21,7 +22,8 @@ import Reanimated, {
   SharedValue,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { roundMoney } from '../../utils/money';
 import { useCalm } from '../../hooks/useCalm';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { WALLET_ICONS_BY_TYPE, WALLET_COLORS, WALLET_PRESETS, WALLET_TYPE_CONFIG, FREE_TIER, BANK_LOGOS, CARD_NETWORK_LOGOS } from '../../constants/premium';
@@ -138,6 +140,7 @@ const WalletManagement: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu();
   const insets = useSafeAreaInsets();
   // ScreenGuide spotlight target — the scrim cuts a hole around the real FAB.
   const guideTargetRef = useRef<any>(null);
@@ -253,7 +256,7 @@ const WalletManagement: React.FC = () => {
 
   const goToType = useCallback((type: WalletType) => {
     lightTap();
-    const TYPES: WalletType[] = ['bank', 'ewallet', 'credit'];
+    const TYPES: WalletType[] = ['bank', 'ewallet', 'credit', 'cash'];
     const newIdx = TYPES.indexOf(type);
     typeIdxRef.current = newIdx;
     setSelectedType(type);
@@ -275,12 +278,12 @@ const WalletManagement: React.FC = () => {
       typeRailX.value = base + e.translationX;
     })
     .onEnd((e) => {
-      const TYPES: WalletType[] = ['bank', 'ewallet', 'credit'];
+      const TYPES: WalletType[] = ['bank', 'ewallet', 'credit', 'cash'];
       const idx = typeIdxRef.current;
       const shouldNext = e.translationX < -50 || e.velocityX < -500;
       const shouldPrev = e.translationX > 50 || e.velocityX > 500;
       let newIdx = idx;
-      if (shouldNext && idx < 2) newIdx = idx + 1;
+      if (shouldNext && idx < 3) newIdx = idx + 1;
       else if (shouldPrev && idx > 0) newIdx = idx - 1;
       typeIdxRef.current = newIdx;
       typeRailX.value = withSpring(-newIdx * panelWidthRef.current, {
@@ -317,12 +320,14 @@ const WalletManagement: React.FC = () => {
   const bankWallets = useMemo(() => wallets.filter((w) => w.type === 'bank'), [wallets]);
   const ewalletWallets = useMemo(() => wallets.filter((w) => w.type === 'ewallet'), [wallets]);
   const creditWallets = useMemo(() => wallets.filter((w) => w.type === 'credit'), [wallets]);
+  const cashWallets = useMemo(() => wallets.filter((w) => w.type === 'cash'), [wallets]);
 
   const totalBalance = useMemo(() => {
     const bankTotal = bankWallets.reduce((sum, w) => sum + w.balance, 0);
     const ewalletTotal = ewalletWallets.reduce((sum, w) => sum + w.balance, 0);
-    return bankTotal + ewalletTotal;
-  }, [bankWallets, ewalletWallets]);
+    const cashTotal = cashWallets.reduce((sum, w) => sum + w.balance, 0);
+    return bankTotal + ewalletTotal + cashTotal;
+  }, [bankWallets, ewalletWallets, cashWallets]);
 
   const totalCreditAvailable = useMemo(
     () => creditWallets.reduce((sum, w) => {
@@ -394,7 +399,7 @@ const WalletManagement: React.FC = () => {
     }
 
     // 2. Wallet concentration risk
-    const sortedByBalance = [...bankWallets, ...ewalletWallets].sort((a, b) => b.balance - a.balance);
+    const sortedByBalance = [...bankWallets, ...ewalletWallets, ...cashWallets].sort((a, b) => b.balance - a.balance);
     const biggestShare = totalBalance > 0 && sortedByBalance.length > 0
       ? sortedByBalance[0].balance / totalBalance
       : 0;
@@ -406,7 +411,7 @@ const WalletManagement: React.FC = () => {
     }
 
     // 3. Idle/near-empty wallets
-    const nearEmpty = [...bankWallets, ...ewalletWallets].filter((w) => w.balance < 50 && w.balance >= 0);
+    const nearEmpty = [...bankWallets, ...ewalletWallets, ...cashWallets].filter((w) => w.balance < 50 && w.balance >= 0);
     if (nearEmpty.length >= 2) {
       return {
         title: `${nearEmpty.length} wallets are running near empty`,
@@ -445,7 +450,7 @@ const WalletManagement: React.FC = () => {
       title: `cash reserve is thin`,
       subtitle: `a buffer worth one week of expenses turns panic into patience. start small.`,
     };
-  }, [wallets, bankWallets, ewalletWallets, creditWallets, totalBalance, currency, transactions]);
+  }, [wallets, bankWallets, ewalletWallets, cashWallets, creditWallets, totalBalance, currency, transactions]);
 
   // ─── Build wallet snapshot for Echo ───
   const buildWalletSnapshot = useCallback(() => {
@@ -455,7 +460,7 @@ const WalletManagement: React.FC = () => {
     const utilization = totalCredit > 0 ? (totalCreditUsed / totalCredit) * 100 : 0;
 
     lines.push(`[Wallet snapshot]`);
-    lines.push(`Total liquid cash: ${currency} ${totalBalance.toFixed(0)} across ${bankWallets.length + ewalletWallets.length} wallets`);
+    lines.push(`Total liquid cash: ${currency} ${totalBalance.toFixed(0)} across ${bankWallets.length + ewalletWallets.length + cashWallets.length} wallets`);
     lines.push(`Credit available: ${currency} ${totalCreditAvailable.toFixed(0)} (of ${currency} ${totalCredit.toFixed(0)} total limit)`);
     if (totalCreditUsed > 0) {
       lines.push(`Credit currently owed: ${currency} ${totalCreditUsed.toFixed(0)} (${utilization.toFixed(0)}% utilization)`);
@@ -473,6 +478,13 @@ const WalletManagement: React.FC = () => {
       lines.push(`E-wallets:`);
       ewalletWallets.forEach((w) => {
         lines.push(`• ${w.name}: ${currency} ${w.balance.toFixed(0)}`);
+      });
+      lines.push('');
+    }
+    if (cashWallets.length > 0) {
+      lines.push(`Cash:`);
+      cashWallets.forEach((w) => {
+        lines.push(`• ${w.name}${w.isDefault ? ' [default]' : ''}: ${currency} ${w.balance.toFixed(0)}`);
       });
       lines.push('');
     }
@@ -501,7 +513,7 @@ const WalletManagement: React.FC = () => {
     }
 
     return lines.join('\n');
-  }, [wallets, bankWallets, ewalletWallets, creditWallets, totalBalance, totalCreditAvailable, currency, subscriptions]);
+  }, [wallets, bankWallets, ewalletWallets, cashWallets, creditWallets, totalBalance, totalCreditAvailable, currency, subscriptions]);
 
   // Memoized so the Echo sheet prop doesn't rebuild the snapshot on every render
   // (only when buildWalletSnapshot's inputs actually change).
@@ -531,7 +543,7 @@ const WalletManagement: React.FC = () => {
         `still ${amt} on credit — let's clear it`,
       ];
     }
-    const bankLike = [...bankWallets, ...ewalletWallets].sort((a, b) => b.balance - a.balance);
+    const bankLike = [...bankWallets, ...ewalletWallets, ...cashWallets].sort((a, b) => b.balance - a.balance);
     const biggestShare = totalBalance > 0 && bankLike.length > 0 ? bankLike[0].balance / totalBalance : 0;
     if (biggestShare >= 0.9 && bankLike.length > 1 && totalBalance > 1000) {
       return [
@@ -547,7 +559,7 @@ const WalletManagement: React.FC = () => {
       `running lean — time to pad the buffer?`,
       `not much headroom — build a buffer?`,
     ];
-  }, [wallets, creditWallets, bankWallets, ewalletWallets, totalBalance, currency]);
+  }, [wallets, creditWallets, bankWallets, ewalletWallets, cashWallets, totalBalance, currency]);
 
   useFocusEffect(useCallback(() => {
     if (walletGreetingPool.length === 0) return;
@@ -556,7 +568,7 @@ const WalletManagement: React.FC = () => {
     setGreetingDismissed(false);
 
     const used = creditWallets.reduce((s, w) => s + (w.usedCredit || 0), 0);
-    const bankLike = [...bankWallets, ...ewalletWallets].sort((a, b) => b.balance - a.balance);
+    const bankLike = [...bankWallets, ...ewalletWallets, ...cashWallets].sort((a, b) => b.balance - a.balance);
     const biggestShare = totalBalance > 0 && bankLike.length > 0 ? bankLike[0].balance / totalBalance : 0;
 
     if (used > 0) {
@@ -739,7 +751,7 @@ const WalletManagement: React.FC = () => {
 
   const showTypePaywall = useCallback((type: WalletType) => {
     const typeLabel = WALLET_TYPE_CONFIG[type].label;
-    const remaining = (['bank', 'ewallet', 'credit'] as WalletType[])
+    const remaining = (['bank', 'ewallet', 'credit', 'cash'] as WalletType[])
       .filter((t) => t !== type && wallets.filter((w) => w.type === t).length < FREE_TIER.maxWalletsPerType)
       .map((t) => WALLET_TYPE_CONFIG[t].label);
     const suffix = remaining.length > 0 ? ` You can still add ${remaining.join(' and ')}.` : '';
@@ -813,14 +825,15 @@ const WalletManagement: React.FC = () => {
     }
 
     if (editingWallet) {
+      const wallet = wallets.find((w) => w.id === editingWallet);
       const updates: Partial<Wallet> = {
         name: name.trim(),
         icon: selectedIcon,
         color: selectedColor,
       };
+      let newBalance: number;
       if (selectedType === 'credit') {
         const limitNum = parseFloat(creditLimit) || 0;
-        const wallet = wallets.find((w) => w.id === editingWallet);
         const used = wallet?.usedCredit || 0;
         if (limitNum < used) {
           // A limit below what's already used would force a negative available
@@ -829,10 +842,19 @@ const WalletManagement: React.FC = () => {
           return;
         }
         updates.creditLimit = limitNum;
-        updates.balance = limitNum - used;
+        newBalance = limitNum - used;
       } else {
-        updates.balance = parseFloat(balance) || 0;
+        newBalance = parseFloat(balance) || 0;
       }
+      updates.balance = newBalance;
+      // A direct balance/limit edit changes `balance` but not the replayed transaction
+      // history, so shift initialBalance by the same delta to keep the reconcile
+      // invariant (balance = initialBalance + Σops). Without this, autoReconcile (on
+      // every sync) and manual Recalculate silently revert the edit. (dummyData
+      // re-snapshots initialBalance for exactly this reason.)
+      const oldBalance = wallet?.balance ?? newBalance;
+      const oldInitial = wallet?.initialBalance ?? oldBalance;
+      updates.initialBalance = roundMoney(oldInitial + (newBalance - oldBalance));
       updateWallet(editingWallet, updates);
     } else {
       const isCredit = selectedType === 'credit';
@@ -1111,8 +1133,9 @@ const WalletManagement: React.FC = () => {
       bank: bankWallets.length,
       ewallet: ewalletWallets.length,
       credit: creditWallets.length,
+      cash: cashWallets.length,
     }),
-    [bankWallets.length, ewalletWallets.length, creditWallets.length]
+    [bankWallets.length, ewalletWallets.length, creditWallets.length, cashWallets.length]
   );
 
   // ─── Render Helpers ────────────────────────────────────────
@@ -1166,8 +1189,8 @@ const WalletManagement: React.FC = () => {
     );
 
     return (
+      <View key={wallet.id} style={[styles.walletCardShadow, neu.raisedSoft]}>
       <ReanimatedSwipeable
-        key={wallet.id}
         ref={getSwipeRef(wallet.id)}
         renderRightActions={renderRightActions}
         renderLeftActions={renderLeftActions}
@@ -1185,7 +1208,7 @@ const WalletManagement: React.FC = () => {
         <View style={styles.walletCard}>
           <View>
           <View style={styles.walletRow}>
-            <View style={[styles.walletIcon, !wallet.presetId && { backgroundColor: withAlpha(wallet.color, 0.10), borderRadius: RADIUS.md }]}>
+            <View style={[styles.walletIcon, !wallet.presetId && [neu.well, { backgroundColor: withAlpha(wallet.color, 0.10), borderRadius: RADIUS.md }]]}>
               {wallet.presetId ? (
                 <WalletLogo wallet={wallet} size={40} />
               ) : (
@@ -1261,8 +1284,9 @@ const WalletManagement: React.FC = () => {
           </View>
         </View>
       </ReanimatedSwipeable>
+      </View>
     );
-  }, [currency, getStarAnim, handleSetDefault, handleSwipeMore, handleSwipeDelete, getSwipeRef, t, styles, C]);
+  }, [currency, getStarAnim, handleSetDefault, handleSwipeMore, handleSwipeDelete, getSwipeRef, t, styles, C, neu]);
 
   const renderTypeSection = useCallback((type: WalletType, walletList: Wallet[]) => {
     if (walletList.length === 0) return null;
@@ -1288,7 +1312,7 @@ const WalletManagement: React.FC = () => {
         {/* Summary Card */}
         {(() => {
           return (
-            <View style={styles.summaryCard}>
+            <View style={[styles.summaryCard, neu.raisedSoft]}>
               <Text style={styles.summaryLabel}>{t.wallets.cashBalance}</Text>
               <Text style={styles.summaryAmountLine}>
                 <Text style={styles.summaryAmountPrefix}>{currency} </Text>
@@ -1347,8 +1371,8 @@ const WalletManagement: React.FC = () => {
               <Pressable
                 style={({ pressed }) => [
                   styles.actionBtnOutline,
+                  pressed && transferEnabled ? neu.inset : neu.raised,
                   !transferEnabled && styles.actionBtnOutlineDisabled,
-                  pressed && transferEnabled && styles.actionBtnOutlinePressed,
                 ]}
                 onPress={() => { lightTap(); setTransferVisible(true); }}
                 disabled={!transferEnabled}
@@ -1362,8 +1386,8 @@ const WalletManagement: React.FC = () => {
               <Pressable
                 style={({ pressed }) => [
                   styles.actionBtnOutline,
+                  pressed && repayEnabled ? neu.inset : neu.raised,
                   !repayEnabled && styles.actionBtnOutlineDisabled,
-                  pressed && repayEnabled && styles.actionBtnOutlinePressed,
                 ]}
                 onPress={openRepayFromActions}
                 disabled={!repayEnabled}
@@ -1392,6 +1416,7 @@ const WalletManagement: React.FC = () => {
             {listReady && renderTypeSection('bank', bankWallets)}
             {listReady && renderTypeSection('ewallet', ewalletWallets)}
             {listReady && renderTypeSection('credit', creditWallets)}
+            {listReady && renderTypeSection('cash', cashWallets)}
           </View>
         )}
 
@@ -1686,11 +1711,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.xl,
     padding: SPACING.xl,
     paddingTop: SPACING.lg,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(C.textPrimary, 0.12),
-    ...SHADOWS.sm,
+    borderRadius: RADIUS.lg,   // match the wallet cards below it (was xl)
+    // surface (bg + neu shadow) comes from neu.raisedSoft spread at the call site
   },
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.xl,
@@ -1730,7 +1752,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     marginTop: SPACING.md,
     paddingTop: SPACING.sm,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: C.border,
   },
   walletCountText: {
@@ -1750,12 +1772,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center' as const,
     gap: SPACING.sm,
     minHeight: 44,
-    backgroundColor: withAlpha(C.textPrimary, 0.04),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
-  },
-  actionBtnOutlinePressed: {
-    backgroundColor: withAlpha(C.textPrimary, 0.08),
+    // neu surface (raised / inset on press) spread at the call site
   },
   actionBtnOutlineDisabled: {
     opacity: 0.4,
@@ -1763,7 +1782,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   actionBtnOutlineLabel: {
     fontSize: 13,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
+    color: C.accent,   // match the olive icon (was split: olive icon + neutral label)
   },
   // Wallet List
   walletList: {
@@ -1790,13 +1809,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
   },
-  walletCard: {
-    backgroundColor: C.surface,
+  // Unclipped neu shadow wrapper (the swipeable inside is overflow:hidden).
+  walletCardShadow: {
     borderRadius: RADIUS.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(C.textPrimary, 0.12),
-    padding: SPACING.lg,
     marginBottom: SPACING.sm,
+  },
+  walletCard: {
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
   },
   walletRow: {
     flexDirection: 'row',
@@ -1898,7 +1919,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.md,
     paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: C.border,
   },
   transferInfo: {

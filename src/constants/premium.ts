@@ -49,6 +49,7 @@ export const WALLET_ICONS_BY_TYPE: Record<WalletType, string[]> = {
   bank: ['m/bank', 'i/briefcase', 'm/cash', 'i/shield-checkmark', 'i/lock-closed', 'm/web', 'i/trending-up', 'm/trophy', 'm/umbrella', 'i/bookmark', 'm/archive', 'm/key'],
   ewallet: ['m/cellphone', 'i/flash', 'i/send', 'm/wifi', 'i/gift', 'm/web', 'm/coffee', 'i/bag-handle', 'm/truck-delivery', 'm/music', 'i/camera', 'i/card'],
   credit: ['i/card', 'i/bag-handle', 'i/pricetag', 'm/percent', 'm/cart', 'i/gift', 'i/star', 'i/time', 'i/repeat', 'm/layers', 'i/bookmark', 'm/trophy'],
+  cash: ['m/cash', 'm/cash-multiple', 'm/piggy-bank', 'm/hand-coin', 'm/cash-plus', 'm/cash-minus', 'i/briefcase', 'm/umbrella', 'i/bookmark', 'm/archive', 'm/trophy', 'm/key'],
 };
 
 // Wallet color presets — earthy + muted tones, no harsh reds/pinks
@@ -113,6 +114,8 @@ export const WALLET_PRESETS: WalletPreset[] = [
   { id: 'grab_paylater', name: 'Grab PayLater', type: 'credit', icon: 'credit-card', color: '#00B14F' },
   { id: 'credit_card', name: 'Credit Card', type: 'credit', icon: 'credit-card', color: '#4F5104' },
   { id: 'tiktok_paylater', name: 'TikTok PayLater', type: 'credit', icon: 'credit-card', color: '#010101' },
+  // Cash
+  { id: 'cash', name: 'Cash', type: 'cash', icon: 'dollar-sign', color: '#7A8B69' },
 ];
 
 // Wallet type labels and icons
@@ -120,27 +123,28 @@ export const WALLET_TYPE_CONFIG: Record<WalletType, { label: string; icon: strin
   bank: { label: 'Bank Account', icon: 'home', description: 'Maybank, CIMB, Public Bank...' },
   ewallet: { label: 'E-Wallet', icon: 'smartphone', description: 'TnG, GrabPay, ShopeePay...' },
   credit: { label: 'Credit / BNPL', icon: 'credit-card', description: 'Atome, SPayLater, Credit Card...' },
+  cash: { label: 'Cash', icon: 'dollar-sign', description: 'Physical cash, notes & coins...' },
 };
 
 // Wallet provider logo assets — full logos for tiles and wallet details
 export const BANK_LOGOS: Record<string, any> = {
   // Banks
-  maybank: require('../../assets/bank-logo/maybank logo.png'),
-  cimb: require('../../assets/bank-logo/cimb logo.png'),
-  public_bank: require('../../assets/bank-logo/public bank logo.png'),
+  maybank: require('../../assets/bank-logo/maybank-logo.png'),
+  cimb: require('../../assets/bank-logo/cimb-logo.png'),
+  public_bank: require('../../assets/bank-logo/public-bank-logo.png'),
   rhb: require('../../assets/bank-logo/RHB_Logo.svg.png'),
   hong_leong: require('../../assets/bank-logo/Hong-Leong-Bank-Logo.png'),
-  ambank: require('../../assets/bank-logo/ambank logo.png'),
-  bank_islam: require('../../assets/bank-logo/bank islam.png'),
-  bank_rakyat: require('../../assets/bank-logo/bank-rakyat logo.png'),
-  bsn: require('../../assets/bank-logo/bsn logo.png'),
-  agrobank: require('../../assets/bank-logo/agro bank.png'),
-  mbsb: require('../../assets/bank-logo/mbsb logo.png'),
-  affin: require('../../assets/bank-logo/affin bank logo.png'),
-  alliance: require('../../assets/bank-logo/alliance bank logo.png'),
-  hsbc_my: require('../../assets/bank-logo/hsbc logo.png'),
-  uob_my: require('../../assets/bank-logo/uob logo.png'),
-  ocbc_my: require('../../assets/bank-logo/ocbc logo.png'),
+  ambank: require('../../assets/bank-logo/ambank-logo.png'),
+  bank_islam: require('../../assets/bank-logo/bank-islam.png'),
+  bank_rakyat: require('../../assets/bank-logo/bank-rakyat-logo.png'),
+  bsn: require('../../assets/bank-logo/bsn-logo.png'),
+  agrobank: require('../../assets/bank-logo/agro-bank.png'),
+  mbsb: require('../../assets/bank-logo/mbsb-logo.png'),
+  affin: require('../../assets/bank-logo/affin-bank-logo.png'),
+  alliance: require('../../assets/bank-logo/alliance-bank-logo.png'),
+  hsbc_my: require('../../assets/bank-logo/hsbc-logo.png'),
+  uob_my: require('../../assets/bank-logo/uob-logo.png'),
+  ocbc_my: require('../../assets/bank-logo/ocbc-logo.png'),
   // Credit / BNPL
   atome: require('../../assets/credit-logo/atome-logo.png'),
   spaylater: require('../../assets/credit-logo/SPayLater-Logo.png'),
