@@ -232,28 +232,22 @@ actions = [
             },
         },
     }),
-    # Branch on the server's `ok` field so failures never read as success.
-    # (Only uses the well-attested condition enums 100/101 = has/has-no value.)
+    # Success is announced by the Potraces PUSH notification (tappable → the
+    # transactions list), so the Shortcut itself stays silent on success.
+    # Failure is the one case the app can never announce (the server never got
+    # a valid request) — the Shortcut warns, and only then.
     action("is.workflow.actions.getvalueforkey", {
         "UUID": U_OK,
         "WFInput": token_attachment(out_ref(U_RESP, "Contents of URL")),
         "WFDictionaryKey": "ok",
     }),
     conditional(G_RESULT, 0, {
-        "WFCondition": 100,  # "has any value" → server said ok
+        "WFCondition": 101,  # ok has NO value → the log FAILED
         "WFInput": {
             "Type": "Variable",
             "Variable": token_attachment(out_ref(U_OK, "Dictionary Value")),
         },
     }),
-    action("is.workflow.actions.notification", {
-        "WFNotificationActionBody": token_string([
-            "✅ RM", out_ref(U_AMT, "Provided Input"),
-            " · ", out_ref(U_CAT, "Chosen Item"),
-            " logged",
-        ]),
-    }),
-    conditional(G_RESULT, 1),
     action("is.workflow.actions.notification", {
         "WFNotificationActionBody": token_string([
             "⚠️ Not logged — ", out_ref(U_RESP, "Contents of URL"),

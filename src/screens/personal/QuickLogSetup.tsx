@@ -94,7 +94,7 @@ export default function QuickLogSetup() {
         // SDK 54 trigger shape — the legacy bare {seconds} form gets rejected.
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: 3,
+          seconds: 1.5,
         },
       });
     } catch (e) {
