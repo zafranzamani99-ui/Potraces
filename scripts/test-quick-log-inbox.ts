@@ -60,12 +60,25 @@ check('created Cash wallet carries the deduction', useWalletStore.getState().wal
 const unknownResult = logQuickExpense({ amount: 3, type: 'expense', wallet: 'Duitku' });
 check('unknown label falls back to default wallet', unknownResult?.walletId === 'b1');
 
-if (failures) { console.error(`${failures} failures`); process.exit(1); }
-console.log('all passed');
-// Explicit exit: usePersonalStore/useWalletStore are zustand `persist` stores
-// backed by AsyncStorage, whose fire-and-forget setItem() throws asynchronously
-// under tsx ("window is not defined" — no browser/RN globals). That rejection
-// surfaces on the microtask queue after this synchronous script body finishes,
-// which would otherwise crash the process with exit 1 despite every check
-// passing. process.exit(0) here wins the race, same as test-wallet-reconcile.ts.
-process.exit(0);
+// ── Locale-tolerant amount parsing (field bug: "12,5" became RM125) ──────────
+import('../src/utils/parseAmountLoose').then(({ parseAmountLoose: p }) => {
+  check('comma decimal "12,5" → 12.5', p('12,5') === 12.5);
+  check('euro style "1.234,56" → 1234.56', p('1.234,56') === 1234.56);
+  check('anglo style "1,234.56" → 1234.56', p('1,234.56') === 1234.56);
+  check('comma thousands "1,234" → 1234', p('1,234') === 1234);
+  check('plain "12.50" → 12.5', p('12.50') === 12.5);
+  check('plain int "15" → 15', p('15') === 15);
+  check('"RM 23.90" → 23.9', p('RM 23.90') === 23.9);
+  check('zero rejected', p('0') === null);
+  check('negative rejected', p('-5') === null);
+  check('over cap rejected', p('2000000') === null);
+  check('garbage rejected', p('abc') === null);
+
+  if (failures) { console.error(`${failures} failures`); process.exit(1); }
+  console.log('all passed');
+  process.exit(0);
+});
+
+// NOTE: final pass/fail + process.exit live inside the dynamic import above —
+// the same explicit-exit trick as test-wallet-reconcile.ts (persist stores'
+// AsyncStorage rejections would otherwise fail a passing run).

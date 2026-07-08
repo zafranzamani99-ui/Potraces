@@ -22,6 +22,7 @@ import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
+import { parseAmountLoose } from './src/utils/parseAmountLoose';
 import BiometricGate from './src/components/common/BiometricGate';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import ForcedUpdateGate from './src/components/common/ForcedUpdateGate';
@@ -472,9 +473,10 @@ function App() {
       }
 
       const amountStr = params.amount ?? params.amt ?? '';
-      const amount = parseFloat(amountStr.replace(/[^0-9.]/g, ''));
+      // Locale-tolerant: comma-decimal keyboards must not 10× the amount.
+      const amount = parseAmountLoose(amountStr);
 
-      if (amountStr && !Number.isNaN(amount) && amount > 0) {
+      if (amountStr && amount !== null) {
         // Shortcut already collected the details → log directly, offer Undo.
         let date: Date | undefined;
         const rawDate = params.date || params.day;
@@ -515,9 +517,13 @@ function App() {
     return () => sub.remove();
   }, []);
 
-  // Push notification tap → navigate to order
+  // Push notification tap → navigate (order / quick-log)
   React.useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+    let handledId: string | null = null;
+    const handleResponse = (response: Notifications.NotificationResponse, delay: number) => {
+      const id = response.notification.request.identifier;
+      if (handledId === id) return; // cold-start check + live listener overlap
+      handledId = id;
       const data = response.notification.request.content.data as { type?: string; orderId?: string } | undefined;
       if (data?.type === 'quick_log') {
         // Switch to personal mode (RootNavigator re-renders to PersonalNavigator)
@@ -527,20 +533,27 @@ function App() {
           if (navigationRef.isReady()) {
             (navigationRef as any).navigate('TransactionsList');
           }
-        }, 300);
+        }, delay);
         return;
       }
       if ((data?.type === 'new_order' || data?.type === 'payment_received') && data.orderId) {
         // Switch to business mode and navigate to order
         useAppStore.getState().setMode('business');
-        // Small delay to let mode switch + navigator mount
+        // Delay to let mode switch + navigator mount
         setTimeout(() => {
           if (navigationRef.isReady()) {
             (navigationRef as any).navigate('SellerOrderList', { orderId: data.orderId });
           }
-        }, 300);
+        }, delay);
       }
-    });
+    };
+    const sub = Notifications.addNotificationResponseReceivedListener((r) => handleResponse(r, 300));
+    // Cold start: when the app is LAUNCHED by tapping a notification, the tap
+    // fires before the listener above exists — fetch it explicitly. Longer
+    // delay: the navigator is still mounting on a cold launch.
+    Notifications.getLastNotificationResponseAsync().then((r) => {
+      if (r) handleResponse(r, 900);
+    }).catch(() => {});
     return () => sub.remove();
   }, []);
 

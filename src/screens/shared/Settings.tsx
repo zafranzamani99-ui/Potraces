@@ -1359,7 +1359,9 @@ const Settings: React.FC = () => {
             label={t.settings.wallets}
             onPress={() => { lightTap(); navigation.navigate('WalletManagement'); }}
           />
-          {Platform.OS === 'ios' && (
+          {Platform.OS === 'ios' && !Platform.isPad && (
+            // iPhone only: Back Tap doesn't exist on iPad, and App Review
+            // tests on iPad — a dead-end setup flow there is a 2.1 risk.
             <SettingRow
               icon="i/flash"
               chipColor="#DEAB22"

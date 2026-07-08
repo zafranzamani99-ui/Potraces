@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
@@ -22,6 +22,7 @@ import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
 import { signInWithApple } from '../../services/appleAuth';
 import { signOut, getAuthSession, signInWithPhone, signUpWithPhone, deleteAccountRemote, clearPersonalDataRemote, supabasePersonal } from '../../services/supabase';
 import { syncPersonal, disablePersonalSync } from '../../services/personalSync';
+import { revokeQuickLogKey } from '../../services/quickLogKey';
 import { confirmReuse } from '../../services/reuseAccount';
 import { planDelete } from '../../services/deleteAccountFlow';
 import { resetBackoff } from '../../services/syncBackoff';
@@ -54,6 +55,10 @@ export default function AccountScreen() {
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  // Set when another screen (e.g. Quick Log setup) sent the user here just to
+  // enable Cloud Backup: return there on success and skip unrelated prompts.
+  const returnTo = route.params?.returnTo as string | undefined;
   const { showToast } = useToast();
 
   const isAuthenticated = useAuthStore((s) => s.personal.isAuthenticated);
@@ -105,13 +110,16 @@ export default function AccountScreen() {
     }
     useSettingsStore.getState().setPersonalSyncEnabled(true);
     showToast(tr.auth.acctBackingUp, 'info');
+    // Came from another screen's gate (Quick Log setup)? Take the user back
+    // there immediately — the sync continues in the background.
+    if (returnTo) navigation.navigate(returnTo as never);
     try {
       await syncPersonal();
       showToast(tr.settings.syncedToCloud, 'success');
     } catch {
       showToast(tr.settings.syncFailedRetry, 'info');
     }
-  }, [showToast, tr]);
+  }, [showToast, tr, returnTo, navigation]);
 
   const handleGoogle = useCallback(async () => {
     if (busy) return;
@@ -123,15 +131,18 @@ export default function AccountScreen() {
         isAuthenticated: true, userId: result.userId, provider: 'google',
       });
       await enableBackup();
-      confirmReuse('business', { provider: 'google' }, tr);
+      // Skip the cross-mode reuse prompt when the user came here mid-setup
+      // from another screen — it derails the flow they were in.
+      if (!returnTo) confirmReuse('business', { provider: 'google' }, tr);
     } catch (e: any) {
       if (e?.code === statusCodes.SIGN_IN_CANCELLED) return;
+      console.warn('[personal google sign-in] failed:', e?.status, e?.code, e?.message ?? e);
       if (e?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) showToast(tr.auth.playServicesRequired, 'info');
-      else showToast(tr.auth.socialSignInFailed, 'info');
+      else showToast(Platform.OS === 'ios' ? tr.auth.googleFailedTryApple : tr.auth.socialSignInFailed, 'info');
     } finally {
       setSocialLoading(null);
     }
-  }, [busy, enableBackup, showToast, tr]);
+  }, [busy, enableBackup, showToast, tr, returnTo]);
 
   const handleApple = useCallback(async () => {
     if (busy) return;
@@ -143,14 +154,15 @@ export default function AccountScreen() {
         isAuthenticated: true, userId: result.userId, provider: 'apple',
       });
       await enableBackup();
-      confirmReuse('business', { provider: 'apple' }, tr);
+      if (!returnTo) confirmReuse('business', { provider: 'apple' }, tr);
     } catch (e: any) {
       if (e?.code === 'ERR_CANCELED' || e?.code === '1001') return;
+      console.warn('[personal apple sign-in] failed:', e?.status, e?.code, e?.message ?? e);
       showToast(tr.auth.socialSignInFailed, 'info');
     } finally {
       setSocialLoading(null);
     }
-  }, [busy, enableBackup, showToast, tr]);
+  }, [busy, enableBackup, showToast, tr, returnTo]);
 
   const cleanPhone = useCallback((raw: string) => {
     const digits = raw.replace(/\D/g, '');
@@ -216,12 +228,14 @@ export default function AccountScreen() {
       { text: tr.common.cancel, style: 'cancel' },
       {
         text: tr.settings.turnOff,
-        onPress: async () => { await disablePersonalSync(false); showToast(tr.settings.cloudSyncDisabled, 'info'); },
+        // Revoke the Quick Log key too: with sync off the app never drains,
+        // so a live key would keep producing FALSE "Logged RM…" pushes.
+        onPress: async () => { await revokeQuickLogKey().catch(() => {}); await disablePersonalSync(false); showToast(tr.settings.cloudSyncDisabled, 'info'); },
       },
       {
         text: tr.settings.turnOffWipe,
         style: 'destructive',
-        onPress: async () => { await disablePersonalSync(true); showToast(tr.settings.cloudSyncDisabledWiped, 'info'); },
+        onPress: async () => { await revokeQuickLogKey().catch(() => {}); await disablePersonalSync(true); showToast(tr.settings.cloudSyncDisabledWiped, 'info'); },
       },
     ]);
   }, [enableBackup, showToast, tr]);
@@ -234,6 +248,9 @@ export default function AccountScreen() {
         text: tr.settings.signOut,
         style: 'destructive',
         onPress: async () => {
+          // Revoke Quick Log first — needs the live session, and prevents
+          // false "Logged" pushes to an account nobody is signed into.
+          await revokeQuickLogKey().catch(() => {});
           await disablePersonalSync(false);
           signOut(supabasePersonal).catch(() => {});
           useAuthStore.getState().resetPersonal();
@@ -340,29 +357,8 @@ export default function AccountScreen() {
                 ))}
               </View>
 
-              {/* Google */}
-              <Pressable
-                style={[styles.socialBtn, socialLoading === 'google' && { opacity: 0.6 }]}
-                onPress={handleGoogle}
-                disabled={busy}
-                accessibilityRole="button"
-                accessibilityLabel={tr.auth.continueWithGoogle}
-              >
-                {({ pressed }) => (
-                  <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
-                    {socialLoading === 'google' ? (
-                      <ActivityIndicator color={C.textPrimary} size="small" />
-                    ) : (
-                      <>
-                        <Text style={styles.googleG}>G</Text>
-                        <Text style={styles.socialBtnText}>{tr.auth.continueWithGoogle}</Text>
-                      </>
-                    )}
-                  </View>
-                )}
-              </Pressable>
-
-              {/* Apple (iOS only) */}
+              {/* Apple first on iOS — App Store convention, and the most
+                  reliable provider here. */}
               {Platform.OS === 'ios' && (
                 <Pressable
                   style={[styles.socialBtn, styles.appleSocialBtn, socialLoading === 'apple' && { opacity: 0.6 }]}
@@ -385,6 +381,28 @@ export default function AccountScreen() {
                   )}
                 </Pressable>
               )}
+
+              {/* Google */}
+              <Pressable
+                style={[styles.socialBtn, socialLoading === 'google' && { opacity: 0.6 }]}
+                onPress={handleGoogle}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel={tr.auth.continueWithGoogle}
+              >
+                {({ pressed }) => (
+                  <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
+                    {socialLoading === 'google' ? (
+                      <ActivityIndicator color={C.textPrimary} size="small" />
+                    ) : (
+                      <>
+                        <Text style={styles.googleG}>G</Text>
+                        <Text style={styles.socialBtnText}>{tr.auth.continueWithGoogle}</Text>
+                      </>
+                    )}
+                  </View>
+                )}
+              </Pressable>
 
               {/* Divider */}
               <View style={styles.dividerRow}>

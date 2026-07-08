@@ -23,13 +23,17 @@ async function currentUserId(): Promise<string | null> {
   return session?.user?.id ?? null;
 }
 
-/** Revoke any existing keys, mint+store a new one, return the RAW key (once). */
+/**
+ * Mint + store a new key and return the RAW key (shown once). Grace-period
+ * rotation: older keys are NOT revoked here — the edge function retires them
+ * on the new key's first successful use. So regenerating never breaks an
+ * installed Shortcut mid-transition (previously each rotation cost the user
+ * one lost entry when the Shortcut still held the old key). Explicit
+ * revokeQuickLogKey() remains the kill-switch for a leaked key.
+ */
 export async function registerQuickLogKey(): Promise<string> {
   const userId = await currentUserId();
   if (!userId) throw new Error('not-signed-in');
-  const { error: revokeErr } = await supabase.from('quick_log_keys').update({ revoked: true })
-    .eq('user_id', userId).eq('revoked', false);
-  if (revokeErr) throw revokeErr;
   const key = generateQuickLogKey();
   const key_hash = await hashKey(key);
   const { error } = await supabase.from('quick_log_keys')

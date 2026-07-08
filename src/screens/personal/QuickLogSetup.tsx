@@ -199,7 +199,7 @@ export default function QuickLogSetup() {
             <NeuButton
               label={t.settings.quickLog.setupCloud}
               icon="cloud"
-              onPress={() => navigation.navigate('Account')}
+              onPress={() => navigation.navigate('Account', { returnTo: 'QuickLogSetup' })}
             />
           </View>
         ) : (
@@ -279,8 +279,13 @@ export default function QuickLogSetup() {
               </>
             ))}
 
-            {/* Step 3 — Back Tap */}
+            {/* Step 3 — run once NOW, while the key is still on the clipboard.
+                Days later the clipboard holds something else and the pre-fill
+                would save garbage — this ordering is load-bearing. */}
             {renderStep('3', t.settings.quickLog.s3Title, t.settings.quickLog.s3Body)}
+
+            {/* Step 4 — Back Tap */}
+            {renderStep('4', t.settings.quickLog.s4Title, t.settings.quickLog.s4Body)}
 
             <Text style={[styles.afterSetup, { color: C.textPrimary }]}>
               {t.settings.quickLog.afterSetup}
@@ -314,6 +319,7 @@ export default function QuickLogSetup() {
               <NeuButton
                 label={t.settings.quickLog.diagTest}
                 icon="bell"
+                disabled={notifGranted !== true}
                 onPress={onTestNotification}
               />
             </View>

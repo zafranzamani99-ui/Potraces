@@ -6,7 +6,7 @@
  */
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabasePersonal as supabase } from './supabase'; // personal client (quick-log inbox)
-import { logQuickExpense, undoQuickExpense } from './quickLog';
+import { logQuickExpense } from './quickLog';
 import { mapInboxRowToQuickLog, type QuickLogInboxRow } from './quickLogInboxMap';
 import { useSettingsStore } from '../store/settingsStore';
 
@@ -33,18 +33,25 @@ export async function drainQuickLogInbox(): Promise<number> {
 
     let logged = 0;
     for (const row of rows as QuickLogInboxRow[]) {
-      const result = logQuickExpense(mapInboxRowToQuickLog(row));
-      // Stamp consumed even if amount was invalid (result null) so we don't retry
-      // a permanently-bad row forever.
-      const { error: markErr } = await supabase.from('quick_log_inbox')
-        .update({ consumed_at: new Date().toISOString() }).eq('id', row.id);
-      if (markErr) {
-        // Couldn't mark consumed — reverse the just-logged tx so the row is never
-        // left BOTH logged AND unconsumed (which would double-log next drain).
-        if (result) undoQuickExpense(result);
+      try {
+        // CLAIM FIRST, atomically: two devices on one account both receive the
+        // realtime INSERT and both reach here — the conditional UPDATE is a
+        // compare-and-set, so exactly ONE device wins the row and logs money.
+        // (Losing device gets zero rows back and skips.) Claiming before
+        // logging also closes the crash window that could double-log.
+        const { data: claimed, error: claimErr } = await supabase
+          .from('quick_log_inbox')
+          .update({ consumed_at: new Date().toISOString() })
+          .eq('id', row.id)
+          .is('consumed_at', null)
+          .select('id');
+        if (claimErr || !claimed || claimed.length === 0) continue; // lost the race / network — retry next drain
+        const result = logQuickExpense(mapInboxRowToQuickLog(row));
+        if (result) logged++;
+      } catch {
+        // One bad row (store edge case) must not abort the rest of the drain.
         continue;
       }
-      if (result) logged++;
     }
     return logged;
   } finally {

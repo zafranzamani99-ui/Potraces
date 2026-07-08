@@ -27,6 +27,28 @@ async function hashKey(key: string): Promise<string> {
     .join('');
 }
 
+/** Locale-tolerant money parser — MIRRORS src/utils/parseAmountLoose.ts. */
+function parseAmountLoose(raw: unknown): number | null {
+  let s = String(raw ?? '').trim().replace(/\s+/g, '');
+  if (!s || s.startsWith('-')) return null; // never coerce a negative to positive
+  const lastDot = s.lastIndexOf('.');
+  const lastComma = s.lastIndexOf(',');
+  if (lastDot !== -1 && lastComma !== -1) {
+    if (lastComma > lastDot) s = s.replace(/\./g, '').replace(/,/g, '.');
+    else s = s.replace(/,/g, '');
+  } else if (lastComma !== -1) {
+    s = /,\d{1,2}$/.test(s) ? s.replace(/,/g, '.') : s.replace(/,/g, '');
+  }
+  s = s.replace(/[^0-9.]/g, '');
+  const parts = s.split('.');
+  if (parts.length > 2) s = parts.slice(0, -1).join('') + '.' + parts[parts.length - 1];
+  const n = parseFloat(s);
+  if (!Number.isFinite(n)) return null;
+  const rounded = Math.round((n + Number.EPSILON) * 100) / 100;
+  if (!(rounded > 0) || rounded > 1_000_000) return null;
+  return rounded;
+}
+
 const CATEGORY_LABELS: Record<string, string> = {
   food: '🍔 Food & Dining', transport: '🚗 Transportation', shopping: '🛍️ Shopping',
   entertainment: '🎬 Entertainment', health: '❤️ Healthcare', other: 'Other',
@@ -35,6 +57,12 @@ const CATEGORY_LABELS: Record<string, string> = {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
+
+  // Abuse guard: this endpoint is public — refuse oversized bodies before
+  // parsing them.
+  if (Number(req.headers.get('content-length') ?? 0) > 2048) {
+    return json({ error: 'too-large' }, 413);
+  }
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -53,9 +81,20 @@ Deno.serve(async (req: Request) => {
   if (!keyRow || keyRow.revoked) return json({ error: 'invalid-key' }, 401);
   const userId = keyRow.user_id as string;
 
-  // Parse + validate amount.
-  const amount = Math.round((parseFloat(String(payload.amount).replace(/[^0-9.]/g, '')) + Number.EPSILON) * 100) / 100;
-  if (!(amount > 0)) return json({ error: 'bad-amount' }, 400);
+  // Rate limit: a Back Tap human logs a handful per minute; a leaked key
+  // hammering the endpoint burns push fanout + DB writes. 30/min is generous.
+  {
+    const since = new Date(Date.now() - 60_000).toISOString();
+    const { count } = await admin.from('quick_log_inbox')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId).gte('created_at', since);
+    if ((count ?? 0) >= 30) return json({ error: 'rate-limited' }, 429);
+  }
+
+  // Parse + validate amount (locale-tolerant — MIRRORS src/utils/parseAmountLoose.ts).
+  // Comma-decimal keyboards ("12,5") must not become 125; cap at 1,000,000.
+  const amount = parseAmountLoose(payload.amount);
+  if (amount === null) return json({ error: 'bad-amount' }, 400);
 
   const type = payload.type === 'income' ? 'income' : 'expense';
   const category = typeof payload.category === 'string' ? payload.category : null;
@@ -99,12 +138,32 @@ Deno.serve(async (req: Request) => {
           headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
           body: JSON.stringify(messages),
         });
-        // Expo returns per-message tickets; errors like DeviceNotRegistered or
-        // InvalidCredentials only show up here — log them or they're invisible.
-        console.log('[quick-log] expo push', res.status, await res.text());
+        // Expo returns per-message tickets (same order as messages). Log them,
+        // and PRUNE dead tokens: repeatedly pushing to DeviceNotRegistered
+        // recipients violates Expo policy and bloats every future fanout.
+        const ticketBody = await res.json().catch(() => null) as
+          { data?: Array<{ status: string; details?: { error?: string } }> } | null;
+        console.log('[quick-log] expo push', res.status, JSON.stringify(ticketBody));
+        const tickets = ticketBody?.data;
+        if (Array.isArray(tickets)) {
+          for (let i = 0; i < tickets.length; i++) {
+            if (tickets[i]?.details?.error === 'DeviceNotRegistered' && tokens[i]) {
+              await admin.from('device_tokens').delete()
+                .eq('user_id', userId).eq('token', tokens[i].token);
+              console.log('[quick-log] pruned dead device token');
+            }
+          }
+        }
       }
       await admin.from('quick_log_keys')
         .update({ last_used_at: new Date().toISOString() }).eq('key_hash', key_hash);
+      // Grace-period key rotation: regenerating in the app no longer revokes
+      // the old key immediately — the first successful USE of the new key
+      // retires the user's other keys here, so an installed Shortcut keeps
+      // working until the new key is genuinely in place.
+      await admin.from('quick_log_keys')
+        .update({ revoked: true })
+        .eq('user_id', userId).eq('revoked', false).neq('key_hash', key_hash);
     } catch (e) {
       console.log('[quick-log] push send failed:', String(e));
     }
