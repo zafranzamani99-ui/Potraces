@@ -137,8 +137,13 @@ export default function QuickLogSetup() {
       setShownKey(key);
       setHasKey(true);
       setCopied(false);
-    } catch {
-      showToast(t.settings.quickLog.signInFirst, 'error');
+    } catch (e: any) {
+      // 'not-signed-in' is the only expected failure that means "go sign in";
+      // anything else (network, RLS) is a real error, not a sign-in nudge.
+      showToast(
+        e?.message === 'not-signed-in' ? t.settings.quickLog.signInFirst : t.settings.quickLog.genFailed,
+        'error',
+      );
     } finally { setBusy(false); }
   };
 

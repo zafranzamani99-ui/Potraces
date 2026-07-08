@@ -19,14 +19,17 @@ NOTE: `shortcuts sign` routes on the INPUT FILE EXTENSION — it must be
 format" no matter the contents.
 
 Shortcut behaviour (all native Shortcuts actions, no third-party deps):
-  1. Get File "potraces-key.txt" (Shortcuts iCloud folder, no picker, no error).
-  2. If it has no value (first run): Get Clipboard -> Ask for Input "Your
-     Potraces key" with the clipboard PRE-FILLED as the default answer (user
-     tapped "Copy key" in the app, so they just tap Done) -> Save File ->
-     Set Variable PotracesKey. Otherwise: Set Variable PotracesKey = file.
-  3. Ask amount (number) -> choose category -> choose payment -> ask note.
-  4. POST JSON {key, amount, category, wallet, note} to the quick-log function.
-  5. Show a notification: "RM<amt> · <category>" + the server response.
+  1. Get File "potraces-key.txt". If no value (first run): Get Clipboard ->
+     Ask (clipboard PRE-FILLED, user just taps Done) -> variable only.
+     Otherwise: variable = file. The key is persisted ONLY after the server
+     accepts it (success branch), so clipboard garbage never gets stored.
+  2. Ask amount (number) -> choose category -> choose payment -> ask note.
+  3. POST JSON {key, amount, category, wallet, note} to the quick-log function.
+     Offline: this aborts the shortcut (visible iOS error) — no silent loss,
+     no duplicate risk. Offline retry is deferred (needs server idempotency).
+  4. If the response has no "ok": warn + self-heal a revoked key (delete the
+     saved key file so the next run re-asks). Otherwise SILENT — the Potraces
+     push is the confirmation — and save the now-validated key.
 
 Category labels carry emoji for looks; the server's resolveCategory() strips
 non-alphanumerics, so "🍔 Food & Dining" still matches the food category.
@@ -71,7 +74,8 @@ U_NOTE = new_uuid()
 U_RESP = new_uuid()
 U_OK = new_uuid()
 G_FIRSTRUN = new_uuid()  # GroupingIdentifier: first-run key bootstrap If/Otherwise
-G_RESULT = new_uuid()    # GroupingIdentifier: success/failure notification If/Otherwise
+G_RESULT = new_uuid()    # GroupingIdentifier: success/failure If/Otherwise
+G_HEAL = new_uuid()      # GroupingIdentifier: guarded stale-key delete (file may not exist)
 
 VAR_KEY = "PotracesKey"
 
@@ -157,18 +161,13 @@ actions = [
     #    Get Clipboard (the user just tapped "Copy key" in Potraces)…
     action("is.workflow.actions.getclipboard", {"UUID": U_CLIP}),
     #    …ask for the key with the clipboard pre-filled — user just taps Done.
+    #    NOT saved yet: only a key the server has ACCEPTED gets persisted (the
+    #    success branch below), so clipboard garbage can never wedge itself in.
     action("is.workflow.actions.ask", {
         "UUID": U_ASKKEY,
         "WFAskActionPrompt": "Your Potraces Quick Log key (tap Copy key in Potraces → Settings → Quick Log first)",
         "WFInputType": "Text",
         "WFAskActionDefaultAnswer": token_string([out_ref(U_CLIP, "Clipboard")]),
-    }),
-    #    Persist it for every future run.
-    action("is.workflow.actions.documentpicker.save", {
-        "WFInput": token_attachment(out_ref(U_ASKKEY, "Provided Input")),
-        "WFAskWhereToSave": False,
-        "WFFileDestinationPath": KEY_FILE,
-        "WFSaveFileOverwrite": True,
     }),
     action("is.workflow.actions.setvariable", {
         "WFVariableName": VAR_KEY,
@@ -213,7 +212,11 @@ actions = [
         "WFAskActionDefaultAnswer": token_string([""]),
     }),
 
-    # ── Send + confirm ───────────────────────────────────────────────────────
+    # ── Send ─────────────────────────────────────────────────────────────────
+    # No offline write-ahead: an offline back-tap aborts here and fails
+    # VISIBLY (iOS shows a Shortcuts error) — honest, and with zero risk of the
+    # duplicate-transaction hazard a naive retry would introduce. Offline retry
+    # is a future enhancement that needs server-side idempotency first.
     action("is.workflow.actions.downloadurl", {
         "UUID": U_RESP,
         "WFURL": ENDPOINT,
@@ -242,7 +245,7 @@ actions = [
         "WFDictionaryKey": "ok",
     }),
     conditional(G_RESULT, 0, {
-        "WFCondition": 101,  # ok has NO value → the log FAILED
+        "WFCondition": 101,  # ok has NO value → the log FAILED (server rejected)
         "WFInput": {
             "Type": "Variable",
             "Variable": token_attachment(out_ref(U_OK, "Dictionary Value")),
@@ -254,13 +257,34 @@ actions = [
             ". Copy a fresh key in Potraces → Settings → Quick Log, then run me again.",
         ]),
     }),
-    # Self-heal: forget the saved key so the next run re-asks (clipboard
-    # pre-filled). Runs AFTER the notification so a first-run failure (no file
-    # to delete) can't suppress the warning. Immediately delete = no
-    # Recently Deleted clutter.
+    # Self-heal a REVOKED key: forget the saved key so the next run re-asks
+    # (clipboard pre-filled). Guarded because on a first-run failure no key
+    # file exists (keys persist only on success). WFDeleteFileConfirmDeletion
+    # False = no "Delete this file?" dialog — the correct parameter (the old
+    # WFDeleteImmediatelyDelete was a no-op, so deletes were popping a confirm).
+    conditional(G_HEAL, 0, {
+        "WFCondition": 100,  # a saved key file exists
+        "WFInput": {
+            "Type": "Variable",
+            "Variable": token_attachment(out_ref(U_GETFILE, "File")),
+        },
+    }),
     action("is.workflow.actions.file.delete", {
         "WFInput": token_attachment(out_ref(U_GETFILE, "File")),
-        "WFDeleteImmediatelyDelete": True,
+        "WFDeleteFileConfirmDeletion": False,
+    }),
+    conditional(G_HEAL, 2),
+    # Otherwise → SUCCESS: persist the now-VALIDATED key. Saving here (not at
+    # ask-time) means clipboard garbage can never wedge itself in as the key.
+    conditional(G_RESULT, 1),
+    action("is.workflow.actions.documentpicker.save", {
+        "WFInput": {
+            "WFSerializationType": "WFTextTokenAttachment",
+            "Value": var_ref(VAR_KEY),
+        },
+        "WFAskWhereToSave": False,
+        "WFFileDestinationPath": KEY_FILE,
+        "WFSaveFileOverwrite": True,
     }),
     conditional(G_RESULT, 2),
 ]

@@ -7,23 +7,25 @@ key), and the app materializes the entry on next open.
 
 ## User setup (what the in-app Quick Log screen walks through)
 
-In Potraces: Settings → Money → **Quick Log (Back Tap)**. (Requires Cloud
-Backup — the screen gates on it.) Every step names the app + exact button:
+In Potraces: Settings → Money → **Quick Log (Back Tap)** (iPhone only — no
+Back Tap on iPad/Android; requires Cloud Backup, the screen gates on it and
+returns the user here after sign-in). Steps as shown in-app:
 
 1. Tap **Generate my key**, then **Copy key**.
-2. Tap **Get the Shortcut** — Safari opens and downloads the file.
-3. In Safari, tap **↓** (top-right) → tap **Potraces Quick Log** → tap
-   **Add Shortcut**.
-4. Open the **Shortcuts** app, tap the **Potraces Quick Log** card. The copied
-   key is **pre-filled** (read from the clipboard) — tap Done and log a test
-   expense. The key is saved to iCloud Drive/Shortcuts as `potraces-key.txt`
-   and never asked again.
-5. iPhone **Settings** → Accessibility → Touch → **Back Tap** → **Double Tap**
+2. Tap **Get the Shortcut** (`https://jejakbaki.my/shortcut`) — Safari
+   downloads it; tap **↓** → the file → **Add Shortcut**.
+3. **Run it once — now**, while the key is still on the clipboard: open the
+   **Shortcuts** app, tap the card; the key is pre-filled → Done → log a test
+   expense. The key is persisted (as `potraces-key.txt` in iCloud
+   Drive/Shortcuts) **only after the server accepts it** — clipboard garbage
+   can never wedge itself in.
+4. iPhone **Settings** → Accessibility → Touch → **Back Tap** → **Double Tap**
    → choose **Potraces Quick Log**.
 
-Regenerating the key later: the installed Shortcut fails once (the failure
-auto-deletes the stale saved key), then asks for the new key on the next run —
-copy the new key first.
+Key rotation is grace-period: **Regenerate** in the app does NOT kill the old
+key immediately — the first successful use of the NEW key retires the others
+(server-side). Explicit **Turn off Quick Log**, turning off Cloud Backup, and
+signing out all revoke keys immediately (prevents false "Logged" pushes).
 
 Offline note: if the POST fails there's no retry in v1 — the entry is not
 logged (the notification shows the error instead of `"ok":true`).
@@ -71,22 +73,32 @@ Gotchas learned the hard way:
 
 ## What the Shortcut does (actions, in order)
 
-1. **Get File** `potraces-key.txt` (Shortcuts folder, no picker, no error).
-2. **If** it has no value (first run): **Get Clipboard** → **Ask for Input**
-   "Your Potraces Quick Log key" with the clipboard pre-filled → **Save File**
-   → set variable `PotracesKey`. **Otherwise** `PotracesKey` = file contents.
-3. **Ask for Input** (Number) — "Amount (RM)".
-4. **List** → **Choose from List** — Category (labels carry emoji; the server's
-   `resolveCategory` strips non-alphanumerics, so `🍔 Food & Dining` → `food`).
-5. **List** → **Choose from List** — Payment (`💵 Cash`, `🏦 Maybank`, …;
-   `resolveWallet` fuzzy-matches by name, falls back to the default wallet).
-6. **Ask for Input** (Text) — note, optional.
-7. **Get Contents of URL** — POST JSON `{key, amount, category, wallet, note}`
-   to `https://iydqeeonaljqapulboaz.supabase.co/functions/v1/quick-log`.
-8. **Show Notification** — `RM<amount> · <category>` + the server response.
+1. **Key bootstrap**: Get File `potraces-key.txt`; if missing → Get Clipboard →
+   Ask (pre-filled) → variable only. The key file is written ONLY in the
+   success branch (validated keys only — clipboard garbage can't wedge in).
+2. Collect: **Amount** (number) → **Category** (list w/ emoji labels; server's
+   `resolveCategory` strips non-alphanumerics) → **Payment** (list;
+   `resolveWallet` alias/type-matches) → **Note** (optional).
+3. **Get Contents of URL** — POST JSON to
+   `https://iydqeeonaljqapulboaz.supabase.co/functions/v1/quick-log`. Offline:
+   this aborts the shortcut with a visible iOS error — honest, no silent loss,
+   no duplicate risk.
+4. **If `ok` missing** (server rejected): ⚠️ notification + self-heal a revoked
+   key (delete the saved key file so the next run re-asks). **Otherwise**
+   (success): SILENT — the Potraces push is the confirmation (tap →
+   TransactionsList); save the now-validated key.
 
 First run also shows a one-time iOS prompt to allow connecting to
 `*.supabase.co` — tap **Always Allow**.
+
+> **Offline retry** is intentionally NOT implemented: a naive write-ahead +
+> replay can duplicate a transaction when the POST commits but the response is
+> lost. A future version needs a client dedupe key + a server unique index
+> before offline entries can be safely retried.
+
+> **Delete-confirmation gotcha:** `is.workflow.actions.file.delete` takes
+> `WFDeleteFileConfirmDeletion` (default TRUE → pops a confirm dialog);
+> `WFDeleteImmediatelyDelete` is a no-op. Set the former to `False`.
 
 ## Roadmap (v2): native App Intent
 

@@ -8,13 +8,5 @@
     <array>
       <string>Default</string>
     </array>
-    <!-- Universal links (shop links, referrals). app.json declares these too,
-         but ios/ is committed (bare workflow), so THIS file is what builds
-         actually use - app.json's copy is ignored. -->
-    <key>com.apple.developer.associated-domains</key>
-    <array>
-      <string>applinks:jejakbaki.my</string>
-      <string>applinks:www.jejakbaki.my</string>
-    </array>
   </dict>
 </plist>
