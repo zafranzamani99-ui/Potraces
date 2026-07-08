@@ -60,6 +60,14 @@ export async function drainQuickLogInbox(): Promise<number> {
  * table in the supabase_realtime publication (20260708010000 migration); RLS
  * limits events to the owner's rows. Returns an unsubscribe function.
  */
+// Last realtime channel status — surfaced on the Quick Log screen so delivery
+// problems are observable on-device instead of guessed at.
+// 'idle' → not attached (no session yet) | SUBSCRIBED | CHANNEL_ERROR | TIMED_OUT | CLOSED
+let realtimeStatus = 'idle';
+export function getQuickLogRealtimeStatus(): string {
+  return realtimeStatus;
+}
+
 export function subscribeQuickLogInbox(onInsert: () => void): () => void {
   let channel: RealtimeChannel | null = null;
   let cancelled = false;
@@ -73,12 +81,16 @@ export function subscribeQuickLogInbox(onInsert: () => void): () => void {
         { event: 'INSERT', schema: 'public', table: 'quick_log_inbox', filter: `user_id=eq.${userId}` },
         () => onInsert(),
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        realtimeStatus = err ? `${status}: ${err.message}` : status;
+        if (__DEV__) console.log('[quick-log] realtime:', realtimeStatus);
+      });
   };
   const detach = () => {
     if (channel) {
       supabase.removeChannel(channel);
       channel = null;
+      realtimeStatus = 'idle';
     }
   };
 

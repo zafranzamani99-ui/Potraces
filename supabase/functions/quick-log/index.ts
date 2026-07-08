@@ -74,10 +74,12 @@ Deno.serve(async (req: Request) => {
   await admin.from('quick_log_keys')
     .update({ last_used_at: new Date().toISOString() }).eq('key_hash', key_hash);
 
-  // Best-effort push (never fails the log).
+  // Best-effort push (never fails the log). Outcomes are LOGGED (dashboard →
+  // Edge Functions → quick-log → Logs) so silent delivery failures are visible.
   try {
     const { data: tokens } = await admin.from('device_tokens')
       .select('token').eq('user_id', userId);
+    console.log(`[quick-log] push: ${tokens?.length ?? 0} device token(s) for user`);
     if (tokens && tokens.length) {
       const label = category ? (CATEGORY_LABELS[category] ?? category) : 'your wallet';
       const verb = type === 'income' ? 'in' : 'out';
@@ -90,13 +92,18 @@ Deno.serve(async (req: Request) => {
         channelId: 'orders',
         data: { type: 'quick_log' },
       }));
-      await fetch(EXPO_PUSH_URL, {
+      const res = await fetch(EXPO_PUSH_URL, {
         method: 'POST',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify(messages),
       });
+      // Expo returns per-message tickets; errors like DeviceNotRegistered or
+      // InvalidCredentials only show up here — log them or they're invisible.
+      console.log('[quick-log] expo push', res.status, await res.text());
     }
-  } catch { /* ignore push errors */ }
+  } catch (e) {
+    console.log('[quick-log] push send failed:', String(e));
+  }
 
   return json({ ok: true });
 });

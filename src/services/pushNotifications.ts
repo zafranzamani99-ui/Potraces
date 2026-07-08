@@ -192,3 +192,33 @@ export async function registerPersonalDeviceToken(
     if (__DEV__) console.warn('[push] Failed to save personal token:', e);
   }
 }
+
+/**
+ * Diagnostic: is THIS device's push token actually registered for the personal
+ * user? Compares the device's current Expo token against the user's
+ * device_tokens rows (owner RLS allows the read). Surfaced on QuickLogSetup so
+ * "no notification" can be diagnosed on-device instead of guessed at.
+ */
+export async function getPersonalPushStatus(): Promise<
+  { state: 'no-session' | 'no-permission' | 'no-token' | 'not-registered' | 'registered'; tokenTail?: string }
+> {
+  const { data: { session } } = await supabasePersonal.auth.getSession();
+  const userId = session?.user?.id;
+  if (!userId) return { state: 'no-session' };
+  const perm = await Notifications.getPermissionsAsync();
+  if (perm.status !== 'granted') return { state: 'no-permission' };
+  let token: string;
+  try {
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+  } catch {
+    return { state: 'no-token' }; // APNs/Expo token fetch failed on this device
+  }
+  const tokenTail = token.slice(-8);
+  const { count } = await supabasePersonal
+    .from('device_tokens')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('token', token);
+  return { state: (count ?? 0) > 0 ? 'registered' : 'not-registered', tokenTail };
+}

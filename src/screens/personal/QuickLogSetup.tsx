@@ -15,7 +15,8 @@ import { successNotification } from '../../services/haptics';
 import {
   registerQuickLogKey, getQuickLogKeyStatus, revokeQuickLogKey,
 } from '../../services/quickLogKey';
-import { registerPersonalDeviceToken } from '../../services/pushNotifications';
+import { registerPersonalDeviceToken, getPersonalPushStatus } from '../../services/pushNotifications';
+import { getQuickLogRealtimeStatus } from '../../services/quickLogInbox';
 
 // Signed shortcut built by scripts/build-quick-log-shortcut.py and hosted on
 // the public `web` bucket — re-run that pipeline to update it in place.
@@ -42,11 +43,20 @@ export default function QuickLogSetup() {
   const [notifGranted, setNotifGranted] = useState<boolean | null>(null);
   const [notifCanAsk, setNotifCanAsk] = useState(true);
 
+  // Diagnostics — observable truth beats guessing (push registration state of
+  // THIS device + live realtime channel status).
+  const [pushState, setPushState] = useState<string>('…');
+  const [liveState, setLiveState] = useState<string>(getQuickLogRealtimeStatus());
+
   const refreshNotifStatus = useCallback(async () => {
     const p = await Notifications.getPermissionsAsync();
     setNotifGranted(p.status === 'granted');
     setNotifCanAsk(p.canAskAgain !== false);
-    if (p.status === 'granted') registerPersonalDeviceToken().catch(() => {});
+    if (p.status === 'granted') {
+      await registerPersonalDeviceToken().catch(() => {});
+    }
+    const s = await getPersonalPushStatus().catch(() => ({ state: 'no-token' as const }));
+    setPushState(s.state);
   }, []);
 
   useEffect(() => {
@@ -58,11 +68,39 @@ export default function QuickLogSetup() {
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active' && cloudOn) refreshNotifStatus();
     });
+    // Realtime channel status, polled while the screen is open.
+    const liveTimer = setInterval(() => setLiveState(getQuickLogRealtimeStatus()), 2000);
     return () => {
       sub.remove();
+      clearInterval(liveTimer);
       if (copiedTimer.current) clearTimeout(copiedTimer.current);
     };
   }, [cloudOn, refreshNotifStatus]);
+
+  const onTestNotification = async () => {
+    // Local notification with the quick_log payload: proves banner rendering
+    // AND the tap→TransactionsList path without needing the server.
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Potraces',
+        body: t.settings.quickLog.diagTestBody,
+        data: { type: 'quick_log' },
+        sound: 'default',
+      },
+      trigger: { seconds: 2 } as any,
+    }).catch(() => {});
+  };
+
+  const pushStateLabel = (s: string) => {
+    switch (s) {
+      case 'registered': return t.settings.quickLog.diagRegistered;
+      case 'not-registered': return t.settings.quickLog.diagNotRegistered;
+      case 'no-permission': return t.settings.quickLog.diagNoPermission;
+      case 'no-session': return t.settings.quickLog.diagNoSession;
+      case 'no-token': return t.settings.quickLog.diagNoToken;
+      default: return s;
+    }
+  };
 
   const onEnableNotifications = async () => {
     if (notifCanAsk) {
@@ -235,6 +273,30 @@ export default function QuickLogSetup() {
               {t.settings.quickLog.regenNote}
             </Text>
 
+            {/* Diagnostics — on-device truth for push + live-update delivery */}
+            <View style={[styles.stepCard, neu.raisedSoft, { backgroundColor: C.surface }]}>
+              <Text style={[styles.stepTitle, { color: C.textPrimary }]}>
+                {t.settings.quickLog.diagTitle}
+              </Text>
+              <View style={styles.diagRow}>
+                <Text style={[styles.stepBody, { color: C.textSecondary }]}>{t.settings.quickLog.diagPush}</Text>
+                <Text style={[styles.diagValue, { color: pushState === 'registered' ? C.positive : C.overdue }]}>
+                  {pushStateLabel(pushState)}
+                </Text>
+              </View>
+              <View style={styles.diagRow}>
+                <Text style={[styles.stepBody, { color: C.textSecondary }]}>{t.settings.quickLog.diagLive}</Text>
+                <Text style={[styles.diagValue, { color: liveState === 'SUBSCRIBED' ? C.positive : C.overdue }]}>
+                  {liveState === 'SUBSCRIBED' ? t.settings.quickLog.diagLiveOk : liveState}
+                </Text>
+              </View>
+              <NeuButton
+                label={t.settings.quickLog.diagTest}
+                icon="bell"
+                onPress={onTestNotification}
+              />
+            </View>
+
             {hasKey && (
               <Pressable style={styles.revoke} onPress={onRevoke}>
                 <Text style={{ color: C.overdue }}>{t.settings.quickLog.revoke}</Text>
@@ -262,6 +324,8 @@ const styles = StyleSheet.create({
   keyBox: { borderRadius: RADIUS.md, padding: SPACING.md, gap: SPACING.sm, marginTop: SPACING.xs },
   key: { fontSize: 17, fontWeight: '700', letterSpacing: 1 },
   caption: { fontSize: 13, fontStyle: 'italic' },
+  diagRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  diagValue: { fontSize: 14, fontWeight: '600' },
   afterSetup: { fontSize: 15, lineHeight: 22, fontWeight: '600', marginTop: SPACING.sm },
   revoke: { alignItems: 'center', paddingVertical: 12 },
 });
