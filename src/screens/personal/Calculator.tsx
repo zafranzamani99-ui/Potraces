@@ -8,25 +8,39 @@ import QuickSplitSheet from '../../components/split/QuickSplitSheet';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
-import { formatAmount } from '../../utils/formatters';
 import { useCalculatorStore } from '../../store/calculatorStore';
 import {
-  initialCalc, inputDigit, inputDot, setOp, equals, percent, toggleSign,
-  backspace, clearAll, result, didCompute, formatCalc, CalcState, CalcOp,
+  initialCalc, inputDigit, inputDoubleZero, inputDot, inputOp, inputBracket,
+  inputPercent, backspace, clearAll, equals, evaluate, liveResult, result,
+  isError, hasOperation, formatNumber, formatExpressionString,
+  displaySegments, CalcState, CalcOp,
 } from '../../utils/calculatorEngine';
 import type { CALM } from '../../constants';
 
 type Key =
-  | { t: 'digit'; v: string } | { t: 'dot' } | { t: 'op'; v: CalcOp }
-  | { t: 'eq' } | { t: 'ac' } | { t: 'back' } | { t: 'pct' } | { t: 'sign' };
+  | { t: 'digit'; v: string } | { t: 'dd' } | { t: 'dot' } | { t: 'op'; v: CalcOp }
+  | { t: 'eq' } | { t: 'clear' } | { t: 'bracket' } | { t: 'pct' };
 
 const KEYS: Key[][] = [
-  [{ t: 'ac' }, { t: 'sign' }, { t: 'pct' }, { t: 'op', v: '÷' }],
+  [{ t: 'clear' }, { t: 'bracket' }, { t: 'pct' }, { t: 'op', v: '÷' }],
   [{ t: 'digit', v: '7' }, { t: 'digit', v: '8' }, { t: 'digit', v: '9' }, { t: 'op', v: '×' }],
   [{ t: 'digit', v: '4' }, { t: 'digit', v: '5' }, { t: 'digit', v: '6' }, { t: 'op', v: '-' }],
   [{ t: 'digit', v: '1' }, { t: 'digit', v: '2' }, { t: 'digit', v: '3' }, { t: 'op', v: '+' }],
-  [{ t: 'digit', v: '0' }, { t: 'dot' }, { t: 'back' }, { t: 'eq' }],
+  [{ t: 'digit', v: '0' }, { t: 'dd' }, { t: 'dot' }, { t: 'eq' }],
 ];
+
+const keyLabel = (k: Key): string => {
+  switch (k.t) {
+    case 'digit': return k.v;
+    case 'dd': return '00';
+    case 'dot': return '.';
+    case 'op': return k.v === '-' ? '−' : k.v;
+    case 'eq': return '=';
+    case 'clear': return 'C';
+    case 'bracket': return '( )';
+    case 'pct': return '%';
+  }
+};
 
 const Calculator: React.FC = () => {
   const C = useCalm();
@@ -43,60 +57,82 @@ const Calculator: React.FC = () => {
   const [showQuick, setShowQuick] = useState(false);
 
   const value = result(state);
-  const canSplit = !state.error && value > 0;
+  const canSplit = !isError(state) && value > 0;
+
+  const err = isError(state);
+  const segments = displaySegments(state.expr);
+  const live = liveResult(state);
+  const showPreview = !err && hasOperation(state.expr) && live != null && isFinite(live);
 
   const press = (k: Key) => {
     lightTap();
-    // Equals is handled outside the functional updater: it has a side effect
-    // (addEntry) and must not run inside setState (StrictMode double-invokes
-    // updaters, which would log history twice). Reading `state` from the closure
-    // is safe here — key presses are discrete committed events.
+    // Equals runs outside the functional updater: it has a side effect (addEntry)
+    // and must not run inside setState (StrictMode double-invokes updaters).
     if (k.t === 'eq') {
-      const next = equals(state);
-      if (didCompute(state) && !next.error) addEntry(next.expression, result(next));
-      setState(next);
+      const before = state;
+      const r = evaluate(before.expr);
+      if (hasOperation(before.expr) && r != null && isFinite(r)) {
+        addEntry(formatExpressionString(before.expr), r);
+      }
+      setState(equals(before));
       return;
     }
     setState((s) => {
       switch (k.t) {
         case 'digit': return inputDigit(s, k.v);
+        case 'dd': return inputDoubleZero(s);
         case 'dot': return inputDot(s);
-        case 'op': return setOp(s, k.v);
-        case 'pct': return percent(s);
-        case 'sign': return toggleSign(s);
-        case 'back': return backspace(s);
-        case 'ac': return clearAll();
+        case 'op': return inputOp(s, k.v);
+        case 'bracket': return inputBracket(s);
+        case 'pct': return inputPercent(s);
+        case 'clear': return clearAll();
         default: return s;
       }
     });
   };
 
-  const label = (k: Key): string => {
-    switch (k.t) {
-      case 'digit': return k.v;
-      case 'dot': return '.';
-      case 'op': return k.v;
-      case 'eq': return '=';
-      case 'ac': return 'AC';
-      case 'pct': return '%';
-      case 'sign': return '±';
-      case 'back': return '⌫';
-    }
-  };
-
-  const isAccent = (k: Key) => k.t === 'op' || k.t === 'eq';
+  const segColor = (kind: string) =>
+    kind === 'op' ? C.accent : kind === 'paren' ? C.accent : kind === 'pct' ? C.textSecondary : C.textPrimary;
+  const keyIsAccent = (k: Key) => k.t === 'op' || k.t === 'bracket' || k.t === 'pct' || k.t === 'clear';
 
   return (
     <View style={styles.root}>
-      {/* Display */}
-      <View style={styles.displayWrap}>
+      {/* Display card */}
+      <View style={styles.card}>
         <Pressable style={styles.historyBtn} onPress={() => { lightTap(); setShowHistory(true); }} accessibilityLabel={t.calc.history}>
           <Ionicons name="time-outline" size={22} color={C.textMuted} />
         </Pressable>
-        <Text style={styles.expression} numberOfLines={1}>{state.expression}</Text>
-        <Text style={styles.display} numberOfLines={1} adjustsFontSizeToFit accessibilityRole="text">
-          {state.display}
-        </Text>
+
+        <View style={styles.displayArea}>
+          <Text style={[styles.expr, showPreview ? null : styles.exprBig]} numberOfLines={2} adjustsFontSizeToFit accessibilityRole="text">
+            {err ? (
+              <Text style={{ color: C.textPrimary }}>Error</Text>
+            ) : segments.length === 0 ? (
+              <Text style={{ color: C.textMuted }}>0</Text>
+            ) : (
+              segments.map((seg, i) => (
+                <Text key={i} style={{ color: segColor(seg.kind) }}>
+                  {seg.kind === 'op' ? ` ${seg.text} ` : seg.text}
+                </Text>
+              ))
+            )}
+          </Text>
+          {showPreview && (
+            <Text style={styles.preview} numberOfLines={1} adjustsFontSizeToFit>{formatNumber(live!)}</Text>
+          )}
+        </View>
+
+        {/* Backspace utility row */}
+        <View style={styles.utilRow}>
+          <Pressable
+            style={styles.backBtn}
+            onPress={() => { lightTap(); setState((s) => backspace(s)); }}
+            accessibilityLabel="backspace"
+            hitSlop={8}
+          >
+            <Ionicons name="backspace-outline" size={24} color={C.accent} />
+          </Pressable>
+        </View>
       </View>
 
       {/* Keypad */}
@@ -104,10 +140,16 @@ const Calculator: React.FC = () => {
         {KEYS.map((row, i) => (
           <View key={i} style={styles.padRow}>
             {row.map((k, j) => (
-              <Pressable key={j} onPress={() => press(k)} style={styles.keyWrap} accessibilityLabel={label(k)}>
-                <NeuSurface style={styles.key}>
-                  <Text style={[styles.keyText, isAccent(k) && { color: C.accent }]}>{label(k)}</Text>
-                </NeuSurface>
+              <Pressable key={j} onPress={() => press(k)} style={styles.keyWrap} accessibilityLabel={keyLabel(k)}>
+                {k.t === 'eq' ? (
+                  <View style={styles.eqKey}>
+                    <Text style={styles.eqText}>=</Text>
+                  </View>
+                ) : (
+                  <NeuSurface style={styles.key}>
+                    <Text style={[styles.keyText, keyIsAccent(k) && { color: C.accent }]}>{keyLabel(k)}</Text>
+                  </NeuSurface>
+                )}
               </Pressable>
             ))}
           </View>
@@ -135,10 +177,10 @@ const Calculator: React.FC = () => {
               <Pressable
                 key={h.id}
                 style={styles.historyRow}
-                onPress={() => { lightTap(); setState({ ...initialCalc, display: formatCalc(h.result), overwrite: true }); setShowHistory(false); }}
+                onPress={() => { lightTap(); setState({ expr: String(h.result), justEvaluated: true }); setShowHistory(false); }}
               >
                 <Text style={styles.historyExpr} numberOfLines={1}>{h.expression}</Text>
-                <Text style={styles.historyResult}>{formatAmount(h.result)}</Text>
+                <Text style={styles.historyResult}>{formatNumber(h.result)}</Text>
               </Pressable>
             ))
           )}
@@ -153,19 +195,13 @@ const Calculator: React.FC = () => {
       {/* Split chooser */}
       <BottomSheet visible={showChooser} onClose={() => setShowChooser(false)} header={<Text style={styles.sheetTitle}>{t.calc.useInSplit}</Text>}>
         <View style={styles.chooserBody}>
-          <Pressable
-            style={styles.chooserBtn}
-            onPress={() => { lightTap(); setShowChooser(false); setShowQuick(true); }}
-          >
+          <Pressable style={styles.chooserBtn} onPress={() => { lightTap(); setShowChooser(false); setShowQuick(true); }}>
             <Ionicons name="flash-outline" size={20} color={C.accent} />
             <Text style={styles.chooserText}>{t.calc.quickSplit}</Text>
           </Pressable>
           <Pressable
             style={styles.chooserBtn}
-            onPress={() => {
-              lightTap(); setShowChooser(false);
-              navigation.navigate('DebtTracking', { prefillSplitAmount: value });
-            }}
+            onPress={() => { lightTap(); setShowChooser(false); navigation.navigate('DebtTracking', { prefillSplitAmount: value }); }}
           >
             <Ionicons name="list-outline" size={20} color={C.textSecondary} />
             <Text style={styles.chooserText}>{t.calc.detailedSplit}</Text>
@@ -180,26 +216,36 @@ const Calculator: React.FC = () => {
 };
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.background, paddingHorizontal: 16, paddingBottom: 24 },
-  displayWrap: { flex: 1, justifyContent: 'flex-end', paddingVertical: 24 },
-  historyBtn: { position: 'absolute', top: 12, right: 4, padding: 8 },
-  expression: { fontSize: 16, color: C.textMuted, textAlign: 'right', fontVariant: ['tabular-nums'] },
-  display: { fontSize: 56, fontWeight: '200', color: C.textPrimary, textAlign: 'right', fontVariant: ['tabular-nums'], letterSpacing: -1.5 },
-  pad: { gap: 10 },
-  padRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
-  keyWrap: { flex: 1, aspectRatio: 1.15 },
+  root: { flex: 1, backgroundColor: C.background, paddingHorizontal: 14, paddingBottom: 20 },
+  card: {
+    flex: 1, backgroundColor: C.surface, borderRadius: 24, marginTop: 8, marginBottom: 14,
+    paddingHorizontal: 20, paddingTop: 44, paddingBottom: 12, justifyContent: 'flex-end',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+  },
+  historyBtn: { position: 'absolute', top: 12, right: 12, padding: 6 },
+  displayArea: { flex: 1, justifyContent: 'flex-end' },
+  expr: { fontSize: 34, fontWeight: '400', color: C.textPrimary, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  exprBig: { fontSize: 52, fontWeight: '300', letterSpacing: -1 },
+  preview: { fontSize: 26, fontWeight: '300', color: C.textMuted, textAlign: 'right', marginTop: 8, fontVariant: ['tabular-nums'] },
+  utilRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 },
+  backBtn: { padding: 8 },
+  pad: { gap: 9 },
+  padRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 9 },
+  keyWrap: { flex: 1, aspectRatio: 1.25 },
   key: { flex: 1, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   keyText: { fontSize: 24, fontWeight: '400', color: C.textPrimary, fontVariant: ['tabular-nums'] },
+  eqKey: { flex: 1, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: C.accent },
+  eqText: { fontSize: 26, fontWeight: '600', color: C.onAccent },
   splitBtn: {
-    marginTop: 16, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: C.accent, borderRadius: 16, paddingVertical: 15,
+    marginTop: 14, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.accent, borderRadius: 16, paddingVertical: 14,
   },
   splitBtnDisabled: { opacity: 0.4 },
   splitText: { color: C.onAccent, fontWeight: '700', fontSize: 15 },
   sheetTitle: { fontSize: 18, fontWeight: '600', color: C.textPrimary, paddingHorizontal: 20, paddingTop: 8 },
   historyBody: { padding: 16, gap: 4 },
   empty: { textAlign: 'center', color: C.textMuted, paddingVertical: 30 },
-  historyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  historyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 12 },
   historyExpr: { color: C.textSecondary, fontSize: 14, flex: 1, fontVariant: ['tabular-nums'] },
   historyResult: { color: C.textPrimary, fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] },
   clearBtn: { alignItems: 'center', paddingVertical: 16 },
