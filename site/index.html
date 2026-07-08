@@ -203,6 +203,12 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 .waitlist .btn{flex-shrink:0}
 .wl-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .waitlist .micro{font-size:.78rem;color:var(--text3);margin-top:10px;padding-left:4px}
+/* beta download buttons in the post-signup success state */
+.wl-dl-lbl{font-size:.85rem;font-weight:600;color:var(--olive);margin:16px 0 8px;padding-left:2px}
+.wl-dl-soon{font-size:.85rem;line-height:1.5;color:var(--text3);margin:14px 0 0;padding-left:2px}
+.wl-dl-row{display:flex;gap:10px;flex-wrap:wrap}
+.wl-dl-btn{display:inline-flex;align-items:center;gap:6px;background:var(--olive);color:#fff;text-decoration:none;font-weight:600;font-size:.95rem;padding:10px 18px;border-radius:var(--r-full);box-shadow:var(--shadow);transition:background .15s}
+.wl-dl-btn:hover{background:var(--olive-dark)}
 .wl-msg{font-size:.86rem;font-weight:600;margin-top:10px;padding-left:4px;color:var(--olive);min-height:1.2em}
 /* PDPA consent row */
 .wl-consent{display:flex;align-items:flex-start;gap:9px;margin-top:12px;padding-left:2px;font-size:.8rem;line-height:1.45;color:var(--text2);cursor:pointer}
@@ -1590,6 +1596,44 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     return data;
   }
 
+  // Beta signup via the edge function: it runs waitlist_signup (referral + dedup),
+  // sends the welcome email, and returns the download links. Falls back to the raw
+  // RPC if the function is unreachable, so a signup is never lost to an email hiccup.
+  async function betaSignup(body){
+    try{
+      var res = await fetch(SB_URL+'/functions/v1/beta-signup',{
+        method:'POST',
+        headers:{ 'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json' },
+        body: JSON.stringify(body||{})
+      });
+      var data=null; try{ data=await res.json(); }catch(e){}
+      if(!res.ok){ var m=(data&&data.message)||('http '+res.status); var err=new Error(m); err.payload=data; throw err; }
+      return data;
+    }catch(err){
+      var msg=(err&&err.payload&&err.payload.message)||(err&&err.message)||'';
+      // validation errors must surface to the UI; anything else = function down → fall back.
+      if(/consent_required|invalid_contact/.test(msg)) throw err;
+      return await rpc('waitlist_signup', body);
+    }
+  }
+
+  // on-screen beta download buttons (mirror of the welcome email); shows a calm
+  // "on the way" line until BETA_IOS_URL / BETA_ANDROID_URL secrets are set.
+  function downloadBlock(data){
+    var ios=(data&&data.ios)||'', and=(data&&data.android)||'';
+    if(!ios && !and){
+      var soonEn="Your download links are on the way — check your email in a day or two.";
+      var soonBm="Link download tengah siap — check email kau sekejap lagi ya.";
+      return '<p class="wl-dl-soon" data-en="'+escA(soonEn)+'" data-bm="'+escA(soonBm)+'">'+esc(ms()?soonBm:soonEn)+'</p>';
+    }
+    var lblEn="Get the app now:", lblBm="Dapatkan app sekarang:";
+    var html='<p class="wl-dl-lbl" data-en="'+escA(lblEn)+'" data-bm="'+escA(lblBm)+'">'+esc(ms()?lblBm:lblEn)+'</p><div class="wl-dl-row">';
+    if(ios) html+='<a class="wl-dl-btn" href="'+escA(ios)+'" target="_blank" rel="noopener">📱 iPhone</a>';
+    if(and) html+='<a class="wl-dl-btn" href="'+escA(and)+'" target="_blank" rel="noopener">🤖 Android</a>';
+    html+='</div>';
+    return html;
+  }
+
   // build the share row + WhatsApp button for a referral code
   function shareBlock(code){
     var link='https://jejakbaki.my/?ref='+encodeURIComponent(code);
@@ -1622,10 +1666,11 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     var tick='<span class="wl-tick" aria-hidden="true"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>';
     var posEn, posBm, html;
     if(already){
-      posEn = "You're already on the list — we'll email you once at launch.";
-      posBm = "Kau dah ada dalam senarai — nanti kami email sekali je bila dah live.";
+      posEn = "You're already on the list 👍";
+      posBm = "Kau dah ada dalam senarai 👍";
       html = '<div class="wl-success">'
         + '<div class="wl-pos">'+tick+'<span data-en="'+escA(posEn)+'" data-bm="'+escA(posBm)+'">'+esc(ms()?posBm:posEn)+'</span></div>'
+        + downloadBlock(data)
         + '</div>';
     } else {
       // both languages carry the same number, so a later language toggle keeps the position right
@@ -1633,6 +1678,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       posBm = "Kau #"+pos+" dalam senarai";
       html = '<div class="wl-success">'
         + '<div class="wl-pos">'+tick+'<span data-en="'+escA(posEn)+'" data-bm="'+escA(posBm)+'">'+esc(ms()?posBm:posEn)+'</span></div>'
+        + downloadBlock(data)
         + shareBlock(code)
         + '</div>';
     }
@@ -1690,7 +1736,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       if(btn) btn.disabled=true;
       msg.textContent = m ? 'Sat…' : 'One sec…'; msg.style.color='';
       try{
-        var data = await rpc('waitlist_signup', {
+        var data = await betaSignup({
           p_contact: v,
           p_kind: 'email',
           p_source: source,

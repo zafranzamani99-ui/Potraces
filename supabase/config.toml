@@ -398,6 +398,12 @@ verify_jwt = false
 [functions.quick-log]
 verify_jwt = false
 
+# Beta signup: wraps waitlist_signup (referral + dedup live in the RPC) and sends
+# a per-signup Resend welcome email. JWT-free — does no more than the anon RPC the
+# site already calls; the welcome email only fires for a genuine new email signup.
+[functions.beta-signup]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
