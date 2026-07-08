@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Linking } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, Linking, AppState } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import * as Notifications from 'expo-notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useT } from '../../i18n';
@@ -30,15 +31,43 @@ export default function QuickLogSetup() {
   const [hasKey, setHasKey] = useState(false);
   const [shownKey, setShownKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // OS notification permission (distinct from the in-app Notifications toggle
+  // in Settings → Preferences — no duplication: this reflects iOS itself).
+  const [notifGranted, setNotifGranted] = useState<boolean | null>(null);
+  const [notifCanAsk, setNotifCanAsk] = useState(true);
+
+  const refreshNotifStatus = useCallback(async () => {
+    const p = await Notifications.getPermissionsAsync();
+    setNotifGranted(p.status === 'granted');
+    setNotifCanAsk(p.canAskAgain !== false);
+    if (p.status === 'granted') registerPersonalDeviceToken().catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (cloudOn) {
       getQuickLogKeyStatus().then((s) => setHasKey(s.hasActiveKey));
-      // Contextual permission moment: the user is setting up a notification-
-      // driven feature, so this is where the push prompt has earned context.
-      registerPersonalDeviceToken({ promptIfNeeded: true }).catch(() => {});
+      refreshNotifStatus();
     }
-  }, [cloudOn]);
+    // Re-check when returning from iPhone Settings (app becomes active again).
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active' && cloudOn) refreshNotifStatus();
+    });
+    return () => sub.remove();
+  }, [cloudOn, refreshNotifStatus]);
+
+  const onEnableNotifications = async () => {
+    if (notifCanAsk) {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status === 'granted') {
+        setNotifGranted(true);
+        registerPersonalDeviceToken().catch(() => {});
+      } else {
+        setNotifCanAsk(false); // iOS won't re-prompt — route via Settings
+      }
+    } else {
+      Linking.openSettings().catch(() => {});
+    }
+  };
 
   const onGenerate = async () => {
     setBusy(true);
@@ -97,6 +126,29 @@ export default function QuickLogSetup() {
             <Text style={[styles.status, { color: C.textPrimary }]}>
               {hasKey ? t.settings.quickLog.active : t.settings.quickLog.inactive}
             </Text>
+
+            {/* Notification permission — needed for the tappable confirmation */}
+            {notifGranted === false && (
+              <View style={[styles.gateCard, { borderColor: C.border, backgroundColor: C.surface }]}>
+                <Text style={[styles.gateTitle, { color: C.textPrimary }]}>
+                  {t.settings.quickLog.notifTitle}
+                </Text>
+                <Text style={[styles.gateBody, { color: C.textSecondary }]}>
+                  {t.settings.quickLog.notifBody}
+                </Text>
+                <Pressable style={[styles.btn, { backgroundColor: C.accent }]} onPress={onEnableNotifications}>
+                  <Text style={styles.btnText}>
+                    {notifCanAsk ? t.settings.quickLog.notifEnable : t.settings.quickLog.notifOpenSettings}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+            {notifGranted === true && (
+              <Text style={[styles.caption, { color: C.textSecondary }]}>
+                {t.settings.quickLog.notifOn}
+              </Text>
+            )}
+
             <Text style={[styles.stepsTitle, { color: C.textPrimary }]}>
               {t.settings.quickLog.stepsTitle}
             </Text>

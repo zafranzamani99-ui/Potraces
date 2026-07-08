@@ -21,7 +21,7 @@ import { useSettingsStore, clearBusinessLocalData } from './src/store/settingsSt
 import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
-import { drainQuickLogInbox } from './src/services/quickLogInbox';
+import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
 import BiometricGate from './src/components/common/BiometricGate';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import ForcedUpdateGate from './src/components/common/ForcedUpdateGate';
@@ -413,9 +413,13 @@ function App() {
       const data = n.request.content.data as { type?: string } | undefined;
       if (data?.type === 'quick_log') run();
     });
+    // Primary live-update: realtime INSERT events on the inbox — works even
+    // when notifications are denied and no AppState transition fires.
+    const unsubRealtime = subscribeQuickLogInbox(run);
     return () => {
       sub.remove();
       recvSub.remove();
+      unsubRealtime();
       if (graceTimer) clearTimeout(graceTimer);
     };
   }, []);
