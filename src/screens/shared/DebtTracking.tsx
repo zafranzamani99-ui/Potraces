@@ -143,7 +143,7 @@ import SplitRow from '../../components/debt/SplitRow';
 type TabType = 'debts' | 'splits' | 'shared';
 
 type DebtTrackingParams = {
-  DebtTracking: { receiptData?: { vendor: string; total: number; items: { name: string; amount: number }[] }; highlightId?: string } | undefined;
+  DebtTracking: { receiptData?: { vendor: string; total: number; items: { name: string; amount: number }[] }; highlightId?: string; prefillSplitAmount?: number } | undefined;
 };
 
 
@@ -1045,6 +1045,17 @@ const DebtTracking: React.FC = () => {
       setSplitModalVisible(true);
     }
   }, [route.params?.receiptData]);
+
+  // ── Prefilled amount from Calculator (Detailed split hand-off) ────────────
+  useEffect(() => {
+    const amt = route.params?.prefillSplitAmount;
+    if (amt != null && amt > 0) {
+      setActiveTab('splits');
+      setSplitAmount(amt.toFixed(2));
+      setSplitMethod('equal');
+      setSplitModalVisible(true);
+    }
+  }, [route.params?.prefillSplitAmount]);
 
   // Auto-expand highlighted debt from navigation params
   useEffect(() => {
