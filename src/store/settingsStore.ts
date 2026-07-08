@@ -22,6 +22,8 @@ import { usePlaybookStore } from './playbookStore';
 import { useAIInsightsStore } from './aiInsightsStore';
 import { useReceiptStore } from './receiptStore';
 import { useSavingsStore } from './savingsStore';
+import { useBudgetProfileStore } from './budgetProfileStore';
+import { usePendingPaymentsStore } from './pendingPaymentsStore';
 import { clearBusinessDataRemote, clearPersonalDataRemote, signOut, supabaseBusiness } from '../services/supabase';
 import { isSharedAccount } from '../services/accountLink';
 import { purgeBackups, PERSONAL_BACKUP_KEYS } from '../services/storageBackup';
@@ -279,6 +281,18 @@ const wipePersonalStores = async ({ remote }: { remote: boolean }): Promise<void
     draft: null,
     _deletedReceiptIds: [],
   });
+  // Echo's budget profile (take-home, must-pays, chosen model) and the
+  // background Quick-Log inbox are personal too — clearing them makes the
+  // deletion complete, so Echo can't "remember" old money and no stale pending
+  // payment reconciles onto a fresh start.
+  useBudgetProfileStore.setState({
+    takeHome: null,
+    commitments: [],
+    modelId: null,
+  });
+  usePendingPaymentsStore.setState({
+    pending: [],
+  });
 
   // Purge local rolling backups of personal stores too — otherwise deleted
   // data survives in bak:* snapshots and the deletion right is incomplete.
@@ -316,6 +330,8 @@ const wipePersonalStores = async ({ remote }: { remote: boolean }): Promise<void
     'playbook-storage',
     'ai-insights-storage',
     'receipt-storage',
+    'budget-profile-storage',
+    'pending-payments-storage',
   ].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
 };
 
@@ -442,8 +458,10 @@ export const useSettingsStore = create<SettingsState>()(
         // Personal-only settings + a fresh-start reset so the app returns to the
         // first-run Onboarding screen — RootNavigator renders Onboarding
         // reactively while hasCompletedOnboarding is false, exactly like a fresh
-        // install. Business QRs, theme, language, currency, and the
-        // business-mode flag are all preserved.
+        // install. Device/app preferences (theme, language, currency, haptics,
+        // notifications) also return to defaults so the personal side is a true
+        // clean slate. Business QRs and the business-mode flag are PRESERVED — a
+        // business user who deletes personal data keeps their shop.
         set({
           paymentQrs: [],
           personalSyncEnabled: false,
@@ -454,6 +472,13 @@ export const useSettingsStore = create<SettingsState>()(
           gettingStartedDismissed: false,
           dismissedHints: [],
           sampleDataLoaded: false,
+          // Preferences → defaults (see initial state).
+          currency: 'RM',
+          themePreference: 'light',
+          language: 'en',
+          hapticEnabled: true,
+          notificationsEnabled: true,
+          echoDailyCheckin: false,
         });
         // Open in personal mode (the install default). Business data is untouched
         // and reappears the moment the user switches back to business mode.

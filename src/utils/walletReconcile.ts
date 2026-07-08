@@ -39,6 +39,13 @@ export function reconcileWalletBalances(): ReconcileResult[] {
 
   const results: ReconcileResult[] = [];
 
+  // Ids of the transactions replayed below. A debt payment / goal contribution that
+  // links to one of these is already counted (skip it). But a BUSINESS-mode payment
+  // links to a business transaction that reconcile does NOT replay — skipping it there
+  // would silently ERASE its wallet effect on the next sync. So skip only when the
+  // linked tx is actually in this set; otherwise apply the payment/contribution here.
+  const txIdSet = new Set(transactions.map((t) => t.id));
+
   for (const wallet of wallets) {
     // Start from wallet's initial balance (backfilled for legacy wallets)
     let computed = roundMoney(wallet.initialBalance ?? 0);
@@ -63,14 +70,17 @@ export function reconcileWalletBalances(): ReconcileResult[] {
       }
     }
 
-    // ── Debt payments with walletId: deduct from wallet ──
+    // ── Debt payments with walletId: apply the wallet effect ──
+    // they_owe = they pay ME (money in, +); i_owe = I pay THEM (money out, −).
     for (const debt of debts) {
+      const dir = debt.type === 'they_owe' ? 1 : -1;
       for (const payment of debt.payments) {
         if (payment.walletId !== wallet.id) continue;
-        // Skip payments already reflected by a linked personal transaction —
-        // that transaction is replayed above, so deducting here would double-count.
-        if (payment.linkedTransactionId) continue;
-        computed = roundMoney(computed - payment.amount);
+        // Skip only when the linked tx is actually replayed above (personal mode);
+        // a business-mode payment links to a business tx we don't replay, so it must
+        // be counted here or its wallet effect gets erased on reconcile.
+        if (payment.linkedTransactionId && txIdSet.has(payment.linkedTransactionId)) continue;
+        computed = roundMoney(computed + dir * payment.amount);
       }
     }
 
@@ -78,9 +88,10 @@ export function reconcileWalletBalances(): ReconcileResult[] {
     for (const goal of goals) {
       for (const contrib of goal.contributions) {
         if (contrib.walletId !== wallet.id) continue;
-        // Skip contributions already reflected by a linked savings transaction —
-        // that transaction is replayed above, so deducting here would double-count.
-        if (contrib.transactionId) continue;
+        // Skip only when the linked savings tx is actually replayed above; a
+        // contribution whose linked tx isn't in the set (business/deleted) must be
+        // counted here or its wallet effect gets erased on reconcile.
+        if (contrib.transactionId && txIdSet.has(contrib.transactionId)) continue;
         // Positive contribution = money moved out of wallet (deduct)
         // Negative contribution (withdrawal) = money returned to wallet (add)
         computed = roundMoney(computed - contrib.amount);
@@ -117,6 +128,12 @@ export function autoReconcileWallets(): number {
     // Do NOT bump updatedAt: a reconcile-derived balance must not automatically
     // win the next last-write-wins against other devices (that would launder a
     // local glitch — e.g. a duplicated/dropped op — into global corruption).
+    // For credit wallets, keep the invariant balance = creditLimit - usedCredit:
+    // if we move balance, usedCredit must follow or the two available-credit
+    // readouts (usage bar vs "Avail.") disagree.
+    if (w.type === 'credit' && w.creditLimit != null) {
+      return { ...w, balance: fix.computed, usedCredit: roundMoney(w.creditLimit - fix.computed) };
+    }
     return { ...w, balance: fix.computed };
   });
 

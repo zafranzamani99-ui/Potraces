@@ -21,6 +21,7 @@
   ],
   "exclude": [
     "docs",
-    "supabase"
+    "supabase",
+    "potraces new component design"
   ]
 }

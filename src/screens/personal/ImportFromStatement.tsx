@@ -167,6 +167,10 @@ const ImportFromStatement: React.FC = () => {
           onPress: () => {
             setStep('importing');
             try {
+              // Move the LIVE wallet balance too (reconcile replays these txns, so the
+              // net is applied once) — otherwise the wallet stays wrong, permanently so
+              // with sync off.
+              let netDelta = 0; // + income (add), − expense (deduct)
               for (const r of rows) {
                 if (!r._include) continue;
                 const date = new Date(r.date);
@@ -181,6 +185,11 @@ const ImportFromStatement: React.FC = () => {
                   inputMethod: 'statement-import' as any,
                   walletId: selectedWalletId,
                 });
+                netDelta += r.type === 'income' ? r.amount : -r.amount;
+              }
+              if (selectedWalletId) {
+                if (netDelta > 0) useWalletStore.getState().addToWallet(selectedWalletId, netDelta);
+                else if (netDelta < 0) useWalletStore.getState().deductFromWallet(selectedWalletId, -netDelta);
               }
               navigation.goBack();
             } catch (e: any) {

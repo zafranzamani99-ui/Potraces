@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Pressable, Modal } from 'reac
 import { Feather } from '@expo/vector-icons';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
 
 interface SplitChoiceModalProps {
@@ -15,6 +16,7 @@ interface SplitChoiceModalProps {
 
 const SplitChoiceModal: React.FC<SplitChoiceModalProps> = ({ visible, onClose, onManual, onTakePhoto, onChooseGallery }) => {
   const C = useCalm();
+  const neuS = useNeu(C.surface); // rows sit inside the centered modal card (bg C.surface)
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
@@ -32,8 +34,8 @@ const SplitChoiceModal: React.FC<SplitChoiceModalProps> = ({ visible, onClose, o
             { icon: 'camera' as const, label: t.debts.takePhotoLabel, desc: t.debts.takePhotoDesc, onPress: onTakePhoto },
             { icon: 'image' as const, label: t.debts.chooseFromGalleryLabel, desc: t.debts.chooseFromGalleryDesc, onPress: onChooseGallery },
           ] as const).map((opt, i, arr) => (
-            <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, i < arr.length - 1 && styles.choiceRowBorder]}>
-              <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={C.accent} /></View>
+            <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, neuS.raisedSoft, i > 0 && { marginTop: SPACING.md }]}>
+              <View style={[styles.choiceIcon, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]}><Feather name={opt.icon} size={18} color={C.accent} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.choiceLabel}>{opt.label}</Text>
                 <Text style={styles.choiceDesc}>{opt.desc}</Text>
@@ -74,10 +76,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.md,
     paddingVertical: SPACING.md,
-  },
-  choiceRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
   },
   choiceIcon: {
     width: 40,

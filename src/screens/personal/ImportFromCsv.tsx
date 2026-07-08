@@ -133,8 +133,9 @@ const ImportFromCsv: React.FC = () => {
       // Explicit type column overrides the inferred type
       if (typeIdx >= 0) {
         const t = (row[typeIdx] ?? '').toLowerCase().trim();
-        if (/(income|credit|in|masuk|deposit)/.test(t)) type = 'income';
-        else if (/(expense|debit|out|keluar|withdraw)/.test(t)) type = 'expense';
+        // Word boundaries so 'CR'/'DR' match but 'Insurance' doesn't flip via 'in'.
+        if (/\b(income|credit|cr|in|masuk|deposit)\b/.test(t)) type = 'income';
+        else if (/\b(expense|debit|dr|out|keluar|withdraw)\b/.test(t)) type = 'expense';
       }
 
       const valid = !!date && amount != null && amount > 0;
@@ -191,6 +192,11 @@ const ImportFromCsv: React.FC = () => {
           onPress: () => {
             setStep('importing');
             try {
+              // Track the net wallet effect so the LIVE balance actually moves on import.
+              // Without this the wallet stayed wrong until a sync-time reconcile (and
+              // permanently wrong with sync off). Reconcile replays these same
+              // transactions, so applying the net once keeps live + reconciled in agreement.
+              let netDelta = 0; // + income (add), − expense (deduct)
               for (const p of preview) {
                 if (!p.valid || skipRows.has(p.rowIndex)) continue;
                 addTransaction({
@@ -203,7 +209,10 @@ const ImportFromCsv: React.FC = () => {
                   inputMethod: 'csv-import' as any,
                   walletId: selectedWalletId,
                 });
+                netDelta += p.type === 'income' ? p.amount! : -p.amount!;
               }
+              if (netDelta > 0) useWalletStore.getState().addToWallet(selectedWalletId, netDelta);
+              else if (netDelta < 0) useWalletStore.getState().deductFromWallet(selectedWalletId, -netDelta);
               navigation.goBack();
             } catch (e: any) {
               setStep('map');

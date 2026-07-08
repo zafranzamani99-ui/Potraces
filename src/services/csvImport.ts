@@ -130,12 +130,36 @@ export function parseAmountCell(cell: string): { amount: number; isNegative: boo
   let neg = false;
   if (/^\(.*\)$/.test(t)) { neg = true; t = t.slice(1, -1); }
   if (t.startsWith('-')) { neg = true; t = t.slice(1); }
-  // strip currency markers
-  t = t.replace(/[A-Za-z]+\s*/g, '');
-  // strip thousands separators, keep decimal point
-  t = t.replace(/,/g, '').trim();
+  if (t.startsWith('+')) { t = t.slice(1); }
+  // Keep only digits and the two possible separators (drop currency letters/symbols/spaces).
+  t = t.replace(/[^\d.,]/g, '');
   if (!t) return null;
-  const n = Number(t);
+
+  // Locale-aware decimal detection so '1.234,56' (EU) and '1,234.56' (US) both parse.
+  const lastComma = t.lastIndexOf(',');
+  const lastDot = t.lastIndexOf('.');
+  let normalized: string;
+  if (lastComma > -1 && lastDot > -1) {
+    // Both present: the RIGHTMOST separator is the decimal; the other is grouping.
+    const decSep = lastComma > lastDot ? ',' : '.';
+    const groupSep = decSep === ',' ? '.' : ',';
+    normalized = t.split(groupSep).join('').replace(decSep, '.');
+  } else if (lastComma > -1) {
+    // Only commas: decimal comma if a single comma with 1-2 trailing digits ('1234,56'),
+    // else thousands grouping ('1,234').
+    const trailing = t.length - lastComma - 1;
+    const single = (t.match(/,/g) || []).length === 1;
+    normalized = single && trailing >= 1 && trailing <= 2 ? t.replace(',', '.') : t.replace(/,/g, '');
+  } else if (lastDot > -1) {
+    // Only dots: multiple dots = grouping ('1.234.567'); single dot = decimal.
+    normalized = (t.match(/\./g) || []).length > 1
+      ? t.slice(0, lastDot).replace(/\./g, '') + '.' + t.slice(lastDot + 1)
+      : t;
+  } else {
+    normalized = t;
+  }
+
+  const n = Number(normalized);
   if (isNaN(n)) return null;
   return { amount: Math.abs(n), isNegative: neg || n < 0 };
 }

@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import ModalToastHost from '../common/ModalToastHost';
+import NeuButton from '../common/NeuButton';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -181,7 +182,18 @@ const RepayModal: React.FC<RepayModalProps> = ({
                 <TextInput
                   style={styles.heroAmountInput}
                   value={repayAmount}
-                  onChangeText={setRepayAmount}
+                  onChangeText={(raw) => {
+                    // Sanitize like Transfer/Add-Edit: strip commas/non-numeric, one dot, 2dp.
+                    const stripped = raw.replace(/,/g, '').replace(/[^\d.]/g, '');
+                    const fd = stripped.indexOf('.');
+                    let normalized = stripped;
+                    if (fd !== -1) {
+                      normalized = stripped.slice(0, fd + 1) + stripped.slice(fd + 1).replace(/\./g, '');
+                      const [ip, fp = ''] = normalized.split('.');
+                      normalized = ip + '.' + fp.slice(0, 2);
+                    }
+                    setRepayAmount(normalized);
+                  }}
                   placeholder="0.00"
                   placeholderTextColor={withAlpha(C.textPrimary, 0.12)}
                   keyboardType="decimal-pad"
@@ -203,12 +215,12 @@ const RepayModal: React.FC<RepayModalProps> = ({
           </KeyboardAwareScrollView>
 
           <View style={[styles.saveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
-            <Pressable style={styles.saveBtn} onPress={onRepay} accessibilityRole="button" accessibilityLabel="repay">
-              <View style={styles.saveBtnInner}>
-                <Feather name="check" size={16} color={C.onAccent} />
-                <Text style={styles.saveBtnText}>{t.wallets.repay.toLowerCase()}</Text>
-              </View>
-            </Pressable>
+            <NeuButton
+              onPress={onRepay}
+              icon="check"
+              label={t.wallets.repay.toLowerCase()}
+              accessibilityLabel="repay"
+            />
             <Pressable style={styles.closeLink} onPress={closeSheet} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}>
               {({ pressed }: { pressed: boolean }) => (
                 <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
@@ -355,26 +367,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
     backgroundColor: C.surface,
-  },
-  saveBtn: {
-    width: '100%',
-    paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  saveBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  saveBtnText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-    letterSpacing: 0.3,
   },
   closeLink: {
     marginTop: SPACING.lg,

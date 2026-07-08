@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { Image } from 'expo-image';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -19,6 +20,7 @@ interface SharedSubscriptionTabProps {
 
 const SharedSubscriptionTab: React.FC<SharedSubscriptionTabProps> = ({ onPressSub, onAddSub }) => {
   const C = useCalm();
+  const neu = useNeu();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
@@ -66,50 +68,51 @@ const SharedSubscriptionTab: React.FC<SharedSubscriptionTabProps> = ({ onPressSu
     const pctWidth = progress.total > 0 ? `${Math.min((progress.paid / progress.total) * 100, 100)}%` as const : '0%' as const;
 
     return (
-      <TouchableOpacity
-        key={sub.id}
-        style={styles.rowWrap}
-        onPress={() => onPressSub(sub)}
-        activeOpacity={0.7}
-        accessibilityLabel={`${sub.name}, ${progress.paid} of ${progress.total} paid`}
-      >
-        <View style={[styles.rail, { backgroundColor: railColor }]} />
-        <View style={styles.rowBody}>
-          <View style={styles.topRow}>
-            <View style={styles.iconWrap}>
-              {sub.imageUri ? (
-                <Image source={{ uri: sub.imageUri }} style={styles.iconImage} />
-              ) : sub.iconName ? (
-                renderIcon(sub.iconName, 20, C.accent)
-              ) : (
-                <Text style={styles.iconFallback}>
-                  {sub.name ? sub.name.charAt(0).toUpperCase() : '?'}
+      <View key={sub.id} style={[styles.rowShadow, neu.raisedSoft]}>
+        <TouchableOpacity
+          style={styles.rowWrap}
+          onPress={() => onPressSub(sub)}
+          activeOpacity={0.7}
+          accessibilityLabel={`${sub.name}, ${progress.paid} of ${progress.total} paid`}
+        >
+          <View style={[styles.rail, { backgroundColor: railColor }]} />
+          <View style={styles.rowBody}>
+            <View style={styles.topRow}>
+              <View style={[styles.iconWrap, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                {sub.imageUri ? (
+                  <Image source={{ uri: sub.imageUri }} style={styles.iconImage} />
+                ) : sub.iconName ? (
+                  renderIcon(sub.iconName, 20, C.accent)
+                ) : (
+                  <Text style={styles.iconFallback}>
+                    {sub.name ? sub.name.charAt(0).toUpperCase() : '?'}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.titleWrap}>
+                <Text style={styles.title} numberOfLines={1}>{sub.name}</Text>
+                <Text style={styles.subtitle}>
+                  {t.sharedSubs.nMembers.replace('{n}', String(sub.members.filter((m) => m.isActive).length))}
+                  {' · '}{sub.billingCycle === 'monthly' ? t.sharedSubs.monthly : sub.billingCycle === 'quarterly' ? t.sharedSubs.quarterly : t.sharedSubs.yearly}
+                  {' · day '}{sub.billingDay}
                 </Text>
-              )}
-            </View>
-            <View style={styles.titleWrap}>
-              <Text style={styles.title} numberOfLines={1}>{sub.name}</Text>
-              <Text style={styles.subtitle}>
-                {t.sharedSubs.nMembers.replace('{n}', String(sub.members.filter((m) => m.isActive).length))}
-                {' · '}{sub.billingCycle === 'monthly' ? t.sharedSubs.monthly : sub.billingCycle === 'quarterly' ? t.sharedSubs.quarterly : t.sharedSubs.yearly}
-                {' · day '}{sub.billingDay}
+              </View>
+              <Text style={styles.amount}>
+                {currency}{sub.totalAmount.toFixed(2)}{getCycleSuffix(sub.billingCycle)}
               </Text>
             </View>
-            <Text style={styles.amount}>
-              {currency}{sub.totalAmount.toFixed(2)}{getCycleSuffix(sub.billingCycle)}
-            </Text>
-          </View>
-          <View style={styles.progressRow}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: pctWidth, backgroundColor: C.accent }]} />
+            <View style={styles.progressRow}>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: pctWidth, backgroundColor: C.accent }]} />
+              </View>
+              <Text style={styles.progressLabel}>
+                {t.sharedSubs.paidOf.replace('{paid}', String(progress.paid)).replace('{total}', String(progress.total))}
+                {' · '}{format(new Date(), 'MMM yyyy')}
+              </Text>
             </View>
-            <Text style={styles.progressLabel}>
-              {t.sharedSubs.paidOf.replace('{paid}', String(progress.paid)).replace('{total}', String(progress.total))}
-              {' · '}{format(new Date(), 'MMM yyyy')}
-            </Text>
           </View>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -134,14 +137,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   listContent: {
     paddingBottom: 100,
   },
-  rowWrap: {
-    flexDirection: 'row',
-    backgroundColor: C.surface,
+  // Unclipped shadow wrapper — the row body below is overflow:'hidden' (to clip
+  // the rounded accent rail) and would otherwise clip the neu shadow into a seam.
+  rowShadow: {
     borderRadius: RADIUS.lg,
     marginBottom: SPACING.sm,
+  },
+  rowWrap: {
+    flexDirection: 'row',
+    borderRadius: RADIUS.lg,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C.border,
   },
   rail: {
     width: 3,
@@ -204,7 +209,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   progressTrack: {
     height: 6,
     borderRadius: RADIUS.sm,
-    backgroundColor: C.background,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
     overflow: 'hidden',
   },
   progressFill: {

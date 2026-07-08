@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 
 export interface SegmentTab<K extends string = string> {
   key: K;
@@ -28,10 +29,11 @@ function DebtSegmentedControl<K extends string>({
   children,
 }: DebtSegmentedControlProps<K>) {
   const C = useCalm();
+  const neu = useNeu();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   return (
-    <View style={styles.segmentedControl}>
+    <View style={[styles.segmentedControl, neu.raised]}>
       {tabs.map((tab) => {
         const isActive = active === tab.key;
         return (
@@ -40,6 +42,7 @@ function DebtSegmentedControl<K extends string>({
             onPress={() => onSelect(tab.key)}
             style={[
               styles.segmentTab,
+              isActive && neu.inset,
               isActive && { backgroundColor: withAlpha(tab.color, 0.12) },
             ]}
             activeOpacity={0.7}

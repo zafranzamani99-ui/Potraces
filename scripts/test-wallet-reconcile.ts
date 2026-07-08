@@ -40,6 +40,20 @@ const WALLET_ID = 'w-test';
 // wallet (drift > 0.005), so we can read .computed regardless of pass/fail.
 const SENTINEL_STORED = -99999;
 
+// ── Business-mode debt payments (the erase bug) ──
+// A business-mode payment links to a BUSINESS transaction that reconcile does NOT
+// replay. The payment must therefore be counted by the debt loop (with direction),
+// or its wallet effect gets silently erased on the next sync.
+const WALLET_BIZ_IOWE = 'w-biz-iowe';
+const BIZ_IOWE_INITIAL = 5000;
+const BIZ_IOWE_PAY = 1200; // i_owe → money OUT
+const BIZ_IOWE_EXPECTED = BIZ_IOWE_INITIAL - BIZ_IOWE_PAY; // 3800
+
+const WALLET_BIZ_THEYOWE = 'w-biz-theyowe';
+const BIZ_THEYOWE_INITIAL = 2000;
+const BIZ_THEYOWE_PAY = 500; // they_owe → money IN
+const BIZ_THEYOWE_EXPECTED = BIZ_THEYOWE_INITIAL + BIZ_THEYOWE_PAY; // 2500
+
 // ─── Seed the REAL stores ──────────────────────────────────────────────────────
 useWalletStore.setState({
   wallets: [
@@ -54,6 +68,8 @@ useWalletStore.setState({
       createdAt: D,
       updatedAt: D,
     } as any,
+    { id: WALLET_BIZ_IOWE, name: 'Biz IOwe', type: 'bank', balance: SENTINEL_STORED, initialBalance: BIZ_IOWE_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
+    { id: WALLET_BIZ_THEYOWE, name: 'Biz TheyOwe', type: 'bank', balance: SENTINEL_STORED, initialBalance: BIZ_THEYOWE_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
   ],
   transfers: [],
 });
@@ -140,6 +156,20 @@ useDebtStore.setState({
       createdAt: D,
       updatedAt: D,
     } as any,
+    // Business-mode i_owe: payment linked to a BUSINESS tx (id NOT in personal transactions).
+    {
+      id: 'd-biz-iowe', contact: { id: 'ct2', name: 'Supplier', isFromPhone: false },
+      type: 'i_owe', totalAmount: 5000, paidAmount: BIZ_IOWE_PAY, status: 'partial',
+      payments: [{ id: 'p-biz-1', amount: BIZ_IOWE_PAY, date: D, walletId: WALLET_BIZ_IOWE, linkedTransactionId: 'biz-tx-1', createdAt: D }],
+      mode: 'business', createdAt: D, updatedAt: D,
+    } as any,
+    // Business-mode they_owe: payment (money IN) linked to a BUSINESS tx.
+    {
+      id: 'd-biz-theyowe', contact: { id: 'ct3', name: 'Client', isFromPhone: false },
+      type: 'they_owe', totalAmount: 2000, paidAmount: BIZ_THEYOWE_PAY, status: 'partial',
+      payments: [{ id: 'p-biz-2', amount: BIZ_THEYOWE_PAY, date: D, walletId: WALLET_BIZ_THEYOWE, linkedTransactionId: 'biz-tx-2', createdAt: D }],
+      mode: 'business', createdAt: D, updatedAt: D,
+    } as any,
   ],
 } as any);
 
@@ -170,6 +200,20 @@ if (row) {
     `got computed=${row.computed} (buggy value would be ${BUGGY})`,
   );
 }
+
+const rowBizIOwe = results.find((r) => r.walletId === WALLET_BIZ_IOWE);
+check(
+  `business i_owe payment is COUNTED, not erased (${BIZ_IOWE_EXPECTED})`,
+  !!rowBizIOwe && Math.abs(rowBizIOwe.computed - BIZ_IOWE_EXPECTED) < 0.005,
+  `got computed=${rowBizIOwe?.computed} (erase bug would give ${BIZ_IOWE_INITIAL})`,
+);
+
+const rowBizTheyOwe = results.find((r) => r.walletId === WALLET_BIZ_THEYOWE);
+check(
+  `business they_owe payment ADDS to wallet (${BIZ_THEYOWE_EXPECTED})`,
+  !!rowBizTheyOwe && Math.abs(rowBizTheyOwe.computed - BIZ_THEYOWE_EXPECTED) < 0.005,
+  `got computed=${rowBizTheyOwe?.computed} (wrong-direction bug would give ${BIZ_THEYOWE_INITIAL - BIZ_THEYOWE_PAY})`,
+);
 
 console.log('');
 if (failed) {

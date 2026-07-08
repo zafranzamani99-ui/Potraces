@@ -26,6 +26,8 @@ import { format, addMonths, subMonths, parse } from 'date-fns';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { renderIcon } from '../commitments/CommitmentForm';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
+import NeuButton from '../common/NeuButton';
 import { useT } from '../../i18n';
 import { useDebtStore } from '../../store/debtStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -56,6 +58,8 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
 }) => {
   const C = useCalm();
   const isDark = useIsDark();
+  // Sheet body sits on C.surface, so its neu surfaces must blend to C.surface.
+  const neuS = useNeu(C.surface);
   const t = useT();
   const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
   const currency = useSettingsStore((s) => s.currency);
@@ -206,7 +210,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
             </View>
             {/* Header */}
             <View style={styles.headerZone}>
-              <View style={styles.headerIconWrap}>
+              <View style={[styles.headerIconWrap, neuS.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                 {(liveSub?.imageUri ?? sub.imageUri) ? (
                   <Image source={{ uri: liveSub?.imageUri ?? sub.imageUri }} style={styles.headerIconImage} />
                 ) : (liveSub?.iconName ?? sub.iconName) ? (
@@ -246,7 +250,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
           contentContainerStyle={styles.scrollContent}
         >
           {/* Collection summary card */}
-          <View style={styles.summaryCard}>
+          <View style={[styles.summaryCard, neuS.raisedSoft]}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryCollected}>{currency}{collected.toFixed(2)}</Text>
               <Text style={styles.summaryOf}> of {currency}{totalAmount.toFixed(2)} {t.sharedSubs.collected}</Text>
@@ -264,14 +268,9 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
 
           {/* Generate debts button */}
           {monthRecord && !monthRecord.debtsGenerated && (
-            <Pressable style={styles.generateBtn} onPress={handleGenerateDebts}>
-              {({ pressed }) => (
-                <View style={[styles.generateBtnInner, pressed && { opacity: 0.8 }]}>
-                  <Feather name="zap" size={16} color={C.onAccent} />
-                  <Text style={styles.generateBtnText}>{t.sharedSubs.generateDebts}</Text>
-                </View>
-              )}
-            </Pressable>
+            <View style={styles.generateBtnWrap}>
+              <NeuButton onPress={handleGenerateDebts} label={t.sharedSubs.generateDebts} icon="zap" />
+            </View>
           )}
           {monthRecord?.debtsGenerated && (
             <View style={styles.generatedBadge}>
@@ -384,7 +383,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
           {/* Action row */}
           <View style={styles.actionRow}>
             <TouchableOpacity
-              style={styles.actionBtn}
+              style={[styles.actionBtn, neuS.raised]}
               onPress={() => { lightTap(); onEdit(liveSub ?? sub); }}
               activeOpacity={0.7}
             >
@@ -393,7 +392,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
             </TouchableOpacity>
             {monthRecord?.debtsGenerated ? (
               <TouchableOpacity
-                style={styles.actionBtn}
+                style={[styles.actionBtn, neuS.raised]}
                 onPress={() => { lightTap(); onAdjustAmounts(liveSub ?? sub, viewMonth); }}
                 activeOpacity={0.7}
               >
@@ -402,7 +401,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={styles.actionBtn}
+                style={[styles.actionBtn, neuS.raised]}
                 onPress={() => { lightTap(); onPriceChange(liveSub ?? sub); }}
                 activeOpacity={0.7}
               >
@@ -416,12 +415,12 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
           {liveSub?.subscriptionId ? (
             <>
               <TouchableOpacity
-                style={styles.commitmentCard}
+                style={[styles.commitmentCard, neuS.raisedSoft, { backgroundColor: withAlpha(C.accent, C === CALM_DARK ? 0.06 : 0.03) }]}
                 onPress={() => { lightTap(); onViewCommitment(liveSub.subscriptionId!); }}
                 activeOpacity={0.7}
               >
                 <View style={styles.commitmentCardLeft}>
-                  <View style={styles.commitmentCardIcon}>
+                  <View style={[styles.commitmentCardIcon, neuS.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                     <Feather name="link" size={13} color={C.accent} />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -598,10 +597,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     paddingBottom: SPACING.lg,
   },
   summaryCard: {
-    backgroundColor: withAlpha(C.textPrimary, isDark ? 0.06 : 0.03),
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     padding: SPACING.md,
     marginBottom: SPACING.md,
   },
@@ -638,24 +634,8 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
     marginTop: 2,
   },
-  generateBtn: {
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.full,
+  generateBtnWrap: {
     marginBottom: SPACING.md,
-    minHeight: 44,
-  },
-  generateBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.sm + 2,
-  },
-  generateBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.onAccent,
-    letterSpacing: 0.2,
   },
   generatedBadge: {
     flexDirection: 'row',
@@ -752,9 +732,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     gap: 6,
     paddingVertical: SPACING.sm + 2,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
-    backgroundColor: withAlpha(C.textPrimary, isDark ? 0.06 : 0.03),
   },
   actionBtnText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -766,9 +743,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: withAlpha(C.accent, C === CALM_DARK ? 0.06 : 0.03),
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, C === CALM_DARK ? 0.12 : 0.08),
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm + 4,
     paddingHorizontal: SPACING.md,

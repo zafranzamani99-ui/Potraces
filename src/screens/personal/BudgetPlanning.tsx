@@ -64,7 +64,7 @@ import { Budget, CategoryOption, Playbook } from '../../types';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { lightTap, mediumTap } from '../../services/haptics';
-import ScreenGuide from '../../components/common/ScreenGuide';
+import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
 import EchoInlineChat from '../../components/common/EchoInlineChat';
 import TypewriterText from '../../components/common/TypewriterText';
 import { usePlaybookStore } from '../../store/playbookStore';
@@ -2511,7 +2511,7 @@ const BudgetPlanning: React.FC = () => {
       {/* ── Playbook FAB ── */}
       {viewMode === 'playbook' && playbookTab === 'active' && !createPlaybookVisible && (
         <TouchableOpacity
-          style={[styles.fab, { bottom: Math.max(insets.bottom, SPACING.lg) + SPACING.md }]}
+          style={[styles.fab, { bottom: insets.bottom + 88 + SPACING.md }]}
           onPress={() => {
             if (!canCreatePb()) {
               showToast('close one of your active playbooks first', 'error');
@@ -2708,15 +2708,20 @@ const BudgetPlanning: React.FC = () => {
 
       <ScreenGuide
         id="guide_budget"
-        title={t.guide.spendingLimits}
-        icon="sliders"
-        description={t.guide.descBudget}
         accent={C.bronze}
-        points={[
-          { icon: 'plus', text: t.guide.budgetPoint1 },
-          { icon: 'bar-chart-2', text: t.guide.budgetPoint2 },
+        // Do-it-with-me: the hole over the empty-state "add budget" pill is
+        // tappable; the user sets their first limit and the guide advances to
+        // the payoff the moment a budget is actually created.
+        steps={[
+          { kind: 'intro', title: t.guide.spendingLimits, icon: 'sliders', body: t.guide.descBudget },
+          {
+            kind: 'doWithMe',
+            targetRef: guideTargetRef,
+            label: t.guide.budgetWalk,
+            watch: whenStore(usePersonalStore, (s) => s.budgets.length, (n, base) => n > base),
+          },
+          { kind: 'payoff', title: t.guide.budgetPayoffTitle, body: t.guide.budgetPayoffBody, icon: 'check-circle' },
         ]}
-        spotlight={{ targetRef: guideTargetRef, label: t.guide.budgetPoint1, sublabel: t.guide.budgetPoint2 }}
       />
     </View>
   );

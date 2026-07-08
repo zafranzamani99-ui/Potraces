@@ -60,7 +60,7 @@ import { useSellerStore } from '../../store/sellerStore';
 import { getOrCreateReferralCode, referralMessage } from '../../services/referrals';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
-import { loadDummyData } from '../../utils/dummyData';
+import { loadSampleData, SAMPLE_PROFILES, type SampleBracket } from '../../utils/sampleData';
 import type { ThemePreference, AppLanguage } from '../../store/settingsStore';
 
 const CURRENCY_OPTIONS = [
@@ -473,6 +473,7 @@ const Settings: React.FC = () => {
   const section = (route.params as any)?.section as ('preferences' | 'money' | 'data' | 'security' | 'about' | undefined);
   const { showToast } = useToast();
   const [businessInfoVisible, setBusinessInfoVisible] = useState(false);
+  const [sampleModalVisible, setSampleModalVisible] = useState(false);
   const mode = useAppStore((state) => state.mode);
   const setMode = useAppStore((state) => state.setMode);
   const incomeType = useBusinessStore((s) => s.incomeType);
@@ -703,26 +704,21 @@ const Settings: React.FC = () => {
 
   const handleLoadSampleData = useCallback(() => {
     lightTap();
-    Alert.alert(
-      t.settings.loadSampleData,
-      t.settings.loadSampleDataConfirm,
-      [
-        { text: t.common.cancel, style: 'cancel' },
-        {
-          text: t.common.confirm,
-          onPress: () => {
-            setTimeout(() => {
-              try {
-                loadDummyData();
-                showToast(t.settings.loadSampleDataSuccess, 'success');
-              } catch {
-                showToast('Failed to load demo data', 'error');
-              }
-            }, 50);
-          },
-        },
-      ]
-    );
+    setSampleModalVisible(true);
+  }, []);
+
+  const handlePickSampleProfile = useCallback((bracket: SampleBracket) => {
+    lightTap();
+    setSampleModalVisible(false);
+    // Let the modal dismiss before the (synchronous) seed work.
+    setTimeout(() => {
+      try {
+        loadSampleData(bracket);
+        showToast(t.settings.loadSampleDataSuccess, 'success');
+      } catch {
+        showToast('Failed to load demo data', 'error');
+      }
+    }, 120);
   }, [t, showToast]);
 
   const handlePickQrImage = useCallback(async (replaceIndex?: number) => {
@@ -1839,6 +1835,63 @@ const Settings: React.FC = () => {
             </TouchableOpacity>
           </View>
         </Pressable>
+      </Modal>
+
+      {/* ─── Demo-data profile picker ─── */}
+      <Modal
+        visible={sampleModalVisible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setSampleModalVisible(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: withAlpha('#000000', isDark ? 0.6 : 0.4), justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}
+          onPress={() => setSampleModalVisible(false)}
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{ width: '100%', maxWidth: 440, backgroundColor: C.surface, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: C.border, padding: SPACING.xl }}
+          >
+            <Text style={{ fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, marginBottom: SPACING.xs }}>{t.sampleData.pickTitle}</Text>
+            <Text style={{ fontSize: TYPOGRAPHY.size.sm, lineHeight: 20, color: C.textSecondary, marginBottom: SPACING.lg }}>{t.settings.loadSampleDataConfirm}</Text>
+
+            {SAMPLE_PROFILES.map((p, i) => {
+              const info = t.sampleData.profiles[p.id];
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  onPress={() => handlePickSampleProfile(p.id)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${info.name} · ${p.age}`}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: SPACING.md,
+                    paddingVertical: SPACING.md,
+                    paddingHorizontal: SPACING.md,
+                    borderRadius: RADIUS.lg,
+                    backgroundColor: C.background,
+                    borderWidth: 1,
+                    borderColor: C.border,
+                    marginTop: i === 0 ? 0 : SPACING.sm,
+                  }}
+                >
+                  <View style={{ width: 40, height: 40, borderRadius: RADIUS.md, backgroundColor: withAlpha(C.accent, 0.12), alignItems: 'center', justifyContent: 'center' }}>
+                    <Feather name={p.icon as keyof typeof Feather.glyphMap} size={20} color={C.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary }}>{info.name} · {p.age}</Text>
+                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, marginTop: 1 }}>{info.blurb}</Text>
+                  </View>
+                  <Feather name="chevron-right" size={18} color={C.textMuted} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Pressable>
+        <ModalToastHost />
       </Modal>
 
       {/* QR Action Sheet — animationType="none" so dismiss is instant before image picker */}

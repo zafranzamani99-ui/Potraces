@@ -27,7 +27,10 @@ import CategoryPicker from '../common/CategoryPicker';
 import CalendarPicker from '../common/CalendarPicker';
 import WalletLogo from '../common/WalletLogo';
 import ModalToastHost from '../common/ModalToastHost';
+import { useNeu } from '../common/neu';
+import NeuButton from '../common/NeuButton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 
 type SubView = 'form' | 'calendar' | 'walletPicker';
 type SavePayload = Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>;
@@ -222,6 +225,8 @@ export function suggestIcons(name: string): string[] {
 interface Props {
   visible: boolean;
   subscription: Subscription | null;
+  /** Prefill for a NEW commitment (e.g. from a "looks recurring" suggestion). Ignored in edit mode. */
+  initialValues?: Partial<Pick<Subscription, 'name' | 'amount' | 'category' | 'billingCycle'>>;
   onClose: () => void;
   onSave: (payload: SavePayload) => void;
   onDelete?: (sub: Subscription) => void;
@@ -238,11 +243,16 @@ const CYCLE_OPTIONS: { value: Subscription['billingCycle']; label: string }[] = 
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
-const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSave, onDelete, onUnlinkShared, onError }) => {
+const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues, onClose, onSave, onDelete, onUnlinkShared, onError }) => {
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu();
+  // Sheet + nested overlay cards are C.surface-toned, so their inner neu surfaces
+  // must blend to C.surface, not the screen's C.background.
+  const neuS = useNeu(C.surface);
+  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const expenseCategories = useCategories('expense');
   const wallets = useWalletStore(s => s.wallets);
@@ -293,6 +303,9 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
   // Guards against a fast double-tap on "save" creating two commitments before
   // the modal unmounts. Reset each time the sheet (re)opens.
   const savingRef = useRef(false);
+  // Optional action to run once the close animation actually completes (e.g. navigate
+  // to Settings) — avoids racing a fixed timeout against the close animation.
+  const afterCloseRef = useRef<null | (() => void)>(null);
 
   useEffect(() => {
     if (visible) {
@@ -307,6 +320,9 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
     if (!closingRef.current) return;
     closingRef.current = false;
     onClose();
+    const after = afterCloseRef.current;
+    afterCloseRef.current = null;
+    if (after) after();
   }, [onClose]);
 
   const closeSheet = useCallback(() => {
@@ -374,9 +390,10 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
       setImageUri(subscription.imageUri);
       setIconName(subscription.iconName);
     } else {
-      setName(''); setAmount(''); setNote('');
-      setCategory(expenseCategories[0]?.id || 'food');
-      setBillingCycle('monthly'); setReminderDays('3');
+      // New commitment — seed from initialValues (e.g. a "looks recurring" suggestion) if given.
+      setName(initialValues?.name ?? ''); setAmount(initialValues?.amount != null ? String(initialValues.amount) : ''); setNote('');
+      setCategory(initialValues?.category || expenseCategories[0]?.id || 'food');
+      setBillingCycle(initialValues?.billingCycle || 'monthly'); setReminderDays('3');
       setStartDate(new Date()); setIsInstallment(false);
       setTotalInstallments(''); setDurationUnit('months');
       setDurationValue(''); setCompletedStr(''); setIsPaused(false);
@@ -384,8 +401,20 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
       setImageUri(undefined); setIconName(undefined);
     }
     setQuickText('');
-    setSubView('form');
-  }, [visible, subscription, expenseCategories]);
+    // Depend on the subscription ID, NOT the object/array reference. A sync merge or a
+    // category-cache recompute can hand us a new `subscription`/`expenseCategories`
+    // reference for the SAME commitment while the sheet is open; re-running this effect
+    // then would clobber whatever the user has typed. Re-hydrate only on open / id change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, subscription?.id]);
+
+  // Reset the sub-picker ONLY when the sheet opens — not inside the hydrate effect
+  // above: `expenseCategories` is a single-entry module cache whose reference flips
+  // when anything else recomputes categories, which re-runs that effect and would
+  // slam an open date/wallet picker shut mid-use (the "opens then suddenly closes" bug).
+  useEffect(() => {
+    if (visible) setSubView('form');
+  }, [visible]);
 
   const selectedWallet = useMemo(() => wallets.find(w => w.id === walletId), [wallets, walletId]);
 
@@ -515,7 +544,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
     >
       {/* ── Quick capture (add mode) — type it naturally, we fill the form ── */}
       {!isEditMode && (
-        <View style={styles.quickCard}>
+        <View style={[styles.quickCard, neu.raisedSoft, { backgroundColor: withAlpha(C.accent, isDark ? 0.09 : 0.055) }]}>
           <View style={styles.quickRow}>
             <Feather name="zap" size={18} color={C.gold} />
             <View style={styles.quickFieldCol}>
@@ -535,7 +564,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
               />
             </View>
             {quickText.trim().length > 0 && (
-              <TouchableOpacity style={styles.quickFillBtn} onPress={handleQuickFill} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="let echo fill the form">
+              <TouchableOpacity style={[styles.quickFillBtn, neu.raised, { backgroundColor: C.accent }]} onPress={handleQuickFill} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="let echo fill the form">
                 <Text style={styles.quickFillText}>fill</Text>
               </TouchableOpacity>
             )}
@@ -576,7 +605,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
           return (
             <TouchableOpacity
               key={opt.value}
-              style={[styles.cyclePill, active && styles.cyclePillActive]}
+              style={[styles.cyclePill, neu.raised, active && styles.cyclePillActive]}
               onPress={() => { lightTap(); setBillingCycle(opt.value); }}
               activeOpacity={0.7}
             >
@@ -589,7 +618,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
       </View>
 
       {/* ── Name + Category (grouped) ── */}
-      <View style={styles.card}>
+      <View style={[styles.card, neu.raisedSoft]}>
         <View style={styles.cardRow}>
           <TouchableOpacity
             onPress={openIconPicker}
@@ -602,11 +631,11 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
               {imageUri ? (
                 <Image source={{ uri: imageUri }} style={styles.nameIconImage} />
               ) : iconName ? (
-                <View style={[styles.nameIconFallback, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                <View style={[styles.nameIconFallback, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                   {renderIcon(iconName, 20, C.accent)}
                 </View>
               ) : (
-                <View style={[styles.nameIconFallback, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                <View style={[styles.nameIconFallback, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                   <Text style={{ fontSize: 18, fontWeight: '700', color: C.accent }}>
                     {name ? name.charAt(0).toUpperCase() : '?'}
                   </Text>
@@ -618,13 +647,13 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
             </View>
           </TouchableOpacity>
           <View style={styles.fieldFlex}>
-            <Text style={styles.fieldLabel}>name</Text>
+            <Text style={[styles.fieldLabel, { fontSize: TYPOGRAPHY.size.base }]}>name</Text>
             <TextInput
               style={styles.fieldInput}
               value={name}
               onChangeText={setName}
               placeholder={t.subscriptions.namePlaceholder}
-              placeholderTextColor={C.textMuted}
+              placeholderTextColor={withAlpha(C.textMuted, 0.38)}
               returnKeyType="next"
               keyboardAppearance={isDark ? 'dark' : 'light'}
               selectionColor={withAlpha(C.accent, 0.25)}
@@ -633,7 +662,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
         </View>
         <View style={styles.cardDivider} />
         <View style={styles.categoryRow}>
-          <View style={styles.categoryIcon}>
+          <View style={[styles.categoryIcon, neu.well]}>
             <Feather name="grid" size={12} color={C.accent} />
           </View>
           <View style={styles.fieldFlex}>
@@ -643,6 +672,13 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
               onSelect={setCategory}
               label="category"
               layout="dropdown"
+              onNavigateToSettings={() => {
+                // Close the commitment sheet first (otherwise Settings opens behind this
+                // modal), and navigate the moment the close animation actually finishes
+                // rather than racing a fixed timer.
+                afterCloseRef.current = () => navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'categories' });
+                closeSheet();
+              }}
             />
           </View>
         </View>
@@ -650,7 +686,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
 
       {/* ── Schedule (date + reminder) ── */}
       <Text style={styles.sectionLabel}>schedule</Text>
-      <View style={styles.card}>
+      <View style={[styles.card, neu.raisedSoft]}>
         {/* Date + Reminder side-by-side */}
         <View style={styles.sideBySide}>
           <TouchableOpacity
@@ -658,7 +694,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
             onPress={() => { lightTap(); Keyboard.dismiss(); setSubView('calendar'); }}
             activeOpacity={0.7}
           >
-            <View style={styles.iconBox}>
+            <View style={[styles.iconBox, neu.well]}>
               <Feather name="calendar" size={14} color={C.accent} />
             </View>
             <View style={styles.fieldFlex}>
@@ -670,7 +706,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
           </TouchableOpacity>
           <View style={styles.sideVDivider} />
           <View style={styles.sideCell}>
-            <View style={styles.iconBox}>
+            <View style={[styles.iconBox, neu.well]}>
               <Feather name="bell" size={14} color={C.accent} />
             </View>
             <View style={styles.fieldFlex}>
@@ -697,12 +733,12 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
 
       {/* ── Wallet ── */}
       <TouchableOpacity
-        style={styles.card}
+        style={[styles.card, neu.raisedSoft]}
         onPress={() => { lightTap(); Keyboard.dismiss(); setSubView('walletPicker'); }}
         activeOpacity={0.7}
       >
         <View style={styles.walletCardRow}>
-          <View style={styles.iconBox}>
+          <View style={[styles.iconBox, neu.well]}>
             <Feather name="credit-card" size={14} color={C.accent} />
           </View>
           <View style={styles.walletCardContent}>
@@ -724,7 +760,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
 
       {/* ── Options (grouped) ── */}
       <Text style={styles.sectionLabel}>options</Text>
-      <View style={styles.card}>
+      <View style={[styles.card, neu.raisedSoft]}>
         {/* Installment toggle */}
         <TouchableOpacity
           style={[styles.settingsRow, isComplete && { opacity: 0.45 }]}
@@ -804,9 +840,9 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
       </View>
 
       {/* ── Note ── */}
-      <View style={styles.card}>
+      <View style={[styles.card, neu.raisedSoft]}>
         <View style={styles.cardRow}>
-          <View style={styles.iconBox}>
+          <View style={[styles.iconBox, neu.well]}>
             <Feather name="file-text" size={14} color={C.accent} />
           </View>
           <View style={styles.fieldFlex}>
@@ -816,7 +852,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
               value={note}
               onChangeText={setNote}
               placeholder="account login, cancellation date…"
-              placeholderTextColor={C.textMuted}
+              placeholderTextColor={withAlpha(C.textMuted, 0.45)}
               multiline
               returnKeyType="default"
               onFocus={() => setMultilineFocused(true)}
@@ -868,49 +904,87 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
   );
 
   const renderCalendarView = () => (
-    <View style={{ paddingHorizontal: SPACING.lg, flex: 1 }}>
-      <CalendarPicker
-        value={startDate}
-        onChange={(date) => { setStartDate(date); setSubView('form'); }}
-      />
-    </View>
+    <>
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => setSubView('form')}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
+      </Pressable>
+      <View style={styles.pickerOverlayWrap} pointerEvents="box-none">
+        <View style={[styles.pickerOverlayCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+          <View style={styles.pickerOverlayHeader}>
+            <Text style={styles.pickerOverlayTitle}>
+              {'start '}<Text style={styles.titleAccent}>date</Text>
+            </Text>
+            <TouchableOpacity
+              onPress={() => setSubView('form')}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={[styles.pickerOverlayClose, neuS.raised]}
+            >
+              <Feather name="x" size={16} color={C.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <CalendarPicker
+            value={startDate}
+            onChange={(date) => { setStartDate(date); setSubView('form'); }}
+          />
+        </View>
+      </View>
+    </>
   );
 
   const renderWalletPickerView = () => (
-    <View style={{ paddingHorizontal: SPACING.lg, flex: 1 }}>
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-        <TouchableOpacity
-          style={[styles.walletOption, !walletId && styles.walletOptionActive]}
-          onPress={() => { lightTap(); setWalletId(undefined); setSubView('form'); }}
-          activeOpacity={0.6}
-        >
-          <View style={styles.walletOptionLeft}>
-            <View style={[styles.walletOptionIcon, { backgroundColor: withAlpha(C.textMuted, 0.08) }]}>
-              <Feather name="minus" size={16} color={C.textMuted} />
-            </View>
-            <Text style={[styles.walletOptionText, !walletId && styles.walletOptionTextActive]}>none</Text>
-          </View>
-          {!walletId && <Feather name="check" size={18} color={C.accent} />}
-        </TouchableOpacity>
-        {wallets.map(wallet => {
-          const sel = walletId === wallet.id;
-          return (
+    <>
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => setSubView('form')}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
+      </Pressable>
+      <View style={styles.pickerOverlayWrap} pointerEvents="box-none">
+        <View style={[styles.pickerOverlayCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+          <View style={styles.pickerOverlayHeader}>
+            <Text style={styles.pickerOverlayTitle}>
+              {'choose '}<Text style={styles.titleAccent}>wallet</Text>
+            </Text>
             <TouchableOpacity
-              key={wallet.id}
-              style={[styles.walletOption, sel && styles.walletOptionActive]}
-              onPress={() => { lightTap(); setWalletId(wallet.id); setSubView('form'); }}
+              onPress={() => setSubView('form')}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={[styles.pickerOverlayClose, neuS.raised]}
+            >
+              <Feather name="x" size={16} color={C.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: SCREEN_H * 0.5 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+            <TouchableOpacity
+              style={[styles.walletOption, neuS.raisedSoft, !walletId && styles.walletOptionActive]}
+              onPress={() => { lightTap(); setWalletId(undefined); setSubView('form'); }}
               activeOpacity={0.6}
             >
               <View style={styles.walletOptionLeft}>
-                <WalletLogo wallet={wallet} size={28} />
-                <Text style={[styles.walletOptionText, sel && styles.walletOptionTextActive]}>{wallet.name}</Text>
+                <View style={[styles.walletOptionIcon, neuS.well, { backgroundColor: withAlpha(C.textMuted, 0.08) }]}>
+                  <Feather name="minus" size={16} color={C.textMuted} />
+                </View>
+                <Text style={[styles.walletOptionText, !walletId && styles.walletOptionTextActive]}>none</Text>
               </View>
-              {sel && <Feather name="check" size={18} color={C.accent} />}
+              {!walletId && <Feather name="check" size={18} color={C.accent} />}
             </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    </View>
+            {wallets.map(wallet => {
+              const sel = walletId === wallet.id;
+              return (
+                <TouchableOpacity
+                  key={wallet.id}
+                  style={[styles.walletOption, neuS.raisedSoft, sel && styles.walletOptionActive]}
+                  onPress={() => { lightTap(); setWalletId(wallet.id); setSubView('form'); }}
+                  activeOpacity={0.6}
+                >
+                  <View style={styles.walletOptionLeft}>
+                    <WalletLogo wallet={wallet} size={28} />
+                    <Text style={[styles.walletOptionText, sel && styles.walletOptionTextActive]}>{wallet.name}</Text>
+                  </View>
+                  {sel && <Feather name="check" size={18} color={C.accent} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </>
   );
 
   if (!visible) return null;
@@ -922,6 +996,10 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
       transparent
       statusBarTranslucent
       onRequestClose={() => {
+        // Android hardware back: peel off the topmost overlay first, so back doesn't
+        // tear down the whole sheet (and lose typed edits) while a picker is open.
+        if (iconPickerVisible) { setIconPickerVisible(false); return; }
+        if (installModalVisible) { setInstallModalVisible(false); return; }
         if (subView !== 'form') { setSubView('form'); return; }
         closeSheet();
       }}
@@ -943,71 +1021,46 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
             </View>
             <View style={styles.titleZone}>
               <Text style={styles.titleText} numberOfLines={1}>
-                {subView === 'calendar' ? 'start ' :
-                 subView === 'walletPicker' ? 'choose ' :
-                 isEditMode ? 'edit ' : 'new '}
-                <Text style={styles.titleAccent}>
-                  {subView === 'calendar' ? 'date' :
-                   subView === 'walletPicker' ? 'wallet' :
-                   'commitment'}
-                </Text>
+                {isEditMode ? 'edit ' : 'new '}
+                <Text style={styles.titleAccent}>commitment</Text>
               </Text>
-              {subView === 'form' && (
-                <Text style={styles.subtitleText}>
-                  {isEditMode
-                    ? `${subscription!.name.toLowerCase()} · ${currency} ${subscription!.amount.toFixed(2)}`
-                    : 'recurring bill, subscription, or loan'}
-                </Text>
-              )}
+              <Text style={styles.subtitleText}>
+                {isEditMode
+                  ? `${subscription!.name.toLowerCase()} · ${currency} ${subscription!.amount.toFixed(2)}`
+                  : 'recurring bill, subscription, or loan'}
+              </Text>
             </View>
           </View>
         </GestureDetector>
 
-        {subView === 'form' && renderFormBody()}
-        {subView === 'calendar' && renderCalendarView()}
-        {subView === 'walletPicker' && renderWalletPickerView()}
+        {renderFormBody()}
 
         {/* Anchored save zone — outside scroll, pinned at bottom */}
         <View style={[styles.saveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
-          {subView === 'form' ? (
-            <>
-              <Pressable style={styles.saveBtn} onPress={handleSave}>
-                <View style={styles.saveBtnInner}>
-                  <Feather name={isEditMode ? 'check' : 'plus'} size={16} color={C.onAccent} />
-                  <Text style={styles.saveBtnText}>
-                    {isEditMode ? t.common.save.toLowerCase() : 'add commitment'}
-                  </Text>
-                </View>
-              </Pressable>
-              <Pressable
-                style={styles.secondaryLink}
-                onPress={closeSheet}
-                hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
-              >
-                {({ pressed }) => (
-                  <View style={[styles.secondaryLinkInner, pressed && { opacity: 0.55 }]}>
-                    <Feather name="x" size={12} color={C.textMuted} />
-                    <Text style={styles.secondaryLinkText}>close</Text>
-                  </View>
-                )}
-              </Pressable>
-            </>
-          ) : (
-            <Pressable
-              style={styles.secondaryLink}
-              onPress={() => setSubView('form')}
-              hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
-            >
-              {({ pressed }) => (
-                <View style={[styles.secondaryLinkInner, pressed && { opacity: 0.55 }]}>
-                  <Feather name="chevron-left" size={12} color={C.textMuted} />
-                  <Text style={styles.secondaryLinkText}>back</Text>
-                </View>
-              )}
-            </Pressable>
-          )}
+          <NeuButton
+            icon={isEditMode ? 'check' : 'plus'}
+            label={isEditMode ? t.common.save.toLowerCase() : 'add commitment'}
+            onPress={handleSave}
+          />
+          <Pressable
+            style={styles.secondaryLink}
+            onPress={closeSheet}
+            hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
+          >
+            {({ pressed }) => (
+              <View style={[styles.secondaryLinkInner, pressed && { opacity: 0.55 }]}>
+                <Feather name="x" size={12} color={C.textMuted} />
+                <Text style={styles.secondaryLinkText}>close</Text>
+              </View>
+            )}
+          </Pressable>
         </View>
       </Reanimated.View>
+
+      {/* Floating date + wallet pickers — overlay the form so it stays mounted
+          (scroll position preserved) instead of replacing it. */}
+      {subView === 'calendar' && renderCalendarView()}
+      {subView === 'walletPicker' && renderWalletPickerView()}
       {/* Icon / image picker overlay */}
       {iconPickerVisible && (
         <>
@@ -1018,7 +1071,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
             <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
           </Pressable>
           <View style={styles.iconPickerWrap} pointerEvents="box-none">
-            <View style={styles.iconPickerCard} onStartShouldSetResponder={() => true}>
+            <View style={[styles.iconPickerCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
               {/* Header: title + close */}
               <View style={styles.iconPickerHeader}>
                 <Text style={styles.iconPickerTitle}>
@@ -1087,12 +1140,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
               </TouchableOpacity>
 
               {/* Save button */}
-              <Pressable style={styles.iconPickerSaveBtn} onPress={saveIconSelection}>
-                <View style={styles.iconPickerSaveBtnInner}>
-                  <Feather name="check" size={14} color={C.onAccent} />
-                  <Text style={styles.iconPickerSaveBtnText}>save</Text>
-                </View>
-              </Pressable>
+              <NeuButton icon="check" label="save" onPress={saveIconSelection} />
 
               {/* Remove — bottom center */}
               {(imageUri || pickerSelection) && (
@@ -1120,7 +1168,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
             <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
           </Pressable>
           <View style={styles.instModalWrap} pointerEvents="box-none">
-            <View style={styles.instModalCard} onStartShouldSetResponder={() => true}>
+            <View style={[styles.instModalCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
               <Text style={styles.instModalTitle}>
                 {'installment '}
                 <Text style={{ color: C.accent }}>setup</Text>
@@ -1161,7 +1209,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
                   {(['months', 'years'] as const).map(u => (
                     <TouchableOpacity
                       key={u}
-                      style={[styles.instModalPill, durationUnit === u && styles.instModalPillActive]}
+                      style={[styles.instModalPill, neuS.raised, durationUnit === u && styles.instModalPillActive]}
                       onPress={() => { lightTap(); setDurationUnit(u); setDurationValue(''); }}
                       activeOpacity={0.7}
                     >
@@ -1226,19 +1274,16 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
                 return null;
               })()}
 
-              <Pressable
-                style={styles.instModalDone}
+              <NeuButton
+                label="done"
                 onPress={() => {
-                  lightTap();
                   const total = durationUnit === 'years'
                     ? (parseInt(durationValue) || 0) * 12
                     : parseInt(durationValue) || 0;
                   setTotalInstallments(total > 0 ? total.toString() : '');
                   setInstallModalVisible(false);
                 }}
-              >
-                <Text style={styles.instModalDoneText}>done</Text>
-              </Pressable>
+              />
             </View>
           </View>
         </>
@@ -1333,8 +1378,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.md,
     backgroundColor: withAlpha(C.accent, C === CALM_DARK ? 0.09 : 0.055),
     borderRadius: RADIUS.lg + 2,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, C === CALM_DARK ? 0.18 : 0.12),
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
   },
@@ -1367,7 +1410,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
   quickFillText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1431,11 +1473,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   card: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.07),
-    overflow: 'hidden',
     marginBottom: SPACING.sm + 2,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   cardRow: {
     flexDirection: 'row',
@@ -1497,10 +1535,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   fieldFlex: { flex: 1 },
   fieldLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-    marginBottom: 2,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    marginBottom: 3,
   },
   fieldInput: {
     fontSize: TYPOGRAPHY.size.base,
@@ -1523,11 +1561,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.xs + 3,
     borderRadius: RADIUS.full,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.10),
     backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.06 : 0.02),
   },
-  cyclePillActive: { borderColor: C.accent, backgroundColor: C.accent, ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm) },
+  cyclePillActive: { backgroundColor: C.accent },
   cyclePillText: {
     fontSize: 11,
     fontWeight: TYPOGRAPHY.weight.semibold,
@@ -1607,18 +1643,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     letterSpacing: -0.1,
   },
+  // Cloned 1:1 from CategoryPicker's dropdownItem (the look the user wants) — the row uses
+  // neu.raisedSoft (spread at the call site), inset by marginHorizontal, no custom shadow.
   walletOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: SPACING.md + 2,
     paddingHorizontal: SPACING.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(C.textPrimary, 0.05),
-    borderRadius: RADIUS.md,
-    marginBottom: 2,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
   },
-  walletOptionActive: { backgroundColor: withAlpha(C.accent, 0.05), borderColor: withAlpha(C.accent, 0.12) },
+  walletOptionActive: { backgroundColor: withAlpha(C.accent, 0.10) },
   walletOptionLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm + 4 },
   walletOptionIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   walletOptionText: { fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontWeight: TYPOGRAPHY.weight.medium, letterSpacing: -0.1 },
@@ -1697,9 +1734,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.14 : 0.06),
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   instModalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -1840,6 +1874,43 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.2,
   },
   // ── Icon picker overlay ──────────────────────────────
+  // Floating date/wallet picker overlays (over the still-mounted form)
+  pickerOverlayWrap: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    pointerEvents: 'box-none',
+    paddingHorizontal: SPACING.xl,
+  },
+  pickerOverlayCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+  },
+  pickerOverlayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+  },
+  pickerOverlayTitle: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: -0.4,
+  },
+  pickerOverlayClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: withAlpha(C.textPrimary, 0.05),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   iconPickerWrap: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
@@ -1852,12 +1923,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     maxWidth: 340,
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,
     paddingHorizontal: SPACING.lg,
-    ...SHADOWS.lg,
   },
   iconPickerHeader: {
     flexDirection: 'row',

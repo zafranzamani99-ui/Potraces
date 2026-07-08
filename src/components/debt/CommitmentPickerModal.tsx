@@ -2,8 +2,9 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Pressable, Modal } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { Subscription } from '../../types';
 
 interface CommitmentPickerModalProps {
@@ -16,6 +17,7 @@ interface CommitmentPickerModalProps {
 
 const CommitmentPickerModal: React.FC<CommitmentPickerModalProps> = ({ visible, subscriptions, currency, onPick, onClose }) => {
   const C = useCalm();
+  const neuS = useNeu(C.surface); // surfaces sit inside the centered modal card (bg C.surface)
   const styles = useMemo(() => makeStyles(C), [C]);
 
   if (!visible) return null;
@@ -23,18 +25,18 @@ const CommitmentPickerModal: React.FC<CommitmentPickerModalProps> = ({ visible, 
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={onClose}>
-        <Pressable onPress={() => {}} style={[styles.choiceCard, { maxHeight: '60%' }]}>
+        <Pressable onPress={() => {}} style={[styles.choiceCard, neuS.raisedSoft, { maxHeight: '60%' }]}>
           <Text style={styles.choiceTitle}>link to commitment</Text>
           <Text style={styles.choiceSubtitle}>pick an existing commitment</Text>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ marginTop: SPACING.md }}>
-            {subscriptions.filter((s) => s.isActive).map((sub, idx, arr) => (
+            {subscriptions.filter((s) => s.isActive).map((sub) => (
               <TouchableOpacity
                 key={sub.id}
-                style={[{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, gap: SPACING.sm }, idx < arr.length - 1 && styles.choiceRowBorder]}
+                style={[styles.choiceRow, neuS.raisedSoft]}
                 onPress={() => onPick(sub.id)}
                 activeOpacity={0.7}
               >
-                <View style={styles.choiceIcon}>
+                <View style={[styles.choiceIcon, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
                   <Feather name="repeat" size={18} color={C.accent} />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -59,7 +61,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.xl,
-    ...SHADOWS['2xl'],
   },
   choiceTitle: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -73,15 +74,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
-  choiceRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+  choiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.sm,
   },
   choiceIcon: {
     width: 40,
     height: 40,
     borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(C.accent, 0.1),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },

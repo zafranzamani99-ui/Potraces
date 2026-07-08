@@ -17,9 +17,12 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReceiptStore } from '../../store/receiptStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
+import NeuButton from '../../components/common/NeuButton';
+import FAB from '../../components/common/FAB';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
 import CategoryIcon from '../../components/common/CategoryIcon';
@@ -29,6 +32,7 @@ type NavigationProp = StackNavigationProp<RootStackParamList>;
 
 const ReceiptHistory: React.FC = () => {
   const C = useCalm();
+  const neu = useNeu();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -102,7 +106,11 @@ const ReceiptHistory: React.FC = () => {
           {availableYears.map((year) => (
             <TouchableOpacity
               key={year}
-              style={[styles.tab, selectedYear === year && styles.tabActive]}
+              style={[
+                styles.tab,
+                selectedYear === year ? neu.inset : neu.raised,
+                selectedYear === year && styles.tabActive,
+              ]}
               onPress={() => { lightTap(); setSelectedYear(year); setFilterCategory(null); }}
               activeOpacity={0.7}
             >
@@ -115,7 +123,7 @@ const ReceiptHistory: React.FC = () => {
 
         {/* ── Tax Relief Summary (hero card) ── */}
         {taxSummary.length > 0 && (
-          <View style={styles.heroCard}>
+          <View style={[styles.heroCard, neu.raisedSoft]}>
             <Text style={styles.heroLabel}>{t.receipts.lhdnTaxRelief} {selectedYear}</Text>
             <Text style={styles.heroAmount}>
               {currency} {totalClaimable.toFixed(0)}{' '}
@@ -129,7 +137,7 @@ const ReceiptHistory: React.FC = () => {
                 <View key={s.categoryId} style={styles.taxRow}>
                   <View style={styles.taxRowTop}>
                     <View style={styles.taxRowLeft}>
-                      <View style={[styles.iconCircle, { backgroundColor: withAlpha(C.accent, 0.08) }]}>
+                      <View style={[styles.iconCircle, neu.well, { backgroundColor: withAlpha(C.accent, 0.08) }]}>
                         <CategoryIcon
                           icon={cat?.icon || 'file'}
                           size={14}
@@ -171,7 +179,11 @@ const ReceiptHistory: React.FC = () => {
         {activeCategories.length > 0 && (
           <View style={styles.tabRow}>
             <TouchableOpacity
-              style={[styles.tab, !filterCategory && styles.tabActive]}
+              style={[
+                styles.tab,
+                !filterCategory ? neu.inset : neu.raised,
+                !filterCategory && styles.tabActive,
+              ]}
               onPress={() => { lightTap(); setFilterCategory(null); }}
               activeOpacity={0.7}
             >
@@ -185,7 +197,11 @@ const ReceiptHistory: React.FC = () => {
               return (
                 <TouchableOpacity
                   key={cat.id}
-                  style={[styles.tab, isActive && styles.tabActive]}
+                  style={[
+                    styles.tab,
+                    isActive ? neu.inset : neu.raised,
+                    isActive && styles.tabActive,
+                  ]}
                   onPress={() => { lightTap(); setFilterCategory(cat.id); }}
                   activeOpacity={0.7}
                 >
@@ -200,7 +216,8 @@ const ReceiptHistory: React.FC = () => {
 
         {/* ── Receipt List (wallet-style groupCard) ── */}
         {hasReceipts ? (
-          <View style={styles.groupCard}>
+          <View style={[styles.groupCardShadow, neu.raisedSoft]}>
+            <View style={styles.groupCard}>
             {filteredReceipts.map((item, index) => {
               const taxCat = MYTAX_CATEGORIES.find((c) => c.id === item.myTaxCategory);
               const isLast = index === filteredReceipts.length - 1;
@@ -255,38 +272,33 @@ const ReceiptHistory: React.FC = () => {
                 </View>
               );
             })}
+            </View>
           </View>
         ) : (
           <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconCircle}>
+            <View style={[styles.emptyIconCircle, neu.raised, { backgroundColor: withAlpha(C.accent, 0.06) }]}>
               <Feather name="camera" size={24} color={C.textMuted} />
             </View>
             <Text style={styles.emptyTitle}>{t.receipts.noReceipts}</Text>
             <Text style={styles.emptyMessage}>
               {t.receipts.scanReceiptHint}
             </Text>
-            <TouchableOpacity
-              style={styles.emptyButton}
+            <NeuButton
               onPress={() => navigation.navigate('ReceiptScanner')}
-              activeOpacity={0.8}
-              accessibilityRole="button"
+              label={t.receipts.scanReceipt}
+              icon="camera"
               accessibilityLabel={t.receipts.scanReceipt}
-            >
-              <Feather name="camera" size={16} color="#fff" />
-              <Text style={styles.emptyButtonText}>{t.receipts.scanReceipt}</Text>
-            </TouchableOpacity>
+            />
           </View>
         )}
       </ScrollView>
 
       {/* ── FAB: scan receipt ── */}
-      <TouchableOpacity
-        style={[styles.fab, { bottom: 24 + insets.bottom }]}
-        onPress={() => { lightTap(); navigation.navigate('ReceiptScanner'); }}
-        activeOpacity={0.85}
-      >
-        <Feather name="camera" size={22} color="#fff" />
-      </TouchableOpacity>
+      <FAB
+        onPress={() => navigation.navigate('ReceiptScanner')}
+        icon="camera"
+        style={{ bottom: 24 + insets.bottom }}
+      />
     </View>
   );
 };
@@ -331,11 +343,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Hero (tax summary) ──
   heroCard: {
-    backgroundColor: C.surface,
+    // surface (bg + neu shadow) comes from neu.raisedSoft spread at the call site
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     marginBottom: SPACING.lg,
-    ...SHADOWS.sm,
   },
   heroLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -429,11 +440,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // ── Grouped card (wallet-style) ──
+  groupCardShadow: {
+    // neu.raisedSoft (bg + soft shadow) is spread here at the call site. This wrapper
+    // is UNCLIPPED so the shadow isn't cut into a hard seam by the inner card's
+    // overflow:'hidden' (the documented rowShadow gotcha).
+    borderRadius: RADIUS.xl,
+  },
   groupCard: {
-    backgroundColor: C.surface,
+    // transparent inner card — clips the Swipeable delete-reveal to the rounded
+    // corners. Its surface (bg) comes from the groupCardShadow wrapper behind it.
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
-    ...SHADOWS.xs,
   },
 
   // ── Receipt row (inside groupCard) ──
@@ -543,34 +560,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.2,
     marginBottom: SPACING.xl,
     lineHeight: TYPOGRAPHY.size.sm * TYPOGRAPHY.lineHeight.normal,
-  },
-  emptyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: C.accent,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.sm + SPACING.xs / 2,
-    borderRadius: RADIUS.full,
-  },
-  emptyButtonText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
-    letterSpacing: 0.2,
-  },
-
-  // ── FAB ──
-  fab: {
-    position: 'absolute',
-    right: SPACING.xl,
-    width: 56,
-    height: 56,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...SHADOWS.md,
   },
 });
 

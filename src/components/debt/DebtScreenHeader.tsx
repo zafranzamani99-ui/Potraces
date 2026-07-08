@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-nativ
 import { Feather } from '@expo/vector-icons';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
 import type { DebtFilter, DebtTypeFilter, DebtSort } from '../../screens/shared/debt/useDebtFilters';
 
@@ -67,6 +68,7 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
 }) => {
   const C = useCalm();
   const isDark = useIsDark();
+  const neu = useNeu();
   const t = useT();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
@@ -82,6 +84,7 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
           }}
           style={[
             styles.heroTile,
+            neu.raisedSoft,
             { backgroundColor: withAlpha(iOweColor, 0.06) },
             debtTypeFilter === 'i_owe' && { backgroundColor: withAlpha(iOweColor, 0.14) },
           ]}
@@ -104,6 +107,7 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
           }}
           style={[
             styles.heroTile,
+            neu.raisedSoft,
             { backgroundColor: withAlpha(theyOweColor, 0.06) },
             debtTypeFilter === 'they_owe' && { backgroundColor: withAlpha(theyOweColor, 0.14) },
           ]}
@@ -121,7 +125,7 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
       </View>
 
       {/* Search Bar */}
-      <View style={styles.searchBar}>
+      <View style={[styles.searchBar, neu.insetSoft]}>
         <Feather name="search" size={16} color={C.textMuted} />
         <TextInput
           style={styles.searchInput}
@@ -270,14 +274,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
     marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
     gap: SPACING.sm,
+    // surface (bg + recessed inset shadow) comes from neu.insetSoft spread at the call site
   },
   searchInput: {
     flex: 1,

@@ -3,6 +3,7 @@ import {
   View,
   Pressable,
   StyleSheet,
+  StyleProp,
   ViewStyle,
   Animated,
 } from 'react-native';
@@ -18,7 +19,7 @@ interface CardProps {
   variant?: CardVariant;
   onPress?: () => void;
   borderRadius?: keyof typeof RADIUS;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
   accessibilityHint?: string;
   // gradient prop kept for API compat but ignored
@@ -80,7 +81,7 @@ const PressableCard: React.FC<{
   children: React.ReactNode;
   variantStyle: ViewStyle;
   radiusValue: number;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   onPress: () => void;
   accessibilityLabel?: string;
   accessibilityHint?: string;

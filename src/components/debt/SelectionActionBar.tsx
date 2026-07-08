@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, BIZ_SAFE, semantic, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
+import NeuButton from '../common/NeuButton';
 import { useT } from '../../i18n';
 
 interface SelectionActionBarProps {
@@ -18,11 +20,14 @@ interface SelectionActionBarProps {
 const SelectionActionBar: React.FC<SelectionActionBarProps> = ({ count, allArchived, onCancel, onSelectAll, onEdit, onArchive, onDelete }) => {
   const C = useCalm();
   const isDark = useIsDark();
+  const neu = useNeu();              // base = C.background — for the bar sitting on the screen
+  const neuS = useNeu(C.surface);    // base = C.surface — for tiles on the C.surface bar
   const t = useT();
   const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
+  const destructiveC = semantic(BIZ_SAFE.destructive, isDark);   // terracotta
 
   return (
-    <View style={styles.selectionBar}>
+    <View style={[styles.selectionBar, neu.raisedSoft, { backgroundColor: C.surface }]}>
       <View style={styles.selectionBarTop}>
         <TouchableOpacity onPress={onCancel} style={styles.selectionBarBtn}>
           <Feather name="x" size={18} color={C.textPrimary} />
@@ -36,26 +41,28 @@ const SelectionActionBar: React.FC<SelectionActionBarProps> = ({ count, allArchi
       </View>
       <View style={styles.selectionBarActions}>
         {count === 1 && (
-          <TouchableOpacity style={styles.selectionEditBtn} onPress={onEdit} activeOpacity={0.7}>
+          <TouchableOpacity style={[styles.selectionEditBtn, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} onPress={onEdit} activeOpacity={0.7}>
             <Feather name="edit-2" size={18} color={C.accent} />
             <Text style={styles.selectionEditText}>{t.common.edit}</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={styles.selectionEditBtn} onPress={onArchive} activeOpacity={0.7}>
+        <TouchableOpacity style={[styles.selectionEditBtn, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} onPress={onArchive} activeOpacity={0.7}>
           <Feather name={allArchived ? 'corner-up-left' : 'archive'} size={18} color={C.bronze} />
           <Text style={[styles.selectionEditText, { color: C.bronze }]}>{allArchived ? 'unarchive' : 'archive'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.selectionDeleteBtn, { flex: 1 }]} onPress={onDelete} activeOpacity={0.7}>
-          <Feather name="trash-2" size={18} color={C.onAccent} />
-          <Text style={styles.selectionDeleteText}>{t.common.delete} ({count})</Text>
-        </TouchableOpacity>
+        <NeuButton
+          style={styles.selectionDeleteBtn}
+          onPress={onDelete}
+          color={destructiveC}
+          icon="trash-2"
+          label={`${t.common.delete} (${count})`}
+        />
       </View>
     </View>
   );
 };
 
 const makeStyles = (C: typeof CALM, isDark: boolean) => {
-  const destructiveC = semantic(BIZ_SAFE.destructive, isDark);    // terracotta
   return StyleSheet.create({
     selectionBar: {
       position: 'absolute',
@@ -103,8 +110,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
       paddingVertical: SPACING.md,
       backgroundColor: withAlpha(C.accent, 0.1),
       borderRadius: RADIUS.md,
-      borderWidth: 1,
-      borderColor: C.accent,
     },
     selectionEditText: {
       fontSize: TYPOGRAPHY.size.base,
@@ -112,18 +117,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
       color: C.accent,
     },
     selectionDeleteBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: SPACING.sm,
-      paddingVertical: SPACING.md,
-      backgroundColor: withAlpha(destructiveC, 0.9),
-      borderRadius: RADIUS.md,
-    },
-    selectionDeleteText: {
-      fontSize: TYPOGRAPHY.size.base,
-      fontWeight: TYPOGRAPHY.weight.semibold,
-      color: C.onAccent,
+      flex: 1,
     },
   });
 };

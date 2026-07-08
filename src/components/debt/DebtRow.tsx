@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { differenceInDays } from 'date-fns';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { getDebtAge } from '../../utils/debtTracking';
 import { Contact, Debt } from '../../types';
 
@@ -57,6 +58,7 @@ const DebtRow: React.FC<DebtRowProps> = ({
   highlightRef,
 }) => {
   const C = useCalm();
+  const neu = useNeu();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   const isMulti = group.debts.length > 1;
@@ -85,7 +87,7 @@ const DebtRow: React.FC<DebtRowProps> = ({
     const allGroupSelected = inDebtSelection && groupIds.every((id) => selectedIds.has(id));
     const someGroupSelected = inDebtSelection && groupIds.some((id) => selectedIds.has(id));
     return (
-      <View key={group.contactId} style={[styles.tickerDebtRow, allGroupSelected && styles.tickerSplitRowSelected]}>
+      <View key={group.contactId} style={[styles.tickerDebtRow, neu.raisedSoft, allGroupSelected && styles.tickerSplitRowSelected]}>
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => {
@@ -109,7 +111,7 @@ const DebtRow: React.FC<DebtRowProps> = ({
                 {someGroupSelected && !allGroupSelected && <Feather name="minus" size={14} color={C.onAccent} />}
               </View>
             )}
-            <View style={[styles.tickerDebtAvatar, { backgroundColor: withAlpha(typeConfig.color, 0.12) }]}>
+            <View style={[styles.tickerDebtAvatar, neu.well, { backgroundColor: withAlpha(typeConfig.color, 0.12) }]}>
               <Text style={[styles.tickerDebtAvatarText, { color: typeConfig.color }]}>
                 {group.contactName.charAt(0).toUpperCase()}
               </Text>
@@ -183,6 +185,7 @@ const DebtRow: React.FC<DebtRowProps> = ({
     <View key={group.contactId} ref={highlightId === debt.id ? highlightRef : undefined}>
     <View style={[
       styles.tickerDebtRow,
+      neu.raisedSoft,
       isSelected && styles.tickerSplitRowSelected,
     ]}>
       <TouchableOpacity
@@ -202,7 +205,7 @@ const DebtRow: React.FC<DebtRowProps> = ({
               {isSelected && <Feather name="check" size={14} color={C.onAccent} />}
             </View>
           )}
-          <View style={[styles.tickerDebtAvatar, { backgroundColor: withAlpha(typeConfig.color, 0.12) }]}>
+          <View style={[styles.tickerDebtAvatar, neu.well, { backgroundColor: withAlpha(typeConfig.color, 0.12) }]}>
             <Text style={[styles.tickerDebtAvatarText, { color: typeConfig.color }]}>
               {debt.contact.name.charAt(0).toUpperCase()}
             </Text>
@@ -298,10 +301,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   tickerDebtRow: {
-    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     marginBottom: SPACING.sm,

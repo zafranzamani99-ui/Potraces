@@ -4,7 +4,8 @@ import { Feather } from '@expo/vector-icons';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
-import Button from '../common/Button';
+import { useNeu } from '../common/neu';
+import NeuButton from '../common/NeuButton';
 
 interface DebtViewSettingsModalProps {
   visible: boolean;
@@ -28,6 +29,7 @@ const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
   onHowItWorks,
 }) => {
   const C = useCalm();
+  const neuS = useNeu(C.surface);
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
@@ -50,7 +52,7 @@ const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
 
           <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.lg }}>
             <TouchableOpacity
-              style={styles.dSettingsRow}
+              style={[styles.dSettingsRow, neuS.raisedSoft]}
               onPress={() => setDebtsShowArchive(!debtsShowArchive)}
               activeOpacity={0.7}
               accessibilityRole="switch"
@@ -74,7 +76,7 @@ const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.dSettingsRow, { marginTop: SPACING.md }]}
+              style={[styles.dSettingsRow, neuS.raisedSoft, { marginTop: SPACING.md }]}
               onPress={() => setDebtsShowReminder(!debtsShowReminder)}
               activeOpacity={0.7}
               accessibilityRole="switch"
@@ -99,7 +101,7 @@ const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
 
             {/* ── How it works button ─────────────────────── */}
             <TouchableOpacity
-              style={styles.dHowButton}
+              style={[styles.dHowButton, neuS.raisedSoft]}
               onPress={onHowItWorks}
               activeOpacity={0.7}
             >
@@ -108,11 +110,9 @@ const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
               <Feather name="chevron-right" size={14} color={C.textMuted} />
             </TouchableOpacity>
 
-            <Button
-              title={t.common.done}
+            <NeuButton
+              label={t.common.done}
               onPress={onClose}
-              variant="outline"
-              fullWidth
               style={{ marginTop: SPACING.lg }}
             />
           </View>
@@ -179,6 +179,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.md,
     paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.lg,
   },
   dSettingsRowTitle: {
     fontSize: TYPOGRAPHY.size.base,
@@ -211,11 +213,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    marginTop: SPACING.lg,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: withAlpha(C.textPrimary, 0.06),
+    marginTop: SPACING.md,
     paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.lg,
   },
   dHowButtonText: {
     flex: 1,

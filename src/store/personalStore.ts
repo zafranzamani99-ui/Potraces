@@ -209,18 +209,40 @@ export const usePersonalStore = create<PersonalState>()(
             // buckets by — so a late payment (paid Jun 2 for the May 25 bill) is filed
             // under May, not June.
             const periodDate = new Date(sub.nextBillingDate);
-            let next = new Date(sub.nextBillingDate);
-            switch (sub.billingCycle) {
-              case 'weekly':    next.setDate(next.getDate() + 7);    break;
-              case 'quarterly': next.setMonth(next.getMonth() + 3);  break;
-              case 'yearly':    next.setFullYear(next.getFullYear() + 1); break;
-              default:          next.setMonth(next.getMonth() + 1);  break;
-            }
+            const dayKey = (d: Date | string) => {
+              const x = new Date(d);
+              return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+            };
+            const advance = (d: Date) => {
+              const n = new Date(d);
+              switch (sub.billingCycle) {
+                case 'weekly':    n.setDate(n.getDate() + 7);    break;
+                case 'quarterly': n.setMonth(n.getMonth() + 3);  break;
+                case 'yearly':    n.setFullYear(n.getFullYear() + 1); break;
+                default:          n.setMonth(n.getMonth() + 1);  break;
+              }
+              return n;
+            };
+            // Advance to the next due cycle, SKIPPING any cycle already settled by an
+            // active payment (can happen after an out-of-order undo leaves a paid cycle
+            // ahead of the pointer) — so nextBillingDate never lands on a paid cycle.
+            const paidKeys = new Set(
+              (sub.paymentHistory || []).filter((p) => !p.undoneAt).map((p) => dayKey(p.periodDate ?? p.paidAt)),
+            );
+            let next = advance(periodDate);
+            let guard = 0;
+            while (paidKeys.has(dayKey(next)) && guard++ < 600) next = advance(next);
+
             const newCompleted = sub.isInstallment
               ? Math.min((sub.completedInstallments || 0) + 1, sub.totalInstallments || 9999)
               : sub.completedInstallments;
             const newOutstanding = sub.outstandingBalance !== undefined
               ? roundMoney(Math.max(sub.outstandingBalance - sub.amount, 0))
+              : undefined;
+            // Exact amount taken off outstandingBalance (clamps at 0), so undo restores
+            // precisely instead of always adding back the full sub.amount.
+            const appliedToOutstanding = sub.outstandingBalance !== undefined && newOutstanding !== undefined
+              ? roundMoney(sub.outstandingBalance - newOutstanding)
               : undefined;
             return {
               ...sub,
@@ -230,7 +252,7 @@ export const usePersonalStore = create<PersonalState>()(
               outstandingBalance: newOutstanding,
               paymentHistory: [
                 ...(sub.paymentHistory || []),
-                { id: `pay-${newId()}`, paidAt: paidOn, periodDate, amount: sub.amount, transactionId, walletId },
+                { id: `pay-${newId()}`, paidAt: paidOn, periodDate, amount: sub.amount, transactionId, walletId, appliedToOutstanding },
               ],
               updatedAt: new Date(),
             };
@@ -247,50 +269,83 @@ export const usePersonalStore = create<PersonalState>()(
           const payment = (sub.paymentHistory || []).find((p) => p.id === paymentId);
           if (!payment || payment.undoneAt) return s;
 
-          let prev = new Date(sub.nextBillingDate);
-          switch (sub.billingCycle) {
-            case 'weekly':    prev.setDate(prev.getDate() - 7);    break;
-            case 'quarterly': prev.setMonth(prev.getMonth() - 3);  break;
-            case 'yearly':    prev.setFullYear(prev.getFullYear() - 1); break;
-            default:          prev.setMonth(prev.getMonth() - 1);  break;
-          }
-          const rolledCompleted = sub.isInstallment
-            ? Math.max((sub.completedInstallments || 0) - 1, 0)
-            : sub.completedInstallments;
-          const rolledOutstanding = sub.outstandingBalance !== undefined
-            ? roundMoney(sub.outstandingBalance + payment.amount)
-            : undefined;
-
           if (payment.walletId) {
             walletRefund = { walletId: payment.walletId, amount: payment.amount };
           }
           transactionToDelete = payment.transactionId;
 
-          const activePayments = (sub.paymentHistory || [])
-            .filter((p) => p.id !== paymentId && !p.undoneAt)
-            .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+          // Mark this payment undone, then RE-DERIVE the schedule from the resulting
+          // active set — so undoing ANY payment (not just the latest) is correct, and an
+          // out-of-order undo re-exposes exactly that cycle instead of blindly rolling
+          // the pointer back one step.
+          const newHistory = (sub.paymentHistory || []).map((p) =>
+            p.id === paymentId ? { ...p, undoneAt: new Date() } : p
+          );
+          const active = newHistory.filter((p) => !p.undoneAt);
+
+          const dayKey = (d: Date | string) => {
+            const x = new Date(d);
+            return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+          };
+          const advanceCycle = (d: Date) => {
+            const n = new Date(d);
+            switch (sub.billingCycle) {
+              case 'weekly':    n.setDate(n.getDate() + 7);    break;
+              case 'quarterly': n.setMonth(n.getMonth() + 3);  break;
+              case 'yearly':    n.setFullYear(n.getFullYear() + 1); break;
+              default:          n.setMonth(n.getMonth() + 1);  break;
+            }
+            return n;
+          };
+
+          const clearedKeys = new Set(active.map((p) => dayKey(p.periodDate ?? p.paidAt)));
+          // Every cycle ever billed (has a payment record), ascending.
+          const billedPeriods = newHistory
+            .map((p) => new Date(p.periodDate ?? p.paidAt))
+            .sort((a, b) => a.getTime() - b.getTime());
+          // Oldest billed cycle that's no longer cleared = the new oldest-unpaid. If all
+          // billed cycles are still cleared, next due is one cycle past the latest.
+          const firstUnpaid = billedPeriods.find((pd) => !clearedKeys.has(dayKey(pd)));
+          const latestBilled = billedPeriods[billedPeriods.length - 1] ?? new Date(sub.nextBillingDate);
+          const newNext = firstUnpaid ?? advanceCycle(latestBilled);
+
+          const newCompleted = sub.isInstallment
+            ? Math.min(active.length, sub.totalInstallments ?? active.length)
+            : sub.completedInstallments;
+          const rolledOutstanding = sub.outstandingBalance !== undefined
+            ? roundMoney(sub.outstandingBalance + ((payment as any).appliedToOutstanding ?? payment.amount))
+            : undefined;
+          const lastPaidAt = [...active]
+            .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())[0]?.paidAt ?? undefined;
 
           return {
             subscriptions: s.subscriptions.map((item) => {
               if (item.id !== subId) return item;
               return {
                 ...item,
-                nextBillingDate: prev,
-                completedInstallments: rolledCompleted,
+                nextBillingDate: newNext,
+                completedInstallments: newCompleted,
                 outstandingBalance: rolledOutstanding,
-                lastPaidAt: activePayments[0]?.paidAt ?? undefined,
-                paymentHistory: (item.paymentHistory || []).map((p) =>
-                  p.id === paymentId ? { ...p, undoneAt: new Date() } : p
-                ),
+                lastPaidAt,
+                paymentHistory: newHistory,
                 updatedAt: new Date(),
               };
             }),
             transactions: transactionToDelete
               ? s.transactions.filter((t) => t.id !== transactionToDelete)
               : s.transactions,
+            // Tombstone the deleted tx exactly like deleteTransaction — otherwise the
+            // server row survives, re-syncs back, and autoReconcile re-deducts it,
+            // silently reversing the wallet refund below (and doubling on other devices).
+            _deletedTransactionIds: transactionToDelete
+              ? [...(s._deletedTransactionIds ?? []), transactionToDelete]
+              : s._deletedTransactionIds,
           };
         });
 
+        if (transactionToDelete) {
+          useTombstoneStore.getState().addTombstones([transactionToDelete]);
+        }
         if (walletRefund) {
           useWalletStore.getState().addToWallet(walletRefund.walletId, walletRefund.amount);
         }

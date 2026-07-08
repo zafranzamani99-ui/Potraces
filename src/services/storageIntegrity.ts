@@ -91,6 +91,14 @@ export async function checkStorageIntegrity(): Promise<IntegrityReport> {
 export async function clearCorruptedStores(keys: StoreKey[]): Promise<void> {
   for (const key of keys) {
     try {
+      // Quarantine the (possibly-corrupt) blob before clearing rather than deleting
+      // outright. A false-positive corruption check (e.g. a truncated write under
+      // storage pressure) would otherwise permanently, silently wipe real financial
+      // data with no recovery path. The quarantined copy can be inspected/restored.
+      const raw = await AsyncStorage.getItem(key);
+      if (raw != null) {
+        await AsyncStorage.setItem(`corrupt-quarantine:${key}`, raw);
+      }
       await AsyncStorage.removeItem(key);
     } catch {
       // best-effort; if a single key fails, keep going

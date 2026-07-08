@@ -20,11 +20,12 @@ import Svg, { Path as SvgPath, Rect as SvgRect } from 'react-native-svg';
 import { useReceiptStore } from '../../store/receiptStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useWalletStore } from '../../store/walletStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { exportSingleReceiptPdf } from '../../services/pdfExport';
 import { shareCapturedReceipt } from '../../services/receiptImageExport';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
 import { useT } from '../../i18n';
 import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
@@ -40,6 +41,8 @@ type DetailRoute = RouteProp<RootStackParamList, 'ReceiptDetail'>;
 
 const ReceiptDetail: React.FC = () => {
   const C = useCalm();
+  const neu = useNeu();            // on-screen surfaces sit on C.background
+  const neuS = useNeu(C.surface);  // tax-picker modal rows sit on the C.surface card
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -152,7 +155,7 @@ const ReceiptDetail: React.FC = () => {
         )}
 
         {/* ── Details card (hero card pattern) ── */}
-        <View style={styles.heroCard}>
+        <View style={[styles.heroCard, neu.raisedSoft]}>
           <Text style={styles.heroLabel}>{format(receipt.date, 'dd MMM yyyy')}</Text>
           <Text style={styles.receiptTitle}>{receipt.title}</Text>
           {receipt.vendor && receipt.vendor !== receipt.title && (
@@ -190,7 +193,7 @@ const ReceiptDetail: React.FC = () => {
 
         {/* ── Items card (groupCard pattern) ── */}
         {receipt.items.length > 0 && (
-          <View style={styles.groupCard}>
+          <View style={[styles.groupCard, neu.raisedSoft]}>
             <View style={styles.itemsHeader}>
               <Text style={styles.itemsHeaderText}>{t.receiptDetail.items}</Text>
               <Text style={styles.itemsCount}>{receipt.items.length}</Text>
@@ -233,13 +236,13 @@ const ReceiptDetail: React.FC = () => {
 
         {/* ── Action buttons ── */}
         <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.actionBtn} onPress={handleShareAsImage} activeOpacity={0.7} disabled={sharingImage}>
+          <TouchableOpacity style={[styles.actionBtn, neu.raised]} onPress={handleShareAsImage} activeOpacity={0.7} disabled={sharingImage}>
             <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(C.accent, 0.08) }]}>
               <Feather name="image" size={16} color={C.accent} />
             </View>
             <Text style={[styles.actionBtnText, { color: C.accent }]}>{sharingImage ? t.receiptDetail.sharing : t.receiptDetail.shareAsImage}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={handleShare} activeOpacity={0.7}>
+          <TouchableOpacity style={[styles.actionBtn, neu.raised]} onPress={handleShare} activeOpacity={0.7}>
             <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(C.accent, 0.08) }]}>
               <Feather name="file-text" size={16} color={C.accent} />
             </View>
@@ -403,7 +406,7 @@ const ReceiptDetail: React.FC = () => {
           activeOpacity={1}
           onPress={() => setTaxPickerVisible(false)}
         >
-          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
+          <View style={[styles.modalCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
             <Text style={styles.modalTitle}>{t.receiptDetail.taxReliefCategoryTitle}</Text>
             <FlatList
               data={MYTAX_CATEGORIES}
@@ -418,7 +421,7 @@ const ReceiptDetail: React.FC = () => {
                 const isSelected = cat.id === receipt.myTaxCategory;
                 return (
                   <TouchableOpacity
-                    style={[styles.modalRow, isSelected && { backgroundColor: withAlpha(C.accent, 0.06) }]}
+                    style={[styles.modalRow, neuS.raisedSoft, isSelected && { backgroundColor: withAlpha(C.accent, 0.06) }]}
                     onPress={() => {
                       updateReceipt(receipt.id, { myTaxCategory: cat.id });
                       setTaxPickerVisible(false);
@@ -426,7 +429,7 @@ const ReceiptDetail: React.FC = () => {
                     }}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.modalRowIcon, { backgroundColor: withAlpha(isSelected ? C.accent : C.textSecondary, 0.08) }]}>
+                    <View style={[styles.modalRowIcon, neuS.well, { backgroundColor: withAlpha(isSelected ? C.accent : C.textSecondary, 0.08) }]}>
                       <Feather name={cat.icon as keyof typeof Feather.glyphMap} size={14} color={isSelected ? C.accent : C.textSecondary} />
                     </View>
                     <View style={{ flex: 1 }}>
@@ -536,7 +539,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     marginBottom: SPACING.lg,
-    ...SHADOWS.sm,
+    // neu.raisedSoft (bg + shadow) spread at the call site
   },
   heroLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -575,9 +578,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   groupCard: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    overflow: 'hidden',
     marginBottom: SPACING.lg,
-    ...SHADOWS.xs,
+    // neu.raisedSoft (bg + shadow) spread at the call site — no overflow:'hidden' (it clips the raised shadow)
   },
   itemsHeader: {
     flexDirection: 'row',
@@ -837,10 +839,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
-    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
+    // neu.raised (bg + shadow) spread at the call site
   },
   actionIconCircle: {
     width: 36,
@@ -951,7 +951,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING.xl,
     width: '100%',
     maxWidth: 360,
-    ...SHADOWS.lg,
+    // neuS.raisedSoft (bg + shadow) spread at the call site
   },
   modalTitle: {
     fontSize: TYPOGRAPHY.size.base,
@@ -965,6 +965,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
+    marginBottom: SPACING.sm,
     borderRadius: RADIUS.md,
   },
   modalRowIcon: {

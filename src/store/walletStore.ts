@@ -214,10 +214,13 @@ export const useWalletStore = create<WalletState>()(
               // (repayCredit); reversing it must restore usedCredit too. A plain
               // transfer to a credit wallet only moved balance, so leave usedCredit.
               if (t.kind === 'repayment' && w.type === 'credit') {
+                // Restore the repaid credit, but never above the limit (can't owe
+                // more than the limit) — guards against a reversal over-restoring.
+                const restored = (w.usedCredit || 0) + t.amount;
                 return {
                   ...w,
                   balance: roundMoney(w.balance - t.amount),
-                  usedCredit: roundMoney((w.usedCredit || 0) + t.amount),
+                  usedCredit: roundMoney(w.creditLimit != null ? Math.min(w.creditLimit, restored) : restored),
                   updatedAt: new Date(),
                 };
               }
@@ -250,16 +253,20 @@ export const useWalletStore = create<WalletState>()(
 
       repayCredit: (id, amount) =>
         set((state) => ({
-          wallets: state.wallets.map((w) =>
-            w.id === id && w.type === 'credit'
-              ? {
-                  ...w,
-                  balance: roundMoney(w.balance + amount),
-                  usedCredit: roundMoney(Math.max(0, (w.usedCredit || 0) - amount)),
-                  updatedAt: new Date(),
-                }
-              : w
-          ),
+          wallets: state.wallets.map((w) => {
+            if (w.id !== id || w.type !== 'credit') return w;
+            // Never repay more than is owed: over-repay would push balance above the
+            // credit limit (impossible state) and desync usedCredit. Callers should
+            // already cap, but guard here so no path can inflate available credit.
+            const owed = w.usedCredit || 0;
+            const repay = Math.min(Math.max(0, amount), owed);
+            return {
+              ...w,
+              balance: roundMoney(w.balance + repay),
+              usedCredit: roundMoney(owed - repay),
+              updatedAt: new Date(),
+            };
+          }),
         })),
 
       clearAll: () =>

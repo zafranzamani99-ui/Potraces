@@ -11,6 +11,7 @@ import {
   Easing,
   LayoutChangeEvent,
   useWindowDimensions,
+  ScrollView,
 } from 'react-native';
 import RAnimated, {
   useSharedValue,
@@ -34,7 +35,7 @@ import { useSettingsStore, ThemePreference } from '../../store/settingsStore';
 import { useAppStore } from '../../store/appStore';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
-import { loadDummyData } from '../../utils/dummyData';
+import { loadSampleData, SAMPLE_PROFILES, DEFAULT_SAMPLE_BRACKET, type SampleBracket } from '../../utils/sampleData';
 import { SkyBackdrop, FlyingWau } from '../../components/common/WauScene';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -668,50 +669,99 @@ const StartChoicePage = React.memo<{
   active: boolean;
   selected: StartChoice | null;
   onPick: (choice: StartChoice) => void;
+  bracket: SampleBracket;
+  onPickBracket: (b: SampleBracket) => void;
   listW: number;
   sky: SkyPalette;
   styles: Styles;
   t: Translations;
-}>(({ active, selected, onPick, listW, sky, styles, t }) => (
+}>(({ active, selected, onPick, bracket, onPickBracket, listW, sky, styles, t }) => (
   <View style={[styles.page, { width: listW }]}>
-    <View style={styles.pageInner}>
-      <Reveal active={active} delay={60} from={12} style={{ alignSelf: 'stretch' }}>
-        <Text style={styles.title} accessibilityRole="header">{t.onboarding.startPickTitle}</Text>
-      </Reveal>
+    {/* Scrollable — picking "demo" reveals four profiles, which can overflow a
+        short screen; a vertical scroll (opposite axis to the pager) is safe. */}
+    <ScrollView
+      style={styles.startScroll}
+      contentContainerStyle={styles.startScrollInner}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.pageInner}>
+        <Reveal active={active} delay={60} from={12} style={{ alignSelf: 'stretch' }}>
+          <Text style={styles.title} accessibilityRole="header">{t.onboarding.startPickTitle}</Text>
+        </Reveal>
 
-      <View style={styles.choiceList}>
-        {START_OPTIONS.map((opt, i) => {
-          const isActive = selected === opt.id;
-          const label = opt.id === 'fresh' ? t.onboarding.startFresh : t.onboarding.startDemo;
-          return (
-            <Reveal key={opt.id} active={active} delay={180 + i * 120} from={18}>
-              <TouchableOpacity
-                style={[styles.choiceCard, isActive && styles.choiceCardActive]}
-                onPress={() => onPick(opt.id)}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={label}
-                accessibilityState={{ selected: isActive }}
-              >
-                <View style={[styles.choiceIconWrap, isActive && styles.choiceIconWrapActive]}>
-                  <Feather name={opt.icon} size={20} color={isActive ? sky.accent : sky.sub} />
-                </View>
-                <Text style={[styles.choiceLabel, isActive && styles.choiceLabelActive]}>{label}</Text>
-                <View style={[styles.radioOuter, isActive && styles.radioOuterActive]}>
-                  {isActive && (
-                    <Pop>
-                      <View style={styles.radioInner}>
-                        <Feather name="check" size={12} color={sky.ctaInk} />
-                      </View>
-                    </Pop>
-                  )}
-                </View>
-              </TouchableOpacity>
-            </Reveal>
-          );
-        })}
+        <View style={styles.choiceList}>
+          {START_OPTIONS.map((opt, i) => {
+            const isActive = selected === opt.id;
+            const label = opt.id === 'fresh' ? t.onboarding.startFresh : t.onboarding.startDemo;
+            return (
+              <Reveal key={opt.id} active={active} delay={180 + i * 120} from={18}>
+                <TouchableOpacity
+                  style={[styles.choiceCard, isActive && styles.choiceCardActive]}
+                  onPress={() => onPick(opt.id)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                  accessibilityState={{ selected: isActive }}
+                >
+                  <View style={[styles.choiceIconWrap, isActive && styles.choiceIconWrapActive]}>
+                    <Feather name={opt.icon} size={20} color={isActive ? sky.accent : sky.sub} />
+                  </View>
+                  <Text style={[styles.choiceLabel, isActive && styles.choiceLabelActive]}>{label}</Text>
+                  <View style={[styles.radioOuter, isActive && styles.radioOuterActive]}>
+                    {isActive && (
+                      <Pop>
+                        <View style={styles.radioInner}>
+                          <Feather name="check" size={12} color={sky.ctaInk} />
+                        </View>
+                      </Pop>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </Reveal>
+            );
+          })}
+        </View>
+
+        {/* Which persona to explore as — only when "demo" is chosen. */}
+        {selected === 'demo' && (
+          <Reveal active={active} delay={120} from={14} style={{ alignSelf: 'stretch' }}>
+            <View style={styles.profileWrap}>
+              <Text style={styles.profileHeading}>{t.sampleData.pickTitle}</Text>
+              {SAMPLE_PROFILES.map((p) => {
+                const on = bracket === p.id;
+                const info = t.sampleData.profiles[p.id];
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={[styles.profileRow, on && styles.choiceCardActive]}
+                    onPress={() => onPickBracket(p.id)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${info.name} · ${p.age}`}
+                    accessibilityState={{ selected: on }}
+                  >
+                    <View style={[styles.profileIconWrap, on && styles.choiceIconWrapActive]}>
+                      <Feather name={p.icon as keyof typeof Feather.glyphMap} size={16} color={on ? sky.accent : sky.sub} />
+                    </View>
+                    <View style={styles.profileText}>
+                      <Text style={[styles.profileName, on && styles.choiceLabelActive]}>{info.name} · {p.age}</Text>
+                      <Text style={styles.profileBlurb}>{info.blurb}</Text>
+                    </View>
+                    <View style={[styles.radioOuter, on && styles.radioOuterActive]}>
+                      {on && (
+                        <View style={styles.radioInner}>
+                          <Feather name="check" size={10} color={sky.ctaInk} />
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Reveal>
+        )}
       </View>
-    </View>
+    </ScrollView>
   </View>
 ));
 StartChoicePage.displayName = 'StartChoicePage';
@@ -734,6 +784,7 @@ const Onboarding: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const indexRef = useRef(0);
   const [startChoice, setStartChoice] = useState<StartChoice | null>(null);
+  const [sampleBracket, setSampleBracket] = useState<SampleBracket>(DEFAULT_SAMPLE_BRACKET);
   const setHasCompletedOnboarding = useSettingsStore((s) => s.setHasCompletedOnboarding);
   const setDefaultMode = useSettingsStore((s) => s.setDefaultMode);
   const setMode = useAppStore((s) => s.setMode);
@@ -816,7 +867,7 @@ const Onboarding: React.FC = () => {
   // Takes the choice explicitly rather than reading startChoice state — Skip
   // must mean "start fresh" even if the user picked demo on the last page and
   // then swiped back (the lingering pick must not seed on Skip).
-  const handleComplete = useCallback((choice: StartChoice | null) => {
+  const handleComplete = useCallback((choice: StartChoice | null, bracket: SampleBracket) => {
     // One-shot: a double-tap on the CTA (or CTA + skip racing) must not seed
     // the demo dataset twice.
     if (completedRef.current) return;
@@ -825,8 +876,8 @@ const Onboarding: React.FC = () => {
     // stays one Settings toggle away. Name/language persisted on change.
     setDefaultMode('personal');
     setMode('personal');
-    // Same dataset as Settings → Load Sample Data.
-    if (choice === 'demo') loadDummyData();
+    // Same engine as Settings → Load Sample Data; seeds the chosen persona.
+    if (choice === 'demo') loadSampleData(bracket);
     setHasCompletedOnboarding(true);
   }, [setDefaultMode, setMode, setHasCompletedOnboarding]);
 
@@ -838,9 +889,9 @@ const Onboarding: React.FC = () => {
       settleIndex(next);
       scrollRef.current?.scrollTo({ x: next * listW, animated: true });
     } else {
-      handleComplete(startChoice);
+      handleComplete(startChoice, sampleBracket);
     }
-  }, [PAGE_COUNT, listW, settleIndex, handleComplete, scrollRef, startChoice]);
+  }, [PAGE_COUNT, listW, settleIndex, handleComplete, scrollRef, startChoice, sampleBracket]);
 
   const handleStartPick = useCallback((choice: StartChoice) => {
     lightTap();
@@ -873,7 +924,7 @@ const Onboarding: React.FC = () => {
         />
         {canSkip ? (
           <TouchableOpacity
-            onPress={() => handleComplete(null)}
+            onPress={() => handleComplete(null, sampleBracket)}
             style={styles.skipButton}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
@@ -928,6 +979,8 @@ const Onboarding: React.FC = () => {
             active={isLastPage}
             selected={startChoice}
             onPick={handleStartPick}
+            bracket={sampleBracket}
+            onPickBracket={setSampleBracket}
             listW={listW}
             sky={sky}
             styles={styles}
@@ -1248,6 +1301,63 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     backgroundColor: sky.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // ── Demo profile sub-picker (revealed when "demo" is chosen) ──
+  startScroll: {
+    width: '100%',
+  },
+  startScrollInner: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+  },
+  profileWrap: {
+    width: '100%',
+    marginTop: SPACING.xl,
+    gap: SPACING.sm,
+  },
+  profileHeading: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: sky.sub,
+    marginBottom: SPACING.xs,
+    alignSelf: 'flex-start',
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 14,
+    backgroundColor: sky.fieldBg,
+    borderWidth: 1.5,
+    borderColor: sky.choiceBorder,
+    gap: SPACING.sm,
+    minHeight: 56,
+    ...(skyDark ? NO_SHADOW : { ...WARM_SHADOW_SM, elevation: 0 }),
+  },
+  profileIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: withAlpha(sky.sub, 0.15),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileText: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: sky.ink,
+  },
+  profileBlurb: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: sky.sub,
+    marginTop: 1,
   },
 });
 

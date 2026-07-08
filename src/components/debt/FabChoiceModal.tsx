@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Pressable, Modal } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
 
 interface FabChoiceModalProps {
@@ -15,6 +16,7 @@ interface FabChoiceModalProps {
 
 const FabChoiceModal: React.FC<FabChoiceModalProps> = ({ visible, onClose, onAddDebt, onSplitExpense, onAddSharedSub }) => {
   const C = useCalm();
+  const neuS = useNeu(C.surface); // base = C.surface — modal card + rows sit on the scrim's centered C.surface body
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
@@ -23,7 +25,7 @@ const FabChoiceModal: React.FC<FabChoiceModalProps> = ({ visible, onClose, onAdd
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={onClose}>
-        <Pressable onPress={() => {}} style={styles.choiceCard}>
+        <Pressable onPress={() => {}} style={[styles.choiceCard, neuS.raisedSoft]}>
           <Text style={styles.choiceTitle}>{t.debts.newEntry}</Text>
           <Text style={styles.choiceSubtitle}>{t.debts.whatWouldYouAdd}</Text>
           {([
@@ -31,8 +33,8 @@ const FabChoiceModal: React.FC<FabChoiceModalProps> = ({ visible, onClose, onAdd
             { icon: 'scissors' as const, label: t.debts.splitExpense, desc: t.debts.divideBill, onPress: onSplitExpense },
             { icon: 'repeat' as const, label: t.sharedSubs.addSharedSub, desc: t.sharedSubs.noSharedSubsHint, onPress: onAddSharedSub },
           ] as const).map((opt, i, arr) => (
-            <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, i < arr.length - 1 && styles.choiceRowBorder]}>
-              <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={C.accent} /></View>
+            <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, neuS.raisedSoft, i < arr.length - 1 && styles.choiceRowSpacing]}>
+              <View style={[styles.choiceIcon, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]}><Feather name={opt.icon} size={18} color={C.accent} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.choiceLabel}>{opt.label}</Text>
                 <Text style={styles.choiceDesc}>{opt.desc}</Text>
@@ -54,7 +56,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.xl,
-    ...SHADOWS['2xl'],
   },
   choiceTitle: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -73,10 +74,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.md,
     paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
   },
-  choiceRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+  choiceRowSpacing: {
+    marginBottom: SPACING.sm,
   },
   choiceIcon: {
     width: 40,

@@ -25,7 +25,6 @@ import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import { View, Text, TouchableOpacity, Pressable, StyleSheet, LayoutChangeEvent, Keyboard } from 'react-native';
 import RAnimated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
 import { RootSiblingPortal } from 'react-native-root-siblings';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import Svg, { Path } from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
@@ -61,7 +60,7 @@ export const whenStore = <S,>(
 export type GuideStep =
   | { kind: 'intro'; title: string; body: string; icon?: keyof typeof Feather.glyphMap; points?: GuidePoint[] }
   | { kind: 'spotlight'; targetRef: React.RefObject<any>; label: string; sublabel?: string }
-  | { kind: 'doWithMe'; targetRef: React.RefObject<any>; label: string; sublabel?: string; watch: StoreWatch; timeoutMs?: number; keyboardAware?: boolean; dismissKeyboardOnEnter?: boolean }
+  | { kind: 'doWithMe'; targetRef: React.RefObject<any>; label: string; sublabel?: string; watch: StoreWatch; keyboardAware?: boolean; dismissKeyboardOnEnter?: boolean }
   | { kind: 'payoff'; title: string; body?: string; icon?: keyof typeof Feather.glyphMap };
 
 interface SpotlightTarget {
@@ -86,7 +85,6 @@ interface ScreenGuideProps {
 const HOLE_PAD = 8;
 const HOLE_RADIUS = 18;
 const DIM = 'rgba(0,0,0,0.52)';
-const DEFAULT_DOWITHME_TIMEOUT = 12000;
 
 const holePath = (hole: { x: number; y: number; w: number; h: number }, size: { w: number; h: number }) =>
   `M0 0 H${size.w} V${size.h} H0 Z ` +
@@ -285,7 +283,6 @@ const WalkThrough: React.FC<{ id: string; accent?: string; steps: GuideStep[] }>
   const isDark = useIsDark();
   const t = useT();
   const reduceMotion = useReducedMotion();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
   const dismissed = useSettingsStore((s) => s.dismissedHints.includes(id));
   const dismissHint = useSettingsStore((s) => s.dismissHint);
@@ -297,7 +294,6 @@ const WalkThrough: React.FC<{ id: string; accent?: string; steps: GuideStep[] }>
   const [stepIndex, setStepIndex] = useState(0);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [hole, setHole] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
-  const [showSkipPill, setShowSkipPill] = useState(false);
   const [kbHeight, setKbHeight] = useState(0);
   // Latches true once the current step is ready to paint (intro: immediately;
   // hole step: once its target is measured). Gating the visible content on this
@@ -360,10 +356,6 @@ const WalkThrough: React.FC<{ id: string; accent?: string; steps: GuideStep[] }>
     setSize({ w: width, h: height });
   }, []);
 
-  // Reset the per-step skip pill on step change only (NOT on every parent
-  // re-render — a keystroke on the host screen must not hide the pill).
-  useEffect(() => { setShowSkipPill(false); }, [stepIndex]);
-
   // Measure the current step's target with a few rAF retries; if a hole step's
   // target never measures, skip that step rather than render a dead card.
   useEffect(() => {
@@ -399,15 +391,6 @@ const WalkThrough: React.FC<{ id: string; accent?: string; steps: GuideStep[] }>
       }
     });
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, stepIndex]);
-
-  // Per-step escape pill if the user stalls on a doWithMe step.
-  useEffect(() => {
-    if (!visible || current?.kind !== 'doWithMe') return;
-    const ms = current.timeoutMs ?? DEFAULT_DOWITHME_TIMEOUT;
-    const timer = setTimeout(() => setShowSkipPill(true), ms);
-    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, stepIndex]);
 
@@ -549,14 +532,22 @@ const WalkThrough: React.FC<{ id: string; accent?: string; steps: GuideStep[] }>
         {revealed && (
           <RAnimated.View
             entering={reduceMotion ? undefined : FadeIn.duration(180)}
-            style={StyleSheet.absoluteFill}
+            // pointerEvents in BOTH prop and style: Reanimated/Fabric applies the
+            // style path reliably; the prop alone has been seen to drop on iOS.
+            style={[StyleSheet.absoluteFill, { pointerEvents: 'box-none' }]}
             pointerEvents="box-none"
           >
             {holeReady && scrimPath && size && hole ? (
               <>
-                <Svg pointerEvents="none" width={size.w} height={size.h} style={StyleSheet.absoluteFill}>
-                  <Path d={scrimPath} fill={DIM} fillRule="evenodd" />
-                </Svg>
+                {/* Plain-View pointerEvents="none" wrapper: RNSVG's iOS hit test
+                    ignores the evenodd rule, so the Svg itself would still capture
+                    taps INSIDE the hole. A core RN View with "none" removes the
+                    whole subtree from hit testing on both platforms. */}
+                <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <Svg pointerEvents="none" width={size.w} height={size.h} style={StyleSheet.absoluteFill}>
+                    <Path d={scrimPath} fill={DIM} fillRule="evenodd" />
+                  </Svg>
+                </View>
                 {/* Frame bands around the hole catch mis-taps; the hole rect has
                     NO overlay view, so the real control beneath gets touches. */}
                 <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, height: Math.max(0, hole.y) }} onPress={bandPress} accessibilityLabel={a11y} />
@@ -579,7 +570,9 @@ const WalkThrough: React.FC<{ id: string; accent?: string; steps: GuideStep[] }>
               <View style={[styles.spotCard, coachPos]} pointerEvents="box-none">
                 <Text style={styles.spotLabel}>{label}</Text>
                 {sublabel ? <Text style={styles.spotSub}>{sublabel}</Text> : null}
-                {(current.kind === 'spotlight' || (current.kind === 'doWithMe' && showSkipPill)) && (
+                {/* The card's own skip/next is the single escape hatch — always
+                    visible (no stall timer), so the way out is never delayed. */}
+                {(current.kind === 'spotlight' || current.kind === 'doWithMe') && (
                   <View style={styles.footerRow}>
                     <TouchableOpacity
                       onPress={current.kind === 'doWithMe' ? advance : (isLast ? finish : advance)}
@@ -596,17 +589,6 @@ const WalkThrough: React.FC<{ id: string; accent?: string; steps: GuideStep[] }>
               </View>
             ) : null}
 
-            {/* Always-visible escape — the hole is tappable, so there is no
-                tap-anywhere-to-dismiss; this is the guaranteed way out. */}
-            <TouchableOpacity
-              style={[styles.skipBtn, { top: insets.top + SPACING.sm }]}
-              onPress={finish}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel={t.common.skip}
-            >
-              <Text style={styles.skipText}>{t.common.skip.toLowerCase()}</Text>
-            </TouchableOpacity>
           </RAnimated.View>
         )}
       </RAnimated.View>
@@ -635,22 +617,11 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9999,
+    // Touch transparency in style as well as the prop — see note at the
+    // revealed layer; iOS/Fabric honors style.pointerEvents most reliably.
+    pointerEvents: 'box-none',
     // No Android `elevation` — the portal already stacks this on top, and a
     // full-screen elevated view flashes an elevation shadow during the fade.
-  },
-  skipBtn: {
-    position: 'absolute',
-    // `top` is set inline from the safe-area inset so it clears the status bar.
-    right: SPACING.lg,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha('#000000', 0.28),
-  },
-  skipText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
   },
   introWrap: {
     position: 'absolute',

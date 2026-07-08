@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { differenceInDays } from 'date-fns';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SPLIT_METHODS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { getDebtAge } from '../../utils/debtTracking';
 import { SplitExpense } from '../../types';
 import type { SplitTab } from '../../screens/shared/debt/useDebtFilters';
@@ -42,6 +43,7 @@ const SplitRow: React.FC<SplitRowProps> = ({
   overdueColor,
 }) => {
   const C = useCalm();
+  const neu = useNeu();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   const isDraft = split.status === 'draft';
@@ -128,6 +130,7 @@ const SplitRow: React.FC<SplitRowProps> = ({
       activeOpacity={0.7}
       style={[
         styles.tickerSplitRow,
+        neu.raisedSoft,
         isSelected && styles.tickerSplitRowSelected,
       ]}
       onPress={() => {
@@ -184,10 +187,7 @@ const SplitRow: React.FC<SplitRowProps> = ({
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   tickerSplitRow: {
-    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     marginBottom: SPACING.sm,

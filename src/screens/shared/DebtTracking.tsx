@@ -76,6 +76,7 @@ import {
   withAlpha,
 } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
 import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
 import { useDebtAutoArchive } from './debt/useDebtAutoArchive';
 import { useDebtFilters } from './debt/useDebtFilters';
@@ -151,6 +152,8 @@ const DebtTracking: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
+  const neu = useNeu();            // base = C.background — on-screen surfaces
+  const neuS = useNeu(C.surface);  // base = C.surface — surfaces inside sheets/modals on C.surface
   const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
   // ── Resolved semantic color tokens (replaces hardcoded hex throughout) ──
   // Drives DESIGN-H1 fix: every status/type color flows from the WCAG-safe
@@ -3513,7 +3516,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               <View style={styles.draftsHeader}>
                 <TouchableOpacity
                   onPress={() => setSplitTab('waiting')}
-                  style={styles.backChip}
+                  style={[styles.backChip, neu.raised, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.10 : 0.05) }]}
                   activeOpacity={0.7}
                   accessibilityRole="button"
                   accessibilityLabel="back to splits"
@@ -3695,7 +3698,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   setDebtAmount(normalizeAmountInput(raw));
                 };
                 return (
-                  <View style={styles.dDebtFieldHeroCard}>
+                  <View style={[styles.dDebtFieldHeroCard, neuS.raisedSoft]}>
                     <Text style={styles.dDebtFieldCardLabel}>
                       amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                     </Text>
@@ -3737,6 +3740,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             key={dt.value}
                             style={[
                               styles.dDebtTypeSegBtn,
+                              neuS.raised,
                               isActive && { backgroundColor: dtColor },
                               editDebt && editDebt.payments.length > 0 && !isActive && { opacity: 0.3 },
                             ]}
@@ -3795,7 +3799,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               <View style={styles.dDebtSheetDivider} />
 
               {/* What-for field card */}
-              <View style={styles.dDebtFieldCard}>
+              <View style={[styles.dDebtFieldCard, neuS.raisedSoft]}>
                 <Text style={styles.dDebtFieldCardLabel}>what for</Text>
                 <TextInput
                   style={[styles.dDebtFieldCardInput, styles.dDebtFieldMultiline]}
@@ -3845,7 +3849,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
               {/* Due date field card */}
               <TouchableOpacity
-                style={styles.dDebtFieldCard}
+                style={[styles.dDebtFieldCard, neuS.raisedSoft]}
                 onPress={() => { Keyboard.dismiss(); setDueDatePickerOpen((v) => !v); }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
@@ -3927,6 +3931,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <Pressable
                     style={[
                       styles.dDebtSaveBtn,
+                      neuS.raised,
+                      { backgroundColor: C.accent },
                       (!canSave || dDebtIsSaving) && styles.dDebtSaveBtnDisabled,
                     ]}
                     onPress={onPressSave}
@@ -4068,7 +4074,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 setSplitAmount(normalizeAmountInput(raw));
               };
               return (
-                <View style={styles.dDebtFieldHeroCard}>
+                <View style={[styles.dDebtFieldHeroCard, neuS.raisedSoft]}>
                   <Text style={styles.dDebtFieldCardLabel}>
                     total amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                   </Text>
@@ -4099,7 +4105,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             <View style={styles.dDebtSheetDivider} />
 
             {/* What-for / description card */}
-            <View style={styles.dDebtFieldCard}>
+            <View style={[styles.dDebtFieldCard, neuS.raisedSoft]}>
               <Text style={styles.dDebtFieldCardLabel}>what for</Text>
               <TextInput
                 style={[styles.dDebtFieldCardInput, styles.dDebtFieldMultiline]}
@@ -4119,7 +4125,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
             {/* Split method — segmented (only when adding) */}
             {!editingSplitId && (
-              <View style={styles.dDebtFieldCard}>
+              <View style={[styles.dDebtFieldCard, neuS.raisedSoft]}>
                 <Text style={styles.dDebtFieldCardLabel}>split method</Text>
                 <View style={[styles.dDebtTypeSegmented, { marginTop: 6 }]}>
                   {SPLIT_METHODS.map((m) => {
@@ -4129,6 +4135,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         key={m.value}
                         style={[
                           styles.dDebtTypeSegBtn,
+                          neuS.raised,
                           isActive && { backgroundColor: C.accent },
                         ]}
                         onPress={() => setSplitMethod(m.value as SplitMethod)}
@@ -4197,7 +4204,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
             {/* Due date field card */}
             <TouchableOpacity
-              style={styles.dDebtFieldCard}
+              style={[styles.dDebtFieldCard, neuS.raisedSoft]}
               onPress={() => { Keyboard.dismiss(); setSplitDueDatePickerOpen((v) => !v); }}
               activeOpacity={0.7}
               accessibilityRole="button"
@@ -4300,7 +4307,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             return (
                               <TouchableOpacity
                                 key={c.id}
-                                style={[styles.assignChip, isAssigned && styles.assignChipActive]}
+                                style={[styles.assignChip, neuS.raised, isAssigned && styles.assignChipActive]}
                                 onPress={() => handleToggleItemAssignment(index, c)}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               >
@@ -4404,6 +4411,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <Pressable
                     style={[
                       styles.dDebtSaveBtn,
+                      neuS.raised,
+                      { backgroundColor: C.accent },
                       (!canSave || dSplitIsSaving) && styles.dDebtSaveBtnDisabled,
                     ]}
                     onPress={onPressSave}
@@ -4661,7 +4670,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 <View style={[styles.dDebtSaveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm), gap: SPACING.sm }]}>
                   {debt.status !== 'settled' ? (
                     <TouchableOpacity
-                      style={[styles.debtPrimaryAction, { backgroundColor: withAlpha(C.positive, 0.08), borderColor: withAlpha(C.positive, 0.25) }]}
+                      style={[styles.debtPrimaryAction, neuS.raised, { backgroundColor: withAlpha(C.positive, 0.08), borderColor: withAlpha(C.positive, 0.25) }]}
                       onPress={() => {
                         const id = debt.id;
                         returnToDetailRef.current = id;
@@ -4675,7 +4684,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
-                      style={[styles.debtPrimaryAction, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04), borderColor: withAlpha(C.textPrimary, 0.1) }]}
+                      style={[styles.debtPrimaryAction, neuS.raised, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04), borderColor: withAlpha(C.textPrimary, 0.1) }]}
                       onPress={() => {
                         const id = debt.id;
                         returnToDetailRef.current = id;
@@ -4691,7 +4700,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                   <View style={[styles.debtIconRow, { justifyContent: 'center' }]}>
                       <TouchableOpacity
-                        style={styles.debtIconChip}
+                        style={[styles.debtIconChip, neuS.raised]}
                         onPress={() => {
                           const d = debt;
                           returnToDetailRef.current = d.id;
@@ -4704,7 +4713,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       </TouchableOpacity>
                       {debt.payments.length > 0 && debt.status !== 'settled' && (
                         <TouchableOpacity
-                          style={styles.debtIconChip}
+                          style={[styles.debtIconChip, neuS.raised]}
                           onPress={() => {
                             const id = debt.id;
                             returnToDetailRef.current = id;
@@ -4717,7 +4726,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity
-                        style={styles.debtIconChip}
+                        style={[styles.debtIconChip, neuS.raised]}
                         onPress={() => {
                           if (debt.isArchived) { unarchiveDebt(debt.id); showToast('debt unarchived', 'success'); }
                           else { archiveDebt(debt.id); showToast('debt archived', 'success'); }
@@ -4729,7 +4738,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       </TouchableOpacity>
                       {debt.type === 'they_owe' && debt.status !== 'settled' && (
                         <TouchableOpacity
-                          style={styles.debtIconChip}
+                          style={[styles.debtIconChip, neuS.raised]}
                           onPress={() => {
                             const d = debt;
                             returnToDetailRef.current = d.id;
@@ -4743,7 +4752,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       )}
                       {debt.type === 'they_owe' && debt.status !== 'settled' && (
                         <TouchableOpacity
-                          style={styles.debtIconChip}
+                          style={[styles.debtIconChip, neuS.raised]}
                           onPress={() => {
                             const d = debt;
                             returnToDetailRef.current = d.id;
@@ -4756,7 +4765,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity
-                        style={styles.debtIconChip}
+                        style={[styles.debtIconChip, neuS.raised]}
                         onPress={() => {
                           const contact = debt.contact;
                           returnToDetailRef.current = debt.id;
@@ -5017,7 +5026,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             }, 50);
                           }
                         }}
-                        style={[styles.debtPrimaryAction, { backgroundColor: withAlpha(C.positive, 0.08), borderColor: withAlpha(C.positive, 0.25) }]}
+                        style={[styles.debtPrimaryAction, neuS.raised, { backgroundColor: withAlpha(C.positive, 0.08), borderColor: withAlpha(C.positive, 0.25) }]}
                       >
                         <Feather name="plus-circle" size={15} color={C.positive} />
                         <Text style={[styles.debtPrimaryActionText, { color: C.positive }]}>record all payment</Text>
@@ -5030,7 +5039,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           const allArchived = group.debts.every((d) => d.isArchived);
                           return (
                             <TouchableOpacity
-                              style={styles.debtIconChip}
+                              style={[styles.debtIconChip, neuS.raised]}
                               onPress={() => {
                                 group.debts.forEach((d) => allArchived ? unarchiveDebt(d.id) : archiveDebt(d.id));
                                 showToast(`${group.debts.length} debts ${allArchived ? 'unarchived' : 'archived'}`, 'success');
@@ -5045,7 +5054,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         {/* View history — only if payments exist */}
                         {group.debts.some((d) => d.payments.length > 0) && (
                           <TouchableOpacity
-                            style={styles.debtIconChip}
+                            style={[styles.debtIconChip, neuS.raised]}
                             onPress={() => {
                               const gId = group.contactId;
                               const firstWithPayments = group.debts.find((d) => d.payments.length > 0) || group.debts[0];
@@ -5064,7 +5073,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         {/* Reminder */}
                         {(primaryType === 'they_owe' || isMixed) && (
                           <TouchableOpacity
-                            style={styles.debtIconChip}
+                            style={[styles.debtIconChip, neuS.raised]}
                             onPress={() => {
                               const firstTheyOwe = group.debts.find((d) => d.type === 'they_owe' && d.status !== 'settled') || group.debts[0];
                               const unsettled = group.debts.filter((d) => d.status !== 'settled');
@@ -5115,7 +5124,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         {/* Request / send summary */}
                         {(primaryType === 'they_owe' || isMixed) && (
                           <TouchableOpacity
-                            style={styles.debtIconChip}
+                            style={[styles.debtIconChip, neuS.raised]}
                             onPress={() => {
                               const firstTheyOwe = group.debts.find((d) => d.type === 'they_owe' && d.status !== 'settled') || group.debts[0];
                               const senderName = userName?.trim() || 'Me';
@@ -5172,7 +5181,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         )}
                         {/* Add new debt for this contact */}
                         <TouchableOpacity
-                          style={styles.debtIconChip}
+                          style={[styles.debtIconChip, neuS.raised]}
                           onPress={() => {
                             const contact = group.contact;
                             const gId = group.contactId;
@@ -5217,7 +5226,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     <View style={[styles.debtIconRow, { justifyContent: 'center' }]}>
                       {group.debts.some((d) => d.payments.length > 0) && (
                         <TouchableOpacity
-                          style={styles.debtIconChip}
+                          style={[styles.debtIconChip, neuS.raised]}
                           onPress={() => {
                             const gId = group.contactId;
                             const firstWithPayments = group.debts.find((d) => d.payments.length > 0) || group.debts[0];
@@ -5237,7 +5246,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         const allArchived = group.debts.every((d) => d.isArchived);
                         return (
                           <TouchableOpacity
-                            style={styles.debtIconChip}
+                            style={[styles.debtIconChip, neuS.raised]}
                             onPress={() => {
                               group.debts.forEach((d) => allArchived ? unarchiveDebt(d.id) : archiveDebt(d.id));
                               showToast(`${group.debts.length} debts ${allArchived ? 'unarchived' : 'archived'}`, 'success');
@@ -5378,7 +5387,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         setEditPayAmount(normalizeAmountInput(raw));
                       };
                       return (
-                        <View style={styles.dDebtFieldHeroCard}>
+                        <View style={[styles.dDebtFieldHeroCard, neuS.raisedSoft]}>
                           <Text style={styles.dDebtFieldCardLabel}>
                             amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                           </Text>
@@ -5406,7 +5415,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
 
                     {/* Note card */}
-                    <View style={styles.dDebtFieldCard}>
+                    <View style={[styles.dDebtFieldCard, neuS.raisedSoft]}>
                       <Text style={styles.dDebtFieldCardLabel}>
                         note <Text style={styles.dDebtFieldOptional}>optional</Text>
                       </Text>
@@ -5525,7 +5534,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <View style={[styles.dDebtSaveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
                     <Reanimated.View style={dPaySaveAnimatedStyle}>
                       <Pressable
-                        style={styles.dDebtSaveBtn}
+                        style={[styles.dDebtSaveBtn, neuS.raised, { backgroundColor: C.accent }]}
                         onPress={handleSavePayDetail}
                         onPressIn={() => { dPaySaveScale.value = withTiming(0.97, { duration: 120 }); }}
                         onPressOut={() => { dPaySaveScale.value = withSpring(1, { damping: 18, stiffness: 240 }); }}
@@ -5605,7 +5614,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   keyboardDismissMode="on-drag"
                 >
                   {/* Hero context card — debt status snapshot + LIVE PROGRESS PREVIEW */}
-                  <View style={styles.dPayContextCard}>
+                  <View style={[styles.dPayContextCard, neuS.raisedSoft]}>
                     {groupPaymentId ? (() => {
                       const grp = groupedDebts.find((g) => g.contactId === groupPaymentId);
                       if (!grp) return null;
@@ -5776,7 +5785,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     return (
                     <>
                       {/* Amount card — hero style */}
-                      <View style={styles.dDebtFieldHeroCard}>
+                      <View style={[styles.dDebtFieldHeroCard, neuS.raisedSoft]}>
                         <Text style={styles.dDebtFieldCardLabel}>
                           amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                         </Text>
@@ -5814,6 +5823,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               key={chip.label}
                               style={[
                                 styles.dPayQuickChip,
+                                neuS.raised,
                                 isActive && { backgroundColor: withAlpha(settledColor, 0.15), borderColor: settledColor },
                               ]}
                               onPress={() => setPaymentAmount(fillAmount.toFixed(2))}
@@ -5864,7 +5874,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       </View>
 
                       {/* Note card */}
-                      <View style={styles.dDebtFieldCard}>
+                      <View style={[styles.dDebtFieldCard, neuS.raisedSoft]}>
                         <Text style={styles.dDebtFieldCardLabel}>
                           note <Text style={styles.dDebtFieldOptional}>optional</Text>
                         </Text>
@@ -6083,6 +6093,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           <Pressable
                             style={[
                               styles.dDebtSaveBtn,
+                              neuS.raised,
+                              { backgroundColor: C.accent },
                               (!canRecord || dPayIsSaving) && styles.dDebtSaveBtnDisabled,
                             ]}
                             onPress={onPressRecord}
@@ -6131,7 +6143,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       <TouchableOpacity
                         activeOpacity={0.7}
                         onPress={() => handleDeletePayment(batchPayments[0]._debtId, batchPayments[0].id)}
-                        style={[styles.debtPrimaryAction, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04), borderColor: withAlpha(C.textPrimary, 0.1) }]}
+                        style={[styles.debtPrimaryAction, neuS.raised, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04), borderColor: withAlpha(C.textPrimary, 0.1) }]}
                       >
                         <Feather name="rotate-ccw" size={15} color={C.textSecondary} />
                         <Text style={[styles.debtPrimaryActionText, { color: C.textSecondary }]}>undo consolidated · {currency} {batchTotal.toFixed(2)}</Text>
@@ -6184,7 +6196,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               pointerEvents="box-none"
             >
               <View
-                style={styles.tipModalCard}
+                style={[styles.tipModalCard, neuS.raisedSoft]}
                 onStartShouldSetResponder={() => true}
               >
                 {/* Icon badge */}
@@ -6217,7 +6229,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                 {/* Actions */}
                 <TouchableOpacity
-                  style={styles.tipModalConfirmBtn}
+                  style={[styles.tipModalConfirmBtn, neuS.raised, { backgroundColor: C.bronze }]}
                   onPress={() => {
                     const data = tipConfirmData;
                     setTipConfirmVisible(false);
@@ -6306,7 +6318,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               return (
                 <ScrollView showsVerticalScrollIndicator={false} bounces nestedScrollEnabled keyboardShouldPersistTaps="handled" contentContainerStyle={styles.dDebtScrollContent}>
                   {/* Hero card — confident amount + status line, mirrors TransactionsList edit hero */}
-                  <View style={styles.detailHeroCard}>
+                  <View style={[styles.detailHeroCard, neuS.raisedSoft]}>
                     <Text style={styles.detailHeroDescription} numberOfLines={2}>
                       {selectedSplit.description}
                     </Text>
@@ -6399,6 +6411,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             <TouchableOpacity
                               style={[
                                 styles.detailPersonAction,
+                                neuS.raised,
                                 isPaid
                                   ? { backgroundColor: withAlpha(settledColor, 0.1), borderColor: withAlpha(settledColor, 0.3) }
                                   : { backgroundColor: withAlpha(pendingColor, 0.08), borderColor: withAlpha(pendingColor, 0.25) },
@@ -6441,7 +6454,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               {selectedSplit && (
                 <View style={[styles.debtIconRow, { justifyContent: 'center' }]}>
                   <TouchableOpacity
-                    style={styles.debtIconChip}
+                    style={[styles.debtIconChip, neuS.raised]}
                     onPress={() => {
                       const s = selectedSplit;
                       setSplitDetailVisible(false);
@@ -6452,7 +6465,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     <Feather name="edit-2" size={16} color={C.accent} />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.debtIconChip}
+                    style={[styles.debtIconChip, neuS.raised]}
                     onPress={() => {
                       const sid = selectedSplit.id;
                       const isAr = !!selectedSplit.isArchived;
@@ -6591,7 +6604,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       )}
                       <View style={styles.wizardAmountActions}>
                         <TouchableOpacity
-                          style={styles.wizardCorrectBtn}
+                          style={[styles.wizardCorrectBtn, neuS.raised, { backgroundColor: C.positive }]}
                           onPress={handleWizardNext}
                           activeOpacity={0.7}
                         >
@@ -6637,6 +6650,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <TouchableOpacity
                     style={[
                       styles.wizardOptionCard,
+                      neuS.raisedSoft,
                       wizardTaxHandling === 'divide' && styles.wizardOptionCardActive,
                     ]}
                     onPress={() => setWizardTaxHandling('divide')}
@@ -6655,6 +6669,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <TouchableOpacity
                     style={[
                       styles.wizardOptionCard,
+                      neuS.raisedSoft,
                       wizardTaxHandling === 'waive' && styles.wizardOptionCardActive,
                     ]}
                     onPress={() => setWizardTaxHandling('waive')}
@@ -6681,7 +6696,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                   {wizardParticipants.length > 0 && wizardItems.length > 0 && (
                     <TouchableOpacity
-                      style={styles.wizardAssignAllBtn}
+                      style={[styles.wizardAssignAllBtn, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.08) }]}
                       onPress={handleAssignAllEvenly}
                       activeOpacity={0.7}
                     >
@@ -6768,7 +6783,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                   {/* Add item button */}
                   <TouchableOpacity
-                    style={[styles.wizardAssignAllBtn, { marginTop: SPACING.sm }]}
+                    style={[styles.wizardAssignAllBtn, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.08), marginTop: SPACING.sm }]}
                     onPress={handleAddWizardItem}
                     activeOpacity={0.7}
                   >
@@ -6791,7 +6806,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     return (
                       <TouchableOpacity
                         key={self.id}
-                        style={[styles.wizardPayerCard, isSelected && styles.wizardPayerCardActive]}
+                        style={[styles.wizardPayerCard, neuS.raisedSoft, isSelected && styles.wizardPayerCardActive]}
                         onPress={() => setWizardPaidBy(self)}
                         activeOpacity={0.7}
                       >
@@ -6816,7 +6831,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       return (
                         <TouchableOpacity
                           key={p.id}
-                          style={[styles.wizardPayerCard, isSelected && styles.wizardPayerCardActive]}
+                          style={[styles.wizardPayerCard, neuS.raisedSoft, isSelected && styles.wizardPayerCardActive]}
                           onPress={() => setWizardPaidBy(p)}
                           activeOpacity={0.7}
                         >
@@ -7084,7 +7099,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   {/* Add Me button */}
                   {!wizardItems[assigningItemIndex]?.assignedTo.some((c) => c.id === '__self__') && (
                     <TouchableOpacity
-                      style={styles.addMeBtn}
+                      style={[styles.addMeBtn, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.08) }]}
                       onPress={() => handleItemAddContact(getSelfContact())}
                       activeOpacity={0.7}
                     >
@@ -7101,7 +7116,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         {wizardItems[assigningItemIndex].assignedTo.map((c) => (
                           <TouchableOpacity
                             key={c.id}
-                            style={[styles.assignChip, styles.assignChipActive]}
+                            style={[styles.assignChip, neuS.raised, styles.assignChipActive]}
                             onPress={() => handleItemRemoveContact(c.id)}
                             activeOpacity={0.7}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -7128,7 +7143,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           .map((c) => (
                             <TouchableOpacity
                               key={c.id}
-                              style={styles.assignChip}
+                              style={[styles.assignChip, neuS.raised]}
                               onPress={() => handleItemAddContact(c)}
                               activeOpacity={0.7}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -7144,7 +7159,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                   {/* From contacts button */}
                   <TouchableOpacity
-                    style={styles.assignFromContactsBtn}
+                    style={[styles.assignFromContactsBtn, neuS.raised]}
                     onPress={loadItemPhoneContacts}
                     activeOpacity={0.7}
                   >
@@ -7168,7 +7183,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       selectionColor={withAlpha(C.accent, 0.25)}
                     />
                     <TouchableOpacity
-                      style={styles.assignManualAddBtn}
+                      style={[styles.assignManualAddBtn, neuS.raised, { backgroundColor: C.accent }]}
                       onPress={handleItemAddManual}
                       activeOpacity={0.7}
                     >
@@ -7179,7 +7194,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 </ScrollView>
                 {/* Done button — fixed outside scroll so it's always visible */}
                 <TouchableOpacity
-                  style={styles.assignDoneBtn}
+                  style={[styles.assignDoneBtn, neuS.raised, { backgroundColor: C.accent }]}
                   onPress={() => setAssigningItemIndex(null)}
                   activeOpacity={0.7}
                 >
@@ -7267,7 +7282,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                   {/* Done button */}
                   <TouchableOpacity
-                    style={[styles.assignDoneBtn, { marginTop: SPACING.md }]}
+                    style={[styles.assignDoneBtn, neuS.raised, { backgroundColor: C.accent, marginTop: SPACING.md }]}
                     onPress={() => setItemAssignMode('assign')}
                     activeOpacity={0.7}
                   >
@@ -7420,7 +7435,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 <View style={[styles.dDebtSaveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
                   <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
                     <TouchableOpacity
-                      style={[styles.requestPaymentCopyBtn, { flex: 1 }, reminderCopied && { backgroundColor: withAlpha(C.positive, 0.1) }]}
+                      style={[styles.requestPaymentCopyBtn, neuS.raised, { flex: 1, backgroundColor: withAlpha(C.accent, 0.08) }, reminderCopied && { backgroundColor: withAlpha(C.positive, 0.1) }]}
                       onPress={async () => {
                         await Clipboard.setStringAsync(reminderMessage);
                         setReminderCopied(true);
@@ -7436,7 +7451,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                     {reminderDebt.contact.phone && (
                       <TouchableOpacity
-                        style={[styles.requestPaymentWhatsAppBtn, { flex: 2 }]}
+                        style={[styles.requestPaymentWhatsAppBtn, neuS.raised, { flex: 2, backgroundColor: '#25D366' }]}
                         onPress={() => {
                           const phone = cleanPhoneNumber(reminderDebt!.contact.phone!);
                           const url = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(reminderMessage)}`;
@@ -7592,7 +7607,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 <View style={[styles.dDebtSaveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm), gap: SPACING.sm }]}>
                   <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
                     <TouchableOpacity
-                      style={[styles.requestPaymentCopyBtn, { flex: 1 }, messageCopied && { backgroundColor: withAlpha(C.positive, 0.1) }]}
+                      style={[styles.requestPaymentCopyBtn, neuS.raised, { flex: 1, backgroundColor: withAlpha(C.accent, 0.08) }, messageCopied && { backgroundColor: withAlpha(C.positive, 0.1) }]}
                       onPress={handleCopyPaymentMessage}
                       activeOpacity={0.7}
                     >
@@ -7604,7 +7619,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                     {requestPaymentDebt.contact.phone && (
                       <TouchableOpacity
-                        style={[styles.requestPaymentWhatsAppBtn, { flex: 2 }]}
+                        style={[styles.requestPaymentWhatsAppBtn, neuS.raised, { flex: 2, backgroundColor: '#25D366' }]}
                         onPress={handleWhatsAppTap}
                         activeOpacity={0.7}
                       >
@@ -8079,8 +8094,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.08 : 0.04),
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.06),
   },
 
   // Split Cards
@@ -8729,8 +8742,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   dDebtFieldHeroCard: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
@@ -8765,8 +8776,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   dPayContextCard: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     padding: SPACING.md,
     marginBottom: SPACING.md,
   },
@@ -8898,12 +8907,9 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     maxWidth: 320,
     backgroundColor: C.surface,
     borderRadius: RADIUS['2xl'],
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.06),
     paddingHorizontal: SPACING.lg + 4,
     paddingTop: SPACING.xl,
     paddingBottom: SPACING.lg,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   tipModalIconWrap: {
     width: 48,
@@ -9020,8 +9026,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.lg,
     backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     gap: 2,
   },
   dPayQuickChipText: {
@@ -9093,8 +9097,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   dDebtFieldCard: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
     marginBottom: SPACING.sm + 2,
@@ -9470,12 +9472,9 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
     backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
   },
   assignChipActive: {
     backgroundColor: withAlpha(C.accent, 0.12),
-    borderColor: C.accent,
   },
   assignChipText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -9706,8 +9705,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     color: C.accent,
   },
   wizardOptionCard: {
-    borderWidth: 2,
-    borderColor: C.border,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.md,
@@ -9823,8 +9821,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     alignItems: 'center',
     gap: SPACING.md,
     padding: SPACING.lg,
-    borderWidth: 2,
-    borderColor: C.border,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     marginBottom: SPACING.md,
   },
@@ -9956,10 +9953,8 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     justifyContent: 'center',
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
-    backgroundColor: C.background,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.border,
     marginBottom: SPACING.md,
   },
   assignFromContactsText: {
@@ -10135,8 +10130,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     paddingVertical: SPACING.md,
     backgroundColor: withAlpha(C.accent, 0.08),
     borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.2),
   },
   requestPaymentCopyText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -10193,8 +10186,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     paddingVertical: SPACING.md,
     backgroundColor: '#25D366',
     borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: '#25D366',
   },
   requestPaymentWhatsAppText: {
     fontSize: TYPOGRAPHY.size.base,

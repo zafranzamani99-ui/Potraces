@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
-import Card from '../common/Card';
+import { useNeu } from '../common/neu';
 import DebtSegmentedControl from './DebtSegmentedControl';
 import { SplitExpense } from '../../types';
 import type { SplitTab } from '../../screens/shared/debt/useDebtFilters';
@@ -50,6 +50,7 @@ const SplitTabHeader: React.FC<SplitTabHeaderProps> = ({
   settledColor,
 }) => {
   const C = useCalm();
+  const neu = useNeu();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   return (
@@ -71,7 +72,7 @@ const SplitTabHeader: React.FC<SplitTabHeaderProps> = ({
       >
         {draftSplitCount > 0 && (
           <TouchableOpacity
-            style={styles.draftBookmark}
+            style={[styles.draftBookmark, neu.raised, { backgroundColor: withAlpha(C.bronze, 0.1) }]}
             onPress={() => { exitSelectionMode(); setSplitTab('drafts'); }}
             activeOpacity={0.7}
             accessibilityRole="button"
@@ -85,7 +86,7 @@ const SplitTabHeader: React.FC<SplitTabHeaderProps> = ({
       </DebtSegmentedControl>
 
       {/* Hero card — one confident number per bucket */}
-      <Card style={styles.splitHeroCard}>
+      <View style={[styles.splitHeroCard, neu.raisedSoft]}>
         {splitTab === 'waiting' && (
           <>
             <Text style={styles.splitHeroLabel}>you're owed back</Text>
@@ -125,7 +126,7 @@ const SplitTabHeader: React.FC<SplitTabHeaderProps> = ({
             </Text>
           </>
         )}
-      </Card>
+      </View>
     </>
   );
 };
@@ -151,6 +152,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.lg,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    // surface (bg + neu shadow) comes from neu.raisedSoft spread at the call site
   },
   splitHeroLabel: {
     fontSize: TYPOGRAPHY.size.xs,

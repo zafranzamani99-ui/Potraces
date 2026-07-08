@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { useNotesStore } from '../../store/notesStore';
 import { useAppStore } from '../../store/appStore';
@@ -41,6 +42,7 @@ const NotesHome: React.FC = () => {
   const markFirstWriteComplete = useNotesStore((s) => s.markFirstWriteComplete);
   const mode = useAppStore((s) => s.mode);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -216,7 +218,7 @@ const NotesHome: React.FC = () => {
         data={modePages}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         extraData={selectMode ? selectedIds.size : 0}
@@ -264,7 +266,7 @@ const NotesHome: React.FC = () => {
       {!selectMode && (
         <TouchableOpacity
           ref={guideTargetRef}
-          style={styles.fab}
+          style={[styles.fab, { bottom: insets.bottom + 88 + SPACING.md }]}
           activeOpacity={0.8}
           onPress={handleNewNote}
         >

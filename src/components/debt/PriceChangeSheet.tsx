@@ -30,6 +30,8 @@ import { useT } from '../../i18n';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import ModalToastHost from '../common/ModalToastHost';
+import { useNeu } from '../common/neu';
+import NeuButton from '../common/NeuButton';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { SharedSubscription } from '../../types';
@@ -47,6 +49,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
+  const neuS = useNeu(C.surface); // sheet body sits on C.surface
   const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
   const currency = useSettingsStore((s) => s.currency);
   const recordSharedSubPriceChange = useDebtStore((s) => s.recordSharedSubPriceChange);
@@ -223,7 +226,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
           keyboardDismissMode="on-drag"
         >
           {/* Hero amount — new total */}
-          <View style={styles.heroCard}>
+          <View style={[styles.heroCard, neuS.raisedSoft]}>
             <Text style={styles.fieldLabel}>
               {t.sharedSubs.newTotal} <Text style={styles.requiredStar}>*</Text>
             </Text>
@@ -261,10 +264,10 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
           </View>
 
           {/* Per-member shares */}
-          <View style={styles.fieldCard}>
+          <View style={[styles.fieldCard, neuS.raisedSoft]}>
             <View style={styles.membersHeaderRow}>
               <Text style={styles.fieldLabel}>{t.sharedSubs.shareAmount}</Text>
-              <TouchableOpacity onPress={handleEqualSplit} style={styles.splitEvenBtn} activeOpacity={0.7}>
+              <TouchableOpacity onPress={handleEqualSplit} style={[styles.splitEvenBtn, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} activeOpacity={0.7}>
                 <Feather name="divide" size={12} color={C.accent} />
                 <Text style={styles.splitEvenText}>split even</Text>
               </TouchableOpacity>
@@ -274,11 +277,11 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
               const initial = (m.contact.name || '?')[0].toUpperCase();
               return (
                 <View key={m.contact.id} style={styles.memberRow}>
-                  <View style={[styles.avatar, { borderColor: withAlpha(C.textPrimary, 0.12) }]}>
+                  <View style={[styles.avatar, neuS.raised, { borderColor: withAlpha(C.textPrimary, 0.12) }]}>
                     <Text style={[styles.avatarText, { color: C.textSecondary }]}>{initial}</Text>
                   </View>
                   <Text style={styles.memberName} numberOfLines={1}>{m.contact.name}</Text>
-                  <View style={styles.shareInputWrap}>
+                  <View style={[styles.shareInputWrap, neuS.inset]}>
                     <Text style={styles.shareCurrency}>{currency}</Text>
                     <TextInput
                       style={styles.shareInput}
@@ -313,21 +316,12 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
         {/* Save zone */}
         <View style={[styles.saveZone, { paddingBottom: Math.max(SPACING.lg, 34) }]}>
           <Reanimated.View style={saveAnimStyle}>
-            <Pressable
-              style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
+            <NeuButton
+              icon="check"
+              label={isAdjust ? 'update amounts' : 'apply price change'}
               onPress={handleSave}
-              onPressIn={() => { saveScale.value = withTiming(0.97, { duration: 120 }); }}
-              onPressOut={() => { saveScale.value = withSpring(1, { damping: 18, stiffness: 240 }); }}
-              accessibilityRole="button"
               accessibilityLabel="apply price change"
-            >
-              <View style={styles.saveBtnInner}>
-                <Feather name="check" size={16} color={canSave ? C.surface : C.textMuted} />
-                <Text style={[styles.saveBtnText, !canSave && styles.saveBtnTextDisabled]}>
-                  {isAdjust ? 'update amounts' : 'apply price change'}
-                </Text>
-              </View>
-            </Pressable>
+            />
           </Reanimated.View>
 
           <Pressable
@@ -413,8 +407,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
   heroCard: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
@@ -445,8 +437,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
   fieldCard: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
     marginBottom: SPACING.sm + 2,
@@ -557,32 +547,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
     backgroundColor: C.surface,
-  },
-  saveBtn: {
-    width: '100%',
-    paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  saveBtnDisabled: {
-    backgroundColor: withAlpha(C.textPrimary, isDark ? 0.12 : 0.08),
-  },
-  saveBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  saveBtnText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.surface,
-    letterSpacing: 0.3,
-  },
-  saveBtnTextDisabled: {
-    color: C.textMuted,
   },
   closeLink: {
     marginTop: SPACING.lg,

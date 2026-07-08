@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import CategoryIcon from './CategoryIcon';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from './neu';
 import { CategoryOption } from '../../types';
 import { lightTap } from '../../services/haptics';
 
@@ -35,6 +36,8 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu();                 // trigger sits on C.background
+  const neuS = useNeu(C.surface);       // dropdown modal + rows are C.surface
   const navigation = useNavigation<any>();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownAnimation, setDropdownAnimation] = useState<'fade' | 'none'>('fade');
@@ -59,6 +62,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
       <TouchableOpacity
         style={[
           styles.dropdownItem,
+          neuS.raisedSoft,
           isSelected && {
             backgroundColor: withAlpha(item.color, 0.1),
           },
@@ -73,6 +77,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
         <View
           style={[
             styles.dropdownItemIcon,
+            neuS.raised,
             {
               backgroundColor: isSelected
                 ? item.color
@@ -146,7 +151,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
 
         {/* Dropdown trigger */}
         <TouchableOpacity
-          style={styles.dropdownTrigger}
+          style={[styles.dropdownTrigger, neu.raised]}
           onPress={() => {
             lightTap();
             setDropdownOpen(true);
@@ -158,6 +163,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
               <View
                 style={[
                   styles.dropdownIcon,
+                  neu.raised,
                   { backgroundColor: withAlpha(selectedCategory.color, 0.15) },
                 ]}
               >
@@ -188,7 +194,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
             activeOpacity={1}
             onPress={() => setDropdownOpen(false)}
           >
-            <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
+            <View style={[styles.dropdownModal, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
               <View style={styles.dropdownHeader}>
                 <Text style={styles.dropdownTitle}>
                   {label || 'Select Category'}
@@ -204,6 +210,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                 removeClippedSubviews
                 windowSize={5}
                 maxToRenderPerBatch={8}
+                contentContainerStyle={{ paddingTop: SPACING.sm }}
                 renderItem={renderDropdownItem}
                 ListFooterComponent={
                   <TouchableOpacity
@@ -303,8 +310,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
   },
   dropdownSelected: {
     flexDirection: 'row',
@@ -334,8 +339,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
-    borderWidth: 1,
-    borderColor: C.border,
   },
   dropdownHeader: {
     flexDirection: 'row',
@@ -353,9 +356,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     gap: SPACING.md,
+    borderRadius: RADIUS.lg,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   dropdownItemIcon: {
     width: 36,

@@ -38,7 +38,7 @@ import { useT } from '../../i18n';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useToast } from '../../context/ToastContext';
 import { AIMessage, AIMessageAction, Transaction } from '../../types';
-import ScreenGuide from '../../components/common/ScreenGuide';
+import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
 import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
@@ -927,6 +927,11 @@ const MoneyChat: React.FC = () => {
     return () => { show.remove(); hide.remove(); };
   }, []);
   const contentPad = isRootStack ? kbHeight : 0;
+  const insets = useSafeAreaInsets();
+  // The floating glass tab bar overlaps the tab mount's bottom, so lift the composer above it.
+  // Only in the bottom-tab mount (the root-stack quick-action mount has no tab bar) and only
+  // when the keyboard is closed (KeyboardAvoidingView already pins the composer to the keyboard).
+  const navBarInset = !isRootStack && kbHeight === 0 ? insets.bottom + 88 : 0;
   const initialContext = route.params?.noteContext as string | undefined;
   const extractionContext = route.params?.extractionContext as string | undefined;
   const budgetContext = route.params?.budgetContext as string | undefined;
@@ -2308,7 +2313,7 @@ const MoneyChat: React.FC = () => {
           </View>
         )}
 
-        <View ref={guideTargetRef} style={styles.inputBar} collapsable={false}>
+        <View ref={guideTargetRef} style={[styles.inputBar, navBarInset ? { marginBottom: navBarInset } : null]} collapsable={false}>
           {attachVisible && (
             <View style={styles.attachPopover} onStartShouldSetResponder={() => true}>
               <TouchableOpacity style={styles.attachRow} onPress={() => { setAttachVisible(false); setTimeout(handlePickCamera, 50); }}>
@@ -2498,15 +2503,23 @@ const MoneyChat: React.FC = () => {
 
       <ScreenGuide
         id="guide_chat"
-        title={t.guide.meetEcho}
-        icon="zap"
-        description={t.guide.descChat}
         accent="#6BA3BE"
-        points={[
-          { icon: 'message-circle', text: t.guide.chatPoint1 },
-          { icon: 'image', text: t.guide.chatPoint2 },
+        // Do-it-with-me: the hole over the composer is tappable; the guide waits
+        // for the user's first message and advances to the payoff on send.
+        steps={[
+          { kind: 'intro', title: t.guide.meetEcho, icon: 'zap', body: t.guide.descChat },
+          {
+            kind: 'doWithMe',
+            targetRef: guideTargetRef,
+            label: t.guide.chatWalk,
+            keyboardAware: true,
+            // Count only USER messages: advance when the user actually sends, so
+            // an assistant auto-message (daily check-in, context reply) can never
+            // fast-forward the step.
+            watch: whenStore(useAIInsightsStore, (s) => s.chatMessages.filter((m) => m.role === 'user').length, (n, base) => n > base),
+          },
+          { kind: 'payoff', title: t.guide.chatPayoffTitle, body: t.guide.chatPayoffBody, icon: 'check-circle' },
         ]}
-        spotlight={{ targetRef: guideTargetRef, label: t.guide.chatPoint1, sublabel: t.guide.chatPoint2 }}
       />
     </View>
   );

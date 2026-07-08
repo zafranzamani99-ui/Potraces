@@ -5,7 +5,7 @@
 //
 // Design tokens: CALM.accent, RADIUS.full, SPACING.
 
-import React, { useRef, useCallback, forwardRef } from 'react';
+import React, { useRef, useState, useCallback, forwardRef } from 'react';
 import {
   Animated,
   Pressable,
@@ -14,9 +14,10 @@ import {
   ViewStyle,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { CALM, RADIUS, SPACING } from '../../constants';
+import { RADIUS, SPACING } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
+import { NeuSurface } from './neu';
 
 // ─── Props ─────────────────────────────────────────────────
 
@@ -44,18 +45,21 @@ const FAB = forwardRef<View, FABProps>(({
   const C = useCalm();
   const color = colorProp ?? C.accent;
   const opacityAnim = useRef(new Animated.Value(1)).current;
+  const [pressed, setPressed] = useState(false);
 
-  // ── Interaction handlers: 150ms opacity pulse to 0.7 ──
+  // ── Interaction handlers: opacity pulse + neu press-in ──
 
   const handlePressIn = useCallback(() => {
+    setPressed(true);
     Animated.timing(opacityAnim, {
-      toValue: 0.7,
+      toValue: 0.85,
       duration: 150,
       useNativeDriver: true,
     }).start();
   }, [opacityAnim]);
 
   const handlePressOut = useCallback(() => {
+    setPressed(false);
     Animated.timing(opacityAnim, {
       toValue: 1,
       duration: 150,
@@ -87,9 +91,11 @@ const FAB = forwardRef<View, FABProps>(({
         onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        style={[styles.button, { backgroundColor: color }]}
       >
-        <Feather name={icon} size={ICON_SIZE} color={C.onAccent} />
+        {/* Neu face + accent-colored glyph — matches the home-screen quick-add FAB. */}
+        <NeuSurface pressed={pressed} style={styles.button}>
+          <Feather name={icon} size={ICON_SIZE} color={color} />
+        </NeuSurface>
       </Pressable>
     </Animated.View>
   );

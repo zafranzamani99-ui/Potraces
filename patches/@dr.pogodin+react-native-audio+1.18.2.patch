@@ -1,0 +1,24 @@
+diff --git a/node_modules/@dr.pogodin/react-native-audio/ios/ReactNativeAudio.mm b/node_modules/@dr.pogodin/react-native-audio/ios/ReactNativeAudio.mm
+index 5c3db38..e4a2f6b 100644
+--- a/node_modules/@dr.pogodin/react-native-audio/ios/ReactNativeAudio.mm
++++ b/node_modules/@dr.pogodin/react-native-audio/ios/ReactNativeAudio.mm
+@@ -18,8 +18,8 @@ - (id) init {
+   return self;
+ }
+ 
+-- (facebook::react::ModuleConstants<JS::NativeReactNativeAudio::Constants>) constantsToExport {
+-  return facebook::react::typedConstants<JS::NativeReactNativeAudio::Constants>({
++- (facebook::react::ModuleConstants<JS::NativeReactNativeAudio::Constants::Builder>)constantsToExport {
++  return facebook::react::typedConstants<JS::NativeReactNativeAudio::Constants::Builder>({
+     .AUDIO_FORMAT_PCM_8BIT = PCM_8BIT,
+     .AUDIO_FORMAT_PCM_16BIT = PCM_16BIT,
+     .AUDIO_FORMAT_PCM_FLOAT = PCM_FLOAT,
+@@ -32,7 +32,7 @@ - (id) init {
+   });
+ }
+ 
+-- (facebook::react::ModuleConstants<JS::NativeReactNativeAudio::Constants>) getConstants {
++- (facebook::react::ModuleConstants<JS::NativeReactNativeAudio::Constants::Builder>)getConstants {
+   return [self constantsToExport];
+ }
+ 

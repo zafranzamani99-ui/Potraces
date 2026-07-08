@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 // The swipe action's tap is handled by an RNGH Gesture.Tap (not a touchable):
@@ -8,13 +8,14 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { format, isValid, isToday, isYesterday } from 'date-fns';
 import Reanimated, { FadeIn } from 'react-native-reanimated';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, SHADOWS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import WalletLogo from './WalletLogo';
 import CategoryIcon from './CategoryIcon';
 import { Transaction, CategoryOption, Wallet } from '../../types';
 import { lightTap } from '../../services/haptics';
+import { useNeu } from './neu';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -35,13 +36,13 @@ interface TransactionItemProps {
 }
 
 /**
- * Transaction row as a pill-shaped card — Phase C v2 redesign.
- * Reference: user-supplied "My Transactions" screenshot — separated cards with
- * generous icon, name + wallet sub-line, right-column amount-over-date.
+ * Transaction row as a NEUMORPHIC pill card — Phase 2 redesign.
+ * Same layout/logic as before (generous icon, name + wallet sub-line, right-column
+ * amount-over-date); the surface is now a soft-raised neumorphic card with a
+ * debossed icon well, and press pushes it in.
  *
  * Always-do: S1 (RM tight-kerned), S5 (transaction as recorded moment),
  * S7 (tabular-nums right-aligned), N8 (no red — olive for income, text-primary for expense).
- * Motion: staggered FadeIn (M4 unfold-stagger).
  */
 const TransactionItem: React.FC<TransactionItemProps> = ({
   transaction,
@@ -60,8 +61,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 }) => {
   const swipeableRef = useRef<SwipeableMethods>(null);
   const C = useCalm();
+  const neu = useNeu();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const [pressed, setPressed] = useState(false);
   const isExpense = transaction.type === 'expense';
   const editCount = transaction.editLog?.length ?? 0;
 
@@ -74,13 +77,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     return format(transaction.date, 'EEE d MMM').toLowerCase();
   }, [transaction.date, t]);
 
-  // Time inline in the subline: "3:42 pm" — paired with wallet name.
   const casualTime = useMemo(() => {
     if (!isValid(transaction.date)) return '';
     return format(transaction.date, 'h:mm a').toLowerCase();
   }, [transaction.date]);
 
-  // Tags display — first 3 tags, no # prefix, mid-dot separated. "lunch · ali · kerja"
   const tagDisplay = useMemo(() => {
     if (!transaction.tags || transaction.tags.length === 0) return '';
     return transaction.tags
@@ -90,13 +91,12 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
       .join(' · ');
   }, [transaction.tags]);
 
-  // Time + day combined for the bottom-right slot. "3:42 pm today" / "3:42 pm wed 28 apr"
   const timeDay = useMemo(() => {
     if (!isValid(transaction.date)) return '';
     return `${casualTime} ${casualDate}`;
   }, [casualTime, casualDate, transaction.date]);
 
-  // Icon background tint — category color drives identity.
+  // Icon background tint — category color drives identity (kept as the well's fill).
   const iconBgColor = category?.color
     ? withAlpha(category.color, 0.18)
     : isExpense
@@ -109,11 +109,13 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
   const handlePressIn = useCallback(() => {
     lightTap();
-    Animated.timing(opacityAnim, { toValue: 0.6, duration: 280, useNativeDriver: true }).start();
+    setPressed(true);
+    Animated.timing(opacityAnim, { toValue: 0.85, duration: 120, useNativeDriver: true }).start();
   }, [opacityAnim]);
 
   const handlePressOut = useCallback(() => {
-    Animated.timing(opacityAnim, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+    setPressed(false);
+    Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
   }, [opacityAnim]);
 
   const handlePress = useCallback(() => {
@@ -129,8 +131,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     onSwipeDelete?.(transaction.id);
   }, [onSwipeDelete, transaction.id]);
 
-  // Tap handled by RNGH directly (runs on JS thread) — reliable inside the
-  // swipeable's gesture tree where touchables get swallowed on Android.
   const deleteTapGesture = useMemo(
     () => Gesture.Tap().runOnJS(true).onEnd(() => handleSwipeDelete()),
     [handleSwipeDelete]
@@ -148,7 +148,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     </GestureDetector>
   ), [deleteTapGesture, styles.swipeDeleteBtn, t, C.surface]);
 
-  // Format amount — RM tight-kerned to digits.
   const sign = isExpense ? '−' : '+';
   const amountStr = transaction.amount.toFixed(2);
   const accessibilityLabel = `${transaction.description}, ${sign}${currency} ${amountStr}, ${casualDate}`;
@@ -166,6 +165,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={onPress ? t.common.tapToView : undefined}
     >
+      {/* The neu shadow lives on the OUTER wrapper (below), NOT here — the swipeable
+          clips its children (overflow:hidden) and would cut the shadow into a hard
+          vertical seam. The card itself just carries the fill + layout. */}
       <Animated.View style={[
         styles.card,
         { opacity: opacityAnim },
@@ -177,8 +179,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
           </View>
         )}
 
-        {/* Left: 42px circular icon, color-extracted background tint, prominent. */}
-        <View style={[styles.iconWrap, { backgroundColor: iconBgColor }]}>
+        {/* Left: 42px debossed icon well, category-tinted, holding the glyph */}
+        <View style={[styles.iconWrap, neu.well, { backgroundColor: iconBgColor }]}>
           <CategoryIcon
             icon={category?.icon || (isExpense ? 'arrow-up-right' : 'arrow-down-left')}
             size={ICON_SIZE.sm}
@@ -186,12 +188,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
           />
         </View>
 
-        {/* Middle body — 3-row vertical stack:
-              row 1: description + amount (top-aligned with each other)
-              row 2: tag line (only when present)
-              row 3: wallet/edited + time-day */}
         <View style={styles.body}>
-          {/* Row 1: name + amount */}
           <View style={styles.topRow}>
             <View style={styles.nameRow}>
               <Text style={styles.name} numberOfLines={1}>
@@ -210,12 +207,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
             </Text>
           </View>
 
-          {/* Row 2: tag (only when present) */}
           {tagDisplay ? (
             <Text style={styles.tagLine} numberOfLines={1}>{tagDisplay}</Text>
           ) : null}
 
-          {/* Row 3: wallet + edited (left) — time + day (right) */}
           <View style={styles.bottomRow}>
             <View style={styles.walletRow}>
               {wallet && <WalletLogo wallet={wallet} size={14} />}
@@ -235,46 +230,56 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     </TouchableOpacity>
   );
 
-  // Staggered entrance — first 12 cards cascade at 50ms intervals (~600ms total),
-  // subsequent cards just fade in. Motion: M4 unfold-stagger.
-  // Skipped when animateEntrance=false (paginated lists): the entrance replaying
-  // on every recycle/scroll is what caused the stutter & half-rendered frames.
   const stagger = Math.min(index, 11) * 50;
   const enteringAnim = animateEntrance ? FadeIn.duration(420).delay(stagger) : undefined;
+
+  // Neu shadow on this UNCLIPPED wrapper so it renders in full (the swipeable
+  // inside clips its own children, which is why the card can't carry the shadow).
+  const shadowStyle = pressed ? neu.insetSoft : neu.raisedSoft;
 
   if (onSwipeDelete && !selectMode) {
     return (
       <Reanimated.View entering={enteringAnim}>
-        <ReanimatedSwipeable
-          ref={swipeableRef}
-          renderRightActions={renderRightActions}
-          overshootRight={false}
-          friction={1}
-          rightThreshold={40}
-        >
-          {content}
-        </ReanimatedSwipeable>
+        <View style={[styles.rowShadow, shadowStyle]}>
+          <ReanimatedSwipeable
+            ref={swipeableRef}
+            renderRightActions={renderRightActions}
+            overshootRight={false}
+            friction={1}
+            rightThreshold={40}
+          >
+            {content}
+          </ReanimatedSwipeable>
+        </View>
       </Reanimated.View>
     );
   }
 
-  return <Reanimated.View entering={enteringAnim}>{content}</Reanimated.View>;
+  return (
+    <Reanimated.View entering={enteringAnim}>
+      <View style={[styles.rowShadow, shadowStyle]}>{content}</View>
+    </Reanimated.View>
+  );
 };
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  // Pill-shaped card — generous radius, subtle shadow, surface background.
+  // Unclipped shadow wrapper — carries the neu shadow + the inter-row gap, so the
+  // swipeable's overflow:hidden can't cut the shadow into a hard edge.
+  rowShadow: {
+    borderRadius: RADIUS.xl,
+    marginBottom: SPACING.sm + 6, // gap so the soft shadow can breathe
+  },
+  // The card fill/layout. Opaque bg so it slides cleanly over the wrapper on swipe.
   card: {
     flexDirection: 'row',
-    alignItems: 'flex-start', // top-align so icon sits with the name on row 1
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl, // ~20px — high pill radius matching reference
+    alignItems: 'flex-start',
+    borderRadius: RADIUS.xl,
+    backgroundColor: C.background,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 4, // 12 — generous internal padding
-    marginBottom: SPACING.sm + 2, // 10px gap between cards
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm), // subtle elevation per design-tokens
+    paddingVertical: SPACING.sm + 4,
   },
   cardSelected: {
-    backgroundColor: withAlpha(C.accent, 0.04),
+    backgroundColor: withAlpha(C.accent, 0.06),
     borderWidth: 1,
     borderColor: withAlpha(C.accent, 0.25),
   },
@@ -287,15 +292,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.sm,
-    // Card top-aligns (flex-start) to keep the 42px icon on row 1; nudge the
-    // 22px checkbox down by (42-22)/2 so its centre matches the icon's centre.
     marginTop: 10,
   },
   checkboxChecked: {
     backgroundColor: C.accent,
     borderColor: C.accent,
   },
-  // Icon — 42px, prominent, color-tinted background per category.
+  // NEU: debossed well — inset shadow added via neu.well; keeps the category tint.
   iconWrap: {
     width: 42,
     height: 42,
@@ -304,7 +307,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     marginRight: SPACING.md,
   },
-  // Middle — vertical 3-row stack: name+amount, tag, wallet+timeDay
   body: {
     flex: 1,
     minWidth: 0,
@@ -322,13 +324,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     minWidth: 0,
   },
   name: {
-    fontSize: TYPOGRAPHY.size.base, // 16
-    fontWeight: TYPOGRAPHY.weight.semibold, // bolder than base 500 — name carries the row
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     flexShrink: 1,
     letterSpacing: -0.1,
   },
-  // Tag line (row 2) — slightly indented under name; muted but darker than wallet text
   tagLine: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
@@ -336,7 +337,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: 4,
     letterSpacing: 0.1,
   },
-  // Bottom row (row 3) — wallet/edited (left) and time-day (right)
   bottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -373,18 +373,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
     fontStyle: 'italic',
   },
-  // Amount — sits in the top row alongside the name (right-aligned via topRow's space-between)
   amount: {
-    fontSize: TYPOGRAPHY.size.base, // 16
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
-    letterSpacing: -0.4, // RM tight-kerned to digits
+    letterSpacing: -0.4,
   },
   amountIncome: {
     color: C.deepOlive,
   },
-  // Time + day — sits in the bottom row alongside wallet (right-aligned via bottomRow's space-between)
   timeDay: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
@@ -393,8 +391,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.1,
     flexShrink: 0,
   },
-  // Pill-flush trash chip — full rounded corners, sits as a separate floating pill
-  // beside the card with a small left gap. No more sharp-rectangle white sliver.
   swipeDeleteBtn: {
     backgroundColor: C.neutral,
     justifyContent: 'center',
@@ -402,7 +398,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 56,
     marginLeft: SPACING.sm,
     borderRadius: RADIUS.xl,
-    marginBottom: SPACING.sm + 2,
   },
 });
 

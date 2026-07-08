@@ -11,6 +11,9 @@ interface EmptyStateProps {
   message: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** Optional ref on the action button — lets a ScreenGuide spotlight the CTA
+   *  (the container is full-height, so refs must land on the button, not it). */
+  actionRef?: React.Ref<View>;
 }
 
 const EmptyState: React.FC<EmptyStateProps> = ({
@@ -19,6 +22,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
   message,
   actionLabel,
   onAction,
+  actionRef,
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -44,7 +48,9 @@ const EmptyState: React.FC<EmptyStateProps> = ({
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
       {actionLabel && onAction && (
-        <Button title={actionLabel} onPress={onAction} style={styles.button} />
+        <View ref={actionRef} collapsable={false} style={styles.button}>
+          <Button title={actionLabel} onPress={onAction} />
+        </View>
       )}
     </Animated.View>
   );

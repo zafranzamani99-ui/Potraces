@@ -49,6 +49,9 @@ import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import WalletLogo from '../../components/common/WalletLogo';
+import { useNeu } from '../../components/common/neu';
+import NeuButton from '../../components/common/NeuButton';
+import FAB from '../../components/common/FAB';
 import CommitmentForm from '../../components/commitments/CommitmentForm';
 import EmptyState from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
@@ -133,8 +136,6 @@ function SubSwipeAction({
 
 type CommitmentKind = 'bills' | 'payments' | 'subs';
 type StatusFilter = 'all' | 'upcoming' | 'overdue' | 'cleared' | 'paused' | 'archived';
-
-type ModalView = 'form' | 'cyclePicker' | 'calendar' | 'walletPicker';
 
 type SubscriptionListParams = {
   SubscriptionList: { highlightId?: string } | undefined;
@@ -273,10 +274,19 @@ function getNextBillingDate(start: Date, cycle: string): Date {
 // one row per missed cycle instead of silently collapsing arrears into a single bill.
 function getOverdueOccurrences(sub: Subscription, today: Date): Date[] {
   const dates: Date[] = [];
+  // Cycles already settled by an active (non-undone) payment — skip them. An
+  // out-of-order undo can leave nextBillingDate behind a still-paid later cycle;
+  // without this, that paid cycle would surface as a phantom "overdue" row (and
+  // inflate the overdue count), and tapping it would settle the wrong cycle.
+  const paidKeys = new Set(
+    (sub.paymentHistory || [])
+      .filter((p) => !p.undoneAt)
+      .map((p) => startOfDay(new Date(p.periodDate ?? p.paidAt)).getTime()),
+  );
   let d = new Date(sub.nextBillingDate);
   let i = 0;
   while (startOfDay(d) < today && i < 36) {
-    dates.push(new Date(d));
+    if (!paidKeys.has(startOfDay(d).getTime())) dates.push(new Date(d));
     switch (sub.billingCycle) {
       case 'weekly':    d = addWeeks(d, 1);    break;
       case 'quarterly': d = addQuarters(d, 1); break;
@@ -369,6 +379,10 @@ const SubscriptionList: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu();
+  // Modal sheets are C.surface-toned, so their inner neu surfaces must blend to
+  // C.surface (not the screen's C.background) or they read as dark slabs.
+  const neuS = useNeu(C.surface);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<SubscriptionListParams, 'SubscriptionList'>>();
@@ -405,23 +419,26 @@ const SubscriptionList: React.FC = () => {
     transform: [{ translateX: slideX.value }],
     opacity: interpolate(Math.abs(slideX.value), [0, 40], [1, 0.5]),
   }));
-  const [groupBy, setGroupBy] = useState<'status' | 'category'>('status');
   const [activeTab, setActiveTab] = useState<CommitmentKind>('subs');
   const initialTabSet = useRef(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [calendarMonth, setCalendarMonth] = useState(new Date());
-  const [selectedCalDay, setSelectedCalDay] = useState<Date | null>(null);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
 
   // ── Modal state ─────────────────────────────────────────
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [modalView, setModalView] = useState<ModalView>('form');
+  // Prefill for the CommitmentForm when opened from a "looks recurring" suggestion.
+  const [suggestionDraft, setSuggestionDraft] = useState<Partial<Pick<Subscription, 'name' | 'amount' | 'category' | 'billingCycle'>> | undefined>(undefined);
 
   // ── Mark as paid sheet ───────────────────────────────────
   const [markPaidSub, setMarkPaidSub] = useState<Subscription | null>(null);
   const [markPaidDate, setMarkPaidDate] = useState<Date | null>(null); // when the user paid (null = today)
   const [mpCalendarOpen, setMpCalendarOpen] = useState(false);
+  // Reset the custom pay-date whenever a DIFFERENT commitment's mark-paid sheet opens, so
+  // a date picked for one commitment (then abandoned) can't leak into another via "pay anyway".
+  useEffect(() => {
+    if (markPaidSub) { setMarkPaidDate(null); setMpCalendarOpen(false); }
+  }, [markPaidSub?.id]);
   const [payWarning, setPayWarning] = useState<{ sub: Subscription; reason: 'double' | 'early' | 'notStarted'; detail: string } | null>(null);
   const [celebrationSub, setCelebrationSub] = useState<{ id: string; name: string; amount: number; cycle: string; totalPaid: number; installments?: number } | null>(null);
 
@@ -435,22 +452,8 @@ const SubscriptionList: React.FC = () => {
   // ── How it works ────────────────────────────────────────
   const [howItWorksVisible, setHowItWorksVisible] = useState(false);
 
-  // ── Form state ───────────────────────────────────────────
-  const [name, setName] = useState('');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState(expenseCategories[0]?.id || 'food');
-  const [billingCycle, setBillingCycle] = useState<Subscription['billingCycle']>('monthly');
-  const [reminderDays, setReminderDays] = useState('3');
-  const [startDate, setStartDate] = useState(new Date());
-  const [isInstallment, setIsInstallment] = useState(false);
-  const [totalInstallments, setTotalInstallments] = useState('');
-  const [isPaused, setIsPaused] = useState(false);
-  const [note, setNote] = useState('');
-  const [formWalletId, setFormWalletId] = useState<string | undefined>(undefined);
-  const [outstandingBalance, setOutstandingBalance] = useState('');
-
-  // ── FAB animation ────────────────────────────────────────
-  const addFabScale = useRef(new Animated.Value(1)).current;
+  // (Legacy in-screen form state removed — the live add/edit form is <CommitmentForm>,
+  // which owns its own state; suggestions prefill it via the `initialValues` prop.)
 
   // ── Swipeable refs ───────────────────────────────────────
   const swipeableRefs = useRef<Map<string, SwipeableMethods>>(new Map());
@@ -750,16 +753,6 @@ const SubscriptionList: React.FC = () => {
   // silently rolling into the new month. See getOverdueOccurrences for the per-cycle
   // rows that surface every missed bill.
 
-  const afterCommitments = useMemo(() => {
-    const walletBalance = wallets
-      .filter(w => w.type !== 'credit')
-      .reduce((sum, w) => sum + w.balance, 0);
-    const pendingBills = subscriptions
-      .filter(s => s.isActive && !s.isPaused && !isClearedThisCycle(s) && s.nextBillingDate <= endOfMonth(new Date()))
-      .reduce((sum, s) => sum + s.amount, 0);
-    return walletBalance - pendingBills;
-  }, [subscriptions, wallets]);
-
   // ── Tab classification (bills / payments / subs) ────────
   const classifyKind = useCallback((sub: Subscription): CommitmentKind => {
     if (sub.isInstallment) return 'payments';
@@ -843,48 +836,6 @@ const SubscriptionList: React.FC = () => {
     paused:    sections.paused.filter(s => classifyKind(s) === activeTab),
   }), [sections, activeTab, classifyKind]);
 
-  // ── Status-filtered list (used by context chips) ─────────
-  const statusFilteredList = useMemo(() => {
-    const today = startOfDay(new Date());
-    const monthEnd = endOfMonth(new Date());
-
-    if (statusFilter === 'archived') {
-      return subscriptions.filter(s => !s.isActive);
-    }
-
-    const active = subscriptions.filter(s => s.isActive);
-
-    switch (statusFilter) {
-      case 'upcoming':
-        return active.filter(s => !s.isPaused && !isInstallmentComplete(s) && !isClearedThisCycle(s) && new Date(s.nextBillingDate) >= today && new Date(s.nextBillingDate) <= monthEnd)
-          .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime());
-      case 'overdue':
-        return active.filter(s => !s.isPaused && !isInstallmentComplete(s) && !isClearedThisCycle(s) && new Date(s.nextBillingDate) < today)
-          .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime());
-      case 'cleared':
-        return active.filter(s => !s.isPaused && (isInstallmentComplete(s) || isClearedThisCycle(s)));
-      case 'paused':
-        return active.filter(s => s.isPaused);
-      default:
-        return active;
-    }
-  }, [subscriptions, statusFilter]);
-
-  // ── Group by type (bills / payments / subscriptions) ────
-  const groupedByType = useMemo(() => {
-    const groups: { key: CommitmentKind; label: string; subs: Subscription[] }[] = [
-      { key: 'bills', label: 'bills', subs: [] },
-      { key: 'payments', label: 'payments', subs: [] },
-      { key: 'subs', label: 'subscriptions', subs: [] },
-    ];
-    statusFilteredList.forEach(sub => {
-      const kind = classifyKind(sub);
-      const group = groups.find(g => g.key === kind);
-      if (group) group.subs.push(sub);
-    });
-    return groups.filter(g => g.subs.length > 0);
-  }, [statusFilteredList, classifyKind]);
-
   // ── Display data (tab + status composed) ────────────────
   const displayData = useMemo(() => {
     if (heroMonthOffset !== 0) {
@@ -946,35 +897,6 @@ const SubscriptionList: React.FC = () => {
       .sort((a, b) => a.nextBillingDate.getTime() - b.nextBillingDate.getTime());
   }, [subscriptions, searchQuery]);
 
-  // ── Calendar bill map ─────────────────────────────────────
-  const calendarBillMap = useMemo(() => {
-    const map = new Map<string, Subscription[]>();
-    const y = calendarMonth.getFullYear();
-    const m = calendarMonth.getMonth();
-    subscriptions
-      .filter(s => s.isActive && !s.isPaused)
-      .forEach(s => {
-        if (s.nextBillingDate.getFullYear() === y && s.nextBillingDate.getMonth() === m) {
-          const key = format(s.nextBillingDate, 'yyyy-MM-dd');
-          map.set(key, [...(map.get(key) || []), s]);
-        }
-      });
-    return map;
-  }, [subscriptions, calendarMonth]);
-
-  // ── Sections by category ─────────────────────────────────
-  const sectionsByCategory = useMemo(() => {
-    const active = subscriptions.filter(s => s.isActive && !s.isPaused);
-    const groups: Record<string, Subscription[]> = {};
-    active.forEach(s => {
-      if (!groups[s.category]) groups[s.category] = [];
-      groups[s.category].push(s);
-    });
-    return Object.entries(groups)
-      .map(([cat, subs]) => ({ cat, subs: subs.sort((a, b) => a.nextBillingDate.getTime() - b.nextBillingDate.getTime()) }))
-      .sort((a, b) => a.cat.localeCompare(b.cat));
-  }, [subscriptions]);
-
   // ── Recurring detection ───────────────────────────────────
   const recurringDetection = useMemo(() => {
     if (!transactions || transactions.filter(t => t.type === 'expense').length < 4) return [];
@@ -1017,23 +939,6 @@ const SubscriptionList: React.FC = () => {
   }, []);
 
   // ─── Form Actions ───────────────────────────────────────
-  const resetForm = useCallback(() => {
-    setEditingId(null);
-    setName('');
-    setAmount('');
-    setCategory(expenseCategories[0]?.id || 'food');
-    setBillingCycle('monthly');
-    setReminderDays('3');
-    setStartDate(new Date());
-    setIsInstallment(false);
-    setTotalInstallments('');
-    setIsPaused(false);
-    setNote('');
-    setFormWalletId(undefined);
-    setOutstandingBalance('');
-    setModalView('form');
-  }, [expenseCategories]);
-
   const handleEdit = useCallback((id: string) => {
     const sub = subscriptions.find(s => s.id === id);
     if (!sub) return;
@@ -1081,6 +986,7 @@ const SubscriptionList: React.FC = () => {
   const handleFormClose = useCallback(() => {
     setModalVisible(false);
     setEditingId(null);
+    setSuggestionDraft(undefined);
   }, []);
 
   const handleFormDelete = useCallback((sub: Subscription) => {
@@ -1092,30 +998,6 @@ const SubscriptionList: React.FC = () => {
   const handleFormError = useCallback((message: string) => {
     showToast(message, 'error');
   }, [showToast]);
-
-  const handleSave = useCallback(() => {
-    if (!name.trim()) { showToast('name is required', 'error'); return; }
-    const parsed = parseFloat(amount);
-    if (!amount || isNaN(parsed) || parsed <= 0) { showToast('enter a valid amount', 'error'); return; }
-    handleFormSave({
-      name: name.trim(),
-      amount: parsed,
-      category,
-      billingCycle,
-      startDate,
-      nextBillingDate: startDate,
-      isActive: true,
-      reminderDays: parseInt(reminderDays, 10) || 3,
-      isPaused,
-      isInstallment,
-      totalInstallments: isInstallment ? (parseInt(totalInstallments, 10) || 0) : undefined,
-      completedInstallments: isInstallment ? (subscriptions.find(s => s.id === editingId)?.completedInstallments || 0) : undefined,
-      outstandingBalance: outstandingBalance ? parseFloat(outstandingBalance) : undefined,
-      note: note.trim() || undefined,
-      walletId: formWalletId,
-      paymentHistory: subscriptions.find(s => s.id === editingId)?.paymentHistory,
-    });
-  }, [name, amount, category, billingCycle, startDate, reminderDays, isPaused, isInstallment, totalInstallments, outstandingBalance, note, formWalletId, editingId, subscriptions, handleFormSave, showToast]);
 
   const handleConfirmDelete = useCallback(() => {
     if (!deleteConfirmSub) return;
@@ -1177,6 +1059,23 @@ const SubscriptionList: React.FC = () => {
     // early payment into the future — keep the pay date when paying on time or ahead.
     const cycleDate = new Date(markPaidSub.nextBillingDate);
     const expenseDate = paidOn > cycleDate ? cycleDate : paidOn;
+
+    // Defensive double-pay guard. Gate 2 in smartMarkPaid relies solely on
+    // isClearedThisCycle, which can flip back to "not cleared" after the user edits a
+    // paid commitment's cycle/startDate (nextBillingDate recomputes on the new cadence
+    // while lastPaidAt carries over) — re-enabling a second deduction + duplicate expense.
+    // Block if this exact cycle already has an active payment. Installments legitimately
+    // pay ahead (each advances the pointer → distinct periodDates), so they never false-block.
+    const alreadyPaidThisCycle = !(markPaidSub.isInstallment && markPaidSub.totalInstallments)
+      && (markPaidSub.paymentHistory || []).some(
+        (p) => !p.undoneAt && isSameDay(new Date(p.periodDate ?? p.paidAt), cycleDate)
+      );
+    if (alreadyPaidThisCycle) {
+      setMarkPaidSub(null);
+      showToast('this cycle is already paid', 'error');
+      return;
+    }
+
     if (withExpense && markPaidSub.walletId) {
       txId = addTransaction({
         amount: markPaidSub.amount,
@@ -1298,18 +1197,19 @@ const SubscriptionList: React.FC = () => {
       >
         {/* Squircle avatar */}
         {installmentDone ? (
-          <View style={[styles.rowIcon, { backgroundColor: withAlpha(C.positive, 0.12) }]}>
+          <View style={[styles.rowIcon, neu.well, { backgroundColor: withAlpha(C.positive, 0.12) }]}>
             <Feather name="check-circle" size={18} color={C.positive} />
           </View>
         ) : sub.imageUri ? (
           <Image source={{ uri: sub.imageUri }} style={styles.rowIconImage} />
         ) : sub.iconName ? (
-          <View style={[styles.rowIcon, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+          <View style={[styles.rowIcon, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
             {renderIcon(sub.iconName, 18, C.accent)}
           </View>
         ) : (
           <View style={[
             styles.rowIcon,
+            neu.well,
             { backgroundColor: isCleared ? withAlpha(C.positive, 0.12) : withAlpha(accentColor, 0.14) },
           ]}>
             {isCleared
@@ -1377,7 +1277,10 @@ const SubscriptionList: React.FC = () => {
       _prog: SharedValue<number>,
       drag: SharedValue<number>,
       swipeable: SwipeableMethods,
-    ) => ((!isCleared || canPayInstallment) && !sub.isPaused ? (
+      // Only allow swipe-to-pay in the current month. In a projected (next/prev-month)
+      // view these are the REAL current-cycle rows, so "pre-paying" here would silently
+      // clear the current cycle — confusing. Tapping the row still opens read-only detail.
+    ) => (heroMonthOffset === 0 && (!isCleared || canPayInstallment) && !sub.isPaused ? (
       <SubSwipeAction
         variant="paid"
         direction="right"
@@ -1406,6 +1309,7 @@ const SubscriptionList: React.FC = () => {
     );
 
     return (
+      <View style={[styles.rowShadow, neu.raisedSoft]}>
       <ReanimatedSwipeable
         key={sub.id}
         ref={((ref: SwipeableMethods | null) => {
@@ -1438,65 +1342,14 @@ const SubscriptionList: React.FC = () => {
       >
         {rowContent}
       </ReanimatedSwipeable>
+      </View>
     );
   }, [
     expenseCategories, getCycleShort,
-    renderWalletChip, handleEdit, currency, C, styles,
+    renderWalletChip, handleEdit, currency, C, styles, heroMonthOffset,
   ]);
 
-  // ─── Grid tile ────────────────────────────────────────
-  const renderTile = useCallback((sub: Subscription) => {
-    const accentColor = avatarColorForName(sub.name);
-    const isCleared = isClearedThisCycle(sub);
-    const { text: dueDateText, accent } = getDueDateInfo(sub.nextBillingDate);
-
-    const chipBg = isCleared
-      ? withAlpha(C.positive, 0.10)
-      : accent === 'overdue' ? withAlpha(C.overdue, 0.10)
-      : accent === 'today'   ? withAlpha(C.gold, 0.10)
-      : withAlpha(C.textMuted, 0.07);
-    const chipColor = isCleared ? C.positive
-      : accent === 'overdue' ? C.overdue
-      : accent === 'today'   ? C.gold
-      : C.textMuted;
-    const dueDateLabel = isCleared && sub.lastPaidAt ? `paid ${format(sub.lastPaidAt, 'MMM d')}` : dueDateText;
-
-    return (
-      <TouchableOpacity
-        key={sub.id}
-        style={[styles.tile, isCleared && styles.tileCleared]}
-        onPress={() => handleEdit(sub.id)}
-        activeOpacity={0.75}
-      >
-        {/* Faded watermark letter */}
-        <Text style={[styles.tileWatermark, { color: accentColor }]}>
-          {sub.name.charAt(0).toUpperCase()}
-        </Text>
-        {/* Icon */}
-        {sub.imageUri ? (
-          <Image source={{ uri: sub.imageUri }} style={styles.tileIconImage} />
-        ) : sub.iconName ? (
-          <View style={[styles.tileIcon, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
-            {renderIcon(sub.iconName, 18, C.accent)}
-          </View>
-        ) : (
-          <View style={[styles.tileIcon, { backgroundColor: withAlpha(accentColor, isCleared ? 0.07 : 0.14) }]}>
-            {isCleared
-              ? <Feather name="check" size={16} color={accentColor} style={{ opacity: 0.6 }} />
-              : <Text style={[styles.rowIconLetter, { color: accentColor, fontSize: TYPOGRAPHY.size.base }]}>
-                  {sub.name.charAt(0).toUpperCase()}
-                </Text>
-            }
-          </View>
-        )}
-        <Text style={styles.tileName} numberOfLines={1}>{sub.name}</Text>
-        <Text style={styles.tileAmount}>{currency} {sub.amount.toFixed(0)}</Text>
-        <Text style={[styles.rowDueText, { color: chipColor, textAlign: 'center' }]}>{dueDateLabel}</Text>
-      </TouchableOpacity>
-    );
-  }, [expenseCategories, handleEdit, currency, C, styles]);
-
-  // ─── Section block ────────────────────────────────────
+  // ─── Section (each row is its own neu card — no section card / dividers) ─
   const renderSection = useCallback((label: string, subs: Subscription[], isCleared = false) => {
     if (subs.length === 0) return null;
     const sectionTotal = subs.reduce((sum, s) => sum + s.amount, 0);
@@ -1506,11 +1359,10 @@ const SubscriptionList: React.FC = () => {
           <Text style={styles.sectionLabel}>{label} ({subs.length})</Text>
           <Text style={styles.sectionTotal}>{currency} {sectionTotal.toFixed(2)}</Text>
         </View>
-        <View style={styles.sectionCard}>
-          {subs.map((sub, idx) => (
+        <View>
+          {subs.map((sub) => (
             <React.Fragment key={sub.id}>
               {renderRow(sub, isCleared)}
-              {idx < subs.length - 1 && <View style={styles.rowDivider} />}
             </React.Fragment>
           ))}
         </View>
@@ -1526,23 +1378,20 @@ const SubscriptionList: React.FC = () => {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionLabel}>looks recurring</Text>
         </View>
-        {recurringDetection.map((s, idx) => (
+        {recurringDetection.map((s) => (
           <React.Fragment key={s.name}>
             <TouchableOpacity
-              style={styles.suggestionRow}
+              style={[styles.suggestionRow, neu.raisedSoft]}
               onPress={() => {
                 lightTap();
-                resetForm();
-                setName(s.name);
-                setAmount(s.amount.toString());
-                setCategory(s.category);
-                setBillingCycle(s.cycle);
+                setEditingId(null);
+                setSuggestionDraft({ name: s.name, amount: s.amount, category: s.category, billingCycle: s.cycle });
                 setModalVisible(true);
               }}
               activeOpacity={0.7}
             >
               <View style={styles.suggestionLeft}>
-                <View style={styles.suggestionBadge}>
+                <View style={[styles.suggestionBadge, neu.well]}>
                   <Feather name="repeat" size={12} color={C.bronze} />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -1550,139 +1399,16 @@ const SubscriptionList: React.FC = () => {
                   <Text style={styles.suggestionMeta}>{currency} {s.amount.toFixed(2)} · {s.cycle}</Text>
                 </View>
               </View>
-              <View style={styles.suggestionAction}>
+              <View style={[styles.suggestionAction, neu.raised]}>
                 <Text style={styles.suggestionActionText}>track</Text>
               </View>
             </TouchableOpacity>
-            {idx < recurringDetection.length - 1 && (
-              <View style={styles.rowDivider} />
-            )}
           </React.Fragment>
         ))}
       </View>
     );
-  }, [recurringDetection, currency, C, styles, resetForm]);
+  }, [recurringDetection, currency, C, styles, neu]);
 
-  // ─── Calendar grid ────────────────────────────────────────
-  const renderCalendarGrid = useCallback(() => {
-    const y = calendarMonth.getFullYear();
-    const m = calendarMonth.getMonth();
-    const firstDay = new Date(y, m, 1);
-    const totalDays = new Date(y, m + 1, 0).getDate();
-    const offset = (firstDay.getDay() + 6) % 7;
-    const today = startOfDay(new Date());
-    const CELL_SIZE = (SCREEN_WIDTH - SPACING.xl * 2) / 7;
-
-    const cells: (number | null)[] = [
-      ...Array(offset).fill(null),
-      ...Array.from({ length: totalDays }, (_, i) => i + 1),
-    ];
-    while (cells.length % 7 !== 0) cells.push(null);
-
-    return (
-      <View style={styles.calContainer}>
-        {/* Month nav */}
-        <View style={styles.calNavRow}>
-          <TouchableOpacity
-            onPress={() => { lightTap(); setCalendarMonth(subMonths(calendarMonth, 1)); setSelectedCalDay(null); }}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Feather name="chevron-left" size={22} color={C.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.calMonthLabel}>{format(calendarMonth, 'MMMM yyyy')}</Text>
-          <TouchableOpacity
-            onPress={() => { lightTap(); setCalendarMonth(addMonths(calendarMonth, 1)); setSelectedCalDay(null); }}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Feather name="chevron-right" size={22} color={C.textPrimary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Day headers Mon–Sun */}
-        <View style={styles.calHeaderRow}>
-          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
-            <Text key={i} style={[styles.calDayHeader, { width: CELL_SIZE }]}>{d}</Text>
-          ))}
-        </View>
-
-        {/* Grid */}
-        <View style={styles.calGrid}>
-          {cells.map((day, idx) => {
-            if (!day) return <View key={`e-${idx}`} style={[styles.calCell, { width: CELL_SIZE, height: CELL_SIZE }]} />;
-            const date = new Date(y, m, day);
-            const key = format(date, 'yyyy-MM-dd');
-            const dayBills = calendarBillMap.get(key) || [];
-            const isToday = isSameDay(date, today);
-            const isSelected = selectedCalDay ? isSameDay(date, selectedCalDay) : false;
-            return (
-              <TouchableOpacity
-                key={idx}
-                style={[
-                  styles.calCell,
-                  { width: CELL_SIZE, height: CELL_SIZE },
-                  isToday && styles.calCellToday,
-                  isSelected && styles.calCellSelected,
-                ]}
-                onPress={() => {
-                  lightTap();
-                  setSelectedCalDay(dayBills.length > 0 ? (isSelected ? null : date) : null);
-                }}
-                activeOpacity={dayBills.length > 0 ? 0.7 : 1}
-              >
-                <Text style={[
-                  styles.calDayNum,
-                  isToday && styles.calDayNumToday,
-                  isSelected && { color: C.accent },
-                ]}>{day}</Text>
-                {dayBills.length > 0 && (
-                  <View style={styles.calDots}>
-                    {dayBills.slice(0, 3).map((sub, di) => (
-                      <View
-                        key={di}
-                        style={[styles.calDot, {
-                          backgroundColor: isClearedThisCycle(sub) ? C.positive : isSubOverdue(sub) ? C.bronze : C.accent,
-                        }]}
-                      />
-                    ))}
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Selected day detail */}
-        {selectedCalDay && (() => {
-          const key = format(selectedCalDay, 'yyyy-MM-dd');
-          const dayBills = calendarBillMap.get(key) || [];
-          if (!dayBills.length) return null;
-          return (
-            <View style={styles.calDayDetail}>
-              <Text style={styles.calDayDetailDate}>{format(selectedCalDay, 'EEEE, MMM d')}</Text>
-              {dayBills.map(sub => (
-                <TouchableOpacity
-                  key={sub.id}
-                  style={styles.calDayDetailRow}
-                  onPress={() => { setSelectedCalDay(null); handleEdit(sub.id); }}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.calDayDetailLeft}>
-                    <View style={[styles.calDayDetailDot, {
-                      backgroundColor: isClearedThisCycle(sub) ? C.positive : C.accent,
-                    }]} />
-                    <Text style={styles.calDayDetailName}>{sub.name}</Text>
-                  </View>
-                  <Text style={styles.calDayDetailAmt}>{currency} {sub.amount.toFixed(2)}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          );
-        })()}
-      </View>
-    );
-  }, [calendarMonth, selectedCalDay, calendarBillMap, C, currency, styles, handleEdit]);
-
-  // ─── Hero card ──────────────────────────────────────────
   const annualizeAmount = useCallback((amount: number, cycle: string): number => {
     switch (cycle) {
       case 'weekly': return amount * 52;
@@ -1730,7 +1456,7 @@ const SubscriptionList: React.FC = () => {
 
     return (
       <Reanimated.View
-        style={[styles.monthHeader, slideStyle]}
+        style={[styles.monthHeader, neu.raisedSoft, { backgroundColor: isDark ? withAlpha(C.accent, 0.06) : withAlpha(C.accent, 0.03) }, slideStyle]}
         onTouchStart={(e) => { heroTouchRef.current = { x: e.nativeEvent.pageX, time: Date.now() }; }}
         onTouchEnd={(e) => {
           const dx = e.nativeEvent.pageX - heroTouchRef.current.x;
@@ -1768,7 +1494,7 @@ const SubscriptionList: React.FC = () => {
               </Pressable>
             )}
           </View>
-          <View style={styles.heroSegment}>
+          <View style={[styles.heroSegment, neu.inset, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
             <Pressable
               onPress={() => { lightTap(); setShowAnnual(false); }}
               style={[styles.heroSegBtn, !showAnnual && styles.heroSegBtnActive]}
@@ -1968,7 +1694,7 @@ const SubscriptionList: React.FC = () => {
             return (
               <TouchableOpacity
                 key={chip.key}
-                style={[styles.statusPill, active && styles.statusPillActive]}
+                style={[styles.statusPill, neu.raised, active && styles.statusPillActive]}
                 onPress={() => { lightTap(); setStatusFilter(chip.key); }}
                 activeOpacity={0.7}
               >
@@ -1982,7 +1708,7 @@ const SubscriptionList: React.FC = () => {
             );
           })}
           <TouchableOpacity
-            style={[styles.filterBtn, hasActiveFilter && styles.filterBtnActive]}
+            style={[styles.filterBtn, neu.raised, hasActiveFilter && styles.filterBtnActive]}
             onPress={() => { lightTap(); setFilterModalVisible(true); }}
             activeOpacity={0.7}
           >
@@ -2098,431 +1824,6 @@ const SubscriptionList: React.FC = () => {
     );
   };
 
-  // ─── Add/Edit Modal ───────────────────────────────────
-  const renderFormView = () => {
-    const editingSub = editingId ? subscriptions.find(s => s.id === editingId) : null;
-    const showMarkPayment = editingSub?.isInstallment && editingSub?.totalInstallments;
-    const isEditingComplete = !!(editingSub?.isInstallment && editingSub?.totalInstallments && (editingSub.completedInstallments || 0) >= editingSub.totalInstallments);
-    const selectedWallet = wallets.find(w => w.id === formWalletId);
-
-    return (
-      <>
-        {/* Minimal header */}
-        <View style={styles.formHeader}>
-          <Text style={styles.formHeaderTitle}>
-            {editingId ? t.subscriptions.editSubscription.toLowerCase() : t.subscriptions.addSubscription.toLowerCase()}
-          </Text>
-          <TouchableOpacity
-            onPress={() => { setModalVisible(false); resetForm(); }}
-            style={styles.formCloseBtn}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Feather name="x" size={18} color={C.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          nestedScrollEnabled
-          contentContainerStyle={{ paddingBottom: SPACING.lg }}
-        >
-          {/* ── Primary info group ── */}
-          <View style={styles.fgCard}>
-            <View style={styles.fgRow}>
-              <Text style={styles.fgLabel}>name</Text>
-              <TextInput
-                style={styles.fgInput}
-                value={name}
-                onChangeText={setName}
-                placeholder={t.subscriptions.namePlaceholder}
-                placeholderTextColor={C.textMuted}
-                returnKeyType="next"
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
-              />
-            </View>
-            <View style={styles.fgDivider} />
-            <View style={[styles.fgRow, isEditingComplete && { opacity: 0.45 }]}>
-              <Text style={styles.fgLabel}>amount</Text>
-              <View style={styles.fgAmountWrap}>
-                <Text style={styles.fgAmountPrefix}>{currency}</Text>
-                <TextInput
-                  style={[styles.fgInput, styles.fgAmountInput]}
-                  value={amount}
-                  onChangeText={setAmount}
-                  placeholder="0.00"
-                  keyboardType="decimal-pad"
-                  placeholderTextColor={C.textMuted}
-                  returnKeyType="done"
-                  onSubmitEditing={Keyboard.dismiss}
-                  editable={!isEditingComplete}
-                  keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={withAlpha(C.accent, 0.25)}
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* ── Schedule group ── */}
-          <Text style={styles.fgGroupLabel}>schedule</Text>
-          <View style={styles.fgCard}>
-            <TouchableOpacity
-              style={styles.fgTouchRow}
-              onPress={() => { lightTap(); setModalView('cyclePicker'); }}
-              activeOpacity={0.6}
-            >
-              <Text style={styles.fgLabel}>{t.subscriptions.repeats}</Text>
-              <View style={styles.fgValueChevron}>
-                <Text style={styles.fgValue}>{getCycleLabel(billingCycle)}</Text>
-                <Feather name="chevron-right" size={14} color={C.textMuted} />
-              </View>
-            </TouchableOpacity>
-            <View style={styles.fgDivider} />
-            <TouchableOpacity
-              style={styles.fgTouchRow}
-              onPress={() => { lightTap(); setModalView('calendar'); }}
-              activeOpacity={0.6}
-            >
-              <Text style={styles.fgLabel}>{t.subscriptions.startDate}</Text>
-              <View style={styles.fgValueChevron}>
-                <Text style={styles.fgValue}>
-                  {isValid(startDate) ? format(startDate, 'MMM dd, yyyy') : t.subscriptions.selectDate}
-                </Text>
-                <Feather name="chevron-right" size={14} color={C.textMuted} />
-              </View>
-            </TouchableOpacity>
-            <View style={styles.fgDivider} />
-            <View style={styles.fgRow}>
-              <Text style={styles.fgLabel}>{t.subscriptions.reminder}</Text>
-              <View style={styles.fgReminderWrap}>
-                <TextInput
-                  style={styles.fgReminderInput}
-                  value={reminderDays}
-                  onChangeText={setReminderDays}
-                  placeholder="3"
-                  keyboardType="number-pad"
-                  placeholderTextColor={C.textMuted}
-                  returnKeyType="done"
-                  onSubmitEditing={Keyboard.dismiss}
-                  keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={withAlpha(C.accent, 0.25)}
-                />
-                <Text style={styles.fgReminderSuffix}>days before</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* ── Details group ── */}
-          <Text style={styles.fgGroupLabel}>details</Text>
-          <View style={styles.fgCard}>
-            <View style={styles.fgPickerWrap}>
-              <CategoryPicker
-                categories={expenseCategories}
-                selectedId={category}
-                onSelect={setCategory}
-                label="category"
-                layout="dropdown"
-              />
-            </View>
-            <View style={styles.fgDivider} />
-            <TouchableOpacity
-              style={styles.fgTouchRow}
-              onPress={() => { lightTap(); setModalView('walletPicker'); }}
-              activeOpacity={0.6}
-            >
-              <Text style={styles.fgLabel}>wallet</Text>
-              <View style={styles.fgValueChevron}>
-                {selectedWallet ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
-                    <WalletLogo wallet={selectedWallet} size={18} />
-                    <Text style={styles.fgValue}>{selectedWallet.name}</Text>
-                  </View>
-                ) : (
-                  <Text style={[styles.fgValue, { color: C.textMuted }]}>none</Text>
-                )}
-                <Feather name="chevron-right" size={14} color={C.textMuted} />
-              </View>
-            </TouchableOpacity>
-            <View style={styles.fgDivider} />
-            <View style={styles.fgRow}>
-              <Text style={styles.fgLabel}>note</Text>
-              <TextInput
-                style={[styles.fgInput, { textAlign: 'right' }]}
-                value={note}
-                onChangeText={setNote}
-                placeholder="optional"
-                placeholderTextColor={withAlpha(C.textMuted, 0.5)}
-                returnKeyType="next"
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
-              />
-            </View>
-          </View>
-
-          {/* Installment toggle */}
-          <TouchableOpacity
-            style={[styles.toggleCard, isInstallment && styles.toggleCardActive, isEditingComplete && { opacity: 0.45 }]}
-            onPress={() => { if (!isEditingComplete) { lightTap(); setIsInstallment(!isInstallment); } }}
-            activeOpacity={isEditingComplete ? 1 : 0.7}
-            disabled={isEditingComplete}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.toggleLabel}>{t.subscriptions.installmentLabel}</Text>
-              <Text style={styles.toggleHint}>{isEditingComplete ? 'all payments completed' : t.subscriptions.installmentHint}</Text>
-            </View>
-            <Switch
-              value={isInstallment}
-              onValueChange={val => { if (!isEditingComplete) { lightTap(); setIsInstallment(val); } }}
-              trackColor={{ false: withAlpha(C.textPrimary, 0.12), true: withAlpha(C.accent, 0.4) }}
-              thumbColor={isInstallment ? C.accent : C.surface}
-              pointerEvents="none"
-              disabled={isEditingComplete}
-            />
-          </TouchableOpacity>
-
-          {isInstallment && (
-            <>
-              <Text style={styles.fieldLabel}>{t.subscriptions.totalInstallments}</Text>
-              <TextInput
-                style={[styles.fieldInput, isEditingComplete && { opacity: 0.45 }]}
-                value={totalInstallments}
-                onChangeText={setTotalInstallments}
-                placeholder={t.subscriptions.totalInstallmentsPlaceholder}
-                keyboardType="number-pad"
-                placeholderTextColor={C.textMuted}
-                returnKeyType="next"
-                onSubmitEditing={Keyboard.dismiss}
-                editable={!isEditingComplete}
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
-              />
-              <Text style={styles.fieldLabel}>outstanding balance <Text style={styles.fieldLabelOptional}>(optional)</Text></Text>
-              <View style={styles.amountRow}>
-                <Text style={styles.amountPrefix}>{currency}</Text>
-                <TextInput
-                  style={[styles.fieldInput, { flex: 1 }]}
-                  value={outstandingBalance}
-                  onChangeText={setOutstandingBalance}
-                  placeholder="e.g. 24000 for a car loan"
-                  keyboardType="decimal-pad"
-                  placeholderTextColor={C.textMuted}
-                  returnKeyType="done"
-                  onSubmitEditing={Keyboard.dismiss}
-                  keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={withAlpha(C.accent, 0.25)}
-                />
-              </View>
-            </>
-          )}
-
-          {/* Pause toggle */}
-          <TouchableOpacity
-            style={[styles.toggleCard, isPaused && { backgroundColor: withAlpha(C.bronze, 0.06) }]}
-            onPress={() => { lightTap(); setIsPaused(!isPaused); }}
-            activeOpacity={0.7}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.toggleLabel}>{t.subscriptions.pauseThis}</Text>
-              <Text style={styles.toggleHint}>{t.subscriptions.pauseHint}</Text>
-            </View>
-            <Switch
-              value={isPaused}
-              onValueChange={val => { lightTap(); setIsPaused(val); }}
-              trackColor={{ false: withAlpha(C.textPrimary, 0.12), true: withAlpha(C.bronze, 0.4) }}
-              thumbColor={isPaused ? C.bronze : C.surface}
-              pointerEvents="none"
-            />
-          </TouchableOpacity>
-
-          {/* Mark Payment (editing installment only) */}
-          {showMarkPayment && (
-            <TouchableOpacity
-              style={styles.markPaymentBtn}
-              onPress={() => {
-                const editingSub2 = subscriptions.find(s => s.id === editingId);
-                if (editingSub2) { incrementInstallment(editingId!); showToast(t.subscriptions.paymentMarked, 'success'); }
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name="check-circle" size={18} color={C.accent} />
-              <Text style={styles.markPaymentText}>
-                {t.subscriptions.markPayment} ({editingSub!.completedInstallments || 0}/{editingSub!.totalInstallments})
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Delete */}
-          {editingId && (
-            <TouchableOpacity
-              style={styles.deleteBtn}
-              onPress={() => {
-                setModalVisible(false);
-                resetForm();
-                const sub = subscriptions.find(s => s.id === editingId);
-                if (sub) setTimeout(() => setDeleteConfirmSub(sub), 300);
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name="trash-2" size={16} color={C.neutral} />
-              <Text style={styles.deleteBtnText}>{t.subscriptions.deleteCommitment}</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Payment History */}
-          {editingId && (() => {
-            const sub = subscriptions.find(s => s.id === editingId);
-            const history = sub?.paymentHistory;
-            if (!history || history.length === 0) return null;
-            return (
-              <View style={styles.historySection}>
-                <Text style={styles.fieldLabel}>payment history</Text>
-                {history.slice().reverse().slice(0, 8).map(p => {
-                  const periodD = new Date(p.periodDate ?? p.paidAt);
-                  const paidLate = startOfDay(new Date(p.paidAt)) > startOfDay(periodD);
-                  return (
-                  <View key={p.id} style={styles.historyRow}>
-                    <Text style={styles.historyDate}>{format(periodD, 'd MMM yyyy')}{paidLate ? ` · paid ${format(new Date(p.paidAt), 'd MMM')}` : ''}</Text>
-                    <Text style={styles.historyAmt}>{currency} {p.amount.toFixed(2)}</Text>
-                  </View>
-                  );
-                })}
-              </View>
-            );
-          })()}
-
-          {/* Save */}
-          <TouchableOpacity style={styles.confirmBtn} onPress={handleSave} activeOpacity={0.7}>
-            <Feather name={editingId ? 'check' : 'plus'} size={18} color={C.onAccent} />
-            <Text style={styles.confirmBtnText}>
-              {editingId ? t.common.save.toLowerCase() : t.subscriptions.addSubscription.toLowerCase()}
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </>
-    );
-  };
-
-  const renderCyclePickerView = () => (
-    <>
-      <View style={styles.modalHeader}>
-        <TouchableOpacity
-          onPress={() => setModalView('form')}
-          style={styles.backBtn}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Feather name="arrow-left" size={20} color={C.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.modalTitle}>{t.subscriptions.repeats}</Text>
-        <View style={{ width: 32 }} />
-      </View>
-      {BILLING_CYCLES.map(cycle => {
-        const isSelected = billingCycle === cycle.value;
-        return (
-          <TouchableOpacity
-            key={cycle.value}
-            style={[styles.pickerOption, isSelected && styles.pickerOptionActive]}
-            onPress={() => { lightTap(); setBillingCycle(cycle.value as Subscription['billingCycle']); setModalView('form'); }}
-            activeOpacity={0.6}
-          >
-            <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
-              {cycle.label.toLowerCase()}
-            </Text>
-            {isSelected && <Feather name="check" size={18} color={C.accent} />}
-          </TouchableOpacity>
-        );
-      })}
-    </>
-  );
-
-  const renderCalendarView = () => (
-    <>
-      <View style={styles.modalHeader}>
-        <TouchableOpacity onPress={() => setModalView('form')} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Feather name="arrow-left" size={20} color={C.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.modalTitle}>{t.subscriptions.startDate}</Text>
-        <View style={{ width: 32 }} />
-      </View>
-      <CalendarPicker value={startDate} onChange={(date) => { setStartDate(date); setModalView('form'); }} />
-    </>
-  );
-
-  const renderWalletPickerView = () => (
-    <>
-      <View style={styles.modalHeader}>
-        <TouchableOpacity onPress={() => setModalView('form')} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Feather name="arrow-left" size={20} color={C.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.modalTitle}>wallet</Text>
-        <View style={{ width: 32 }} />
-      </View>
-      {/* None option */}
-      <TouchableOpacity
-        style={[styles.pickerOption, !formWalletId && styles.pickerOptionActive]}
-        onPress={() => { lightTap(); setFormWalletId(undefined); setModalView('form'); }}
-        activeOpacity={0.6}
-      >
-        <Text style={[styles.pickerOptionText, !formWalletId && styles.pickerOptionTextActive]}>none</Text>
-        {!formWalletId && <Feather name="check" size={18} color={C.accent} />}
-      </TouchableOpacity>
-      {wallets.map(wallet => {
-        const isSelected = formWalletId === wallet.id;
-        return (
-          <TouchableOpacity
-            key={wallet.id}
-            style={[styles.pickerOption, isSelected && styles.pickerOptionActive]}
-            onPress={() => { lightTap(); setFormWalletId(wallet.id); setModalView('form'); }}
-            activeOpacity={0.6}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-              <WalletLogo wallet={wallet} size={24} />
-              <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
-                {wallet.name}
-              </Text>
-            </View>
-            {isSelected && <Feather name="check" size={18} color={C.accent} />}
-          </TouchableOpacity>
-        );
-      })}
-    </>
-  );
-
-  const renderModal = () => (
-    <Modal
-      visible
-      animationType="fade"
-      transparent
-      statusBarTranslucent
-      onRequestClose={() => {
-        if (modalView !== 'form') { setModalView('form'); return; }
-        setModalVisible(false); resetForm();
-      }}
-    >
-      <TouchableOpacity
-        style={styles.overlayCenter}
-        activeOpacity={1}
-        onPress={() => {
-          if (modalView !== 'form') { setModalView('form'); return; }
-          setModalVisible(false); resetForm();
-        }}
-      >
-        <KeyboardAvoidingView behavior="padding" style={styles.kavWrapper}>
-          <View
-            style={[styles.modalCard, modalView !== 'form' && { maxHeight: undefined }]}
-            onStartShouldSetResponder={() => true}
-          >
-            {modalView === 'form' && renderFormView()}
-            {modalView === 'cyclePicker' && renderCyclePickerView()}
-            {modalView === 'calendar' && renderCalendarView()}
-            {modalView === 'walletPicker' && renderWalletPickerView()}
-          </View>
-        </KeyboardAvoidingView>
-      </TouchableOpacity>
-      <ModalToastHost />
-    </Modal>
-  );
-
   // ─── Mark as Paid modal ───────────────────────────────
   const renderMarkPaidModal = () => {
     if (!markPaidSub) return null;
@@ -2543,11 +1844,11 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={closeMp}>
         <Pressable style={styles.overlayCenter} onPress={closeMp}>
-          <View style={[styles.markPaidCard, mpCalendarOpen && { width: '94%', paddingHorizontal: SPACING.sm }]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.markPaidCard, neuS.raisedSoft, mpCalendarOpen && { width: '94%', paddingHorizontal: SPACING.sm }]} onStartShouldSetResponder={() => true}>
             {mpCalendarOpen ? (
               <>
                 <View style={[styles.modalHeader, { width: '100%' }]}>
-                  <TouchableOpacity onPress={() => setMpCalendarOpen(false)} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                  <TouchableOpacity onPress={() => setMpCalendarOpen(false)} style={[styles.backBtn, neuS.raised]} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                     <Feather name="arrow-left" size={20} color={C.textPrimary} />
                   </TouchableOpacity>
                   <Text style={styles.modalTitle}>when did you pay?</Text>
@@ -2567,7 +1868,7 @@ const SubscriptionList: React.FC = () => {
                 {/* Dismiss X */}
                 <TouchableOpacity
                   onPress={closeMp}
-                  style={styles.mpCloseBtn}
+                  style={[styles.mpCloseBtn, neuS.raised]}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
                   <Feather name="x" size={18} color={C.textMuted} />
@@ -2582,7 +1883,7 @@ const SubscriptionList: React.FC = () => {
 
                 {/* Paid-on date — tap to pick when you actually paid */}
                 <TouchableOpacity
-                  style={styles.mpDatePill}
+                  style={[styles.mpDatePill, neuS.raised]}
                   onPress={() => { lightTap(); setMpCalendarOpen(true); }}
                   activeOpacity={0.7}
                   hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
@@ -2603,23 +1904,41 @@ const SubscriptionList: React.FC = () => {
 
                 {/* Actions */}
                 <View style={styles.mpActions}>
-                  {linkedWallet && (
-                    <TouchableOpacity
-                      style={[styles.markPaidBtn, { backgroundColor: withAlpha(linkedWallet.color, 0.15), borderWidth: 1, borderColor: withAlpha(linkedWallet.color, 0.25) }]}
-                      onPress={() => guardedMarkPaid(true)}
-                      activeOpacity={0.8}
-                    >
-                      <WalletLogo wallet={linkedWallet} size={18} />
-                      <Text style={[styles.markPaidBtnText, { color: linkedWallet.color }]}>
-                        pay from {linkedWallet.name}
-                      </Text>
-                    </TouchableOpacity>
+                  {linkedWallet ? (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.markPaidBtn, neuS.raised, { backgroundColor: withAlpha(linkedWallet.color, 0.15) }]}
+                        onPress={() => {
+                          // Overdraw guard: paying more than a non-credit wallet holds would
+                          // silently push it negative (deductFromWallet only warns). Confirm first.
+                          if (linkedWallet.type !== 'credit' && (linkedWallet.balance ?? 0) < markPaidSub.amount) {
+                            Alert.alert(
+                              `not enough in ${linkedWallet.name}`,
+                              `this pays ${currency} ${markPaidSub.amount.toFixed(2)} from ${linkedWallet.name} (balance ${currency} ${(linkedWallet.balance ?? 0).toFixed(2)}) — it'll go negative. continue?`,
+                              [
+                                { text: 'cancel', style: 'cancel' },
+                                { text: 'pay anyway', style: 'destructive', onPress: () => guardedMarkPaid(true) },
+                              ],
+                            );
+                            return;
+                          }
+                          guardedMarkPaid(true);
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <WalletLogo wallet={linkedWallet} size={18} />
+                        <Text style={[styles.markPaidBtnText, { color: linkedWallet.color }]}>
+                          pay from {linkedWallet.name}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.mpWalletBtn, neuS.raised]} onPress={() => guardedMarkPaid(false)} activeOpacity={0.85}>
+                        <Feather name="check" size={18} color={C.textSecondary} />
+                        <Text style={styles.mpWalletBtnText}>mark as paid</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <NeuButton icon="check" label="mark as paid" onPress={() => guardedMarkPaid(false)} />
                   )}
-
-                  <TouchableOpacity style={linkedWallet ? styles.mpWalletBtn : styles.markPaidBtn} onPress={() => guardedMarkPaid(false)} activeOpacity={0.8}>
-                    <Feather name="check" size={18} color={linkedWallet ? C.textSecondary : C.onAccent} />
-                    <Text style={linkedWallet ? styles.mpWalletBtnText : styles.markPaidBtnText}>mark as paid</Text>
-                  </TouchableOpacity>
                 </View>
               </>
             )}
@@ -2639,8 +1958,8 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setPayWarning(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setPayWarning(null)}>
-          <View style={styles.warnCard} onStartShouldSetResponder={() => true}>
-            <View style={styles.warnIconCircle}>
+          <View style={[styles.warnCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.warnIconCircle, neuS.well]}>
               <Feather name={isDouble ? 'alert-circle' : isNotStarted ? 'calendar' : 'clock'} size={24} color={C.gold} />
             </View>
             <Text style={styles.warnTitle}>
@@ -2654,15 +1973,12 @@ const SubscriptionList: React.FC = () => {
                   ? `${sub.name.toLowerCase()} doesn't start until ${detail}.\nyou'd be recording a payment before it begins. mark it paid anyway?`
                   : `${sub.name.toLowerCase()} isn't due until ${detail}.\nmark it paid now?`}
             </Text>
-            <Pressable
-              style={styles.warnPayBtn}
+            <NeuButton
+              icon="check"
+              label="pay anyway"
+              color={C.gold}
               onPress={() => { setPayWarning(null); setTimeout(() => setMarkPaidSub(sub), 50); }}
-            >
-              <View style={styles.warnPayBtnInner}>
-                <Feather name="check" size={15} color={C.onAccent} />
-                <Text style={styles.warnPayBtnText}>pay anyway</Text>
-              </View>
-            </Pressable>
+            />
             <Pressable
               style={styles.warnDismiss}
               onPress={() => setPayWarning(null)}
@@ -2693,7 +2009,7 @@ const SubscriptionList: React.FC = () => {
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setCelebrationSub(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setCelebrationSub(null)}>
           <Reanimated.View entering={ZoomIn.duration(320)}>
-            <View style={styles.celebCard} onStartShouldSetResponder={() => true}>
+            <View style={[styles.celebCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
 
               {/* Confetti burst + glow rings + icon */}
               <View style={styles.celebBurstWrap}>
@@ -2713,7 +2029,7 @@ const SubscriptionList: React.FC = () => {
                 <ConfettiPiece angle={300} distance={58} size={6} color={withAlpha(C.accent, 0.5)} delay={130} />
                 <ConfettiPiece angle={330} distance={42} size={4} color={withAlpha(C.bronze, 0.45)} delay={170} />
 
-                <Reanimated.View entering={BounceIn.delay(100).duration(700)} style={styles.celebIconCircle}>
+                <Reanimated.View entering={BounceIn.delay(100).duration(700)} style={[styles.celebIconCircle, neuS.well]}>
                   <Feather name="award" size={30} color={C.accent} />
                 </Reanimated.View>
               </View>
@@ -2732,11 +2048,11 @@ const SubscriptionList: React.FC = () => {
 
               {/* Stats */}
               <Reanimated.View entering={FadeInDown.delay(540).duration(350).springify()} style={[styles.celebStatsRow, { alignSelf: 'stretch' }]}>
-                <View style={styles.celebStatPill}>
+                <View style={[styles.celebStatPill, neuS.raised]}>
                   <Text style={styles.celebStatValue}>{installments}</Text>
                   <Text style={styles.celebStatLabel}>payments</Text>
                 </View>
-                <View style={styles.celebStatPill}>
+                <View style={[styles.celebStatPill, neuS.raised]}>
                   <Text style={styles.celebStatValue}>{currency} {totalPaid.toLocaleString()}</Text>
                   <Text style={styles.celebStatLabel}>total paid</Text>
                 </View>
@@ -2754,16 +2070,11 @@ const SubscriptionList: React.FC = () => {
 
               {/* Buttons */}
               <Reanimated.View entering={FadeInDown.delay(780).duration(350)} style={{ alignSelf: 'stretch' }}>
-                <TouchableOpacity
-                  style={styles.celebDoneBtn}
+                <NeuButton
+                  icon="check"
+                  label="nice"
                   onPress={() => { successNotification(); setCelebrationSub(null); }}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.celebDoneBtnInner}>
-                    <Feather name="check" size={15} color={C.onAccent} />
-                    <Text style={styles.celebDoneBtnText}>nice</Text>
-                  </View>
-                </TouchableOpacity>
+                />
                 <Pressable
                   style={styles.celebArchiveLink}
                   onPress={() => handleArchive(celebId)}
@@ -2790,9 +2101,9 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDeleteConfirmSub(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setDeleteConfirmSub(null)}>
-          <View style={styles.deleteCard} onStartShouldSetResponder={() => true}>
+          <View style={[styles.deleteCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
             {/* Icon */}
-            <View style={styles.delIconCircle}>
+            <View style={[styles.delIconCircle, neuS.well]}>
               <Feather name="trash-2" size={18} color={C.neutral} />
             </View>
 
@@ -2808,19 +2119,15 @@ const SubscriptionList: React.FC = () => {
             </View>
 
             <Text style={styles.delMsg}>
-              this commitment and its payment history will be removed permanently.
+              removes this commitment and its schedule. any payments you already recorded stay in your history and wallet balances are unchanged.
             </Text>
 
             {/* Keep — primary (accent), delete — secondary link */}
-            <Pressable
-              style={styles.delKeepBtn}
+            <NeuButton
+              icon="shield"
+              label="keep it"
               onPress={() => setDeleteConfirmSub(null)}
-            >
-              <View style={styles.delKeepBtnInner}>
-                <Feather name="shield" size={14} color={C.onAccent} />
-                <Text style={styles.delKeepBtnText}>keep it</Text>
-              </View>
-            </Pressable>
+            />
 
             <Pressable
               style={styles.delConfirmRow}
@@ -2860,16 +2167,15 @@ const SubscriptionList: React.FC = () => {
     const activePayments = allPayments.filter(p => !p.undoneAt);
     const HISTORY_PREVIEW = 6;
     const history = showAllHistory ? activePayments : activePayments.slice(0, HISTORY_PREVIEW);
-    const mostRecentPaymentId = activePayments[0]?.id;
 
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDetailSub(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setDetailSub(null)}>
-          <View style={styles.dtCard} onStartShouldSetResponder={() => true}>
+          <View style={[styles.dtCard, SHADOWS.lg]} onStartShouldSetResponder={() => true}>
             {/* Close */}
             <TouchableOpacity
               onPress={() => setDetailSub(null)}
-              style={styles.dtClose}
+              style={[styles.dtClose, neuS.raised]}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
               <Feather name="x" size={18} color={C.textMuted} />
@@ -2879,17 +2185,17 @@ const SubscriptionList: React.FC = () => {
               {/* Hero */}
               <View style={styles.dtHero}>
                 {instDone || isArchived ? (
-                  <View style={[styles.dtAvatar, { backgroundColor: withAlpha(instDone ? C.positive : C.textMuted, 0.14) }]}>
+                  <View style={[styles.dtAvatar, neuS.raised, { backgroundColor: withAlpha(instDone ? C.positive : C.textMuted, 0.14) }]}>
                     <Feather name={instDone ? 'check-circle' : 'archive'} size={22} color={instDone ? C.positive : C.textMuted} />
                   </View>
                 ) : sub.imageUri ? (
                   <Image source={{ uri: sub.imageUri }} style={styles.dtAvatarImage} />
                 ) : sub.iconName ? (
-                  <View style={[styles.dtAvatar, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                  <View style={[styles.dtAvatar, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                     {renderIcon(sub.iconName, 24, C.accent)}
                   </View>
                 ) : (
-                  <View style={[styles.dtAvatar, { backgroundColor: cleared ? withAlpha(C.positive, 0.14) : withAlpha(accentColor, 0.14) }]}>
+                  <View style={[styles.dtAvatar, neuS.raised, { backgroundColor: cleared ? withAlpha(C.positive, 0.14) : withAlpha(accentColor, 0.14) }]}>
                     {cleared
                       ? <Feather name="check" size={22} color={C.positive} />
                       : <Text style={[styles.dtAvatarLetter, { color: accentColor }]}>{sub.name.charAt(0).toUpperCase()}</Text>
@@ -2905,7 +2211,7 @@ const SubscriptionList: React.FC = () => {
               </View>
 
               {/* Amount */}
-              <View style={styles.dtAmountSection}>
+              <View style={[styles.dtAmountSection, neuS.raisedSoft, { backgroundColor: isDark ? withAlpha(C.accent, 0.07) : withAlpha(C.accent, 0.04) }]}>
                 <Text style={styles.dtAmount}>
                   <Text style={styles.dtAmountCurrency}>{currency} </Text>
                   {sub.amount.toFixed(2)}
@@ -2924,10 +2230,10 @@ const SubscriptionList: React.FC = () => {
               )}
 
               {/* Info rows */}
-              <View style={styles.dtInfoSection}>
+              <View style={[styles.dtInfoSection, neuS.raisedSoft]}>
                 <View style={styles.dtInfoRow}>
                   <View style={styles.dtInfoLeft}>
-                    <View style={styles.dtInfoIcon}>
+                    <View style={[styles.dtInfoIcon, neuS.raised]}>
                       <Feather name="calendar" size={12} color={C.accent} />
                     </View>
                     <Text style={styles.dtInfoLabel}>{cleared ? 'paid' : 'next due'}</Text>
@@ -2940,7 +2246,7 @@ const SubscriptionList: React.FC = () => {
                 {linkedWallet && (
                   <View style={styles.dtInfoRow}>
                     <View style={styles.dtInfoLeft}>
-                      <View style={styles.dtInfoIcon}>
+                      <View style={[styles.dtInfoIcon, neuS.raised]}>
                         <WalletLogo wallet={linkedWallet} size={18} />
                       </View>
                       <Text style={styles.dtInfoLabel}>wallet</Text>
@@ -2951,7 +2257,7 @@ const SubscriptionList: React.FC = () => {
 
                 <View style={styles.dtInfoRow}>
                   <View style={styles.dtInfoLeft}>
-                    <View style={styles.dtInfoIcon}>
+                    <View style={[styles.dtInfoIcon, neuS.raised]}>
                       <Feather name="bell" size={12} color={C.accent} />
                     </View>
                     <Text style={styles.dtInfoLabel}>reminder</Text>
@@ -2961,7 +2267,7 @@ const SubscriptionList: React.FC = () => {
 
                 <View style={[styles.dtInfoRow, { borderBottomWidth: 0 }]}>
                   <View style={styles.dtInfoLeft}>
-                    <View style={styles.dtInfoIcon}>
+                    <View style={[styles.dtInfoIcon, neuS.raised]}>
                       <Feather name="play" size={12} color={C.accent} />
                     </View>
                     <Text style={styles.dtInfoLabel}>started</Text>
@@ -2975,22 +2281,20 @@ const SubscriptionList: React.FC = () => {
                 if (!linkedShared) return null;
                 const memberCount = linkedShared.members.filter(m => m.isActive).length;
                 return (
-                  <View style={{
-                    backgroundColor: withAlpha(C.accent, C === CALM_DARK ? 0.05 : 0.03),
+                  <View style={[neuS.raisedSoft, {
+                    backgroundColor: withAlpha(C.accent, isDark ? 0.06 : 0.04),
                     borderRadius: RADIUS.lg,
-                    borderWidth: 1,
-                    borderColor: withAlpha(C.accent, C === CALM_DARK ? 0.10 : 0.06),
                     padding: SPACING.md,
                     marginBottom: SPACING.md,
                     flexDirection: 'row',
                     gap: SPACING.sm,
                     alignItems: 'flex-start',
-                  }}>
-                    <View style={{
+                  }]}>
+                    <View style={[neuS.raised, {
                       width: 28, height: 28, borderRadius: 8,
                       backgroundColor: withAlpha(C.accent, 0.10),
                       alignItems: 'center', justifyContent: 'center', marginTop: 1,
-                    }}>
+                    }]}>
                       <Feather name="users" size={13} color={C.accent} />
                     </View>
                     <View style={{ flex: 1 }}>
@@ -3021,15 +2325,15 @@ const SubscriptionList: React.FC = () => {
               })()}
 
               {sub.note ? (
-                <View style={styles.dtNoteWrap}>
+                <View style={[styles.dtNoteWrap, neuS.raisedSoft]}>
                   <Text style={styles.dtNoteLabel}>note</Text>
                   <Text style={styles.dtNoteText} numberOfLines={3}>{sub.note}</Text>
                 </View>
               ) : null}
 
               {sub.isPaused && !instDone && !isArchived && (
-                <View style={[styles.dtStatusCard, { borderColor: withAlpha(C.bronze, 0.18) }]}>
-                  <View style={[styles.dtStatusIconCircle, { backgroundColor: withAlpha(C.bronze, 0.10) }]}>
+                <View style={[styles.dtStatusCard, neuS.raisedSoft]}>
+                  <View style={[styles.dtStatusIconCircle, neuS.raised, { backgroundColor: withAlpha(C.bronze, 0.10) }]}>
                     <Feather name="pause-circle" size={16} color={C.bronze} />
                   </View>
                   <View style={styles.dtStatusContent}>
@@ -3043,10 +2347,11 @@ const SubscriptionList: React.FC = () => {
               {(instDone || isArchived) && (
                 <View style={[
                   styles.dtStatusCard,
-                  { borderColor: withAlpha(instDone ? C.positive : C.textMuted, 0.18) },
+                  neuS.raisedSoft,
                 ]}>
                   <View style={[
                     styles.dtStatusIconCircle,
+                    neuS.raised,
                     { backgroundColor: withAlpha(instDone ? C.positive : C.textMuted, 0.10) },
                   ]}>
                     <Feather
@@ -3080,7 +2385,6 @@ const SubscriptionList: React.FC = () => {
                     )}
                   </View>
                   {history.map(p => {
-                    const isLatest = p.id === mostRecentPaymentId;
                     // Show the cycle this payment settled (its period), not the day it was
                     // paid — so a late payment files under the right month, with a note.
                     const periodD = new Date(p.periodDate ?? p.paidAt);
@@ -3096,7 +2400,7 @@ const SubscriptionList: React.FC = () => {
                           )}
                         </View>
                         <Text style={styles.dtHistoryAmt}>{currency} {p.amount.toFixed(2)}</Text>
-                        {isLatest && !isArchived && (
+                        {!isArchived && (
                           <Pressable
                             onPress={() => {
                               lightTap();
@@ -3158,11 +2462,12 @@ const SubscriptionList: React.FC = () => {
               {instDone || isArchived ? (
                 <>
                   {/* Completed/archived: archive or restore as primary */}
-                  <Pressable
-                    style={[styles.dtActionPrimary, isArchived && { backgroundColor: C.textSecondary }]}
+                  <NeuButton
+                    icon={isArchived ? 'rotate-ccw' : 'archive'}
+                    label={isArchived ? 'restore' : 'archive'}
+                    color={isArchived ? C.textSecondary : undefined}
                     onPress={() => {
                       setDetailSub(null);
-                      lightTap();
                       if (isArchived) {
                         updateSubscription(sub.id, { isActive: true });
                         showToast('restored', 'success');
@@ -3170,12 +2475,7 @@ const SubscriptionList: React.FC = () => {
                         handleArchive(sub.id);
                       }
                     }}
-                  >
-                    <View style={styles.dtActionPrimaryInner}>
-                      <Feather name={isArchived ? 'rotate-ccw' : 'archive'} size={16} color={C.onAccent} />
-                      <Text style={styles.dtActionPrimaryText}>{isArchived ? 'restore' : 'archive'}</Text>
-                    </View>
-                  </Pressable>
+                  />
                   <View style={styles.dtActionRow}>
                     <Pressable
                       style={styles.dtSecondaryLink}
@@ -3205,19 +2505,15 @@ const SubscriptionList: React.FC = () => {
                 </>
               ) : (
                 <>
-                  {/* Active: mark paid + edit/pause */}
-                  {(!cleared || canPayInst) && !sub.isPaused && (
-                    <Pressable
-                      style={styles.dtActionPrimary}
+                  {/* Active: mark paid + edit/pause. Gated to the current month like the
+                      swipe action — a projected-month row is the live current-cycle record,
+                      so paying it here would silently clear the CURRENT cycle. */}
+                  {heroMonthOffset === 0 && (!cleared || canPayInst) && !sub.isPaused && (
+                    <NeuButton
+                      icon="check"
+                      label={canPayInst ? `pay ${completed + 1}/${total}` : 'mark paid'}
                       onPress={() => { setDetailSub(null); setTimeout(() => smartMarkPaid(sub), 50); }}
-                    >
-                      <View style={styles.dtActionPrimaryInner}>
-                        <Feather name="check" size={16} color={C.onAccent} />
-                        <Text style={styles.dtActionPrimaryText}>
-                          {canPayInst ? `pay ${completed + 1}/${total}` : 'mark paid'}
-                        </Text>
-                      </View>
-                    </Pressable>
+                    />
                   )}
                   <View style={styles.dtActionRow}>
                     <Pressable
@@ -3270,7 +2566,7 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible={filterModalVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setFilterModalVisible(false)}>
         <Pressable style={styles.overlayCenter} onPress={() => setFilterModalVisible(false)}>
-          <View style={styles.filterModalCard} onStartShouldSetResponder={() => true}>
+          <View style={[styles.filterModalCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
             <Text style={styles.filterModalTitle}>filter by status</Text>
             {filterOptions.map(opt => {
               const active = statusFilter === opt.key;
@@ -3350,7 +2646,7 @@ const SubscriptionList: React.FC = () => {
   const renderHowItWorksModal = () => (
     <Modal visible={howItWorksVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setHowItWorksVisible(false)}>
       <Pressable style={styles.hiwOverlay} onPress={() => setHowItWorksVisible(false)}>
-        <View style={styles.hiwCard} onStartShouldSetResponder={() => true}>
+        <View style={[styles.hiwCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: SPACING.sm }}>
             <View style={styles.hiwCardHeader}>
               <Text style={styles.hiwTitle}>how it works</Text>
@@ -3361,8 +2657,8 @@ const SubscriptionList: React.FC = () => {
               <View key={section.group}>
                 <Text style={styles.hiwGroupLabel}>{section.group}</Text>
                 {section.items.map((item, ii) => (
-                  <View key={ii} style={styles.hiwItem}>
-                    <View style={styles.hiwIconCircle}>
+                  <View key={ii} style={[styles.hiwItem, neuS.raised]}>
+                    <View style={[styles.hiwIconCircle, neuS.well]}>
                       <Feather name={item.icon as any} size={14} color={C.textSecondary} />
                     </View>
                     <Text style={styles.hiwText}>
@@ -3375,13 +2671,9 @@ const SubscriptionList: React.FC = () => {
             ))}
           </ScrollView>
 
-          <TouchableOpacity
-            style={styles.hiwDismiss}
-            onPress={() => setHowItWorksVisible(false)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.hiwDismissText}>got it</Text>
-          </TouchableOpacity>
+          <View style={styles.hiwDismiss}>
+            <NeuButton label="got it" onPress={() => setHowItWorksVisible(false)} />
+          </View>
         </View>
       </Pressable>
     </Modal>
@@ -3414,7 +2706,7 @@ const SubscriptionList: React.FC = () => {
 
             {/* Search */}
             {heroMonthOffset === 0 && (
-              <View style={styles.searchContainer}>
+              <View style={[styles.searchContainer, neu.insetSoft]}>
                 <Feather name="search" size={16} color={C.textMuted} style={{ marginRight: SPACING.sm }} />
                 <TextInput
                   style={styles.searchInput}
@@ -3485,17 +2777,13 @@ const SubscriptionList: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* FAB */}
+      {/* FAB — shared neu FAB (neu face + accent glyph) */}
       {subscriptions.length > 0 && (
-        <Animated.View style={[styles.fab, { bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), transform: [{ scale: addFabScale }] }]}>
-          <TouchableOpacity
-            style={styles.fabInner}
-            onPress={() => { mediumTap(); resetForm(); setModalVisible(true); }}
-            activeOpacity={0.8}
-          >
-            <Feather name="plus" size={24} color={C.onAccent} />
-          </TouchableOpacity>
-        </Animated.View>
+        <FAB
+          icon="plus"
+          onPress={() => { mediumTap(); setEditingId(null); setSuggestionDraft(undefined); setModalVisible(true); }}
+          style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }}
+        />
       )}
 
       {/* ── Echo FAB + greeting bubble (standardized, draggable) ── */}
@@ -3578,6 +2866,7 @@ const SubscriptionList: React.FC = () => {
       <CommitmentForm
         visible={modalVisible}
         subscription={editingId ? subscriptions.find(s => s.id === editingId) || null : null}
+        initialValues={suggestionDraft}
         onClose={handleFormClose}
         onSave={handleFormSave}
         onDelete={handleFormDelete}
@@ -3644,53 +2933,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Tab chips ─────────────────────────────────────────
   chipSection: {
     marginBottom: SPACING.md,
-  },
-  chipScrollContent: {
-    gap: SPACING.xs + 2,
-  },
-  ctxChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs + 3,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
-  },
-  ctxChipActive: {
-    backgroundColor: withAlpha(C.accent, 0.10),
-    borderColor: C.accent,
-  },
-  ctxChipText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-  },
-  ctxChipTextActive: {
-    color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  ctxChipCount: {
-    backgroundColor: withAlpha(C.textPrimary, 0.08),
-    borderRadius: RADIUS.full,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 5,
-  },
-  ctxChipCountActive: {
-    backgroundColor: withAlpha(C.accent, 0.18),
-  },
-  ctxChipCountText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textMuted,
-    fontVariant: ['tabular-nums'],
-  },
-  ctxChipCountTextActive: {
-    color: C.accent,
   },
   ctxOverdueDot: {
     position: 'absolute',
@@ -3765,13 +3007,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.xs + 3,
     borderRadius: RADIUS.full,
     backgroundColor: withAlpha(C.textPrimary, 0.03),
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
   },
   statusPillActive: {
     backgroundColor: C.accent,
-    borderColor: C.accent,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   statusPillText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -3788,8 +3026,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     height: 34,
     borderRadius: RADIUS.full,
     backgroundColor: withAlpha(C.textPrimary, 0.03),
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 'auto' as any,
@@ -3813,11 +3049,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     maxWidth: 320,
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   filterModalTitle: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -3891,13 +3124,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   monthHeader: {
     backgroundColor: C === CALM_DARK ? withAlpha(C.accent, 0.06) : withAlpha(C.accent, 0.03),
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? withAlpha(C.accent, 0.15) : withAlpha(C.accent, 0.07),
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md + 2,
     paddingBottom: SPACING.md + 2,
     marginBottom: SPACING.md,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   heroTopRow: {
     flexDirection: 'row',
@@ -4138,8 +3368,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: C.surface,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.07),
     paddingHorizontal: SPACING.md,
     marginBottom: SPACING.md,
   },
@@ -4153,14 +3381,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Section (borderless) ────────────────────────────────
   section: { marginBottom: SPACING.md + 4 },
-  sectionCard: {
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.10) : withAlpha(C.textPrimary, 0.06),
-    overflow: 'hidden',
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
-  },
   sectionLabel: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.bold,
@@ -4183,12 +3403,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // ── Row (Bobby-inspired) ───────────────────────────────
+  // ── Row (neu card) ───────────────────────────────
+  // Unclipped shadow wrapper — the swipeable inside is overflow:hidden and would
+  // otherwise clip the neu shadow into a hard seam.
+  rowShadow: {
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.sm + 6,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.sm + 4,
     paddingHorizontal: SPACING.md,
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
   },
   rowDimmed: { opacity: 0.55 },
 
@@ -4321,61 +3549,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.neutral,
   },
 
-  // ── Grid ──────────────────────────────────────────────
-  gridWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: TILE_GAP,
-  },
-  tile: {
-    width: TILE_SIZE,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    alignItems: 'center',
-    overflow: 'hidden',
-    borderWidth: C === CALM_DARK ? 1 : StyleSheet.hairlineWidth,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.08) : withAlpha(C.textPrimary, 0.12),
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
-  },
-  tileCleared: { opacity: 0.55 },
-  tileWatermark: {
-    position: 'absolute',
-    fontSize: 72,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    opacity: 0.04,
-    top: -8,
-    right: -4,
-    lineHeight: 80,
-  },
-  tileIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.sm,
-  },
-  tileIconImage: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    marginBottom: SPACING.sm,
-  },
-  tileName: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    textAlign: 'center',
-    marginBottom: 2,
-  },
-  tileAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-
   // ── No results ────────────────────────────────────────
   noResults: {
     alignItems: 'center',
@@ -4391,17 +3564,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   noResultsText: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted },
 
-  // ── FAB ───────────────────────────────────────────────
-  fab: { position: 'absolute', right: SPACING.xl },
-  fabInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
-  },
   // ── Echo FAB (matches Wallet/Budget standardized pattern) ─
   commitmentEchoFabContainer: {
     position: 'absolute',
@@ -4489,17 +3651,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  kavWrapper: { width: '100%', alignItems: 'center', justifyContent: 'center' },
-  modalCard: {
-    width: '90%',
-    maxHeight: '85%',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    borderWidth: C === CALM_DARK ? 1 : StyleSheet.hairlineWidth,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
-    padding: SPACING.xl,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
-  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -4511,231 +3662,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
   },
-  // ── Form header (finance) ───────────────────────────────
-  formHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.lg,
-  },
-  formHeaderTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    letterSpacing: -0.4,
-  },
-  formCloseBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // ── Grouped form fields (finance style) ────────────────
-  fgGroupLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.sm,
-    marginLeft: SPACING.xs,
-  },
-  fgCard: {
-    backgroundColor: withAlpha(C.textPrimary, 0.025),
-    borderRadius: RADIUS.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(C.textPrimary, 0.06),
-    overflow: 'hidden',
-  },
-  fgRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 4,
-    minHeight: 48,
-  },
-  fgTouchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 4,
-    minHeight: 48,
-  },
-  fgDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: withAlpha(C.textPrimary, 0.06),
-    marginLeft: SPACING.md,
-  },
-  fgLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-  },
-  fgInput: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-    paddingVertical: 0,
-    textAlign: 'right',
-  },
-  fgAmountWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  fgAmountPrefix: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-  },
-  fgAmountInput: {
-    flex: 0,
-    minWidth: 80,
-    fontVariant: ['tabular-nums'],
-  },
-  fgValueChevron: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  fgValue: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-  },
-  fgReminderWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  fgReminderInput: {
-    width: 40,
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    textAlign: 'center',
-    backgroundColor: withAlpha(C.textPrimary, 0.04),
-    borderRadius: RADIUS.sm,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-    fontVariant: ['tabular-nums'],
-  },
-  fgReminderSuffix: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textMuted,
-  },
-  fgPickerWrap: {
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: SPACING.xs,
-  },
-
-  // ── Form fields ───────────────────────────────────────
-  fieldLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-    marginBottom: SPACING.xs,
-    marginTop: SPACING.lg,
-  },
-  fieldLabelOptional: {
-    fontWeight: TYPOGRAPHY.weight.regular,
-    color: C.textMuted,
-  },
-  fieldInput: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(C.textPrimary, 0.12),
-    paddingVertical: SPACING.sm,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-  },
-  amountRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  amountPrefix: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-  },
-  fieldTouchable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(C.textPrimary, 0.12),
-    paddingVertical: SPACING.sm + 2,
-  },
-  fieldTouchableText: { fontSize: TYPOGRAPHY.size.base, color: C.textPrimary },
-  walletPickerSelected: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  reminderRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  reminderSuffix: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted },
-
-  // ── Toggles ───────────────────────────────────────────
-  toggleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.xl,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(C.textMuted, 0.04),
-    borderRadius: RADIUS.lg,
-  },
-  toggleCardActive: { backgroundColor: withAlpha(C.accent, 0.06) },
-  toggleLabel: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-  },
-  toggleHint: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2 },
-
-  // ── Mark payment ──────────────────────────────────────
-  markPaymentBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.xl,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(C.accent, 0.08),
-    borderRadius: RADIUS.md,
-  },
-  markPaymentText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.accent,
-  },
-
-  // ── Delete button (form) ──────────────────────────────
-  deleteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.lg,
-    paddingVertical: SPACING.sm,
-  },
-  deleteBtnText: { fontSize: TYPOGRAPHY.size.sm, color: C.neutral },
-
-  // ── Save button ───────────────────────────────────────
-  confirmBtn: {
-    flexDirection: 'row',
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.full,
-    paddingVertical: SPACING.md + 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.xl,
-  },
-  confirmBtnText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-    letterSpacing: 0.2,
-  },
 
   // ── Picker ────────────────────────────────────────────
   backBtn: {
@@ -4746,38 +3672,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pickerOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.md,
-    marginBottom: SPACING.xs,
-  },
-  pickerOptionActive: { backgroundColor: withAlpha(C.accent, 0.08) },
-  pickerOptionText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-  },
-  pickerOptionTextActive: {
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-  },
 
   // ── Mark as Paid modal (renovated) ─────────────────────
   markPaidCard: {
     width: '88%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
     paddingTop: SPACING.xl + 4,
     paddingBottom: SPACING.lg,
     paddingHorizontal: SPACING.xl,
     alignItems: 'center',
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   mpCloseBtn: {
     position: 'absolute',
@@ -4832,14 +3736,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.14 : 0.10),
     borderRadius: RADIUS.full,
     paddingLeft: SPACING.md,
     paddingRight: SPACING.sm + 2,
     paddingVertical: 8,
     marginBottom: SPACING.sm,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
   mpDateLabel: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -4896,13 +3797,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '84%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? withAlpha(C.gold, 0.25) : withAlpha(C.gold, 0.18),
     paddingTop: SPACING.xl + 4,
     paddingBottom: SPACING.lg,
     paddingHorizontal: SPACING.xl,
     alignItems: 'center' as const,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   warnIconCircle: {
     width: 52,
@@ -4934,26 +3832,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.lg,
     letterSpacing: 0.1,
   },
-  warnPayBtn: {
-    width: '100%',
-    paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.gold,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: 48,
-  },
-  warnPayBtnInner: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-  },
-  warnPayBtnText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-    letterSpacing: 0.2,
-  },
   warnDismiss: {
     marginTop: SPACING.sm + 2,
     paddingVertical: SPACING.sm,
@@ -4970,14 +3848,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '84%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? withAlpha(C.accent, 0.25) : withAlpha(C.accent, 0.18),
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
     paddingHorizontal: SPACING.xl,
     alignItems: 'center' as const,
     overflow: 'visible' as const,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   celebBurstWrap: {
     width: 120,
@@ -4993,8 +3868,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(C.accent, 0.10),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    borderWidth: 2,
-    borderColor: withAlpha(C.accent, 0.15),
   },
   celebTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
@@ -5081,26 +3954,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     letterSpacing: 0.1,
   },
-  celebDoneBtn: {
-    width: '100%',
-    paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: 48,
-  },
-  celebDoneBtnInner: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-  },
-  celebDoneBtnText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-    letterSpacing: 0.2,
-  },
   celebArchiveLink: {
     alignSelf: 'center' as const,
     marginTop: SPACING.md,
@@ -5124,13 +3977,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '84%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
     paddingTop: SPACING.xl + 4,
     paddingBottom: SPACING.lg,
     paddingHorizontal: SPACING.xl,
     alignItems: 'center',
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   delIconCircle: {
     width: 48,
@@ -5175,27 +4025,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.xl,
     paddingHorizontal: SPACING.sm,
   },
-  delKeepBtn: {
-    width: '100%',
-    paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-    marginBottom: SPACING.xs,
-  },
-  delKeepBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  delKeepBtnText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-    letterSpacing: 0.3,
-  },
   delConfirmRow: {
     alignSelf: 'center',
     marginTop: SPACING.sm,
@@ -5229,12 +4058,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     maxHeight: '75%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   hiwCardHeader: {
     marginBottom: SPACING.md,
@@ -5292,17 +4118,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
   },
   hiwDismiss: {
-    alignItems: 'center',
-    paddingVertical: SPACING.sm + 4,
-    marginTop: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: withAlpha(C.textPrimary, 0.06),
-  },
-  hiwDismissText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-    letterSpacing: 0.2,
+    marginTop: SPACING.md,
   },
 
   // ── Detail modal ──────────────────────────────────────
@@ -5311,12 +4127,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     maxHeight: '82%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
     paddingTop: SPACING.lg,
     paddingHorizontal: SPACING.xl,
     paddingBottom: SPACING.lg,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   dtClose: {
     position: 'absolute',
@@ -5380,8 +4193,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginHorizontal: SPACING.xs,
     backgroundColor: C === CALM_DARK ? withAlpha(C.accent, 0.04) : withAlpha(C.accent, 0.03),
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? withAlpha(C.accent, 0.10) : withAlpha(C.accent, 0.06),
   },
   dtAmount: {
     fontSize: 36,
@@ -5427,11 +4238,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   dtInfoSection: {
     backgroundColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.03) : C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.10) : withAlpha(C.textPrimary, 0.07),
-    overflow: 'hidden',
     marginBottom: SPACING.lg,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   dtInfoRow: {
     flexDirection: 'row',
@@ -5477,7 +4284,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm + 2,
     marginBottom: SPACING.md,
-    ...(C === CALM_DARK ? { borderWidth: 1, borderColor: withAlpha(C.textPrimary, 0.06) } : {}),
   },
   dtNoteLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -5492,29 +4298,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     lineHeight: TYPOGRAPHY.size.sm * 1.5,
   },
-  dtPausedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: withAlpha(C.bronze, 0.08),
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    marginTop: SPACING.xs,
-  },
-  dtPausedText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.bronze,
-  },
   dtStatusCard: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: SPACING.md - 2,
     backgroundColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.04) : C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.08),
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     marginTop: SPACING.sm,
@@ -5619,27 +4408,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.md,
     marginTop: SPACING.xs,
   },
-  dtActionPrimary: {
-    width: '100%',
-    paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-    marginBottom: SPACING.xs,
-  },
-  dtActionPrimaryInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  dtActionPrimaryText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-    letterSpacing: 0.3,
-  },
   dtSecondaryLink: {
     alignSelf: 'center',
     marginTop: SPACING.sm,
@@ -5664,36 +4432,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.lg,
   },
 
-  // ── GroupBy toggle ─────────────────────────────────────────
-  groupByRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-    paddingHorizontal: SPACING.xl,
-  },
-  groupByPill: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(C.textPrimary, 0.12),
-    backgroundColor: C.surface,
-  },
-  groupByPillActive: {
-    borderColor: C.accent,
-    backgroundColor: withAlpha(C.accent, 0.08),
-  },
-  groupByPillText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  groupByPillTextActive: {
-    color: C.accent,
-  },
-
   // ── Suggestions ────────────────────────────────────────────
   suggestionRow: {
     flexDirection: 'row',
@@ -5701,6 +4439,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.sm + 6,
   },
   suggestionLeft: {
     flexDirection: 'row',
@@ -5728,157 +4468,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   suggestionAction: {
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.xs + 2,
     borderRadius: RADIUS.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C.accent,
   },
   suggestionActionText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.accent,
-  },
-
-  // ── Calendar ───────────────────────────────────────────────
-  calContainer: {
-    paddingHorizontal: SPACING.xl,
-    paddingBottom: SPACING.xl,
-  },
-  calNavRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.lg,
-  },
-  calMonthLabel: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  calHeaderRow: {
-    flexDirection: 'row',
-    marginBottom: SPACING.xs,
-  },
-  calDayHeader: {
-    textAlign: 'center',
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingVertical: SPACING.sm,
-  },
-  calGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  calCell: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.xs,
-  },
-  calCellToday: {
-    backgroundColor: withAlpha(C.accent, 0.08),
-    borderRadius: RADIUS.md,
-  },
-  calCellSelected: {
-    backgroundColor: withAlpha(C.accent, 0.15),
-    borderRadius: RADIUS.md,
-  },
-  calDayNum: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  calDayNumToday: {
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.accent,
-  },
-  calDots: {
-    flexDirection: 'row',
-    gap: 3,
-    marginTop: 3,
-  },
-  calDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-  },
-  calDayDetail: {
-    marginTop: SPACING.lg,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(C.textPrimary, 0.12),
-    overflow: 'hidden',
-  },
-  calDayDetailDate: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
-  },
-  calDayDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(C.textPrimary, 0.12),
-  },
-  calDayDetailLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    flex: 1,
-  },
-  calDayDetailDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  calDayDetailName: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-    flex: 1,
-  },
-  calDayDetailAmt: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-
-  // ── Payment history ────────────────────────────────────────
-  historySection: {
-    marginTop: SPACING.xl,
-    paddingTop: SPACING.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(C.textPrimary, 0.12),
-  },
-  historyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(C.textPrimary, 0.12),
-  },
-  historyDate: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-  },
-  historyAmt: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
 });
 

@@ -45,7 +45,8 @@ import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import Card from '../../components/common/Card';
-import Button from '../../components/common/Button';
+import NeuButton from '../../components/common/NeuButton';
+import { useNeu } from '../../components/common/neu';
 import ScreenGuide from '../../components/common/ScreenGuide';
 import PaywallModal from '../../components/common/PaywallModal';
 import WalletPicker from '../../components/common/WalletPicker';
@@ -108,6 +109,8 @@ function parseReceiptDate(dateStr?: string): Date {
 const ReceiptScanner: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
+  const neu = useNeu();            // base = C.background — on-screen surfaces
+  const neuS = useNeu(C.surface);  // base = C.surface — surfaces inside the picker modals
   const t = useT();
   // ScreenGuide spotlight target — the shutter button (hero state only; the
   // guide falls back to inline points if it can't be measured).
@@ -559,7 +562,7 @@ const ReceiptScanner: React.FC = () => {
         }}
         activeOpacity={0.7}
       >
-        <View style={[styles.taxItemIcon, { backgroundColor: isSelected ? itemColor : withAlpha(itemColor, 0.15) }]}>
+        <View style={[styles.taxItemIcon, neu.well, { backgroundColor: isSelected ? itemColor : withAlpha(itemColor, 0.15) }]}>
           <CategoryIcon
             icon={item.icon}
             size={18}
@@ -592,7 +595,7 @@ const ReceiptScanner: React.FC = () => {
             STATE 1: Capture (no image)
             ══════════════════════════════════════════════════════ */}
         {!imageUri && (
-          <Card style={styles.heroCard}>
+          <Card style={[styles.heroCard, neu.raisedSoft, { borderWidth: 0 }]}>
             <Text style={styles.heroTitle}>{t.receipts.saveReceiptTitle}</Text>
             <Text style={styles.heroSubtitle}>
               {t.receipts.saveReceiptSubtitle}
@@ -602,7 +605,7 @@ const ReceiptScanner: React.FC = () => {
             <View style={styles.shutterRing}>
               <TouchableOpacity
                 ref={guideTargetRef}
-                style={styles.shutterButton}
+                style={[styles.shutterButton, neu.raised, { backgroundColor: C.accent }]}
                 onPress={handleTakePhoto}
                 activeOpacity={0.7}
                 accessibilityRole="button"
@@ -650,13 +653,13 @@ const ReceiptScanner: React.FC = () => {
         {/* Draft card */}
         {!imageUri && !receipt && draft && (
           <TouchableOpacity
-            style={styles.draftCard}
+            style={[styles.draftCard, neu.raisedSoft]}
             onPress={handleLoadDraft}
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel={t.receipts.continueDraft}
           >
-            <View style={[styles.draftIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
+            <View style={[styles.draftIcon, neu.well, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
               <Feather name="bookmark" size={18} color={C.accent} />
             </View>
             <View style={{ flex: 1 }}>
@@ -686,11 +689,10 @@ const ReceiptScanner: React.FC = () => {
                 <Feather name="x" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
-            <Button
-              title={t.receipts.extractWithAi}
+            <NeuButton
+              label={t.receipts.extractWithAi}
               onPress={handleExtract}
               icon="cpu"
-              size="large"
               style={styles.extractButton}
               accessibilityLabel={t.receipts.extractWithAi}
             />
@@ -799,7 +801,7 @@ const ReceiptScanner: React.FC = () => {
                   />
                 </View>
                 <TouchableOpacity
-                  style={styles.heroDatePill}
+                  style={[styles.heroDatePill, neu.raised]}
                   onPress={() => setCalendarPickerVisible(true)}
                   activeOpacity={0.7}
                   accessibilityRole="button"
@@ -817,6 +819,7 @@ const ReceiptScanner: React.FC = () => {
               <TouchableOpacity
                 style={[
                   styles.classificationPill,
+                  neu.raised,
                   selectedCat?.color ? { borderColor: withAlpha(selectedCat.color, 0.3) } : undefined,
                 ]}
                 onPress={() => setCategoryPickerVisible(true)}
@@ -836,6 +839,7 @@ const ReceiptScanner: React.FC = () => {
               <TouchableOpacity
                 style={[
                   styles.classificationPill,
+                  neu.raised,
                   selectedTaxCat.id !== 'none' ? { borderColor: withAlpha(C.accent, 0.3) } : undefined,
                 ]}
                 onPress={() => setTaxPickerVisible(true)}
@@ -854,10 +858,10 @@ const ReceiptScanner: React.FC = () => {
             </View>
 
             {/* 4. Items Card */}
-            <Card style={styles.itemsCard}>
+            <Card style={[styles.itemsCard, neu.raisedSoft, { borderWidth: 0 }]}>
               <View style={styles.itemsHeader}>
                 <Text style={styles.itemsSectionLabel}>{t.receipts.itemsLabel}</Text>
-                <View style={styles.itemsCountBadge}>
+                <View style={[styles.itemsCountBadge, neu.raised]}>
                   <Text style={styles.itemsCountText}>{editItems.length}</Text>
                 </View>
               </View>
@@ -927,7 +931,7 @@ const ReceiptScanner: React.FC = () => {
                   selectionColor={withAlpha(C.accent, 0.25)}
                 />
                 <TouchableOpacity
-                  style={styles.addItemBtn}
+                  style={[styles.addItemBtn, neu.raised, { backgroundColor: C.accent }]}
                   onPress={handleAddItem}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"
@@ -957,7 +961,7 @@ const ReceiptScanner: React.FC = () => {
             </Card>
 
             {/* 5. Details Card */}
-            <Card style={styles.detailsCard}>
+            <Card style={[styles.detailsCard, neu.raisedSoft, { borderWidth: 0 }]}>
               {/* Location row */}
               <View style={styles.detailRow}>
                 <Feather name="map-pin" size={16} color={C.textSecondary} />
@@ -1009,8 +1013,8 @@ const ReceiptScanner: React.FC = () => {
             )}
 
             {/* 7. Save Actions */}
-            <Button
-              title={saving ? t.receipts.savingEllipsis : t.receipts.saveReceiptBtn}
+            <NeuButton
+              label={saving ? t.receipts.savingEllipsis : t.receipts.saveReceiptBtn}
               onPress={handleSaveReceipt}
               icon="check"
               style={styles.saveButton}
@@ -1047,7 +1051,7 @@ const ReceiptScanner: React.FC = () => {
       {/* Tax Relief Picker Modal */}
       <Modal visible={taxPickerVisible} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setTaxPickerVisible(false)}>
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setTaxPickerVisible(false)}>
-          <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
+          <View style={[styles.dropdownModal, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
               <Text style={styles.dropdownTitle}>{t.receipts.taxReliefCategory}</Text>
               <TouchableOpacity
@@ -1079,7 +1083,7 @@ const ReceiptScanner: React.FC = () => {
       {/* ── Category Picker Modal ── */}
       <Modal visible={categoryPickerVisible} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setCategoryPickerVisible(false)}>
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setCategoryPickerVisible(false)}>
-          <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
+          <View style={[styles.dropdownModal, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
               <Text style={styles.dropdownTitle}>{t.receipts.expenseCategory}</Text>
               <TouchableOpacity
@@ -1108,7 +1112,7 @@ const ReceiptScanner: React.FC = () => {
                     onPress={() => { setEditCategory(cat.id); setCategoryPickerVisible(false); }}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.taxItemIcon, { backgroundColor: isSelected ? cat.color : withAlpha(cat.color, 0.15) }]}>
+                    <View style={[styles.taxItemIcon, neu.well, { backgroundColor: isSelected ? cat.color : withAlpha(cat.color, 0.15) }]}>
                       <CategoryIcon icon={cat.icon} size={18} color={isSelected ? C.onAccent : cat.color} />
                     </View>
                     <Text style={[styles.taxItemName, isSelected && { color: cat.color, fontWeight: TYPOGRAPHY.weight.bold }]}>{cat.name}</Text>
@@ -1135,7 +1139,7 @@ const ReceiptScanner: React.FC = () => {
       {/* ── Calendar Picker Modal ── */}
       <Modal visible={calendarPickerVisible} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setCalendarPickerVisible(false)}>
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setCalendarPickerVisible(false)}>
-          <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
+          <View style={[styles.dropdownModal, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
               <Text style={styles.dropdownTitle}>{t.receipts.dateLabel}</Text>
               <TouchableOpacity
@@ -1295,12 +1299,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: SPACING.md,
-    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.15),
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
+    // bg + shadow come from neu.raisedSoft spread at the call site
   },
   draftIcon: {
     width: 36,
@@ -1350,7 +1351,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   extractButton: {
     marginTop: SPACING.sm,
-    borderRadius: RADIUS.xl,
   },
 
   // ══════════════════════════════════════════════════════════
@@ -1495,10 +1495,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: C.pillBg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
+    // bg + shadow come from neu.raised spread at the call site
   },
   heroDateText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1705,11 +1705,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   dropdownModal: {
-    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
-    borderWidth: 1,
-    borderColor: C.border,
+    // bg (C.surface) + shadow come from neuS.raisedSoft spread at the call site
   },
   dropdownHeader: {
     flexDirection: 'row',

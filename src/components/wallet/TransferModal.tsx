@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import ModalToastHost from '../common/ModalToastHost';
+import NeuButton from '../common/NeuButton';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -281,12 +282,12 @@ const TransferModal: React.FC<TransferModalProps> = ({
           </KeyboardAwareScrollView>
 
           <View style={[styles.saveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
-            <Pressable style={styles.saveBtn} onPress={onTransfer} accessibilityRole="button" accessibilityLabel="transfer">
-              <View style={styles.saveBtnInner}>
-                <Feather name="repeat" size={16} color={C.onAccent} />
-                <Text style={styles.saveBtnText}>{t.wallets.transfer.toLowerCase()}</Text>
-              </View>
-            </Pressable>
+            <NeuButton
+              onPress={onTransfer}
+              icon="repeat"
+              label={t.wallets.transfer.toLowerCase()}
+              accessibilityLabel="transfer"
+            />
             <Pressable style={styles.closeLink} onPress={closeSheet} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}>
               {({ pressed }: { pressed: boolean }) => (
                 <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
@@ -446,26 +447,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
     backgroundColor: C.surface,
-  },
-  saveBtn: {
-    width: '100%',
-    paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  saveBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  saveBtnText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-    letterSpacing: 0.3,
   },
   closeLink: {
     marginTop: SPACING.lg,
