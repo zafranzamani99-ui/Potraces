@@ -15,6 +15,7 @@ import { clearProfileCache } from '../services/sellerSync';
 import PersonalNavigator from './PersonalNavigator';
 import BusinessNavigator from './BusinessNavigator';
 import PersonalReports from '../screens/personal/Reports';
+import Calculator from '../screens/personal/Calculator';
 import BusinessReports from '../screens/business/Reports';
 import SubscriptionList from '../screens/personal/SubscriptionList';
 import BudgetPlanning from '../screens/personal/BudgetPlanning';
@@ -296,6 +297,11 @@ const RootNavigator: React.FC = () => {
           name="PersonalReports"
           component={PersonalReports}
           options={makeBackHeader(C, mode, 'Reports')}
+        />
+        <Stack.Screen
+          name="Calculator"
+          component={Calculator}
+          options={makeBackHeader(C, mode, 'Calculator')}
         />
         <Stack.Screen
           name="BusinessReports"

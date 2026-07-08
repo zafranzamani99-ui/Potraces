@@ -21,7 +21,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 // never fires. The horizontal card rows below stay on RNGH's ScrollView.
 import { ScrollView as RNScrollView } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { addDays, isWithinInterval, startOfMonth, endOfMonth, startOfDay, subMonths, getDaysInMonth } from 'date-fns';
 
 import { useNavigation } from '@react-navigation/native';
@@ -32,7 +32,9 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../c
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
-import ModeToggle from '../../components/common/ModeToggle';
+import GlassModeToggle from '../../components/common/GlassModeToggle';
+import QuickActions from '../../components/common/QuickActions';
+import NeuIconButton from '../../components/common/NeuIconButton';
 import StatCard from '../../components/common/StatCard';
 import Card from '../../components/common/Card';
 import TransactionItem from '../../components/common/TransactionItem';
@@ -75,31 +77,8 @@ const getGreetingKey = (): 'goodMorning' | 'goodAfternoon' | 'goodEvening' => {
   return 'goodEvening';
 };
 
-// Quick-action color tokens. Resolved against the active palette so dark-mode
-// contrast is preserved (DESIGN-H1, UX-H5). No more raw hex.
-// Quick-action glyphs use a lib-prefixed spec (`i/` Ionicons, `m/` MaterialCommunityIcons,
-// default Feather) rendered solid in the action colour over its tinted container —
-// see renderActionIcon. Echo (chat) and Budget share their glyph with the matching tab.
-const getQuickActions = (C: typeof CALM) => [
-  { key: 'wallets' as const, icon: 'i/wallet', screen: 'WalletManagement', color: C.accent },
-  { key: 'savings' as const, icon: 'm/piggy-bank', screen: 'SavingsTracker', color: C.gold },
-  { key: 'debts' as const, icon: 'm/hand-coin', screen: 'DebtTracking', color: C.bronze },
-  { key: 'bills' as const, icon: 'i/repeat', screen: 'SubscriptionList', color: C.accent },
-  { key: 'budgets' as const, icon: 'i/pie-chart', screen: 'BudgetPlanning', color: C.bronze },
-  { key: 'reports' as const, icon: 'i/stats-chart', screen: 'PersonalReports', color: C.deepOlive },
-  { key: 'goals' as const, icon: 'm/target', screen: 'Goals', color: C.gold },
-  { key: 'receipts' as const, icon: 'i/receipt', screen: 'ReceiptHistory', color: C.deepOlive },
-  { key: 'chat' as const, icon: 'i/flash', screen: 'MoneyChat', color: C.gold },
-  { key: 'pulse' as const, icon: 'i/pulse', screen: 'FinancialPulse', color: C.accent },
-];
-
-// Render a lib-prefixed glyph spec (mirrors the multi-library pattern in Goals.tsx).
-const renderActionIcon = (spec: string, color: string, size = 27) => {
-  const [lib, name] = spec.includes('/') ? spec.split('/') : ['f', spec];
-  if (lib === 'm') return <MaterialCommunityIcons name={name as any} size={size} color={color} />;
-  if (lib === 'i') return <Ionicons name={name as any} size={size} color={color} />;
-  return <Feather name={name as any} size={size} color={color} />;
-};
+// Quick actions moved to components/common/QuickActions.tsx (neumorphic tiles,
+// same keys/screens/colors — see that file).
 
 // ─── Insight micro-visualizations ─────────────────────────────
 // Each insight card carries a tiny instrument of the user's real data
@@ -527,10 +506,6 @@ const PersonalDashboard: React.FC = () => {
     }, 1000);
   }, []);
 
-  // Quick actions resolved against the active palette (SCALE-H2: stable ref
-  // per palette change so child renders don't churn).
-  const quickActions = useMemo(() => getQuickActions(C), [C]);
-
   const billsBadge = useMemo(() => {
     const today = startOfDay(new Date());
     return subscriptions.filter(sub => {
@@ -716,7 +691,7 @@ const PersonalDashboard: React.FC = () => {
   }, [expenseCategories, incomeCategories]);
 
   const handleQuickAction = useCallback((screen: string) => {
-    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker' || screen === 'MoneyChat' || screen === 'Goals' || screen === 'FinancialPulse' || screen === 'ReceiptHistory') {
+    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker' || screen === 'MoneyChat' || screen === 'Goals' || screen === 'FinancialPulse' || screen === 'ReceiptHistory' || screen === 'Calculator') {
       navigation.getParent()?.navigate(screen);
     } else {
       navigation.navigate(screen);
@@ -743,7 +718,7 @@ const PersonalDashboard: React.FC = () => {
     <View style={styles.container}>
       <RNScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
@@ -752,15 +727,15 @@ const PersonalDashboard: React.FC = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.textMuted} colors={[C.accent]} />
         }
       >
-        <ModeToggle />
+        <GlassModeToggle />
         <OfflineBanner />
         {/* Zone 1 — Greeting (small) */}
         <View style={styles.greetingRow}>
           <Text style={styles.greeting}>{greeting}</Text>
-          <TouchableOpacity
-            style={styles.qrButton}
+          <NeuIconButton
+            size={44}
+            radius={14}
             onPress={() => {
-              lightTap();
               if (paymentQrs.length > 0) {
                 setQrViewIndex(0);
                 setQrModalVisible(true);
@@ -775,13 +750,10 @@ const PersonalDashboard: React.FC = () => {
                 );
               }
             }}
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
             accessibilityLabel={t.dashboard.showPaymentQr}
           >
             <Feather name="maximize" size={22} color={paymentQrs.length > 0 ? C.accent : C.textMuted} />
-          </TouchableOpacity>
+          </NeuIconButton>
         </View>
 
         {/* Zone 2 — Balance (the hero) */}
@@ -956,60 +928,8 @@ const PersonalDashboard: React.FC = () => {
         </RAnimated.View>
         )}
 
-        {/* Quick Actions — pill grid */}
-        {/* Quick Actions — 2-row horizontal scroll */}
-        <View style={styles.quickActionsSection}>
-          <Text style={styles.detailSectionTitle}>{t.dashboard.quickActions}</Text>
-          {[0, 1].map((rowIdx) => (
-            <View key={rowIdx} style={styles.quickActionsRowWrap}>
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.quickActionsRow}
-                style={styles.quickActionsScroll}
-              >
-                {quickActions.slice(rowIdx * 5, rowIdx * 5 + 5).map((action) => (
-                  <TouchableOpacity
-                    key={action.key}
-                    style={styles.quickActionBtn}
-                    onPress={() => handleQuickAction(action.screen)}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.dashboard[action.key]}
-                  >
-                    <LinearGradient
-                      colors={[
-                        withAlpha(action.color, isDark ? 0.26 : 0.16),
-                        withAlpha(action.color, isDark ? 0.09 : 0.04),
-                      ]}
-                      start={{ x: 0.15, y: 0 }}
-                      end={{ x: 0.85, y: 1 }}
-                      style={[styles.quickActionIcon, { borderColor: withAlpha(action.color, isDark ? 0.28 : 0.16) }]}
-                    >
-                      {renderActionIcon(action.icon, action.color, 27)}
-                      {action.key === 'bills' && billsBadge > 0 && (
-                        <View style={styles.quickActionBadge}>
-                          <Text style={styles.quickActionBadgeText}>{billsBadge}</Text>
-                        </View>
-                      )}
-                    </LinearGradient>
-                    <Text style={styles.quickActionLabel} numberOfLines={1}>
-                      {t.dashboard[action.key]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <LinearGradient
-                colors={[withAlpha(C.background, 0), withAlpha(C.background, 1)]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.quickActionsFade}
-                pointerEvents="none"
-              />
-            </View>
-          ))}
-        </View>
+        {/* Quick Actions — neumorphic tiles (components/common/QuickActions) */}
+        <QuickActions onAction={handleQuickAction} billsBadge={billsBadge} />
 
         {/* Details section */}
         <CollapsibleSection title={t.dashboard.details} subtitle={t.dashboard.detailsSubtitle} defaultOpen={false}>
@@ -1376,14 +1296,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 1.5,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
-  qrButton: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(C.accent, 0.1),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   // Zone 2 — Balance
   heroHeadline: {
@@ -1549,68 +1461,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
-  },
-
-  // Quick Actions
-  quickActionsSection: {
-    marginTop: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  quickActionsRowWrap: {
-    position: 'relative',
-    marginRight: -SPACING['2xl'],
-  },
-  quickActionsScroll: {
-    overflow: 'visible',
-  },
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    paddingRight: SPACING['2xl'],
-  },
-  quickActionsFade: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: 40,
-  },
-  quickActionBtn: {
-    alignItems: 'center',
-    gap: 6,
-    width: 76,
-  },
-  quickActionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 19,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickActionLabel: {
-    fontSize: 11,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-    textAlign: 'center',
-  },
-  quickActionBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  quickActionBadgeText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.onAccent,
-    fontVariant: ['tabular-nums' as const],
   },
 
   // Section
