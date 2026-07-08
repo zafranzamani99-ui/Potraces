@@ -10,14 +10,18 @@
       "permanent": false
     },
     {
-      "source": "/shortcut",
+      "source": "/dl/quick-log",
       "destination": "https://iydqeeonaljqapulboaz.supabase.co/storage/v1/object/public/web/PotracesQuickLog.shortcut?download=Potraces%20Quick%20Log.shortcut",
       "permanent": false
     },
     {
-      "source": "/autolog",
+      "source": "/dl/auto-log",
       "destination": "https://iydqeeonaljqapulboaz.supabase.co/storage/v1/object/public/web/PotracesAutoLog.shortcut?download=Potraces%20Auto%20Log.shortcut",
       "permanent": false
     }
+  ],
+  "rewrites": [
+    { "source": "/shortcut", "destination": "/get-shortcut.html" },
+    { "source": "/autolog", "destination": "/get-autolog.html" }
   ]
 }
