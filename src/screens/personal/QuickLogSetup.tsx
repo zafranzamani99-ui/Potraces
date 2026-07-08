@@ -33,6 +33,9 @@ export default function QuickLogSetup() {
   // Quick Log is a cloud feature (it logs to the account via the server), so it
   // requires Cloud Backup — which AccountScreen turns on by setting this flag.
   const cloudOn = useSettingsStore((s) => s.personalSyncEnabled);
+  // In-app toggle (Settings → Preferences → Notifications): when OFF, the
+  // foreground handler suppresses ALL banners while the app is open.
+  const inAppNotifs = useSettingsStore((s) => s.notificationsEnabled);
   const [hasKey, setHasKey] = useState(false);
   const [shownKey, setShownKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,15 +83,24 @@ export default function QuickLogSetup() {
   const onTestNotification = async () => {
     // Local notification with the quick_log payload: proves banner rendering
     // AND the tap→TransactionsList path without needing the server.
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Potraces',
-        body: t.settings.quickLog.diagTestBody,
-        data: { type: 'quick_log' },
-        sound: 'default',
-      },
-      trigger: { seconds: 2 } as any,
-    }).catch(() => {});
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Potraces',
+          body: t.settings.quickLog.diagTestBody,
+          data: { type: 'quick_log' },
+          sound: 'default',
+        },
+        // SDK 54 trigger shape — the legacy bare {seconds} form gets rejected.
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: 3,
+        },
+      });
+    } catch (e) {
+      // Never swallow the diagnostic's own failure.
+      showToast(String(e), 'error');
+    }
   };
 
   const pushStateLabel = (s: string) => {
@@ -288,6 +300,12 @@ export default function QuickLogSetup() {
                 <Text style={[styles.stepBody, { color: C.textSecondary }]}>{t.settings.quickLog.diagLive}</Text>
                 <Text style={[styles.diagValue, { color: liveState === 'SUBSCRIBED' ? C.positive : C.overdue }]}>
                   {liveState === 'SUBSCRIBED' ? t.settings.quickLog.diagLiveOk : liveState}
+                </Text>
+              </View>
+              <View style={styles.diagRow}>
+                <Text style={[styles.stepBody, { color: C.textSecondary }]}>{t.settings.quickLog.diagInApp}</Text>
+                <Text style={[styles.diagValue, { color: inAppNotifs ? C.positive : C.overdue }]}>
+                  {inAppNotifs ? t.settings.quickLog.diagInAppOn : t.settings.quickLog.diagInAppOff}
                 </Text>
               </View>
               <NeuButton
