@@ -11,6 +11,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { SPACING, RADIUS, withAlpha } from '../../constants';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
+import CollapsibleSection from '../../components/common/CollapsibleSection';
 import { successNotification } from '../../services/haptics';
 import {
   registerQuickLogKey, getQuickLogKeyStatus, revokeQuickLogKey,
@@ -18,10 +19,11 @@ import {
 import { registerPersonalDeviceToken, getPersonalPushStatus } from '../../services/pushNotifications';
 import { getQuickLogRealtimeStatus } from '../../services/quickLogInbox';
 
-// Signed shortcut built by scripts/build-quick-log-shortcut.py and hosted on
-// the public `web` bucket — re-run that pipeline to update it in place.
-const SHORTCUT_URL =
-  'https://iydqeeonaljqapulboaz.supabase.co/storage/v1/object/public/web/PotracesQuickLog.shortcut?download=Potraces%20Quick%20Log.shortcut';
+// Signed shortcut built by scripts/build-quick-log-shortcut.py, hosted on the
+// public `web` bucket, served via the branded jejakbaki.my redirect
+// (vercel.json /shortcut → storage URL). NOTE: the redirect goes live on the
+// next git push (Vercel deploys from this repo) — ship both together.
+const SHORTCUT_URL = 'https://jejakbaki.my/shortcut';
 const SHORTCUT_READY = !SHORTCUT_URL.includes('REPLACE_ME');
 
 export default function QuickLogSetup() {
@@ -243,7 +245,9 @@ export default function QuickLogSetup() {
                 />
                 {shownKey && (
                   <View style={[styles.keyBox, neu.insetSoft, { backgroundColor: C.background }]}>
-                    <Text selectable style={[styles.key, { color: C.textPrimary }]}>{shownKey}</Text>
+                    {/* NOT selectable — text-selection gestures fight the scroll,
+                        and the Copy button is the one true way to grab the key. */}
+                    <Text style={[styles.key, { color: C.textPrimary }]}>{shownKey}</Text>
                     <Text style={[styles.caption, { color: C.textSecondary }]}>
                       {t.settings.quickLog.keyOnceWarning}
                     </Text>
@@ -285,11 +289,10 @@ export default function QuickLogSetup() {
               {t.settings.quickLog.regenNote}
             </Text>
 
-            {/* Diagnostics — on-device truth for push + live-update delivery */}
+            {/* Diagnostics — on-device truth for push + live-update delivery.
+                Collapsed by default: power-user/debug content, not setup. */}
+            <CollapsibleSection title={t.settings.quickLog.diagTitle}>
             <View style={[styles.stepCard, neu.raisedSoft, { backgroundColor: C.surface }]}>
-              <Text style={[styles.stepTitle, { color: C.textPrimary }]}>
-                {t.settings.quickLog.diagTitle}
-              </Text>
               <View style={styles.diagRow}>
                 <Text style={[styles.stepBody, { color: C.textSecondary }]}>{t.settings.quickLog.diagPush}</Text>
                 <Text style={[styles.diagValue, { color: pushState === 'registered' ? C.positive : C.overdue }]}>
@@ -314,6 +317,7 @@ export default function QuickLogSetup() {
                 onPress={onTestNotification}
               />
             </View>
+            </CollapsibleSection>
 
             {hasKey && (
               <Pressable style={styles.revoke} onPress={onRevoke}>

@@ -8,6 +8,11 @@
       "has": [{ "type": "query", "key": "slug" }],
       "destination": "/order.html",
       "permanent": false
+    },
+    {
+      "source": "/shortcut",
+      "destination": "https://iydqeeonaljqapulboaz.supabase.co/storage/v1/object/public/web/PotracesQuickLog.shortcut?download=Potraces%20Quick%20Log.shortcut",
+      "permanent": false
     }
   ]
 }
