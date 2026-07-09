@@ -3,7 +3,8 @@ import { View, Text, Pressable, ScrollView, StyleSheet, Alert } from 'react-nati
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { NeuSurface } from '../../components/common/neu';
+import { NeuSurface, useNeu } from '../../components/common/neu';
+import NeuButton from '../../components/common/NeuButton';
 import BottomSheet from '../../components/common/BottomSheet';
 import QuickSplitSheet from '../../components/split/QuickSplitSheet';
 import { openQuickAdd } from '../../components/common/QuickAddExpense';
@@ -65,6 +66,7 @@ type HubView = 'main' | 'split' | 'goal';
 
 const Calculator: React.FC = () => {
   const C = useCalm();
+  const neu = useNeu();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
@@ -115,7 +117,7 @@ const Calculator: React.FC = () => {
     });
   };
 
-  const openHub = () => { lightTap(); setHubView('main'); setShowHub(true); };
+  const openHub = () => { setHubView('main'); setShowHub(true); }; // NeuButton fires the haptic
   const insertFromHistory = (r: number) => { lightTap(); setState((s) => insertValue(s, String(r))); setShowHistory(false); };
   const confirmClear = () => {
     lightTap();
@@ -182,7 +184,7 @@ const Calculator: React.FC = () => {
               <Pressable key={j} onPress={() => press(k)} style={styles.keyWrap} accessibilityLabel={keyLabel(k)}>
                 {({ pressed }) => (
                   k.t === 'eq' ? (
-                    <View style={[styles.eqKey, pressed && styles.keyPressed]}>
+                    <View style={[styles.eqKey, neu.raisedSoft, pressed && styles.keyPressed]}>
                       <Text style={styles.eqText}>=</Text>
                     </View>
                   ) : (
@@ -198,16 +200,15 @@ const Calculator: React.FC = () => {
       </View>
 
       {/* Use this amount */}
-      <Pressable
-        style={[styles.useBtn, !canUse && styles.useBtnDisabled]}
-        disabled={!canUse}
-        onPress={openHub}
-        accessibilityLabel={t.calc.useAmount}
-      >
-        <Text style={styles.useText}>{t.calc.useAmount}</Text>
-        {canUse && <Text style={styles.useAmount}>RM {formatNumber(value)}</Text>}
-        <Ionicons name="arrow-forward" size={18} color={C.onAccent} />
-      </Pressable>
+      <View style={styles.useWrap}>
+        <NeuButton
+          icon="arrow-right"
+          label={canUse ? `${t.calc.useAmount}  ·  RM ${formatNumber(value)}` : t.calc.useAmount}
+          onPress={openHub}
+          disabled={!canUse}
+          accessibilityLabel={t.calc.useAmount}
+        />
+      </View>
 
       {/* ── History sheet (header actions live in-body, not in the drag zone) ── */}
       <BottomSheet visible={showHistory} onClose={() => setShowHistory(false)}>
@@ -369,13 +370,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   keyText: { fontSize: 24, fontWeight: '400', color: C.textPrimary, fontVariant: ['tabular-nums'] },
   eqKey: { flex: 1, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: C.accent },
   eqText: { fontSize: 26, fontWeight: '600', color: C.onAccent },
-  useBtn: {
-    marginTop: 14, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: C.accent, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 18,
-  },
-  useBtnDisabled: { opacity: 0.4 },
-  useText: { color: C.onAccent, fontWeight: '700', fontSize: 15 },
-  useAmount: { color: C.onAccent, fontWeight: '600', fontSize: 14, fontVariant: ['tabular-nums'], marginLeft: -2 },
+  useWrap: { marginTop: 14 },
   // Sheets
   pinnedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
   sheetTitle: { fontSize: 18, fontWeight: '600', color: C.textPrimary },
