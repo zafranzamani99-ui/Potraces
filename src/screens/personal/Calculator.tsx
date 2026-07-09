@@ -201,15 +201,25 @@ const Calculator: React.FC = () => {
         ))}
       </View>
 
-      {/* Use this amount */}
+      {/* Use this amount — olive CTA once there's a value; muted/idle otherwise */}
       <View style={styles.useWrap}>
-        <NeuButton
-          icon="arrow-right"
-          label={canUse ? `${t.calc.useAmount}  ·  RM ${formatNumber(value)}` : t.calc.useAmount}
-          onPress={openHub}
-          disabled={!canUse}
-          accessibilityLabel={t.calc.useAmount}
-        />
+        {canUse ? (
+          <NeuButton
+            icon="arrow-right"
+            label={`${t.calc.useAmount}  ·  RM ${formatNumber(value)}`}
+            onPress={openHub}
+            accessibilityLabel={t.calc.useAmount}
+          />
+        ) : (
+          <View
+            style={styles.idleBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t.calc.useAmount}
+            accessibilityState={{ disabled: true }}
+          >
+            <Text style={styles.idleText}>{t.calc.useAmount}</Text>
+          </View>
+        )}
       </View>
 
       {/* ── History sheet (header actions live in-body, not in the drag zone) ── */}
@@ -373,6 +383,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   eqKey: { flex: 1, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: C.accent },
   eqText: { fontSize: 26, fontWeight: '600', color: C.onAccent },
   useWrap: { marginTop: 14 },
+  idleBtn: {
+    width: '100%', minHeight: 52, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 15, backgroundColor: C.pillBg,
+  },
+  idleText: { color: C.textMuted, fontWeight: '600', fontSize: 15, letterSpacing: 0.3 },
   // Sheets
   pinnedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
   sheetTitle: { fontSize: 18, fontWeight: '600', color: C.textPrimary },
