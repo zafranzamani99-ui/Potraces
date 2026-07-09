@@ -1398,7 +1398,10 @@ const BudgetPlanning: React.FC = () => {
                 <Feather name="zap" size={13} color={C.accent} />
                 <Text style={styles.heroPlanBtnText}>{t.budget.planner.entryPill}</Text>
               </TouchableOpacity>
+              {/* Shares guideTargetRef with the empty-state button — the two never
+                  mount together (hasBudgets branch), so the guide always finds one. */}
               <TouchableOpacity
+                ref={guideTargetRef}
                 style={styles.heroAddBtn}
                 onPress={openAddModal}
                 activeOpacity={0.85}

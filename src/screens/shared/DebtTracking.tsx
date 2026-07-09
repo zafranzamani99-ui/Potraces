@@ -75,13 +75,23 @@ import {
   semantic,
   withAlpha,
 } from '../../constants';
+import { BlurView } from 'expo-blur';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
+
+// iOS 26 → real Liquid Glass (expo-glass-effect); Android / iOS<26 → expo-blur.
+// NOTE: over the near-black dark theme glass has nothing to lens, so it reads as a
+// subtle frosted capsule (physics, not a bug — see the liquid-glass memory). The
+// custom-content toggles (badges/icons) keep this frosted material by user choice.
+const GLASS = isLiquidGlassAvailable();
 import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
 import { useDebtAutoArchive } from './debt/useDebtAutoArchive';
 import { useDebtFilters } from './debt/useDebtFilters';
 import { useDebtDerived } from './debt/useDebtDerived';
 import Card from '../../components/common/Card';
+import NeuButton from '../../components/common/NeuButton';
+import NeuPressable from '../../components/common/NeuPressable';
 import WalletLogo from '../../components/common/WalletLogo';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
@@ -3730,8 +3740,16 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       </Text>
                     )}
 
-                    {/* Segmented type toggle — both options visible, tap to switch */}
-                    <View style={styles.dDebtTypeSegmented}>
+                    {/* Segmented type toggle — glass capsule, both options visible, tap to switch */}
+                    <View style={[styles.dDebtTypeSegmented, !GLASS && styles.dDebtTypeSegClip]}>
+                      {GLASS ? (
+                        <GlassView style={[StyleSheet.absoluteFill, styles.dDebtTypeSegShape]} glassEffectStyle="regular" />
+                      ) : (
+                        <>
+                          <BlurView style={[StyleSheet.absoluteFill, styles.dDebtTypeSegShape]} intensity={isDark ? 30 : 40} tint={isDark ? 'dark' : 'light'} experimentalBlurMethod="dimezisBlurView" />
+                          <View style={[StyleSheet.absoluteFill, styles.dDebtTypeSegShape, styles.dDebtTypeSegFallbackTint]} />
+                        </>
+                      )}
                       {DEBT_TYPES_SAFE.map((dt) => {
                         const isActive = debtType === dt.value;
                         const dtColor = semantic(dt.color, isDark);
@@ -3740,7 +3758,6 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             key={dt.value}
                             style={[
                               styles.dDebtTypeSegBtn,
-                              neuS.raised,
                               isActive && { backgroundColor: dtColor },
                               editDebt && editDebt.payments.length > 0 && !isActive && { opacity: 0.3 },
                             ]}
@@ -4669,33 +4686,29 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 {/* Actions — anchored at bottom */}
                 <View style={[styles.dDebtSaveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm), gap: SPACING.sm }]}>
                   {debt.status !== 'settled' ? (
-                    <TouchableOpacity
-                      style={[styles.debtPrimaryAction, neuS.raised, { backgroundColor: withAlpha(C.positive, 0.08), borderColor: withAlpha(C.positive, 0.25) }]}
+                    <NeuButton
+                      icon="plus-circle"
+                      label="record payment"
                       onPress={() => {
                         const id = debt.id;
                         returnToDetailRef.current = id;
                         setDetailDebtId(null);
                         setTimeout(() => openPaymentModal(id, false), 50);
                       }}
-                      activeOpacity={0.7}
-                    >
-                      <Feather name="plus-circle" size={15} color={C.positive} />
-                      <Text style={[styles.debtPrimaryActionText, { color: C.positive }]}>record payment</Text>
-                    </TouchableOpacity>
+                    />
                   ) : (
-                    <TouchableOpacity
-                      style={[styles.debtPrimaryAction, neuS.raised, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04), borderColor: withAlpha(C.textPrimary, 0.1) }]}
+                    <NeuPressable
+                      style={[styles.debtPrimaryAction, neuS.raisedSoft, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04), borderColor: withAlpha(C.textPrimary, 0.1) }]}
                       onPress={() => {
                         const id = debt.id;
                         returnToDetailRef.current = id;
                         setDetailDebtId(null);
                         setTimeout(() => openPaymentModal(id, true), 50);
                       }}
-                      activeOpacity={0.7}
                     >
                       <Feather name="clock" size={15} color={C.textSecondary} />
                       <Text style={[styles.debtPrimaryActionText, { color: C.textSecondary }]}>view history</Text>
-                    </TouchableOpacity>
+                    </NeuPressable>
                   )}
 
                   <View style={[styles.debtIconRow, { justifyContent: 'center' }]}>
@@ -5011,8 +5024,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 {hasUnsettled && (
                   <View style={[styles.dDebtSaveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm), gap: SPACING.sm }]}>
                       {/* Record payment — primary CTA */}
-                      <TouchableOpacity
-                        activeOpacity={0.7}
+                      <NeuButton
+                        icon="plus-circle"
+                        label="record all payment"
                         onPress={() => {
                           const firstUnsettled = group.debts.find((d) => d.status !== 'settled');
                           if (firstUnsettled) {
@@ -5026,11 +5040,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             }, 50);
                           }
                         }}
-                        style={[styles.debtPrimaryAction, neuS.raised, { backgroundColor: withAlpha(C.positive, 0.08), borderColor: withAlpha(C.positive, 0.25) }]}
-                      >
-                        <Feather name="plus-circle" size={15} color={C.positive} />
-                        <Text style={[styles.debtPrimaryActionText, { color: C.positive }]}>record all payment</Text>
-                      </TouchableOpacity>
+                      />
 
                       {/* Secondary actions — icon chip row (L→R: archive, reminder, send request, add debt) */}
                       <View style={[styles.debtIconRow, { justifyContent: 'center' }]}>
@@ -6140,14 +6150,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         )
                       : batchPayments.reduce((s, p) => s + p.amount, 0);
                     return (
-                      <TouchableOpacity
-                        activeOpacity={0.7}
+                      <NeuPressable
                         onPress={() => handleDeletePayment(batchPayments[0]._debtId, batchPayments[0].id)}
-                        style={[styles.debtPrimaryAction, neuS.raised, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04), borderColor: withAlpha(C.textPrimary, 0.1) }]}
+                        style={[styles.debtPrimaryAction, neuS.raisedSoft, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04), borderColor: withAlpha(C.textPrimary, 0.1) }]}
                       >
                         <Feather name="rotate-ccw" size={15} color={C.textSecondary} />
                         <Text style={[styles.debtPrimaryActionText, { color: C.textSecondary }]}>undo consolidated · {currency} {batchTotal.toFixed(2)}</Text>
-                      </TouchableOpacity>
+                      </NeuPressable>
                     );
                   })()}
                   <Pressable
@@ -8074,7 +8083,8 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.full,
     width: '100%',
-    borderWidth: 1,
+    // No border — the neu.raisedSoft shadow supplies the lift (like NeuButton). A
+    // border here read as an outline and fought the raised look.
   },
   debtPrimaryActionText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -9044,10 +9054,17 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   dDebtTypeSegmented: {
     flexDirection: 'row',
     gap: 6,
-    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.10 : 0.06),
     borderRadius: RADIUS.full,
     padding: 4,
     marginTop: SPACING.md,
+  },
+  // Fallback-only clip; native glass must NOT be masked (it self-rounds).
+  dDebtTypeSegClip: { overflow: 'hidden' },
+  dDebtTypeSegShape: { borderRadius: RADIUS.full },
+  dDebtTypeSegFallbackTint: {
+    backgroundColor: withAlpha(C.surface, 0.4),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha('#FFFFFF', 0.3),
   },
   dDebtTypeSegBtn: {
     flex: 1,

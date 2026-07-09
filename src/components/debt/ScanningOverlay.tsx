@@ -1,8 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Modal, ActivityIndicator } from 'react-native';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
-import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
 
 interface ScanningOverlayProps {
@@ -11,7 +10,6 @@ interface ScanningOverlayProps {
 
 const ScanningOverlay: React.FC<ScanningOverlayProps> = ({ visible }) => {
   const C = useCalm();
-  const neuS = useNeu(C.surface);
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
@@ -20,7 +18,7 @@ const ScanningOverlay: React.FC<ScanningOverlayProps> = ({ visible }) => {
   return (
     <Modal visible transparent statusBarTranslucent animationType="fade">
       <View style={styles.scanningOverlay}>
-        <View style={[styles.scanningCard, neuS.raisedSoft]}>
+        <View style={[styles.scanningCard, SHADOWS.lg]}>
           <ActivityIndicator size="large" color={C.accent} />
           <Text style={styles.scanningTitle}>{t.debts.scanningReceipt}</Text>
           <Text style={styles.scanningSubtext}>{t.debts.aiReadingReceipt}</Text>

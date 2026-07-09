@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Pressable, Modal } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../common/neu';
 import { Subscription } from '../../types';
@@ -25,7 +25,7 @@ const CommitmentPickerModal: React.FC<CommitmentPickerModalProps> = ({ visible, 
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={onClose}>
-        <Pressable onPress={() => {}} style={[styles.choiceCard, neuS.raisedSoft, { maxHeight: '60%' }]}>
+        <Pressable onPress={() => {}} style={[styles.choiceCard, SHADOWS.lg, { maxHeight: '60%' }]}>
           <Text style={styles.choiceTitle}>link to commitment</Text>
           <Text style={styles.choiceSubtitle}>pick an existing commitment</Text>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ marginTop: SPACING.md }}>

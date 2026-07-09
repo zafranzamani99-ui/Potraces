@@ -11,7 +11,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import CategoryIcon from './CategoryIcon';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from './neu';
 import { CategoryOption } from '../../types';
@@ -194,7 +194,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
             activeOpacity={1}
             onPress={() => setDropdownOpen(false)}
           >
-            <View style={[styles.dropdownModal, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.dropdownModal, SHADOWS.lg]} onStartShouldSetResponder={() => true}>
               <View style={styles.dropdownHeader}>
                 <Text style={styles.dropdownTitle}>
                   {label || 'Select Category'}

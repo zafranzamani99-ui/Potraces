@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Pressable, Modal } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
@@ -25,7 +25,7 @@ const FabChoiceModal: React.FC<FabChoiceModalProps> = ({ visible, onClose, onAdd
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={onClose}>
-        <Pressable onPress={() => {}} style={[styles.choiceCard, neuS.raisedSoft]}>
+        <Pressable onPress={() => {}} style={[styles.choiceCard, SHADOWS.lg]}>
           <Text style={styles.choiceTitle}>{t.debts.newEntry}</Text>
           <Text style={styles.choiceSubtitle}>{t.debts.whatWouldYouAdd}</Text>
           {([

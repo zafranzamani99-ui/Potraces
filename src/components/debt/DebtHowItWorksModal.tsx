@@ -2,9 +2,8 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
-import { useNeu } from '../common/neu';
 import NeuButton from '../common/NeuButton';
 
 interface DebtHowItWorksModalProps {
@@ -14,7 +13,6 @@ interface DebtHowItWorksModalProps {
 
 const DebtHowItWorksModal: React.FC<DebtHowItWorksModalProps> = ({ visible, onClose }) => {
   const C = useCalm();
-  const neuS = useNeu(C.surface); // card sits on a dim scrim with bg C.surface
   const styles = useMemo(() => makeStyles(C), [C]);
 
   if (!visible) return null;
@@ -22,7 +20,7 @@ const DebtHowItWorksModal: React.FC<DebtHowItWorksModalProps> = ({ visible, onCl
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={styles.dHowOverlay} onPress={onClose}>
-        <View style={[styles.dHowCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+        <View style={styles.dHowCard} onStartShouldSetResponder={() => true}>
           <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: SPACING.sm }}>
             <View style={styles.dHowCardHeader}>
               <Text style={styles.dHowCardTitle}>how it works</Text>
@@ -31,50 +29,50 @@ const DebtHowItWorksModal: React.FC<DebtHowItWorksModalProps> = ({ visible, onCl
 
             {/* ── Basics ── */}
             <Text style={styles.dHowGroupLabel}>basics</Text>
-            <View style={[styles.dHowItem, neuS.raised]}>
-              <View style={[styles.dHowIconCircle, neuS.well]}><Feather name="users" size={14} color={C.textSecondary} /></View>
+            <View style={styles.dHowItem}>
+              <View style={styles.dHowIconCircle}><Feather name="users" size={14} color={C.textSecondary} /></View>
               <Text style={styles.dHowText}><Text style={styles.dHowBold}>grouped by person</Text> — debts with the same person are consolidated into one card. tap to see each debt inside.</Text>
             </View>
-            <View style={[styles.dHowItem, neuS.raised]}>
-              <View style={[styles.dHowIconCircle, neuS.well]}><Feather name="check-circle" size={14} color={C.textSecondary} /></View>
+            <View style={styles.dHowItem}>
+              <View style={styles.dHowIconCircle}><Feather name="check-circle" size={14} color={C.textSecondary} /></View>
               <Text style={styles.dHowText}><Text style={styles.dHowBold}>record payments</Text> — partial or full, against any debt. each payment links to your wallet automatically.</Text>
             </View>
-            <View style={[styles.dHowItem, neuS.raised]}>
-              <View style={[styles.dHowIconCircle, neuS.well]}><Feather name="rotate-ccw" size={14} color={C.textSecondary} /></View>
+            <View style={styles.dHowItem}>
+              <View style={styles.dHowIconCircle}><Feather name="rotate-ccw" size={14} color={C.textSecondary} /></View>
               <Text style={styles.dHowText}><Text style={styles.dHowBold}>undo payments</Text> — tap the clock icon to view history. you can remove any payment from there.</Text>
             </View>
 
             {/* ── Automation ── */}
             <Text style={styles.dHowGroupLabel}>automation</Text>
-            <View style={[styles.dHowItem, neuS.raised]}>
-              <View style={[styles.dHowIconCircle, neuS.well]}><Feather name="archive" size={14} color={C.textSecondary} /></View>
+            <View style={styles.dHowItem}>
+              <View style={styles.dHowIconCircle}><Feather name="archive" size={14} color={C.textSecondary} /></View>
               <Text style={styles.dHowText}><Text style={styles.dHowBold}>auto-archive</Text> — settled debts move to archive after 30 days. enable the archive tab in settings to view them.</Text>
             </View>
-            <View style={[styles.dHowItem, neuS.raised]}>
-              <View style={[styles.dHowIconCircle, neuS.well]}><Feather name="bell" size={14} color={C.textSecondary} /></View>
+            <View style={styles.dHowItem}>
+              <View style={styles.dHowIconCircle}><Feather name="bell" size={14} color={C.textSecondary} /></View>
               <Text style={styles.dHowText}><Text style={styles.dHowBold}>reminders</Text> — send a friendly nudge via WhatsApp for "they owe" debts. includes all outstanding amounts.</Text>
             </View>
-            <View style={[styles.dHowItem, neuS.raised]}>
-              <View style={[styles.dHowIconCircle, neuS.well]}><Feather name="send" size={14} color={C.textSecondary} /></View>
+            <View style={styles.dHowItem}>
+              <View style={styles.dHowIconCircle}><Feather name="send" size={14} color={C.textSecondary} /></View>
               <Text style={styles.dHowText}><Text style={styles.dHowBold}>request payment</Text> — generate a message with optional QR code. share via WhatsApp or copy.</Text>
             </View>
 
             {/* ── Managing ── */}
             <Text style={styles.dHowGroupLabel}>managing</Text>
-            <View style={[styles.dHowItem, neuS.raised]}>
-              <View style={[styles.dHowIconCircle, neuS.well]}><Feather name="trash-2" size={14} color={C.textSecondary} /></View>
+            <View style={styles.dHowItem}>
+              <View style={styles.dHowIconCircle}><Feather name="trash-2" size={14} color={C.textSecondary} /></View>
               <Text style={styles.dHowText}><Text style={styles.dHowBold}>delete only here</Text> — debt-linked transactions can only be removed from this screen, not from the transactions list.</Text>
             </View>
-            <View style={[styles.dHowItem, neuS.raised]}>
-              <View style={[styles.dHowIconCircle, neuS.well]}><Feather name="check-square" size={14} color={C.textSecondary} /></View>
+            <View style={styles.dHowItem}>
+              <View style={styles.dHowIconCircle}><Feather name="check-square" size={14} color={C.textSecondary} /></View>
               <Text style={styles.dHowText}><Text style={styles.dHowBold}>bulk actions</Text> — long-press any debt or split to select. archive or delete multiple items at once.</Text>
             </View>
-            <View style={[styles.dHowItem, neuS.raised]}>
-              <View style={[styles.dHowIconCircle, neuS.well]}><Feather name="edit-2" size={14} color={C.textSecondary} /></View>
+            <View style={styles.dHowItem}>
+              <View style={styles.dHowIconCircle}><Feather name="edit-2" size={14} color={C.textSecondary} /></View>
               <Text style={styles.dHowText}><Text style={styles.dHowBold}>edit tracking</Text> — payment edits are logged. look for the "edited" badge on modified payments.</Text>
             </View>
-            <View style={[styles.dHowItem, neuS.raised]}>
-              <View style={[styles.dHowIconCircle, neuS.well]}><Feather name="scissors" size={14} color={C.textSecondary} /></View>
+            <View style={styles.dHowItem}>
+              <View style={styles.dHowIconCircle}><Feather name="scissors" size={14} color={C.textSecondary} /></View>
               <Text style={styles.dHowText}><Text style={styles.dHowBold}>splits</Text> — divide expenses with friends using equal, custom, or item-based methods.</Text>
             </View>
           </ScrollView>
@@ -105,6 +103,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,
+    ...SHADOWS.lg,
   },
   dHowCardHeader: {
     marginBottom: SPACING.md,

@@ -1,8 +1,16 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
-import { useNeu } from '../common/neu';
+import { BlurView } from 'expo-blur';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
+
+// iOS 26 → Apple's real Liquid Glass (expo-glass-effect); Android / iOS < 26 →
+// expo-blur fallback. Glass rules (same as the navbar / GlassModeToggle): ONE glass
+// surface (the capsule), a NON-glass fill pill for the selected segment, capsule
+// UNtinted so the material adapts, and NO overflow:'hidden' masking the native
+// GlassView (it self-rounds; only the blur fallback is clipped).
+const GLASS = isLiquidGlassAvailable();
 
 export interface SegmentTab<K extends string = string> {
   key: K;
@@ -29,61 +37,106 @@ function DebtSegmentedControl<K extends string>({
   children,
 }: DebtSegmentedControlProps<K>) {
   const C = useCalm();
-  const neu = useNeu();
+  const isDark = useIsDark();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   return (
-    <View style={[styles.segmentedControl, neu.raised]}>
-      {tabs.map((tab) => {
-        const isActive = active === tab.key;
-        return (
-          <TouchableOpacity
-            key={tab.key}
-            onPress={() => onSelect(tab.key)}
-            style={[
-              styles.segmentTab,
-              isActive && neu.inset,
-              isActive && { backgroundColor: withAlpha(tab.color, 0.12) },
-            ]}
-            activeOpacity={0.7}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: isActive }}
-            accessibilityLabel={`${tab.label}, ${tab.count} ${tab.count === 1 ? itemNoun : itemNoun + 's'}`}
-          >
-            <Text style={[
-              styles.segmentTabText,
-              isActive && { color: tab.color, fontWeight: TYPOGRAPHY.weight.semibold },
-            ]}>
-              {tab.label}
-            </Text>
-            <View style={[
-              styles.segmentTabBadge,
-              isActive && { backgroundColor: tab.color },
-            ]}>
+    <View style={[styles.wrapper, !GLASS && styles.wrapperClip]}>
+      {/* ── Glass capsule (the single glass surface) ── */}
+      {GLASS ? (
+        <GlassView
+          style={[StyleSheet.absoluteFill, styles.capsuleShape]}
+          glassEffectStyle="regular"
+        />
+      ) : (
+        <>
+          <BlurView
+            style={[StyleSheet.absoluteFill, styles.capsuleShape]}
+            intensity={isDark ? 30 : 40}
+            tint={isDark ? 'dark' : 'light'}
+            experimentalBlurMethod="dimezisBlurView"
+          />
+          <View style={[StyleSheet.absoluteFill, styles.capsuleShape, styles.fallbackTint]} />
+        </>
+      )}
+
+      <View style={styles.track}>
+        {tabs.map((tab) => {
+          const isActive = active === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              onPress={() => onSelect(tab.key)}
+              style={[
+                styles.segmentTab,
+                // Non-glass selection pill on the glass. DARK: a neutral white bubble
+                // reads fine on the dark glass. LIGHT: a white pill blends into the
+                // light frosted glass (couldn't tell which was selected), so the
+                // selected segment uses the tab's OWN color as a tint + a clear colored
+                // border — unmistakable, and the bold colored label sits on it.
+                isActive && (isDark
+                  ? {
+                      backgroundColor: withAlpha('#FFFFFF', 0.16),
+                      borderColor: withAlpha('#FFFFFF', 0.22),
+                      borderWidth: StyleSheet.hairlineWidth,
+                      ...SHADOWS.sm,
+                    }
+                  : {
+                      backgroundColor: withAlpha(tab.color, 0.16),
+                      borderColor: withAlpha(tab.color, 0.55),
+                      borderWidth: 1.5,
+                      ...SHADOWS.sm,
+                    }),
+              ]}
+              activeOpacity={0.7}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              accessibilityLabel={`${tab.label}, ${tab.count} ${tab.count === 1 ? itemNoun : itemNoun + 's'}`}
+            >
               <Text style={[
-                styles.segmentTabBadgeText,
-                isActive && { color: C.onAccent },
+                styles.segmentTabText,
+                isActive && { color: tab.color, fontWeight: TYPOGRAPHY.weight.semibold },
               ]}>
-                {tab.count}
+                {tab.label}
               </Text>
-            </View>
-          </TouchableOpacity>
-        );
-      })}
-      {children}
+              <View style={[
+                styles.segmentTabBadge,
+                isActive && { backgroundColor: tab.color },
+              ]}>
+                <Text style={[
+                  styles.segmentTabBadgeText,
+                  isActive && { color: C.onAccent },
+                ]}>
+                  {tab.count}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+        {children}
+      </View>
     </View>
   );
 }
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  segmentedControl: {
+  wrapper: {
+    borderRadius: RADIUS.full,
+    marginBottom: SPACING.md,
+  },
+  // Fallback-only: BlurView needs clipping; native glass must NOT be masked.
+  wrapperClip: { overflow: 'hidden' },
+  capsuleShape: { borderRadius: RADIUS.full },
+  fallbackTint: {
+    backgroundColor: withAlpha(C.surface, 0.4),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha('#FFFFFF', 0.3),
+  },
+  track: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.08 : 0.04),
-    borderRadius: RADIUS.full,
     padding: 4,
-    marginBottom: SPACING.md,
   },
   segmentTab: {
     flex: 1,
