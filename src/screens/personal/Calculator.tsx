@@ -184,7 +184,9 @@ const Calculator: React.FC = () => {
               <Pressable key={j} onPress={() => press(k)} style={styles.keyWrap} accessibilityLabel={keyLabel(k)}>
                 {({ pressed }) => (
                   k.t === 'eq' ? (
-                    <View style={[styles.eqKey, neu.raisedSoft, pressed && styles.keyPressed]}>
+                    // neu.raisedSoft carries its own (neu-base) backgroundColor, so the
+                    // olive fill MUST be re-applied AFTER it — same as NeuButton does.
+                    <View style={[styles.eqKey, neu.raisedSoft, { backgroundColor: C.accent }, pressed && styles.keyPressed]}>
                       <Text style={styles.eqText}>=</Text>
                     </View>
                   ) : (
