@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -10,6 +10,7 @@ import { openQuickAdd } from '../../components/common/QuickAddExpense';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
+import { withAlpha } from '../../constants';
 import { usePersonalStore } from '../../store/personalStore';
 import { useCalculatorStore } from '../../store/calculatorStore';
 import {
@@ -45,6 +46,23 @@ const keyLabel = (k: Key): string => {
   }
 };
 
+const relativeTime = (iso: string, t: ReturnType<typeof useT>): string => {
+  const d = new Date(iso);
+  const then = d.getTime();
+  if (!isFinite(then)) return '';
+  const mins = Math.floor(Math.max(0, Date.now() - then) / 60000);
+  if (mins < 1) return t.calc.justNow;
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return t.calc.yesterday;
+  if (days < 7) return `${days}d`;
+  return `${d.getDate()}/${d.getMonth() + 1}`;
+};
+
+type HubView = 'main' | 'split' | 'goal';
+
 const Calculator: React.FC = () => {
   const C = useCalm();
   const t = useT();
@@ -53,15 +71,15 @@ const Calculator: React.FC = () => {
   const history = useCalculatorStore((s) => s.history);
   const addEntry = useCalculatorStore((s) => s.addEntry);
   const clearHistory = useCalculatorStore((s) => s.clearHistory);
+  const removeEntry = useCalculatorStore((s) => s.removeEntry);
   const goals = usePersonalStore((s) => s.goals);
   const activeGoals = useMemo(() => goals.filter((g) => !g.isArchived), [goals]);
 
   const [state, setState] = useState<CalcState>(initialCalc);
   const [showHistory, setShowHistory] = useState(false);
   const [showHub, setShowHub] = useState(false);
-  const [showSplitChoice, setShowSplitChoice] = useState(false);
+  const [hubView, setHubView] = useState<HubView>('main');
   const [showQuick, setShowQuick] = useState(false);
-  const [showGoalPicker, setShowGoalPicker] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const value = result(state);
@@ -97,6 +115,16 @@ const Calculator: React.FC = () => {
     });
   };
 
+  const openHub = () => { lightTap(); setHubView('main'); setShowHub(true); };
+  const insertFromHistory = (r: number) => { lightTap(); setState((s) => insertValue(s, String(r))); setShowHistory(false); };
+  const confirmClear = () => {
+    lightTap();
+    Alert.alert(t.calc.clearHistory, t.calc.clearConfirm, [
+      { text: t.common.cancel, style: 'cancel' },
+      { text: t.calc.clear, style: 'destructive', onPress: () => clearHistory() },
+    ]);
+  };
+
   const copyResult = async () => {
     if (!canUse) return;
     lightTap();
@@ -113,7 +141,7 @@ const Calculator: React.FC = () => {
     <View style={styles.root}>
       {/* Display card (long-press to copy) */}
       <Pressable style={styles.card} onLongPress={copyResult} delayLongPress={350} accessibilityHint="Long-press to copy">
-        <Pressable style={styles.historyBtn} onPress={() => { lightTap(); setShowHistory(true); }} accessibilityLabel={t.calc.history}>
+        <Pressable style={styles.historyBtn} onPress={() => { lightTap(); setShowHistory(true); }} accessibilityLabel={t.calc.history} hitSlop={8}>
           <Ionicons name="time-outline" size={22} color={C.textMuted} />
         </Pressable>
         {copied && (
@@ -140,7 +168,7 @@ const Calculator: React.FC = () => {
         </View>
 
         <View style={styles.utilRow}>
-          <Pressable style={styles.backBtn} onPress={() => { lightTap(); setState((s) => backspace(s)); }} accessibilityLabel="backspace" hitSlop={8}>
+          <Pressable style={styles.backBtn} onPress={() => { lightTap(); setState((s) => backspace(s)); }} accessibilityLabel={t.calc.backspace} hitSlop={8}>
             <Ionicons name="backspace-outline" size={24} color={C.accent} />
           </Pressable>
         </View>
@@ -173,74 +201,111 @@ const Calculator: React.FC = () => {
       <Pressable
         style={[styles.useBtn, !canUse && styles.useBtnDisabled]}
         disabled={!canUse}
-        onPress={() => { lightTap(); setShowHub(true); }}
+        onPress={openHub}
         accessibilityLabel={t.calc.useAmount}
       >
-        <Ionicons name="arrow-forward-circle-outline" size={18} color={C.onAccent} />
         <Text style={styles.useText}>{t.calc.useAmount}</Text>
+        {canUse && <Text style={styles.useAmount}>RM {formatNumber(value)}</Text>}
+        <Ionicons name="arrow-forward" size={18} color={C.onAccent} />
       </Pressable>
 
-      {/* History sheet */}
-      <BottomSheet visible={showHistory} onClose={() => setShowHistory(false)} header={<Text style={styles.sheetTitle}>{t.calc.history}</Text>}>
-        <ScrollView contentContainerStyle={styles.sheetBody}>
+      {/* ── History sheet (header actions live in-body, not in the drag zone) ── */}
+      <BottomSheet visible={showHistory} onClose={() => setShowHistory(false)}>
+        <View style={styles.pinnedHeader}>
+          <Text style={styles.sheetTitle}>{t.calc.history}</Text>
+          {history.length > 0 && (
+            <Pressable onPress={confirmClear} hitSlop={10} accessibilityLabel={t.calc.clearHistory}>
+              <Text style={styles.headerAction}>{t.calc.clear}</Text>
+            </Pressable>
+          )}
+        </View>
+        <ScrollView contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
           {history.length === 0 ? (
-            <Text style={styles.empty}>{t.calc.noHistory}</Text>
+            <View style={styles.emptyWrap}>
+              <Ionicons name="time-outline" size={36} color={C.textMuted} />
+              <Text style={styles.emptyTitle}>{t.calc.noHistory}</Text>
+              <Text style={styles.emptyHint}>{t.calc.noHistoryHint}</Text>
+            </View>
           ) : (
             history.map((h) => (
               <Pressable
                 key={h.id}
-                style={styles.historyRow}
-                onPress={() => { lightTap(); setState((s) => insertValue(s, String(h.result))); setShowHistory(false); }}
+                style={({ pressed }) => [styles.histRow, pressed && styles.rowPressed]}
+                onPress={() => insertFromHistory(h.result)}
+                accessibilityLabel={`${h.expression} = ${formatNumber(h.result)}`}
               >
-                <Text style={styles.historyExpr} numberOfLines={1}>{h.expression}</Text>
-                <Text style={styles.historyResult}>{formatNumber(h.result)}</Text>
+                <View style={styles.histTextWrap}>
+                  <Text style={styles.histResult} numberOfLines={1}>{formatNumber(h.result)}</Text>
+                  <Text style={styles.histExpr} numberOfLines={1}>{h.expression}</Text>
+                </View>
+                <Text style={styles.histTime}>{relativeTime(h.at, t)}</Text>
+                <Pressable onPress={() => { lightTap(); removeEntry(h.id); }} hitSlop={12} style={styles.histDel} accessibilityLabel={t.calc.deleteEntry}>
+                  <Ionicons name="close" size={16} color={C.textMuted} />
+                </Pressable>
               </Pressable>
             ))
-          )}
-          {history.length > 0 && (
-            <Pressable style={styles.clearBtn} onPress={() => { lightTap(); clearHistory(); }}>
-              <Text style={styles.clearText}>{t.calc.clearHistory}</Text>
-            </Pressable>
           )}
         </ScrollView>
       </BottomSheet>
 
-      {/* Hub: what to do with the amount */}
-      <BottomSheet visible={showHub} onClose={() => setShowHub(false)} header={<Text style={styles.sheetTitle}>{t.calc.useAmount} · {formatNumber(value)}</Text>}>
-        <View style={styles.sheetBody}>
-          <HubRow C={C} icon="arrow-down-circle-outline" label={t.calc.logExpense} onPress={() => { lightTap(); setShowHub(false); openQuickAdd('expense', String(value)); }} />
-          <HubRow C={C} icon="arrow-up-circle-outline" label={t.calc.logIncome} onPress={() => { lightTap(); setShowHub(false); openQuickAdd('income', String(value)); }} />
-          <HubRow C={C} icon="people-outline" label={t.calc.split} onPress={() => { lightTap(); setShowHub(false); setShowSplitChoice(true); }} />
-          {activeGoals.length > 0 && (
-            <HubRow C={C} icon="flag-outline" label={t.calc.goal} onPress={() => { lightTap(); setShowHub(false); setShowGoalPicker(true); }} />
-          )}
-        </View>
-      </BottomSheet>
-
-      {/* Split sub-chooser */}
-      <BottomSheet visible={showSplitChoice} onClose={() => setShowSplitChoice(false)} header={<Text style={styles.sheetTitle}>{t.calc.split}</Text>}>
-        <View style={styles.sheetBody}>
-          <HubRow C={C} icon="flash-outline" label={t.calc.quickSplit} onPress={() => { lightTap(); setShowSplitChoice(false); setShowQuick(true); }} />
-          <HubRow C={C} icon="list-outline" label={t.calc.detailedSplit} onPress={() => { lightTap(); setShowSplitChoice(false); navigation.navigate('DebtTracking', { prefillSplitAmount: value }); }} />
-        </View>
-      </BottomSheet>
-
-      {/* Goal picker */}
-      <BottomSheet visible={showGoalPicker} onClose={() => setShowGoalPicker(false)} header={<Text style={styles.sheetTitle}>{t.calc.pickGoal}</Text>}>
-        <ScrollView contentContainerStyle={styles.sheetBody}>
-          {activeGoals.map((g) => (
-            <Pressable
-              key={g.id}
-              style={styles.goalRow}
-              onPress={() => { lightTap(); setShowGoalPicker(false); navigation.navigate('Goals', { contributeGoalId: g.id, contributeAmount: value }); }}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.goalName} numberOfLines={1}>{g.name}</Text>
-                <Text style={styles.goalSub}>RM {formatNumber(g.currentAmount)} / RM {formatNumber(g.targetAmount)}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
+      {/* ── Use-this-amount hub (single sheet, in-place steps) ── */}
+      <BottomSheet visible={showHub} onClose={() => setShowHub(false)}>
+        <View style={styles.pinnedHeader}>
+          {hubView !== 'main' ? (
+            <Pressable onPress={() => { lightTap(); setHubView('main'); }} hitSlop={10} style={styles.hubBack} accessibilityLabel={t.a11y.back}>
+              <Ionicons name="chevron-back" size={22} color={C.accent} />
             </Pressable>
-          ))}
+          ) : null}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.hubAmount}>RM {formatNumber(value)}</Text>
+            <Text style={styles.hubPrompt}>
+              {hubView === 'split' ? t.calc.split : hubView === 'goal' ? t.calc.pickGoal : t.calc.hubPrompt}
+            </Text>
+          </View>
+        </View>
+        <ScrollView contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
+          {hubView === 'main' && (
+            <>
+              <ActionRow C={C} icon="arrow-down-circle" tint={C.accent} title={t.calc.logExpense} subtitle={t.calc.logExpenseSub}
+                onPress={() => { lightTap(); setShowHub(false); openQuickAdd('expense', String(value)); }} />
+              <ActionRow C={C} icon="arrow-up-circle" tint={C.positive} title={t.calc.logIncome} subtitle={t.calc.logIncomeSub}
+                onPress={() => { lightTap(); setShowHub(false); openQuickAdd('income', String(value)); }} />
+              <ActionRow C={C} icon="people" tint={C.bronze} title={t.calc.split} subtitle={t.calc.splitSub}
+                onPress={() => { lightTap(); setHubView('split'); }} />
+              {activeGoals.length > 0 && (
+                <ActionRow C={C} icon="flag" tint={C.gold} title={t.calc.goal} subtitle={t.calc.goalSub}
+                  onPress={() => { lightTap(); setHubView('goal'); }} />
+              )}
+            </>
+          )}
+
+          {hubView === 'split' && (
+            <>
+              <ActionRow C={C} icon="flash" tint={C.accent} title={t.calc.quickSplit} subtitle={t.calc.quickSplitSub}
+                onPress={() => { lightTap(); setShowHub(false); setShowQuick(true); }} />
+              <ActionRow C={C} icon="list" tint={C.bronze} title={t.calc.detailedSplit} subtitle={t.calc.detailedSplitSub}
+                onPress={() => { lightTap(); setShowHub(false); navigation.navigate('DebtTracking', { prefillSplitAmount: value }); }} />
+            </>
+          )}
+
+          {hubView === 'goal' && (
+            activeGoals.length === 0 ? (
+              <Text style={styles.emptyHint}>{t.calc.noGoals}</Text>
+            ) : activeGoals.map((g) => {
+              const pct = g.targetAmount > 0 ? Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100)) : 0;
+              return (
+                <ActionRow
+                  key={g.id}
+                  C={C}
+                  icon="flag"
+                  tint={C.gold}
+                  title={g.name}
+                  subtitle={`RM ${formatNumber(g.currentAmount)} / RM ${formatNumber(g.targetAmount)} · ${pct}%`}
+                  onPress={() => { lightTap(); setShowHub(false); navigation.navigate('Goals', { contributeGoalId: g.id, contributeAmount: value }); }}
+                />
+              );
+            })
+          )}
         </ScrollView>
       </BottomSheet>
 
@@ -250,16 +315,35 @@ const Calculator: React.FC = () => {
   );
 };
 
-const HubRow: React.FC<{ C: typeof CALM; icon: any; label: string; onPress: () => void }> = ({ C, icon, label, onPress }) => (
-  <Pressable
-    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 14, backgroundColor: C.pillBg }}
-    onPress={onPress}
-    accessibilityLabel={label}
-  >
-    <Ionicons name={icon} size={20} color={C.accent} />
-    <Text style={{ fontSize: 16, fontWeight: '500', color: C.textPrimary }}>{label}</Text>
-  </Pressable>
-);
+const ActionRow: React.FC<{
+  C: typeof CALM; icon: any; title: string; subtitle?: string; tint?: string; onPress: () => void;
+}> = ({ C, icon, title, subtitle, tint, onPress }) => {
+  const s = useMemo(() => rowStyles(C), [C]);
+  const accent = tint || C.accent;
+  return (
+    <Pressable
+      style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}
+      onPress={onPress}
+      accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
+    >
+      <View style={[s.iconWrap, { backgroundColor: withAlpha(accent, 0.12) }]}>
+        <Ionicons name={icon} size={20} color={accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={s.title} numberOfLines={1}>{title}</Text>
+        {subtitle ? <Text style={s.sub} numberOfLines={1}>{subtitle}</Text> : null}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
+    </Pressable>
+  );
+};
+
+const rowStyles = (C: typeof CALM) => StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 16, backgroundColor: C.pillBg },
+  iconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 15, fontWeight: '600', color: C.textPrimary },
+  sub: { fontSize: 12.5, color: C.textMuted, marginTop: 2, fontVariant: ['tabular-nums'] },
+});
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background, paddingHorizontal: 14, paddingBottom: 20 },
@@ -268,7 +352,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: 20, paddingTop: 44, paddingBottom: 12, justifyContent: 'flex-end',
     borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
   },
-  historyBtn: { position: 'absolute', top: 12, right: 12, padding: 6 },
+  historyBtn: { position: 'absolute', top: 10, right: 10, padding: 10 },
   copiedPill: { position: 'absolute', top: 14, left: 16, backgroundColor: C.accent, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
   copiedText: { color: C.onAccent, fontSize: 12, fontWeight: '600' },
   displayArea: { flex: 1, justifyContent: 'flex-end' },
@@ -286,22 +370,31 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   eqKey: { flex: 1, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: C.accent },
   eqText: { fontSize: 26, fontWeight: '600', color: C.onAccent },
   useBtn: {
-    marginTop: 14, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: C.accent, borderRadius: 16, paddingVertical: 14,
+    marginTop: 14, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.accent, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 18,
   },
   useBtnDisabled: { opacity: 0.4 },
   useText: { color: C.onAccent, fontWeight: '700', fontSize: 15 },
-  sheetTitle: { fontSize: 18, fontWeight: '600', color: C.textPrimary, paddingHorizontal: 20, paddingTop: 8 },
+  useAmount: { color: C.onAccent, fontWeight: '600', fontSize: 14, fontVariant: ['tabular-nums'], marginLeft: -2 },
+  // Sheets
+  pinnedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
+  sheetTitle: { fontSize: 18, fontWeight: '600', color: C.textPrimary },
+  headerAction: { fontSize: 14, fontWeight: '600', color: C.accent },
   sheetBody: { padding: 16, gap: 10 },
-  empty: { textAlign: 'center', color: C.textMuted, paddingVertical: 30 },
-  historyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 12 },
-  historyExpr: { color: C.textSecondary, fontSize: 14, flex: 1, fontVariant: ['tabular-nums'] },
-  historyResult: { color: C.textPrimary, fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  clearBtn: { alignItems: 'center', paddingVertical: 16 },
-  clearText: { color: C.textMuted, fontSize: 14 },
-  goalRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
-  goalName: { fontSize: 15, fontWeight: '600', color: C.textPrimary },
-  goalSub: { fontSize: 12, color: C.textMuted, marginTop: 2, fontVariant: ['tabular-nums'] },
+  hubBack: { padding: 6 },
+  hubAmount: { fontSize: 24, fontWeight: '700', color: C.textPrimary, fontVariant: ['tabular-nums'] },
+  hubPrompt: { fontSize: 13, color: C.textMuted, marginTop: 1 },
+  // History rows
+  emptyWrap: { alignItems: 'center', paddingVertical: 40, gap: 8 },
+  emptyTitle: { color: C.textSecondary, fontSize: 15, fontWeight: '600' },
+  emptyHint: { color: C.textMuted, fontSize: 13, textAlign: 'center' },
+  rowPressed: { opacity: 0.6 },
+  histRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: C.pillBg },
+  histTextWrap: { flex: 1 },
+  histResult: { fontSize: 18, fontWeight: '700', color: C.textPrimary, fontVariant: ['tabular-nums'] },
+  histExpr: { fontSize: 13, color: C.textMuted, marginTop: 2, fontVariant: ['tabular-nums'] },
+  histTime: { fontSize: 12, color: C.textMuted, fontVariant: ['tabular-nums'] },
+  histDel: { padding: 8 },
 });
 
 export default Calculator;
