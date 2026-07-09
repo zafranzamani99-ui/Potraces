@@ -19,7 +19,8 @@
     "test:authmigrate": "tsx scripts/test-authstore-migrate.ts",
     "test:deleteflow": "tsx scripts/test-delete-flow.ts",
     "test:calcengine": "tsx scripts/test-calculator-engine.ts",
-    "test:splitshares": "tsx scripts/test-split-shares.ts"
+    "test:splitshares": "tsx scripts/test-split-shares.ts",
+    "test:sampledata": "tsx scripts/test-sample-data.ts"
   },
   "dependencies": {
     "@bottom-tabs/react-navigation": "^1.3.1",

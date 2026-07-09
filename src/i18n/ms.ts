@@ -374,7 +374,7 @@ export const ms: Translations = {
     taxYearPdf: 'PDF Tahun Cukai {year}',
     csvEllipsis: 'CSV…',
     deleteAccountTitle: 'Padam Data Peribadi',
-    deleteAccountWarning: 'Ini akan memadam SEMUA data peribadi anda — di peranti ini dan, jika penyegerakan awan dihidupkan, dari pelayan kami:\n\n• Semua transaksi, resit, dompet, bajet, matlamat\n• Semua hutang, pecahan, kenalan\n• Semua simpanan, nota, kategori\n• Tetapan app (tema, bahasa, mata wang) kembali ke asal\n\nData perniagaan anda TIDAK terjejas. Ini tidak boleh dipulihkan.',
+    deleteAccountWarning: 'Ini akan memadam SEMUA data peribadi anda — di peranti ini dan, jika penyegerakan awan dihidupkan, dari pelayan kami:\n\n• Semua transaksi, resit, dompet, bajet, matlamat\n• Semua hutang, pecahan, kenalan\n• Semua simpanan, nota, kategori\n• Tetapan app kembali ke asal (tema, bahasa; mata wang juga, kecuali anda ada data perniagaan)\n\nData perniagaan anda TIDAK terjejas. Ini tidak boleh dipulihkan.',
     continueLabel: 'Teruskan',
     absolutelySure: 'Anda benar-benar pasti?',
     absolutelySureMsg: 'Ketuk "Padam Data Peribadi" untuk memadam semuanya secara kekal. Data perniagaan anda kekal. Ini tidak boleh dipulihkan.',

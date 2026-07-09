@@ -1,4 +1,4 @@
-import { daysAgo, startOfMonth, endOfMonth, type Persona } from '../index';
+import { daysAgo, startOfMonth, endOfMonth, type Persona } from '../core';
 
 // ─── Persona ──────────────────────────────────────────────────────────
 // Danish, 16, pelajar Form 4 kat sekolah menengah Shah Alam.

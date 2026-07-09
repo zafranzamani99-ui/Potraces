@@ -1,4 +1,4 @@
-import { daysAgo, startOfMonth, endOfMonth, type Persona } from '../index';
+import { daysAgo, startOfMonth, endOfMonth, type Persona } from '../core';
 
 // ─── Persona ──────────────────────────────────────────────────────────
 // Alia, 21, pelajar degree UiTM Shah Alam. (19–24 bracket.)

@@ -24,6 +24,7 @@ import { useReceiptStore } from './receiptStore';
 import { useSavingsStore } from './savingsStore';
 import { useBudgetProfileStore } from './budgetProfileStore';
 import { usePendingPaymentsStore } from './pendingPaymentsStore';
+import { useCalculatorStore } from './calculatorStore';
 import { clearBusinessDataRemote, clearPersonalDataRemote, signOut, supabaseBusiness } from '../services/supabase';
 import { isSharedAccount } from '../services/accountLink';
 import { purgeBackups, PERSONAL_BACKUP_KEYS } from '../services/storageBackup';
@@ -211,13 +212,25 @@ interface SettingsState {
 // and clearSampleData (clear demo data, keep the user where they are). Resets
 // every personal store in-memory, purges local rolling backups, and drops
 // personal FileSystem assets + persisted keys so nothing rehydrates.
+//
 // `remote` controls the cloud row deletion: true for user-initiated wipes;
 // false for the sign-in guard, where the session already belongs to the REAL
 // account, so deleting cloud rows would destroy real data before the first
 // pull — instead we clear local sample data and let syncPersonal.pullAll bring
 // the real account's data down.
+//
+// `userInitiated` controls the UNSYNCED stores (budget profile, Quick-Log inbox,
+// calculator history). These are NOT in personalSync, so pullAll can never bring
+// them back — wiping them on the sign-in guard would PERMANENTLY destroy real
+// data the demo never created. The demo dataset only ever populates the synced
+// stores above, so the guard has nothing to clean up here. Only a deliberate
+// user wipe ("delete personal data" / "clear & start fresh") may touch them.
+//
 // Deliberately does NOT touch settings fields — each caller owns its own set().
-const wipePersonalStores = async ({ remote }: { remote: boolean }): Promise<void> => {
+const wipePersonalStores = async ({
+  remote,
+  userInitiated,
+}: { remote: boolean; userInitiated: boolean }): Promise<void> => {
   usePersonalStore.setState({
     transactions: [],
     subscriptions: [],
@@ -281,18 +294,25 @@ const wipePersonalStores = async ({ remote }: { remote: boolean }): Promise<void
     draft: null,
     _deletedReceiptIds: [],
   });
-  // Echo's budget profile (take-home, must-pays, chosen model) and the
-  // background Quick-Log inbox are personal too — clearing them makes the
-  // deletion complete, so Echo can't "remember" old money and no stale pending
-  // payment reconciles onto a fresh start.
-  useBudgetProfileStore.setState({
-    takeHome: null,
-    commitments: [],
-    modelId: null,
-  });
-  usePendingPaymentsStore.setState({
-    pending: [],
-  });
+  // ── UNSYNCED personal stores — user-initiated wipes ONLY ──
+  // Echo's budget profile (take-home, must-pays, model), the background
+  // Quick-Log inbox, and the calculator history are personal data, so a real
+  // deletion must clear them. But none of them is synced (see personalSync.ts),
+  // so pullAll can never restore them: clearing them on the sign-in guard would
+  // permanently destroy data the demo never created. Guarded by userInitiated.
+  if (userInitiated) {
+    useBudgetProfileStore.setState({
+      takeHome: null,
+      commitments: [],
+      modelId: null,
+    });
+    usePendingPaymentsStore.setState({
+      pending: [],
+    });
+    useCalculatorStore.setState({
+      history: [],
+    });
+  }
 
   // Purge local rolling backups of personal stores too — otherwise deleted
   // data survives in bak:* snapshots and the deletion right is incomplete.
@@ -319,20 +339,29 @@ const wipePersonalStores = async ({ remote }: { remote: boolean }): Promise<void
 
   // Remove ONLY the personal persisted keys so nothing rehydrates. Business
   // keys, auth-storage, premium-storage, and settings-storage are kept.
-  await Promise.all([
+  //
+  // 'category-storage' is deliberately NOT removed: its partialize persists the
+  // BUSINESS custom categories/overrides/order in the same key (see
+  // categoryStore.ts), so dropping the key would destroy business categories
+  // that this wipe promises to preserve. The setState above already cleared the
+  // personal fields, and persist writes that back — business fields survive.
+  // (PERSONAL_BACKUP_KEYS excludes it for the same reason.)
+  const personalKeys = [
     'personal-storage',
     'wallet-storage',
     'savings-storage',
-    'category-storage',
     'debt-storage',
     'notes-storage',
     'learning-storage',
     'playbook-storage',
     'ai-insights-storage',
     'receipt-storage',
-    'budget-profile-storage',
-    'pending-payments-storage',
-  ].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
+  ];
+  // Unsynced stores: only a deliberate user wipe may drop these (see header).
+  if (userInitiated) {
+    personalKeys.push('budget-profile-storage', 'pending-payments-storage', 'calculator-history');
+  }
+  await Promise.all(personalKeys.map((k) => AsyncStorage.removeItem(k).catch(() => {})));
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -453,7 +482,7 @@ export const useSettingsStore = create<SettingsState>()(
         // stores, the Supabase session, and the auth user are left intact — a
         // business user who deletes their personal data keeps their shop and stays
         // signed in. Premium (a paid, account-level entitlement) is preserved.
-        await wipePersonalStores({ remote: true });
+        await wipePersonalStores({ remote: true, userInitiated: true });
 
         // Personal-only settings + a fresh-start reset so the app returns to the
         // first-run Onboarding screen — RootNavigator renders Onboarding
@@ -473,12 +502,16 @@ export const useSettingsStore = create<SettingsState>()(
           dismissedHints: [],
           sampleDataLoaded: false,
           // Preferences → defaults (see initial state).
-          currency: 'RM',
           themePreference: 'light',
           language: 'en',
           hapticEnabled: true,
           notificationsEnabled: true,
           echoDailyCheckin: false,
+          // `currency` is NOT a device preference — it is the unit every BUSINESS
+          // screen and PDF export renders the preserved shop figures in. Resetting
+          // it for a business user would relabel their SGD sales as RM without
+          // touching the numbers. Only reset it when there is no shop to mislabel.
+          ...(get().businessModeEnabled ? {} : { currency: 'RM' }),
         });
         // Open in personal mode (the install default). Business data is untouched
         // and reappears the moment the user switches back to business mode.
@@ -492,7 +525,10 @@ export const useSettingsStore = create<SettingsState>()(
         // empty dashboard ready for their own data rather than replaying
         // onboarding. localOnly (sign-in guard) skips the cloud-row delete so the
         // real account's data survives to be pulled down — see the header note.
-        await wipePersonalStores({ remote: !opts?.localOnly });
+        // localOnly = the sign-in guard. It must NOT touch the unsynced stores
+        // (budget profile / Quick-Log inbox / calculator history): the demo never
+        // creates them, and nothing can restore them.
+        await wipePersonalStores({ remote: !opts?.localOnly, userInitiated: !opts?.localOnly });
         // Replay the first-visit tutorials: the demo run fired (and consumed)
         // each screen's ScreenGuide on already-populated demo screens, so reset
         // dismissedHints to give the user's own empty screens the fresh guided

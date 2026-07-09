@@ -1,4 +1,4 @@
-import { daysAgo, startOfMonth, endOfMonth, type Persona } from '../index';
+import { daysAgo, startOfMonth, endOfMonth, type Persona } from '../core';
 
 // ─── Persona ──────────────────────────────────────────────────────────
 // Farah, 34, HR manager di sebuah firma korporat KL. (30+ bracket.)

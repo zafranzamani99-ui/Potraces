@@ -375,7 +375,7 @@ export const en = {
     taxYearPdf: 'Tax Year {year} PDF',
     csvEllipsis: 'CSV…',
     deleteAccountTitle: 'Delete Personal Data',
-    deleteAccountWarning: 'This permanently deletes ALL your personal data — on this device and, if cloud sync is on, from our servers:\n\n• All transactions, receipts, wallets, budgets, goals\n• All debts, splits, contacts\n• All savings, notes, categories\n• App preferences (theme, language, currency) reset to default\n\nYour business data is NOT affected. This cannot be undone.',
+    deleteAccountWarning: 'This permanently deletes ALL your personal data — on this device and, if cloud sync is on, from our servers:\n\n• All transactions, receipts, wallets, budgets, goals\n• All debts, splits, contacts\n• All savings, notes, categories\n• App preferences reset to default (theme, language; currency too, unless you have business data)\n\nYour business data is NOT affected. This cannot be undone.',
     continueLabel: 'Continue',
     absolutelySure: 'Are you absolutely sure?',
     absolutelySureMsg: 'Tap "Delete Personal Data" to permanently erase all of it. Your business data stays untouched. This cannot be undone.',

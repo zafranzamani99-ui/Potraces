@@ -1,4 +1,4 @@
-import { daysAgo, startOfMonth, endOfMonth, type Persona } from '../index';
+import { daysAgo, startOfMonth, endOfMonth, type Persona } from '../core';
 
 // ─── Persona ──────────────────────────────────────────────────────────
 // Aiman, 25, marketing exec in KL. (25–29 bracket.)
