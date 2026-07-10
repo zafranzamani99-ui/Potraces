@@ -80,7 +80,12 @@ export function reconcileWalletBalances(): ReconcileResult[] {
         // a business-mode payment links to a business tx we don't replay, so it must
         // be counted here or its wallet effect gets erased on reconcile.
         if (payment.linkedTransactionId && txIdSet.has(payment.linkedTransactionId)) continue;
-        computed = roundMoney(computed + dir * payment.amount);
+        // Business-mode payments charged the wallet amount+tip at creation, but the
+        // stored payment.amount is capped to the debt (tip excluded, kept as tipAmount).
+        // The tip lives on a business tx we do NOT replay, so count it here — mirror the
+        // delete path — or reconcile shorts the balance and erases the tip's wallet effect.
+        const tip = debt.mode !== 'personal' ? (payment.tipAmount ?? 0) : 0;
+        computed = roundMoney(computed + dir * (payment.amount + tip));
       }
     }
 

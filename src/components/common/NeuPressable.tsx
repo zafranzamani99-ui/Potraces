@@ -37,11 +37,13 @@ const NeuPressable: React.FC<Props> = ({ onPress, style, disabled, haptic = true
 
   return (
     <Pressable
+      accessibilityRole="button"
       onPressIn={onIn}
       onPressOut={onOut}
       onPress={() => { if (disabled) return; if (haptic) lightTap(); onPress(); }}
       disabled={disabled}
       {...rest}
+      accessibilityState={{ disabled: !!disabled, ...rest.accessibilityState }}
     >
       <Animated.View style={[style, aStyle]}>{children}</Animated.View>
     </Pressable>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Potraces — Quick Actions (modern Solar icons)</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#141312; color:#EDEAE3; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; padding:34px 18px 70px; min-height:100vh; user-select:none; }
+  header { max-width:860px; margin:0 auto; text-align:center; }
+  h1 { font-size:22px; font-weight:700; letter-spacing:-0.3px; }
+  .sub { font-size:13px; color:#A29D93; margin-top:8px; line-height:1.55; max-width:580px; margin-inline:auto; }
+  .sub b { color:#D6DE9A; }
+  code { font-family:ui-monospace,Menlo,monospace; font-size:.9em; color:#CFC8BC; }
+
+  .stage { max-width:860px; margin:30px auto 0; display:flex; gap:26px; justify-content:center; flex-wrap:wrap; }
+  .col { display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .col-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1.4px; color:#8C877E; }
+
+  .phone { position:relative; width:330px; border-radius:40px; overflow:hidden; padding:26px 0 30px;
+    border:1px solid rgba(255,255,255,.08); box-shadow:0 26px 60px rgba(0,0,0,.5); }
+  .phone.light { background:#F5F4EF; --text:#3A3628;
+    --b1:#FCFBF9; --b2:#F1F0EA; --shLight:#FFFFFF; --shDark:#E0DDD3;
+    --accent:#4F5104; --gold:#B98A12; --bronze:#9A6400; --deep:#3A3410; --lbl:#5A5648; }
+  .phone.dark  { background:#121212; --text:#F0EDE8;
+    --b1:#181818; --b2:#101010; --shLight:#242424; --shDark:#040404;
+    --accent:#A4A843; --gold:#D9BD55; --bronze:#C9924A; --deep:#9A9540; --lbl:#9A968C; }
+
+  .qtitle { font-size:13px; font-weight:600; color:var(--text); letter-spacing:.2px; padding:0 22px; margin-bottom:16px; }
+  .qrow-wrap { position:relative; }
+  .qrow-wrap + .qrow-wrap { margin-top:18px; }
+  .qrow { display:flex; gap:18px; overflow-x:auto; padding:6px 22px 8px; scrollbar-width:none; }
+  .qrow::-webkit-scrollbar { display:none; }
+  .qbtn { flex:0 0 auto; width:76px; display:flex; flex-direction:column; align-items:center; gap:8px; cursor:pointer; }
+  .qchip {
+    position:relative; width:56px; height:56px; border-radius:18px; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(145deg, var(--b1), var(--b2));
+    box-shadow:-3px -5px 10px var(--shLight), 4px 6px 12px var(--shDark);
+    transition:box-shadow .25s, transform .25s;
+  }
+  .qbtn.press .qchip { transform:scale(.94); box-shadow:inset -3px -5px 9px var(--shLight), inset 4px 6px 10px var(--shDark); }
+  .ic { display:flex; align-items:center; justify-content:center; transition:transform .25s; }
+  .ic svg { width:32px; height:32px; display:block; }
+  .qbtn.press .ic { transform:scale(.9); }
+  .qlabel { font-size:11px; font-weight:500; color:var(--lbl); text-align:center; white-space:nowrap; }
+  .qbadge { position:absolute; top:-3px; right:-3px; min-width:18px; height:18px; border-radius:9px; padding:0 4px;
+    display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#fff; }
+
+  .note { max-width:720px; margin:34px auto 0; text-align:center; font-size:12.5px; color:#8C877E; line-height:1.7; }
+  .note b { color:#EDEAE3; }
+  .pill { display:inline-block; margin:14px 4px 0; font-size:11px; font-weight:700; letter-spacing:.3px; padding:5px 12px; border-radius:9999px;
+    background:rgba(122,155,60,.16); color:#B7C46A; border:1px solid rgba(122,155,60,.32); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Quick Actions — modern icons (Solar)</h1>
+    <p class="sub"><b>Solar bold-duotone</b> — the modern fintech icon set — in your neumorphic tiles, tinted per action. Real SVGs, rendered exactly as they will in the app via <b>react-native-svg</b> (already installed). <b>Press and hold</b> a tile.</p>
+    <span class="pill">✓ modern set · ✓ zero new dependency · ✓ iOS + Android</span>
+  </header>
+
+  <div class="stage">
+    <div class="col"><span class="col-label">CALM light</span><div class="phone light" data-theme="light"></div></div>
+    <div class="col"><span class="col-label">CALM dark</span><div class="phone dark" data-theme="dark"></div></div>
+  </div>
+
+  <p class="note"><b>These are the actual icons</b>, not approximations — pulled from the Solar set and saved as SVGs in <code>/modern-icons</code>. In the component each renders via <code>&lt;SvgXml&gt;</code> (react-native-svg), tinted with the action color. Compare against <code>quick-actions.html</code> (current) to feel the jump.</p>
+
+<script>
+  // Solar bold-duotone SVGs (injected verbatim from /modern-icons)
+  const SVG = {
+    wallets:  `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M5.75 7a.75.75 0 0 0 0 1.5h4a.75.75 0 0 0 0-1.5z"/><path fill="currentColor" fill-rule="evenodd" d="M21.188 8.004q-.094-.005-.2-.004h-2.773C15.944 8 14 9.736 14 12s1.944 4 4.215 4h2.773q.106.001.2-.004c.923-.056 1.739-.757 1.808-1.737c.004-.064.004-.133.004-.197V9.938c0-.064 0-.133-.004-.197c-.069-.98-.885-1.68-1.808-1.737m-3.217 5.063c.584 0 1.058-.478 1.058-1.067c0-.59-.474-1.067-1.058-1.067s-1.06.478-1.06 1.067c0 .59.475 1.067 1.06 1.067" clip-rule="evenodd"/><path fill="currentColor" d="M21.14 8.002c0-1.181-.044-2.448-.798-3.355a4 4 0 0 0-.233-.256c-.749-.748-1.698-1.08-2.87-1.238C16.099 3 14.644 3 12.806 3h-2.112C8.856 3 7.4 3 6.26 3.153c-1.172.158-2.121.49-2.87 1.238c-.748.749-1.08 1.698-1.238 2.87C2 8.401 2 9.856 2 11.694v.112c0 1.838 0 3.294.153 4.433c.158 1.172.49 2.121 1.238 2.87c.749.748 1.698 1.08 2.87 1.238c1.14.153 2.595.153 4.433.153h2.112c1.838 0 3.294 0 4.433-.153c1.172-.158 2.121-.49 2.87-1.238q.305-.308.526-.66c.45-.72.504-1.602.504-2.45l-.15.001h-2.774C15.944 16 14 14.264 14 12s1.944-4 4.215-4h2.773q.079 0 .151.002" opacity=".5"/></svg>`,
+    savings:  `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M12.75 8.837v1.041a2.25 2.25 0 0 1 1.495 2.268l.958.41a3.25 3.25 0 0 0-2.453-3.72m-1.5.001a3.25 3.25 0 0 0-2.453 3.72l.958-.41a2.25 2.25 0 0 1 1.495-2.268zm3.361 5.098l-.957-.41a2.246 2.246 0 0 1-3.308 0l-.957.41A3.25 3.25 0 0 0 12 15.25c1.07 0 2.02-.517 2.611-1.315"/><path fill="currentColor" fill-rule="evenodd" d="M13.055 4.25h-2.11c-1.367 0-2.47 0-3.337.117c-.9.12-1.658.38-2.26.981a3 3 0 0 0-.634.933A.75.75 0 0 0 3.75 7v3a.75.75 0 0 0 .5.707v2.586a.75.75 0 0 0-.5.707v3a.75.75 0 0 0 .964.72c.151.342.356.654.634.932c.602.602 1.36.86 2.26.982c.867.116 1.97.116 3.337.116h2.11c1.367 0 2.47 0 3.337-.116c.9-.122 1.658-.38 2.26-.982s.86-1.36.982-2.26c.116-.867.116-1.97.116-3.337v-2.11c0-1.367 0-2.47-.116-3.337c-.122-.9-.38-1.658-.982-2.26s-1.36-.86-2.26-.981c-.867-.117-1.97-.117-3.337-.117M7.25 12a4.75 4.75 0 1 1 9.5 0a4.75 4.75 0 0 1-9.5 0" clip-rule="evenodd"/><path fill="currentColor" fill-rule="evenodd" d="M3.464 3.464C2 4.93 2 7.286 2 12s0 7.071 1.464 8.535C4.93 22 7.286 22 12 22s7.071 0 8.535-1.465C22 19.072 22 16.714 22 12s0-7.071-1.465-8.536C19.072 2 16.714 2 12 2S4.929 2 3.464 3.464m7.481.786h2.11c1.367 0 2.47 0 3.337.117c.9.12 1.658.38 2.26.981c.602.602.86 1.36.982 2.26c.116.867.116 1.97.116 3.337v2.11c0 1.367 0 2.47-.116 3.337c-.122.9-.38 1.658-.982 2.26s-1.36.86-2.26.982c-.867.116-1.97.116-3.337.116h-2.11c-1.367 0-2.47 0-3.337-.116c-.9-.122-1.658-.38-2.26-.982a3 3 0 0 1-.634-.933A.75.75 0 0 1 3.75 17v-3a.75.75 0 0 1 .5-.707v-2.586a.75.75 0 0 1-.5-.707V7a.75.75 0 0 1 .964-.72a3 3 0 0 1 .634-.932c.602-.602 1.36-.86 2.26-.981c.867-.117 1.97-.117 3.337-.117" clip-rule="evenodd" opacity=".5"/></svg>`,
+    debts:    `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M6.26 21.388H6c-.943 0-1.414 0-1.707-.293C4 20.804 4 20.332 4 19.389v-1.112c0-.518 0-.777.133-1.009s.334-.348.736-.582c2.646-1.539 6.403-2.405 8.91-.91q.253.151.45.368a1.49 1.49 0 0 1-.126 2.134a1 1 0 0 1-.427.24q.18-.021.345-.047c.911-.145 1.676-.633 2.376-1.162l1.808-1.365a1.89 1.89 0 0 1 2.22 0c.573.433.749 1.146.386 1.728c-.423.678-1.019 1.545-1.591 2.075s-1.426 1.004-2.122 1.34c-.772.373-1.624.587-2.491.728c-1.758.284-3.59.24-5.33-.118a15 15 0 0 0-3.017-.308" opacity=".5"/><path fill="currentColor" d="M6.586 2.586c-.367.367-.504.873-.555 1.664A2.25 2.25 0 0 0 8.25 2.03c-.79.052-1.297.189-1.664.556m10.828 0c-.367-.367-.873-.504-1.664-.555a2.25 2.25 0 0 0 2.22 2.219c-.052-.79-.189-1.297-.556-1.664m0 6.828c-.367.367-.873.504-1.664.555a2.25 2.25 0 0 1 2.22-2.219c-.052.79-.189 1.297-.556 1.664m-10.828 0c.367.367.873.504 1.664.555A2.25 2.25 0 0 0 6.03 7.75c.052.79.189 1.297.556 1.664"/><path fill="currentColor" fill-rule="evenodd" d="M6 5.75A3.75 3.75 0 0 0 9.75 2h4.5A3.75 3.75 0 0 0 18 5.75v.5A3.75 3.75 0 0 0 14.25 10h-4.5A3.75 3.75 0 0 0 6 6.25zM12 7a1 1 0 1 0 0-2a1 1 0 0 0 0 2" clip-rule="evenodd"/></svg>`,
+    bills:    `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M7.245 2h9.51c1.159 0 1.738 0 2.206.163a3.05 3.05 0 0 1 1.881 1.936C21 4.581 21 5.177 21 6.37v14.004c0 .858-.985 1.314-1.608.744a.946.946 0 0 0-1.284 0l-.483.442a1.657 1.657 0 0 1-2.25 0a1.657 1.657 0 0 0-2.25 0a1.657 1.657 0 0 1-2.25 0a1.657 1.657 0 0 0-2.25 0a1.657 1.657 0 0 1-2.25 0l-.483-.442a.946.946 0 0 0-1.284 0c-.623.57-1.608.114-1.608-.744V6.37c0-1.193 0-1.79.158-2.27c.3-.913.995-1.629 1.881-1.937C5.507 2 6.086 2 7.245 2" opacity=".5"/><path fill="currentColor" d="M7 6.75a.75.75 0 0 0 0 1.5h.5a.75.75 0 0 0 0-1.5zm3.5 0a.75.75 0 0 0 0 1.5H17a.75.75 0 0 0 0-1.5zM7 10.25a.75.75 0 0 0 0 1.5h.5a.75.75 0 0 0 0-1.5zm3.5 0a.75.75 0 0 0 0 1.5H17a.75.75 0 0 0 0-1.5zM7 13.75a.75.75 0 0 0 0 1.5h.5a.75.75 0 0 0 0-1.5zm3.5 0a.75.75 0 0 0 0 1.5H17a.75.75 0 0 0 0-1.5z"/></svg>`,
+    budgets:  `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M6.222 4.601a9.5 9.5 0 0 1 1.395-.771c1.372-.615 2.058-.922 2.97-.33c.913.59.913 1.56.913 3.5v1.5c0 1.886 0 2.828.586 3.414s1.528.586 3.414.586H17c1.94 0 2.91 0 3.5.912c.592.913.285 1.599-.33 2.97a9.5 9.5 0 0 1-10.523 5.435A9.5 9.5 0 0 1 6.222 4.601" opacity=".5"/><path fill="currentColor" d="M21.446 7.069a8.03 8.03 0 0 0-4.515-4.515C15.389 1.947 14 3.344 14 5v4a1 1 0 0 0 1 1h4c1.657 0 3.053-1.39 2.446-2.931"/></svg>`,
+    reports:  `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M3.293 9.293C3 9.586 3 10.057 3 11v6c0 .943 0 1.414.293 1.707S4.057 19 5 19s1.414 0 1.707-.293S7 17.943 7 17v-6c0-.943 0-1.414-.293-1.707S5.943 9 5 9s-1.414 0-1.707.293"/><path fill="currentColor" d="M17.293 2.293C17 2.586 17 3.057 17 4v13c0 .943 0 1.414.293 1.707S18.057 19 19 19s1.414 0 1.707-.293S21 17.943 21 17V4c0-.943 0-1.414-.293-1.707S19.943 2 19 2s-1.414 0-1.707.293" opacity=".4"/><path fill="currentColor" d="M10 7c0-.943 0-1.414.293-1.707S11.057 5 12 5s1.414 0 1.707.293S14 6.057 14 7v10c0 .943 0 1.414-.293 1.707S12.943 19 12 19s-1.414 0-1.707-.293S10 17.943 10 17z" opacity=".7"/><path fill="currentColor" d="M3 21.25a.75.75 0 0 0 0 1.5h18a.75.75 0 0 0 0-1.5z"/></svg>`,
+    goals:    `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M22 12c0 5.523-4.477 10-10 10S2 17.523 2 12S6.477 2 12 2s10 4.477 10 10" opacity=".5"/><path fill="currentColor" d="M9.25 12a.75.75 0 0 1 .75-.75h1.25V10a.75.75 0 0 1 1.5 0v1.25H14a.75.75 0 0 1 0 1.5h-1.25V14a.75.75 0 0 1-1.5 0v-1.25H10a.75.75 0 0 1-.75-.75m-7.222.75a10 10 0 0 1 0-1.5H5a.75.75 0 0 1 0 1.5zm10.722 9.222a10 10 0 0 1-1.5 0V19a.75.75 0 0 1 1.5 0zm9.222-10.722a10 10 0 0 1 0 1.5H19a.75.75 0 0 1 0-1.5zM12.75 2.028V5a.75.75 0 0 1-1.5 0V2.028a10 10 0 0 1 1.5 0"/></svg>`,
+    receipts: `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M7.245 2h9.51c1.159 0 1.738 0 2.206.163a3.05 3.05 0 0 1 1.881 1.936C21 4.581 21 5.177 21 6.37v14.004c0 .858-.985 1.314-1.608.744a.946.946 0 0 0-1.284 0l-.483.442a1.657 1.657 0 0 1-2.25 0a1.657 1.657 0 0 0-2.25 0a1.657 1.657 0 0 1-2.25 0a1.657 1.657 0 0 0-2.25 0a1.657 1.657 0 0 1-2.25 0l-.483-.442a.946.946 0 0 0-1.284 0c-.623.57-1.608.114-1.608-.744V6.37c0-1.193 0-1.79.158-2.27c.3-.913.995-1.629 1.881-1.937C5.507 2 6.086 2 7.245 2" opacity=".5"/><path fill="currentColor" d="M15.06 8.5a.75.75 0 0 0-1.12-1l-3.011 3.374l-.87-.974a.75.75 0 0 0-1.118 1l1.428 1.6a.75.75 0 0 0 1.119 0zM7.5 14.75a.75.75 0 0 0 0 1.5h9a.75.75 0 0 0 0-1.5z"/></svg>`,
+    echo:     `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M3.845 3.845a2.883 2.883 0 0 0 0 4.077L5.432 9.51c.012-.014.555.503.568.49l4-4c.013-.013-.504-.556-.49-.568L7.922 3.845a2.883 2.883 0 0 0-4.077 0m1.288 11.462a.483.483 0 0 1 .9 0l.157.4a.48.48 0 0 0 .272.273l.398.157a.486.486 0 0 1 0 .903l-.398.158a.48.48 0 0 0-.272.273l-.157.4a.483.483 0 0 1-.9 0l-.157-.4a.48.48 0 0 0-.272-.273l-.398-.158a.486.486 0 0 1 0-.903l.398-.157a.48.48 0 0 0 .272-.274z" opacity=".5"/><path fill="currentColor" d="M19.967 9.13a.483.483 0 0 1 .9 0l.156.399c.05.125.148.224.273.273l.398.158a.486.486 0 0 1 0 .902l-.398.158a.5.5 0 0 0-.273.273l-.156.4a.483.483 0 0 1-.9 0l-.157-.4a.5.5 0 0 0-.272-.273l-.398-.158a.486.486 0 0 1 0-.902l.398-.158a.5.5 0 0 0 .272-.273z" opacity=".2"/><path fill="currentColor" d="M16.1 2.307a.483.483 0 0 1 .9 0l.43 1.095a.48.48 0 0 0 .272.274l1.091.432a.486.486 0 0 1 0 .903l-1.09.432a.5.5 0 0 0-.273.273L17 6.81a.483.483 0 0 1-.9 0l-.43-1.095a.5.5 0 0 0-.273-.273l-1.09-.432a.486.486 0 0 1 0-.903l1.09-.432a.5.5 0 0 0 .273-.274z" opacity=".7"/><path fill="currentColor" d="M10.568 6.49c-.012.014-.555-.503-.568-.49l-4 4c-.013.013.504.556.49.568l9.588 9.587a2.883 2.883 0 1 0 4.078-4.077z"/></svg>`,
+    pulse:    `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M3.464 3.464C2 4.93 2 7.286 2 12c0 .819 0 1.566.008 2.25h3.1c.526 0 .993-.002 1.421.182s.75.522 1.112.904l.075.078l1.141 1.199a.25.25 0 0 0 .384-.026l3.653-5.043c.15-.206.304-.42.458-.579c.175-.18.447-.394.842-.412s.685.17.876.333c.167.144.341.343.508.534l1.804 2.062c.486.555.59.65.703.701s.253.067.99.067h2.917A199 199 0 0 0 22 12c0-4.714 0-7.071-1.465-8.536C19.072 2 16.714 2 12 2S4.929 2 3.464 3.464" opacity=".5"/><path fill="currentColor" d="M2.008 14.25c.036 3.255.246 5.075 1.457 6.285C4.929 22 7.286 22 12 22s7.071 0 8.536-1.465c1.21-1.21 1.42-3.03 1.456-6.285h-2.916c-.738 0-.878-.016-.99-.067c-.114-.052-.218-.146-.704-.702L15.58 11.42c-.168-.191-.342-.39-.509-.534c-.191-.164-.482-.352-.876-.333c-.395.018-.667.231-.842.412a5.5 5.5 0 0 0-.457.578L9.24 16.587a.25.25 0 0 1-.384.025l-1.141-1.198l-.075-.079c-.362-.381-.683-.72-1.112-.903c-.428-.184-.895-.183-1.421-.182h-3.1"/></svg>`,
+  };
+  const ACTIONS = [
+    { key:'wallets',  label:'Wallets',  color:'accent' },
+    { key:'savings',  label:'Savings',  color:'gold' },
+    { key:'debts',    label:'Debts',    color:'bronze' },
+    { key:'bills',    label:'Bills',    color:'accent', badge:2 },
+    { key:'budgets',  label:'Budgets',  color:'bronze' },
+    { key:'reports',  label:'Reports',  color:'deep' },
+    { key:'goals',    label:'Goals',    color:'gold' },
+    { key:'receipts', label:'Receipts', color:'deep' },
+    { key:'echo',     label:'Echo',     color:'gold' },
+    { key:'pulse',    label:'Pulse',    color:'accent' },
+  ];
+  function buildBtn(a){
+    const badge = a.badge ? `<span class="qbadge" style="background:var(--accent)">${a.badge}</span>` : '';
+    return `<div class="qbtn">
+      <div class="qchip"><span class="ic" style="color:var(--${a.color})">${SVG[a.key]}</span>${badge}</div>
+      <span class="qlabel">${a.label}</span>
+    </div>`;
+  }
+  function buildPhone(el){
+    const row = (items)=>`<div class="qrow-wrap"><div class="qrow">${items.map(buildBtn).join('')}</div></div>`;
+    el.innerHTML = `<div class="qtitle">Quick Actions</div>${row(ACTIONS.slice(0,5))}${row(ACTIONS.slice(5,10))}`;
+    el.querySelectorAll('.qbtn').forEach(btn=>{
+      const on=()=>btn.classList.add('press'), off=()=>btn.classList.remove('press');
+      btn.addEventListener('pointerdown', on); btn.addEventListener('pointerup', off);
+      btn.addEventListener('pointerleave', off); btn.addEventListener('pointercancel', off);
+    });
+  }
+  document.querySelectorAll('.phone').forEach(buildPhone);
+</script>
+</body>
+</html>

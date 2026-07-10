@@ -148,9 +148,14 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
     if (!sub || newTotalNum <= 0) return;
     const activeMembers = sub.members.filter((m) => m.isActive);
     if (activeMembers.length === 0) return;
-    const perPerson = (newTotalNum / activeMembers.length).toFixed(2);
+    const n = activeMembers.length;
+    const perPerson = Number((newTotalNum / n).toFixed(2));
     const shares: Record<string, string> = {};
-    activeMembers.forEach((m) => { shares[m.contact.id] = perPerson; });
+    activeMembers.forEach((m, i) => {
+      // Give the last member the rounding remainder so shares sum EXACTLY to total.
+      const amount = i === n - 1 ? newTotalNum - perPerson * (n - 1) : perPerson;
+      shares[m.contact.id] = amount.toFixed(2);
+    });
     setMemberShares(shares);
     lightTap();
   }, [sub, newTotalNum]);

@@ -1,0 +1,199 @@
+# Potraces — Step 2 Plan (July 2026)
+
+_Branch: `feat/calculator-quick-action` (level with `origin`, **21 commits ahead of `main`**). Last updated 2026-07-10._
+
+Three tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the locked 3-material standard), **(B) money data-safety hardening** (correctness), **(C) ScreenGuide walk-throughs** (first-run UX). Track B's CRITICAL tier is shipped. Tracks A and C roll out screen-by-screen.
+
+---
+
+# ▶ START HERE
+
+**Where it stands right now:** `tsc` 0 · all 7 `tsx` suites green · **7 files uncommitted** · **nothing device-verified**.
+
+## 1. Do these, in order
+
+| # | Do this | Why it's first | Detail |
+|---|---|---|---|
+| 1 | **Commit the 7 uncommitted files** | They contain a **HIGH money fix** that currently exists *only in your working tree*. Losing the tree loses the fix. | [Track A](#track-a--neu-kit-redesign) |
+| 2 | **Device-verify Debt + Receipt, light AND dark** | The single sign-off gate for the whole Debt+Receipt rollout. Everything else is already `tsc`/test-proven. | [What to look at](#what-to-look-at-on-device) |
+| 3 | **Track B — sync/backup cluster** | Highest-severity code left in the repo (silent cross-device data loss). | [Track B](#track-b--money-data-safety-remaining-ranked) |
+| 4 | Track A — remaining neu screens | Cosmetic, low risk, mechanical. | [Remaining screens](#remaining-screens) |
+| 5 | Track C — guide upgrades | UX polish. | [Track C](#track-c--screenguide-walk-throughs-first-run-ux) |
+| 6 | Beta go-live | Blocked on a clean website-only commit onto `main`. | [Beta](#beta-distribution--pending) |
+
+**The 7 uncommitted files** (all verified: `tsc` 0, 7/7 suites green):
+`src/utils/walletReconcile.ts` · `src/store/debtStore.ts` · `src/screens/shared/DebtTracking.tsx` · `src/components/debt/PriceChangeSheet.tsx` · `src/components/debt/SelectionActionBar.tsx` · `src/components/common/NeuPressable.tsx` · `scripts/test-wallet-reconcile.ts`
+
+## 2. Decisions only you can make
+
+| Decision | Context | Cost of deciding "yes" |
+|---|---|---|
+| **Back-apply "modal shell = flat" to the locked screens?** | You set this rule on Debt (*pop-up modal OUTER card = plain `SHADOWS.lg`; neu only on inner picker rows / the CTA*). Debt's modals follow it. The **commitment + wallet benchmark modals still have neu outer cards** (mark-paid, pay-warning, celebration, delete-confirm, filter, how-it-works). Untouched because you locked those two screens. | ~6 modals, mechanical |
+| **Echo FAB + greeting bubble (#15)?** | Still non-neu. Cross-screen element — migrate **app-wide in one pass**, never per-screen. | 1 pass, touches many screens |
+| **Fix the `NeuButton`/`NeuPressable` flex footgun in the shared components?** | See [footgun](#known-footgun-shared-buttons-and-flex). Worked around locally in `SelectionActionBar`. | Blast radius = wallet + commitment + calculator (locked look) |
+
+---
+
+# Track A — neu-kit redesign
+
+## Status (2026-07-09/10)
+
+**Done:** navbar · Dashboard/home · Wallet (+ its modals, WalletPicker) · **Commitment/Bills** (`SubscriptionList` + `CommitmentForm`) · **Debt** (`DebtTracking` + all 17 `components/debt/*`) · **Receipt ×3** (`ReceiptHistory`, `ReceiptDetail`, `ReceiptScanner`) · shared `CategoryPicker` / `TransactionItem` / `NeuButton` / `NeuPressable` / `FAB`.
+
+Debt + Receipt were converted by a 21-agent workflow (166 surfaces), then Debt got a 37-agent adversarial audit (6 task-divided lenses + 3 refuters per finding). **All 11 verified findings fixed.**
+
+> ⚠️ **Nothing is device-verified.** `tsc`-clean and test-backed, but nobody has looked at Debt/Receipt on a phone in **both** themes.
+
+### What to look at on device
+
+- **The two glass toggles** (pending/settled; i-owe/they-owe). **Dark is *deliberately* a subtle frosted capsule** — glass lenses the background and the theme is near-black, so there is nothing to refract. **Physics, not a bug** (see `liquid-glass-tab-bar` memory). Light mode shows the material properly; the selected pill is a colored tint + colored border.
+- **`record payment` / `record all payment`** are now the **solid olive `NeuButton`** (matching the bills screen's "mark as paid"). Two knock-ons: the button is **taller** (`minHeight: 52`), and its fill moved `C.positive` → `C.accent`.
+- **Bulk-selection bar** (long-press a debt): the destructive *delete* button should now be **equal-width** with edit/archive.
+
+### Known footgun: shared buttons and flex
+
+`NeuButton` **and** `NeuPressable` apply the caller's `style` to their **inner `Animated.View`**, not the outer `Pressable`. So a passed `flex:1` never reaches the real flex child — inside a `flexDirection:'row'` parent the button **collapses to content width**. It only works everywhere else because those parents are default-stretch columns.
+
+Worked around **locally** in `SelectionActionBar` (wrapped in a `flex:1` View). **Prefer wrapping at the call site** over changing the shared component.
+
+### Remaining screens
+
+Same standard, same process. One screen at a time:
+`Goals.tsx` · `BudgetPlanning.tsx` · `SavingsTracker.tsx` · `AccountOverview.tsx` · `Reports.tsx` · `FinancialPulse.tsx` · `MoneyChat.tsx` · `ImportFromCsv.tsx` / `ImportFromStatement.tsx`
+
+Each: spread `useNeu().raised/inset/well/raisedSoft` into existing rows/cards (keep all logic), swap CTAs to `NeuButton`, FABs to shared `FAB`, respect container-tone + clipping. Verify light+dark on device.
+
+### Housekeeping notes
+
+- `DebtTracking.tsx` is now **9,352 lines** (from 10,675 — 214 orphaned StyleSheet keys purged). Still the biggest file; further extraction optional.
+- **Never range-delete in this repo.** Delete by verified symbol only (a range-delete once removed live code sitting between two dead blocks).
+
+---
+
+# Track B — money data-safety (remaining, ranked)
+
+CRITICAL tier already fixed (Echo transfer/goal/withdraw guards, corruption-quarantine, reconcile debt-erase + regression test, import wallet-balance/EU-parsing/Dr-Cr). Remaining, from memory `money-data-safety-audit`:
+
+> **Fixed 2026-07-09 (debt audit) — for context, not a TODO:** business-mode overpayment **tips** were silently erased by `walletReconcile` on every sync. `processPayment` charges the wallet `amount+tip`, but `addPayment` stores `amount` capped to the debt with the tip kept separately as `payment.tipAmount`; a business payment links to a **business** tx (not in `personalStore.transactions`), so reconcile's skip never fired and it replayed only `payment.amount` → `autoReconcileWallets` overwrote the balance and deleted the tip (or refunded an `i_owe` tip you really paid). Reconcile now mirrors the delete path (`+ (mode !== 'personal' ? tipAmount : 0)`), with 3 new scenarios in `scripts/test-wallet-reconcile.ts`. Also fixed: `updateMonthAmounts` clobbering a shared-sub's *current* price when adjusting a past month; and the "equal split" button producing a form its own validator rejects (33.33×3 ≠ 100).
+
+### Sync / backup cluster — **do this first** (distributed-systems care, own tested pass)
+- **Wallet whole-row LWW + reconcile double-apply** across two devices — `personalSync.ts:338`.
+- **Tombstone TTL 30d** resurrects deleted records for a device offline >30d — `tombstoneStore.ts:10`.
+- **`restoreDay` era-mix** restores stores from different snapshot dates → reconcile clobbers — `storageBackup.ts:161`.
+- **Savings `currentValue` merge** picks latest wall-clock → clock-behind device's newer update discarded — `personalSync.ts:292`.
+- **Backup restore not account/mode-gated** — can restore another user's snapshot over live data — `storageBackup.ts:179`.
+
+### Import cluster (needs a focused pass — category store + dedup UX)
+- **Category name→id mapping** — imports store the display NAME, so imported txns are detached from budgets. Resolve to a category id (reuse the learning/category store).
+- **Duplicate detection** — no dedup, so re-importing a statement doubles everything. Add a (date+amount+description) dedup with a user prompt.
+- _(Deferred, needs UI/deploy):_ single-column positive-Amount sign toggle; supabase `parse-statement` own-account-transfer double-count.
+
+Each sync/backup fix gets a regression test (extend the `scripts/test-wallet-reconcile.ts` pattern) before it's called done.
+
+---
+
+# Track C — ScreenGuide walk-throughs (first-run UX)
+
+**Engine:** `src/components/common/ScreenGuide.tsx` — one component, two modes.
+- **Legacy (passive):** `title`/`description`/`points`/`spotlight` props. Intro card → optional spotlight. The whole overlay is one dismiss-Pressable, so tapping the highlighted button just closes the guide (you tap twice). No `payoff`.
+- **Walk-through (interactive):** `steps={[...]}` of `intro | spotlight | doWithMe | payoff`. `doWithMe` cuts a **tappable** hole and advances only when the user really does the thing, via `whenStore(store, select→number, done(cur, base))` (baseline captured on step entry).
+
+### Status (2026-07-10)
+
+| Screen | Guide id | Mode |
+|---|---|---|
+| Wallets | `guide_wallets` | interactive |
+| Budget | `guide_budget` | interactive |
+| Goals | `goals-guide` | interactive |
+| Echo / chat | `guide_chat` | interactive |
+| Notes landing | `guide_notes_start` | interactive |
+| Note editor | `guide_note_editor` | interactive (2 steps) |
+| Debts | `guide_debts` | **passive** (spotlight wired) |
+| Receipts | `guide_receipts` | **passive** (spotlight wired) |
+| Savings | `guide_savings` | **passive** (intro only) |
+| Subscriptions | `guide_subscriptions` | **passive** (intro only) |
+| Pulse | `guide_pulse` | passive — **stays passive** (read-only screen, nothing to do) |
+| Notes (old) | `guide_notes` | legacy, dormant — retired by `dismissHint` on first note; only reachable if a note arrives without `handleNewNote` (share extension, Echo) |
+
+### Next: upgrade the Debts + Receipts **guides**, then Savings + Subscriptions
+
+> ⚠️ This is the **ScreenGuide** work for those screens — unrelated to Track A's neu redesign of the same screens.
+
+Debts and Receipts are the cheap two: both already pass a `spotlight={{ targetRef: guideTargetRef, ... }}`, so the target ref exists and is measured — they only need the step machine. Savings and Subscriptions need a target ref wired first.
+
+Per screen:
+1. `import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide'`.
+2. Replace the legacy props with `steps={[intro, doWithMe, payoff]}`, memoized (`useMemo`) so the measure effect runs once per step, not per keystroke.
+3. `watch:` must count only what the **user** does. Echo counts `chatMessages.filter(m => m.role === 'user').length` precisely so an assistant auto-message can't fast-forward the step.
+4. Add 3 i18n keys per screen (`<x>Walk`, `<x>PayoffTitle`, `<x>PayoffBody`) to **both** `en.ts` and `ms.ts`.
+5. `tsc` clean → device-test on iPhone.
+
+### Gotchas (each one cost a debugging session)
+
+- **The spotlight target must be mounted when the guide runs.** If a screen shows an empty-state CTA *or* a FAB depending on data, put the same `guideTargetRef` on **both** branches — they're mutually exclusive, so the guide always finds one. Goals does this; **Budget did not, and silently broke** (fixed 2026-07-10, `BudgetPlanning.tsx:1401`): with demo data loaded there are budgets, so the empty-state button is gone, the target never measures, and the `doWithMe` step is skipped straight to the payoff card. Anyone running demo data never saw the spotlight.
+- **A target that never measures skips its step** (5 rAF retries, then `advance()`). Fails soft and silent — always device-test with data present, not just on an empty screen.
+- **Refs must land on a touchable or a `collapsable={false}` View**, else Android flattens it away and `measureInWindow` returns 0×0. `EmptyState` takes an optional `actionRef` for exactly this (the container is full-height, so the ref has to land on the button).
+- **iOS hole-tap:** RNSVG's iOS hit test ignores `fillRule="evenodd"`, so the scrim swallowed taps meant for the hole. Fixed by wrapping the `<Svg>` in a plain `pointerEvents="none"` View. Only the walk-through path has this — legacy still swallows the tap.
+- **i18n:** `export type Translations = typeof en`, so every new EN key breaks `tsc` until `ms.ts` has its twin.
+- **Guides are one-shot** via `settingsStore.dismissedHints`. Reset paths: `clearPersonalData` and the demo-data "clear & start fresh" both set `dismissedHints: []`. Nothing enumerates guide ids, which is why Goals' odd `goals-guide` id is harmless — renaming it would just re-show the guide to existing users.
+
+### Naming standard — "demo data"
+
+User-facing copy says **demo data** everywhere (Settings, banner, toasts, en+ms). Code identifiers (`sampleDataLoaded`, `clearSampleData`, `SampleDataBanner`) deliberately still say `sample` — renaming them is risky churn and invisible to users. Don't "fix" this.
+
+---
+
+# Guardrails
+
+- All money fixes are JS-only where possible (reload, no native rebuild), `tsc`-clean, and test-backed.
+- Neu changes verified on device in **both** light and dark before sign-off.
+- Guides verified on device **with data present**, not just on an empty screen — a missing spotlight target fails silently.
+- Don't re-invent per screen — reuse the shared kit/components.
+- Never range-delete. Delete by verified symbol, grep-proven to have 0 references.
+
+---
+
+# Beta distribution — PENDING
+
+The beta welcome-email + the site's on-screen download buttons read two links from **Supabase secrets**. Until set, both show a calm "download links on the way — check your email" state (no dead buttons). Setting a secret is live — **no redeploy**.
+
+**Step 1 — set both secrets:**
+- **iOS (TestFlight):** `eas build` → `eas submit` → App Store Connect → TestFlight → enable the **public link** → copy `https://testflight.apple.com/join/XXXX`, then:
+  ```
+  npx supabase secrets set BETA_IOS_URL="https://testflight.apple.com/join/XXXX"
+  ```
+- **Android (APK):** `eas build -p android --profile preview` → download the `.apk` → host it on storage + wire `jejakbaki.my/dl/android`, then:
+  ```
+  npx supabase secrets set BETA_ANDROID_URL="https://jejakbaki.my/dl/android"
+  ```
+
+**Step 2 — get `site/index.html` onto `main`** (Vercel deploys from `main`).
+
+> **State verified 2026-07-10:** the site wiring is commit **`ecf88e8`** ("Beta welcome email on signup + on-screen download buttons"). It lives on `feat/calculator-quick-action` (and is pushed to `origin/feat/calculator-quick-action`), but is **NOT on `origin/main`**, so the live site still uses the old form.
+> The blocker is that this branch is **21 commits ahead of `main`** — merging it would carry all the app work. **Do a website-only commit onto `main`** (e.g. `git checkout main && git checkout ecf88e8 -- site/index.html && commit && push`).
+> _(An older note referenced commit `64677d6` — that object is orphaned, no branch contains it. Ignore it.)_
+
+The `beta-signup` edge fn (wraps `waitlist_signup` + Resend welcome email + returns links, hourly-capped, falls back to raw RPC if down) and the `waitlist.welcomed_at` migration are **already deployed**.
+
+**Go-live = both secrets set AND `site/index.html` on `main`.**
+
+---
+
+# Factory Reset — TODO (deferred, decided 2026-07-09)
+
+A **separate, clearly-labeled** "Factory Reset" / "Reset app" button (Settings, near Delete Personal Data) that wipes **everything** and returns the app to a true first-install state:
+- **Personal data** — reuse the now-complete `wipePersonalStores` (settingsStore).
+- **Business data** — reuse `clearBusinessData` (settingsStore) → all seller/CRM/stall/freelancer/partTime/mixed/onTheRoad stores + business QRs + business cloud rows.
+- **All settings → defaults** — theme, language, currency, haptics, notifications, business-mode flag, defaultMode, everything (unlike Delete Personal Data, which keeps the business-mode flag + business QRs).
+- **Signed-in users** — this is the App-Store "Delete Account" obligation: use the existing `planDelete` + `deleteAccountRemote`/`clear*DataRemote` path (AccountScreen already does the smart shared-vs-solo account logic) so the auth user is fully deleted when not shared. Confirm Apple 5.1.1(v) compliance is satisfied by one reachable control.
+- **UX** — double confirmation like Delete Personal Data ("continue" → "reset everything"); land on first-run Onboarding.
+
+Context: **Delete Personal Data** is complete and resets device prefs, but it deliberately still preserves business data + the business-mode flag. Factory Reset is the missing "nuke it all" option.
+
+Done (personal-delete hardening): `wipePersonalStores` now also clears `budgetProfileStore` + `pendingPaymentsStore` + `calculatorStore` (+ their AsyncStorage keys), but ONLY on a user-initiated wipe — these three are UNSYNCED, so the sign-in guard must never touch them. `clearPersonalData` resets device prefs (theme/language/haptics/notifications/echoDailyCheckin, and `currency` only when there is no business data). Delete-warning copy updated (en+ms).
+
+### Known limitations (found by adversarial review 2026-07-09, deliberately NOT fixed)
+
+1. **`bak:category-storage:*` snapshots retain deleted personal categories.** `category-storage` is in `PROTECTED_KEYS` (snapshotted daily) but excluded from `PERSONAL_BACKUP_KEYS`, because the same key ALSO holds business categories — purging it would nuke business backups. So a deleted personal custom category can reappear via Backups & Restore. **Right fix: split `category-storage` into `category-storage` (personal) + `business-category-storage`.** That would also let the wipe drop the personal key outright, removing today's workaround (we now skip removing the shared key and rely on the persist write-back, since deleting it destroyed business categories).
+
+2. **Demo data appended onto a real account has no targeted undo.** Settings → Load Demo Data appends (and says so). The banner's one-tap "clear & start fresh" is deliberately NOT armed for non-empty accounts (it would wipe real data). The worst part is fixed — seeded wallets no longer steal the user's default wallet — but removing ~10 demo wallets / ~40 demo txns still means deleting rows by hand. **Right fix: tag seeded rows (e.g. `source: 'sample'`) so a targeted "remove demo data" can delete exactly those.**

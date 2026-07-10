@@ -54,6 +54,31 @@ const BIZ_THEYOWE_INITIAL = 2000;
 const BIZ_THEYOWE_PAY = 500; // they_owe → money IN
 const BIZ_THEYOWE_EXPECTED = BIZ_THEYOWE_INITIAL + BIZ_THEYOWE_PAY; // 2500
 
+// ── Business-mode payments WITH a tip (the silently-erased-tip bug) ──
+// processPayment charges the wallet amount+tip at creation, but addPayment stores
+// payment.amount = min(amount, remaining) (tip excluded) and keeps payment.tipAmount
+// separately. The tip's wallet effect lives on a business tx we don't replay, so
+// reconcile must add payment.tipAmount here or it shorts the balance by the tip.
+const WALLET_BIZ_TIP_THEYOWE = 'w-biz-tip-theyowe';
+const BIZ_TIP_THEYOWE_INITIAL = 3000;
+const BIZ_TIP_THEYOWE_PAY = 800; // capped debt amount → money IN
+const BIZ_TIP_THEYOWE_TIP = 120; // overpayment tip, also credited to wallet
+const BIZ_TIP_THEYOWE_EXPECTED = BIZ_TIP_THEYOWE_INITIAL + BIZ_TIP_THEYOWE_PAY + BIZ_TIP_THEYOWE_TIP; // 3920
+
+const WALLET_BIZ_TIP_IOWE = 'w-biz-tip-iowe';
+const BIZ_TIP_IOWE_INITIAL = 6000;
+const BIZ_TIP_IOWE_PAY = 900; // capped debt amount → money OUT
+const BIZ_TIP_IOWE_TIP = 75; // overpayment tip, also debited from wallet
+const BIZ_TIP_IOWE_EXPECTED = BIZ_TIP_IOWE_INITIAL - BIZ_TIP_IOWE_PAY - BIZ_TIP_IOWE_TIP; // 5025
+
+// ── Personal-mode payment WITH a tip: linked tx IS replayed, so the payment is
+// SKIPPED by the debt loop — the tip must NOT be counted here (personal wallets are
+// moved solely by the linked transaction). Regression guard against double-counting.
+const WALLET_PERSONAL_TIP = 'w-personal-tip';
+const PERSONAL_TIP_INITIAL = 1500;
+const PERSONAL_TIP_PAY = 200; // moved once by linked tx tx-personal-tip
+const PERSONAL_TIP_EXPECTED = PERSONAL_TIP_INITIAL - PERSONAL_TIP_PAY; // 1300
+
 // ─── Seed the REAL stores ──────────────────────────────────────────────────────
 useWalletStore.setState({
   wallets: [
@@ -70,6 +95,9 @@ useWalletStore.setState({
     } as any,
     { id: WALLET_BIZ_IOWE, name: 'Biz IOwe', type: 'bank', balance: SENTINEL_STORED, initialBalance: BIZ_IOWE_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
     { id: WALLET_BIZ_THEYOWE, name: 'Biz TheyOwe', type: 'bank', balance: SENTINEL_STORED, initialBalance: BIZ_THEYOWE_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
+    { id: WALLET_BIZ_TIP_THEYOWE, name: 'Biz Tip TheyOwe', type: 'bank', balance: SENTINEL_STORED, initialBalance: BIZ_TIP_THEYOWE_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
+    { id: WALLET_BIZ_TIP_IOWE, name: 'Biz Tip IOwe', type: 'bank', balance: SENTINEL_STORED, initialBalance: BIZ_TIP_IOWE_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
+    { id: WALLET_PERSONAL_TIP, name: 'Personal Tip', type: 'cash', balance: SENTINEL_STORED, initialBalance: PERSONAL_TIP_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
   ],
   transfers: [],
 });
@@ -103,6 +131,22 @@ usePersonalStore.setState({
       walletId: WALLET_ID,
       inputMethod: 'manual',
       linkedGoalId: 'g1',
+      createdAt: D,
+      updatedAt: D,
+    } as any,
+    // Linked personal tx for the personal-mode tipped payment (moves the wallet once).
+    {
+      id: 'tx-personal-tip',
+      amount: PERSONAL_TIP_PAY,
+      category: 'other',
+      description: 'Personal Debt Payment',
+      date: D,
+      type: 'expense',
+      mode: 'personal',
+      walletId: WALLET_PERSONAL_TIP,
+      inputMethod: 'manual',
+      linkedPaymentId: 'pay-personal-tip',
+      linkedDebtId: 'd-personal-tip',
       createdAt: D,
       updatedAt: D,
     } as any,
@@ -170,6 +214,27 @@ useDebtStore.setState({
       payments: [{ id: 'p-biz-2', amount: BIZ_THEYOWE_PAY, date: D, walletId: WALLET_BIZ_THEYOWE, linkedTransactionId: 'biz-tx-2', createdAt: D }],
       mode: 'business', createdAt: D, updatedAt: D,
     } as any,
+    // Business they_owe WITH tip: wallet was credited amount+tip; tip is on a business tx.
+    {
+      id: 'd-biz-tip-theyowe', contact: { id: 'ct4', name: 'Client B', isFromPhone: false },
+      type: 'they_owe', totalAmount: 800, paidAmount: BIZ_TIP_THEYOWE_PAY, status: 'paid',
+      payments: [{ id: 'p-biz-tip-2', amount: BIZ_TIP_THEYOWE_PAY, tipAmount: BIZ_TIP_THEYOWE_TIP, date: D, walletId: WALLET_BIZ_TIP_THEYOWE, linkedTransactionId: 'biz-tx-tip-2', createdAt: D }],
+      mode: 'business', createdAt: D, updatedAt: D,
+    } as any,
+    // Business i_owe WITH tip: wallet was debited amount+tip; tip is on a business tx.
+    {
+      id: 'd-biz-tip-iowe', contact: { id: 'ct5', name: 'Supplier B', isFromPhone: false },
+      type: 'i_owe', totalAmount: 900, paidAmount: BIZ_TIP_IOWE_PAY, status: 'paid',
+      payments: [{ id: 'p-biz-tip-1', amount: BIZ_TIP_IOWE_PAY, tipAmount: BIZ_TIP_IOWE_TIP, date: D, walletId: WALLET_BIZ_TIP_IOWE, linkedTransactionId: 'biz-tx-tip-1', createdAt: D }],
+      mode: 'business', createdAt: D, updatedAt: D,
+    } as any,
+    // Personal i_owe WITH tip: linked tx IS replayed → payment SKIPPED; tip must NOT count.
+    {
+      id: 'd-personal-tip', contact: { id: 'ct6', name: 'Friend', isFromPhone: false },
+      type: 'i_owe', totalAmount: 200, paidAmount: PERSONAL_TIP_PAY, status: 'paid',
+      payments: [{ id: 'pay-personal-tip', amount: PERSONAL_TIP_PAY, tipAmount: 40, date: D, walletId: WALLET_PERSONAL_TIP, linkedTransactionId: 'tx-personal-tip', createdAt: D }],
+      mode: 'personal', createdAt: D, updatedAt: D,
+    } as any,
   ],
 } as any);
 
@@ -213,6 +278,27 @@ check(
   `business they_owe payment ADDS to wallet (${BIZ_THEYOWE_EXPECTED})`,
   !!rowBizTheyOwe && Math.abs(rowBizTheyOwe.computed - BIZ_THEYOWE_EXPECTED) < 0.005,
   `got computed=${rowBizTheyOwe?.computed} (wrong-direction bug would give ${BIZ_THEYOWE_INITIAL - BIZ_THEYOWE_PAY})`,
+);
+
+const rowBizTipTheyOwe = results.find((r) => r.walletId === WALLET_BIZ_TIP_THEYOWE);
+check(
+  `business they_owe TIP is credited, not erased (${BIZ_TIP_THEYOWE_EXPECTED})`,
+  !!rowBizTipTheyOwe && Math.abs(rowBizTipTheyOwe.computed - BIZ_TIP_THEYOWE_EXPECTED) < 0.005,
+  `got computed=${rowBizTipTheyOwe?.computed} (erased-tip bug would give ${BIZ_TIP_THEYOWE_INITIAL + BIZ_TIP_THEYOWE_PAY})`,
+);
+
+const rowBizTipIOwe = results.find((r) => r.walletId === WALLET_BIZ_TIP_IOWE);
+check(
+  `business i_owe TIP is debited, not erased (${BIZ_TIP_IOWE_EXPECTED})`,
+  !!rowBizTipIOwe && Math.abs(rowBizTipIOwe.computed - BIZ_TIP_IOWE_EXPECTED) < 0.005,
+  `got computed=${rowBizTipIOwe?.computed} (erased-tip bug would give ${BIZ_TIP_IOWE_INITIAL - BIZ_TIP_IOWE_PAY})`,
+);
+
+const rowPersonalTip = results.find((r) => r.walletId === WALLET_PERSONAL_TIP);
+check(
+  `personal payment with linked tx is SKIPPED, tip NOT counted (${PERSONAL_TIP_EXPECTED})`,
+  !!rowPersonalTip && Math.abs(rowPersonalTip.computed - PERSONAL_TIP_EXPECTED) < 0.005,
+  `got computed=${rowPersonalTip?.computed} (double-count/tip-count bug would differ)`,
 );
 
 console.log('');

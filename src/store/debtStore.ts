@@ -488,11 +488,6 @@ export const useDebtStore = create<DebtState>()(
             if (sub.id !== subId) return sub;
             return {
               ...sub,
-              totalAmount: newTotal,
-              members: sub.members.map((m) => {
-                const share = memberShares.find((s) => s.contactId === m.contact.id);
-                return share ? { ...m, shareAmount: share.shareAmount } : m;
-              }),
               monthRecords: sub.monthRecords.map((r) => {
                 if (r.month !== month) return r;
                 return {

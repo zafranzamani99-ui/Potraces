@@ -50,13 +50,14 @@ const SelectionActionBar: React.FC<SelectionActionBarProps> = ({ count, allArchi
           <Feather name={allArchived ? 'corner-up-left' : 'archive'} size={18} color={C.bronze} />
           <Text style={[styles.selectionEditText, { color: C.bronze }]}>{allArchived ? 'unarchive' : 'archive'}</Text>
         </TouchableOpacity>
-        <NeuButton
-          style={styles.selectionDeleteBtn}
-          onPress={onDelete}
-          color={destructiveC}
-          icon="trash-2"
-          label={`${t.common.delete} (${count})`}
-        />
+        <View style={styles.selectionDeleteBtn}>
+          <NeuButton
+            onPress={onDelete}
+            color={destructiveC}
+            icon="trash-2"
+            label={`${t.common.delete} (${count})`}
+          />
+        </View>
       </View>
     </View>
   );

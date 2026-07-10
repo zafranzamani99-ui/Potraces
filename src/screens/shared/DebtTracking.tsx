@@ -95,7 +95,6 @@ import NeuPressable from '../../components/common/NeuPressable';
 import WalletLogo from '../../components/common/WalletLogo';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
-import ProgressBar from '../../components/common/ProgressBar';
 import ContactPicker from '../../components/common/ContactPicker';
 import FAB from '../../components/common/FAB';
 import ScreenGuide from '../../components/common/ScreenGuide';
@@ -304,7 +303,6 @@ const DebtTracking: React.FC = () => {
   const [debtDescription, setDebtDescription] = useState('');
   const [debtCategory, setDebtCategory] = useState('');
   const [addingToGroupId, setAddingToGroupId] = useState<string | null>(null);
-  const [debtDueDate, setDebtDueDate] = useState('');
   const [debtDueDateObj, setDebtDueDateObj] = useState<Date | null>(null);
   const [dueDatePickerOpen, setDueDatePickerOpen] = useState(false);
 
@@ -326,7 +324,6 @@ const DebtTracking: React.FC = () => {
   const [newItemAmount, setNewItemAmount] = useState('');
   const [splitWalletId, setSplitWalletId] = useState<string | null>(null);
   const [splitDueDateObj, setSplitDueDateObj] = useState<Date | null>(null);
-  const [splitDueDate, setSplitDueDate] = useState('');
   const [splitDueDatePickerOpen, setSplitDueDatePickerOpen] = useState(false);
 
   // Payment modal state
@@ -1114,7 +1111,6 @@ const DebtTracking: React.FC = () => {
     setDebtDescription('');
     setDebtCategory('');
     setAddingToGroupId(null);
-    setDebtDueDate('');
     setDebtDueDateObj(null);
     setDueDatePickerOpen(false);
   }, []);
@@ -1135,14 +1131,11 @@ const DebtTracking: React.FC = () => {
       const d = new Date(rawDue);
       if (isValid(d)) {
         setDebtDueDateObj(d);
-        setDebtDueDate(format(d, 'd MMM yyyy'));
       } else {
         setDebtDueDateObj(null);
-        setDebtDueDate('');
       }
     } else {
       setDebtDueDateObj(null);
-      setDebtDueDate('');
     }
     setDebtModalVisible(true);
   }, [showToast]);
@@ -2012,7 +2005,6 @@ const DebtTracking: React.FC = () => {
     setNewItemAmount('');
     setSplitWalletId(null);
     setSplitDueDateObj(null);
-    setSplitDueDate('');
     setSplitDueDatePickerOpen(false);
   }, []);
 
@@ -2056,10 +2048,8 @@ const DebtTracking: React.FC = () => {
     if (rawSplitDue) {
       const d = new Date(rawSplitDue);
       setSplitDueDateObj(d);
-      setSplitDueDate(format(d, 'd MMM yyyy'));
     } else {
       setSplitDueDateObj(null);
-      setSplitDueDate('');
     }
     setSplitModalVisible(true);
   }, []);
@@ -3770,7 +3760,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             }}
                             activeOpacity={0.7}
                             accessibilityRole="button"
-                            accessibilityState={{ selected: isActive }}
+                            accessibilityState={{ selected: isActive, disabled: !!editDebt && editDebt.payments.length > 0 && !isActive }}
                           >
                             <Feather
                               name={dt.icon as keyof typeof Feather.glyphMap}
@@ -3878,7 +3868,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   </Text>
                   {debtDueDateObj && (
                     <TouchableOpacity
-                      onPress={(e) => { e.stopPropagation(); setDebtDueDateObj(null); setDebtDueDate(''); setDueDatePickerOpen(false); }}
+                      onPress={(e) => { e.stopPropagation(); setDebtDueDateObj(null); setDueDatePickerOpen(false); }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <Feather name="x" size={13} color={C.textMuted} />
@@ -4020,7 +4010,6 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 minimumDate={new Date()}
                 onChange={(date) => {
                   setDebtDueDateObj(date);
-                  setDebtDueDate(format(date, 'd MMM yyyy'));
                   setDueDatePickerOpen(false);
                 }}
               />
@@ -4233,7 +4222,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 </Text>
                 {splitDueDateObj && (
                   <TouchableOpacity
-                    onPress={(e) => { e.stopPropagation(); setSplitDueDateObj(null); setSplitDueDate(''); setSplitDueDatePickerOpen(false); }}
+                    onPress={(e) => { e.stopPropagation(); setSplitDueDateObj(null); setSplitDueDatePickerOpen(false); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <Feather name="x" size={13} color={C.textMuted} />
@@ -4500,7 +4489,6 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 minimumDate={new Date()}
                 onChange={(date) => {
                   setSplitDueDateObj(date);
-                  setSplitDueDate(format(date, 'd MMM yyyy'));
                   setSplitDueDatePickerOpen(false);
                 }}
               />
@@ -4698,7 +4686,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     />
                   ) : (
                     <NeuPressable
-                      style={[styles.debtPrimaryAction, neuS.raisedSoft, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04), borderColor: withAlpha(C.textPrimary, 0.1) }]}
+                      accessibilityRole="button"
+                      accessibilityLabel="view history"
+                      style={[styles.debtPrimaryAction, neuS.raisedSoft, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04) }]}
                       onPress={() => {
                         const id = debt.id;
                         returnToDetailRef.current = id;
@@ -4791,7 +4781,6 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             setDebtDescription('');
                             setDebtCategory('');
                             setDebtDueDateObj(null);
-                            setDebtDueDate('');
                             setDebtModalVisible(true);
                           }, 50);
                         }}
@@ -5206,7 +5195,6 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               setDebtCategory('');
                               setAddingToGroupId(gId);
                               setDebtDueDateObj(null);
-                              setDebtDueDate('');
                               setDebtModalVisible(true);
                             }, 50);
                           }}
@@ -6151,8 +6139,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       : batchPayments.reduce((s, p) => s + p.amount, 0);
                     return (
                       <NeuPressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`undo consolidated payment, ${currency} ${batchTotal.toFixed(2)}`}
                         onPress={() => handleDeletePayment(batchPayments[0]._debtId, batchPayments[0].id)}
-                        style={[styles.debtPrimaryAction, neuS.raisedSoft, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04), borderColor: withAlpha(C.textPrimary, 0.1) }]}
+                        style={[styles.debtPrimaryAction, neuS.raisedSoft, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04) }]}
                       >
                         <Feather name="rotate-ccw" size={15} color={C.textSecondary} />
                         <Text style={[styles.debtPrimaryActionText, { color: C.textSecondary }]}>undo consolidated · {currency} {batchTotal.toFixed(2)}</Text>
@@ -7761,319 +7751,19 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   },
 
   // Hero — Two Mini Stat Cards
-  heroRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  heroTile: {
-    flex: 1,
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-  },
-  heroTileLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    letterSpacing: 0.2,
-    marginBottom: 4,
-  },
-  heroTileAmount: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: C === CALM_DARK ? -0.1 : -0.3,
-  },
-  heroTileSub: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    marginTop: 3,
-    fontVariant: ['tabular-nums'],
-  },
 
   // Search Bar
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 6,
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
-    gap: SPACING.sm,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    padding: 0,
-  },
 
   // Debt Filter Pills
-  mergedFilterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  debtFilterPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  debtFilterPillActive: {
-    backgroundColor: withAlpha(C.accent, 0.12),
-    borderColor: C.accent,
-  },
-  debtFilterText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-  },
-  debtFilterTextActive: {
-    color: C.accent,
-  },
-  sortOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.md,
-    marginBottom: SPACING.xs,
-  },
-  sortOptionActive: {
-    backgroundColor: withAlpha(C.accent, 0.08),
-  },
-  sortOptionText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-  },
-  sortOptionTextActive: {
-    color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
 
   // (Legacy summary styles kept for any references)
-  summaryCard: {
-    marginBottom: SPACING.md,
-    overflow: 'hidden',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    marginBottom: SPACING.md,
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.md,
-  },
-  summaryDivider: {
-    width: 1,
-    backgroundColor: C.border,
-    marginHorizontal: SPACING.sm,
-  },
-  summaryLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    letterSpacing: 0.3,
-  },
-  summaryAmount: {
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'],
-  },
-  netBalanceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-  },
-  netLabel: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    letterSpacing: 0.2,
-  },
-  netAmount: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
 
   // Tabs
-  tabContainer: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.lg,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabActive: {
-    borderBottomColor: C.accent,
-  },
-  tabText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-  },
-  tabTextActive: {
-    color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.bold,
-  },
 
   // Debt Cards
-  debtCard: {
-    marginBottom: SPACING.sm,
-    borderLeftWidth: 3,
-  },
   // TransactionsList-style row wrap for debts (replaces Card + border-left)
-  debtRowWrap: {
-    flexDirection: 'row',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    marginBottom: SPACING.sm,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  debtRowWrapSelected: {
-    borderColor: C.accent,
-    borderWidth: 1.5,
-  },
-  debtRowRail: {
-    width: 3,
-  },
-  debtRowBody: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-  },
-  debtHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  debtAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.sm,
-    borderWidth: 1.5,
-  },
-  debtAvatarText: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  debtInfo: {
-    flex: 1,
-  },
-  debtName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    marginBottom: 2,
-  },
-  debtDesc: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-  },
-  debtTimestamp: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.neutral,
-    marginTop: 2,
-  },
-  debtAmountCol: {
-    alignItems: 'flex-end',
-    gap: SPACING.xs,
-  },
-  debtAmount: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-  },
-  statusText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  typePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-  },
-  typePillText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  debtActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  },
-  debtActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: RADIUS.full,
-    // Fluid: each button takes ~half the row, stretches to fill leftover space.
-    // With 4 actions you get a clean 2×2 grid; 3 actions → 2+1 stretched; 5 → 2+2+1 stretched.
-    flexBasis: '47%',
-    flexGrow: 1,
-    flexShrink: 1,
-    minWidth: 100,
-  },
-  debtActionText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
 
   // V2 — primary action + icon-row pattern (replaces the chaotic 5-button grid)
-  debtActionsV2: {
-    marginTop: SPACING.sm,
-    gap: SPACING.sm + 2,
-  },
   debtPrimaryAction: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -8107,114 +7797,9 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   },
 
   // Split Cards
-  splitCard: {
-    marginBottom: SPACING.sm,
-  },
   // Direction B — TransactionsList-style split row (replaces splitCard usage)
-  splitRowWrap: {
-    flexDirection: 'row',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    marginBottom: SPACING.sm,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  splitRowWrapSelected: {
-    borderColor: C.accent,
-    borderWidth: 1.5,
-  },
-  splitRowRail: {
-    width: 3,
-  },
-  splitRowBody: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    gap: 6,
-  },
-  splitRowTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  splitRowTitleWrap: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minWidth: 0,
-  },
-  splitRowTitle: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    letterSpacing: -0.1,
-  },
-  splitRowAmount: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: -0.2,
-  },
-  splitRowSubtitle: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  splitRowChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginTop: 4,
-  },
-  splitRowChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.background,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  splitRowChipText: {
-    fontSize: 11,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-    maxWidth: 64,
-  },
 
   // Direction B — "ticker tape" split row
-  tickerSplitRow: {
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    marginBottom: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  tickerSplitRowSelected: {
-    borderColor: C.accent,
-    borderWidth: 1.5,
-  },
-  tickerSplitHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: SPACING.sm,
-  },
-  tickerSplitTitle: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    letterSpacing: -0.1,
-    flexShrink: 1,
-  },
   // Dotted leader between title and amount — gives the receipt/ticker feel
   tickerLeader: {
     flex: 1,
@@ -8223,13 +7808,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     borderStyle: 'dotted',
     borderColor: withAlpha(C.textPrimary, 0.15),
     marginBottom: 4,
-  },
-  tickerSplitAmount: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: -0.2,
   },
   tickerProgressTrack: {
     height: 4,
@@ -8241,201 +7819,10 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     height: '100%',
     borderRadius: 2,
   },
-  tickerSplitFooter: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    fontVariant: ['tabular-nums'],
-  },
 
   // Ticker tape — debt row variant (avatar preserved)
-  tickerDebtRow: {
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  tickerDebtHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
-  },
-  tickerDebtAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-  },
-  tickerDebtAvatarText: {
-    fontSize: 11,
-    fontWeight: TYPOGRAPHY.weight.bold,
-  },
-  tickerDebtName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    letterSpacing: -0.1,
-    flexShrink: 0,
-    maxWidth: '40%',
-  },
-  tickerDebtTypeChip: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    letterSpacing: 0.3,
-    textTransform: 'lowercase',
-    fontStyle: 'italic',
-  },
-  tickerDebtDesc: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    marginTop: 2,
-    marginLeft: 30, // align with name (after avatar)
-  },
 
   // Settings modal — toggle row + custom switch
-  dHowButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.lg,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: withAlpha(C.textPrimary, 0.06),
-    paddingVertical: SPACING.md,
-  },
-  dHowButtonText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  dHowOverlay: {
-    flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.4),
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-  },
-  dHowCard: {
-    width: '100%',
-    maxWidth: 380,
-    maxHeight: '75%',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
-  },
-  dHowCardHeader: {
-    marginBottom: SPACING.md,
-  },
-  dHowCardTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    letterSpacing: C === CALM_DARK ? -0.1 : -0.3,
-  },
-  dHowCardSub: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  dHowGroupLabel: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textMuted,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  dHowItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: SPACING.sm + 2,
-    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.07 : 0.025),
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: SPACING.sm + 2,
-    marginBottom: 6,
-  },
-  dHowIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.10 : 0.05),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
-  },
-  dHowText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    lineHeight: 18,
-  },
-  dHowBold: {
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-  },
-  dHowDismiss: {
-    alignItems: 'center',
-    paddingVertical: SPACING.sm + 4,
-    marginTop: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: withAlpha(C.textPrimary, 0.06),
-  },
-  dHowDismissText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-    letterSpacing: 0.2,
-  },
-  dSettingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    paddingVertical: SPACING.md,
-  },
-  dSettingsRowTitle: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    marginBottom: 4,
-  },
-  dSettingsRowSub: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    lineHeight: 16,
-  },
-  dSettingsToggle: {
-    width: 42,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: withAlpha(C.textPrimary, 0.12),
-    padding: 2,
-    justifyContent: 'center',
-  },
-  dSettingsToggleThumb: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: C.surface,
-    ...(C === CALM_DARK ? {} : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 }),
-  },
 
   // Split Detail modal — TransactionsList edit-sheet vibe
   detailHeroCard: {
@@ -8716,12 +8103,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     borderRadius: 2,
     backgroundColor: withAlpha(C.textPrimary, 0.15),
   },
-  dDebtSheetCloseBtn: {
-    position: 'absolute',
-    right: 0,
-    top: 4,
-    padding: 6,
-  },
   // Centered title zone with italic serif accent
   dDebtTitleZone: {
     alignItems: 'center',
@@ -8756,12 +8137,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
     marginBottom: SPACING.sm + 2,
-  },
-  dDebtFieldHeroLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
   },
   dDebtFieldCardLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -8875,24 +8250,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     fontVariant: ['tabular-nums'],
   },
   // Quick-fill chips — ¼ / half / full of remaining
-  tipBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: withAlpha(C.bronze, 0.08),
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.bronze, 0.15),
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
-    marginBottom: SPACING.sm + 2,
-  },
-  tipBannerText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.bronze,
-    letterSpacing: 0.1,
-  },
   // Tip confirmation overlay
   tipModalOverlay: {
     position: 'absolute',
@@ -9134,22 +8491,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     lineHeight: 20,
   },
   // iOS accessory bar above keyboard — single Done button on the right.
-  dDebtAccessoryBar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm + 2,
-    backgroundColor: C.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(C.textPrimary, 0.1),
-  },
-  dDebtAccessoryDone: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-    letterSpacing: 0.3,
-  },
   dDebtFieldDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -9161,126 +8502,12 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
-  splitHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: SPACING.md,
-  },
-  splitInfo: {
-    flex: 1,
-    marginRight: SPACING.md,
-  },
-  splitTitle: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    marginBottom: 2,
-  },
-  splitSubtext: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-  },
-  splitAmount: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  splitMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.md,
-  },
-  methodPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-  },
-  methodPillText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  participantCount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  splitParticipants: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  participantChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.background,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  participantChipPaid: {
-    backgroundColor: withAlpha(settledC, 0.1),
-    borderColor: withAlpha(settledC, 0.3),
-  },
-  participantChipText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    maxWidth: 80,
-  },
-  participantChipTextPaid: {
-    color: settledC,
-  },
-  splitActions: {
-    flexDirection: 'row',
-    gap: SPACING.lg,
-    marginTop: SPACING.sm,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-  },
 
   // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: C.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
-    padding: SPACING['2xl'],
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING['2xl'],
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    paddingBottom: SPACING.lg,
-  },
-  modalTitle: {
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-  },
-  modalTitleAccent: {
-    borderLeftWidth: 3,
-    borderLeftColor: C.accent,
-    paddingLeft: SPACING.sm,
   },
   modalActions: {
     flexDirection: 'row',
@@ -9296,11 +8523,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     marginBottom: SPACING.xs,
     marginTop: SPACING.md,
   },
-  formLabelOptional: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.regular,
-    color: C.textSecondary,
-  },
   formInput: {
     backgroundColor: C.background,
     borderRadius: RADIUS.sm,
@@ -9310,16 +8532,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     color: C.textPrimary,
     borderWidth: 1.5,
     borderColor: withAlpha(C.accent, 0.2),
-  },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  dateButtonText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
   },
   datePickerOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -9350,55 +8562,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   datePickerDone: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.accent,
-  },
-  typeContainer: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  typeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.sm,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    backgroundColor: C.background,
-  },
-  typeText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  methodContainer: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  methodButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.sm,
-    borderWidth: 2,
-    borderColor: C.border,
-    backgroundColor: C.surface,
-  },
-  methodButtonActive: {
-    borderColor: C.accent,
-    backgroundColor: withAlpha(C.accent, 0.12),
-  },
-  methodText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  methodTextActive: {
     color: C.accent,
   },
 
@@ -9504,32 +8667,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   },
 
   // Split Detail
-  detailTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    marginBottom: SPACING.xs,
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  detailSubtext: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    marginBottom: SPACING.lg,
-  },
-  participantList: {
-    gap: SPACING.md,
-  },
-  participantRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  participantRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    flex: 1,
-  },
   participantAvatar: {
     width: 40,
     height: 40,
@@ -9541,68 +8678,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
     letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  participantName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  participantAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-  paidBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-  },
-  paidBadgeText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  markPaidButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-  },
-  markPaidText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  splitPaidChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: withAlpha(C.positive, 0.1),
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-    marginRight: SPACING.sm,
-  },
-  splitPaidChipText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.positive,
-  },
-  splitMarkPaidChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: withAlpha(C.textSecondary, 0.08),
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-    marginRight: SPACING.sm,
-  },
-  splitMarkPaidChipText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
   },
 
   // Wizard
@@ -9728,6 +8803,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     marginBottom: SPACING.md,
   },
   wizardOptionCardActive: {
+    borderWidth: 1.5,
     borderColor: C.accent,
     backgroundColor: withAlpha(C.accent, 0.04),
   },
@@ -9843,6 +8919,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     marginBottom: SPACING.md,
   },
   wizardPayerCardActive: {
+    borderWidth: 1.5,
     borderColor: C.accent,
     backgroundColor: withAlpha(C.accent, 0.04),
   },
@@ -10030,97 +9107,10 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   },
 
   // Scanning overlay
-  scanningOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scanningCard: {
-    backgroundColor: C.surface,
-    borderRadius: RADIUS['2xl'],
-    padding: SPACING['3xl'],
-    alignItems: 'center',
-    gap: SPACING.lg,
-    width: 220,
-  },
-  scanningTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  scanningSubtext: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    textAlign: 'center',
-  },
 
   // Choice card (FAB / Split choice)
-  choiceCard: {
-    width: '82%',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.xl,
-    ...SHADOWS['2xl'],
-  },
-  choiceTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    marginBottom: SPACING.xs,
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  choiceSubtitle: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    marginBottom: SPACING.lg,
-  },
-  choiceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    paddingVertical: SPACING.md,
-  },
-  choiceRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  choiceIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(C.accent, 0.1),
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  choiceLabel: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  choiceDesc: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    marginTop: 1,
-  },
 
   // Request Payment
-  requestPaymentRecipient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    marginBottom: SPACING.xl,
-  },
-  requestPaymentOwes: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.positive,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    fontVariant: ['tabular-nums'],
-    marginTop: 2,
-  },
   requestPaymentLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
@@ -10152,32 +9142,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.accent,
-  },
-  requestPaymentQrSection: {
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  requestPaymentQrImage: {
-    width: 180,
-    height: 180,
-    borderRadius: RADIUS.lg,
-    marginBottom: SPACING.md,
-    backgroundColor: C.background,
-  },
-  requestPaymentShareQrBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.md,
-  },
-  requestPaymentShareQrText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
   },
   requestPaymentQrHint: {
     flexDirection: 'row',
@@ -10211,200 +9175,10 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   },
 
   // Selection mode
-  selectionCheckbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: C.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.sm,
-  },
-  selectionCheckboxActive: {
-    backgroundColor: C.accent,
-    borderColor: C.accent,
-  },
-  selectionBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: C.surface,
-    borderTopWidth: 2,
-    borderTopColor: C.accent,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING['3xl'],
-  },
-  selectionBarTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.md,
-  },
-  selectionBarBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  selectionBarBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  selectionBarCount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.accent,
-  },
-  selectionBarActions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  selectionEditBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(C.accent, 0.1),
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.accent,
-  },
-  selectionEditText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-  },
-  selectionDeleteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(destructiveC, 0.9),
-    borderRadius: RADIUS.md,
-  },
-  selectionDeleteText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
 
   // Split filter (legacy — kept for back-compat with any stale references)
-  splitFilterRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  splitFilterPill: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.background,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  splitFilterPillActive: {
-    backgroundColor: withAlpha(C.accent, 0.12),
-    borderWidth: 1.5,
-    borderColor: C.accent,
-  },
-  splitFilterText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-  },
-  splitFilterTextActive: {
-    color: C.accent,
-  },
 
   // Direction B — segmented control + hero card + drafts header
-  segmentedControl: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.08 : 0.04),
-    borderRadius: RADIUS.full,
-    padding: 4,
-    marginBottom: SPACING.md,
-  },
-  segmentTab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: 12,
-    borderRadius: RADIUS.full,
-    minHeight: 36,
-  },
-  segmentTabText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-    letterSpacing: 0.1,
-  },
-  segmentTabBadge: {
-    minWidth: 20,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.08),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentTabBadgeText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-  draftBookmark: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.sm,
-    backgroundColor: withAlpha(C.bronze, 0.1),
-    borderRadius: RADIUS.full,
-    minHeight: 36,
-  },
-  draftBookmarkCount: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.bronze,
-    fontVariant: ['tabular-nums'],
-  },
-  splitHeroCard: {
-    marginBottom: SPACING.lg,
-    paddingVertical: SPACING.lg,
-    paddingHorizontal: SPACING.lg,
-  },
-  splitHeroLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-    letterSpacing: 0.4,
-    textTransform: 'lowercase',
-    marginBottom: 4,
-  },
-  splitHeroAmount: {
-    fontSize: 32,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    letterSpacing: -0.5,
-    fontVariant: ['tabular-nums'],
-    marginBottom: 4,
-  },
-  splitHeroSub: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
   draftsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -10437,83 +9211,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   },
 
   // Payment modal redesign
-  payContextCard: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  payContextRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  payContextAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  payContextAvatarText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-  },
-  payContextName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-  },
-  payContextDesc: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    marginTop: 1,
-  },
-  payContextAmounts: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  payContextAmountItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  payContextAmountLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    marginBottom: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  payContextAmountValue: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  payContextDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: C.border,
-  },
-  payAmountRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    alignItems: 'center',
-  },
-  payQuickFill: {
-    backgroundColor: withAlpha(C.accent, 0.1),
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.sm,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.2),
-  },
-  payQuickFillText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-  },
   payHistorySection: {
     marginTop: SPACING.lg,
     borderTopWidth: 1,
@@ -10560,10 +9257,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     color: C.textSecondary,
     marginTop: 2,
   },
-  payHistoryDelete: {
-    padding: SPACING.xs,
-    marginLeft: SPACING.xs,
-  },
   payHistoryEditHint: {
     padding: SPACING.xs,
     marginLeft: SPACING.xs,
@@ -10597,30 +9290,6 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     flex: 1,
   },
   // Payment detail modal
-  payDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  payDetailMeta: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-  },
-  payDetailMetaHint: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-  },
-  payDetailDivider: {
-    height: 1,
-    backgroundColor: withAlpha(C.accent, 0.08),
-    marginVertical: SPACING.md,
-  },
-  payDetailActions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.lg,
-  },
   // Edited badge on payment history rows
   payEditedBadge: {
     flexDirection: 'row',
