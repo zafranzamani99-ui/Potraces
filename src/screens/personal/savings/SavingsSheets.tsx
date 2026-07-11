@@ -17,6 +17,11 @@ import { lightTap, successNotification } from '../../../services/haptics';
 import { SavingsAccount, SnapshotType, SavingsSnapshot } from '../../../types';
 import { SAVINGS_TYPE_OPTIONS } from './investmentTypes';
 
+// Strip grouping separators / stray chars before parseFloat — matches the
+// app-wide money-input convention (AddEditWalletModal, TransferModal, …) so a
+// pasted "12,500" doesn't silently truncate to 12.
+const normAmount = (x: string) => x.replace(/,/g, '').replace(/[^\d.]/g, '');
+
 // ─────────────────────────── shared shell ───────────────────────────
 const SheetShell: React.FC<{ visible: boolean; onClose: () => void; title: React.ReactNode; children: React.ReactNode; footer?: React.ReactNode }> = ({ visible, onClose, title, children, footer }) => {
   const C = useCalm();
@@ -102,19 +107,32 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
 
   const save = useCallback(() => {
     if (!name.trim()) { showToast(t.savings.enterAccountName, 'error'); return; }
-    const inv = parseFloat(initial); const cur = parseFloat(current);
+    const inv = parseFloat(normAmount(initial)); const cur = parseFloat(normAmount(current));
     if (!inv || inv <= 0) { showToast(t.savings.enterValidInitial, 'error'); return; }
     if (isNaN(cur) || cur < 0) { showToast(t.savings.enterValidCurrent, 'error'); return; }
-    const tgt = parseFloat(target) > 0 ? parseFloat(target) : undefined;
-    const rt = parseFloat(rate) > 0 ? parseFloat(rate) : undefined;
+    const tgtNum = parseFloat(normAmount(target)); const tgt = tgtNum > 0 ? tgtNum : undefined;
+    const rtNum = parseFloat(normAmount(rate)); const rt = rtNum > 0 ? rtNum : undefined;
     const gn = goalName.trim() || undefined;
+    const desc = isCustomLike ? description.trim() : undefined;
+    const nm = name.trim();
     if (editing) {
-      const changed = cur !== editing.currentValue;
-      onUpdate(editing.id, { name: name.trim(), type, description: isCustomLike ? description.trim() : undefined, initialInvestment: inv, currentValue: cur, target: tgt, goalName: gn, annualRate: rt });
-      if (changed) onSnapshot(editing.id, cur, 'Edit', 'manual');
+      // Send ONLY the scalar fields the user actually changed. Re-asserting the
+      // whole set (captured at open time) would clobber any field a background
+      // sync / another device corrected while the sheet was open (scalars merge
+      // by last-write-wins). currentValue goes through addSnapshot below.
+      const patch: Partial<SavingsAccount> = {};
+      if (nm !== editing.name) patch.name = nm;
+      if (type !== editing.type) patch.type = type;
+      if (desc !== editing.description) patch.description = desc;
+      if (inv !== editing.initialInvestment) patch.initialInvestment = inv;
+      if (tgt !== editing.target) patch.target = tgt;
+      if (gn !== editing.goalName) patch.goalName = gn;
+      if (rt !== editing.annualRate) patch.annualRate = rt;
+      if (Object.keys(patch).length) onUpdate(editing.id, patch);
+      if (cur !== editing.currentValue) onSnapshot(editing.id, cur, 'Edit', 'manual');
       showToast(t.savings.accountUpdated, 'success');
     } else {
-      onAdd({ name: name.trim(), type, description: isCustomLike ? description.trim() : undefined, initialInvestment: inv, currentValue: cur, target: tgt, goalName: gn, annualRate: rt });
+      onAdd({ name: nm, type, description: desc, initialInvestment: inv, currentValue: cur, target: tgt, goalName: gn, annualRate: rt });
       showToast(t.savings.accountAdded, 'success');
     }
     successNotification(); onClose();
@@ -152,7 +170,7 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
           {SAVINGS_TYPE_OPTIONS.map((ti) => {
             const on = type === ti.id;
             return (
-              <TouchableOpacity key={ti.id} onPress={() => { setType(ti.id); lightTap(); }} style={[s.typeTile, neu.raised, on && { backgroundColor: withAlpha(ti.color, 0.14) }]} activeOpacity={0.8}>
+              <TouchableOpacity key={ti.id} onPress={() => { setType(ti.id); lightTap(); }} style={[s.typeTile, neu.raised, on && { backgroundColor: withAlpha(ti.color, 0.14) }]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={ti.name} accessibilityState={{ selected: on }}>
                 <CategoryIcon icon={ti.icon} size={16} color={ti.color} />
                 <Text style={[s.typeText, on && { color: ti.color, fontWeight: '700' }]} numberOfLines={1}>{ti.name}</Text>
               </TouchableOpacity>
@@ -169,18 +187,18 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
 
       <View style={s.row2}>
         <Field label={t.savings.putInLabel}>
-          <View style={[s.amtField, neu.insetSoft]}><Text style={s.cur}>{currency}</Text><TextInput value={initial} onChangeText={setInitial} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textMuted} style={s.amtInput} selectionColor={withAlpha(C.accent, 0.25)} /></View>
+          <View style={[s.amtField, neu.insetSoft]}><Text style={s.cur}>{currency}</Text><TextInput value={initial} onChangeText={(v) => setInitial(normAmount(v))} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textMuted} style={s.amtInput} selectionColor={withAlpha(C.accent, 0.25)} /></View>
         </Field>
         <Field label={t.savings.nowLabel}>
-          <View style={[s.amtField, neu.insetSoft]}><Text style={s.cur}>{currency}</Text><TextInput value={current} onChangeText={setCurrent} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textMuted} style={s.amtInput} selectionColor={withAlpha(C.accent, 0.25)} /></View>
+          <View style={[s.amtField, neu.insetSoft]}><Text style={s.cur}>{currency}</Text><TextInput value={current} onChangeText={(v) => setCurrent(normAmount(v))} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textMuted} style={s.amtInput} selectionColor={withAlpha(C.accent, 0.25)} /></View>
         </Field>
       </View>
 
       <Field label={t.savings.annualRateLabel}>
-        <TextInput value={rate} onChangeText={setRate} keyboardType="decimal-pad" placeholder={t.savings.annualRatePlaceholder} placeholderTextColor={C.textMuted} style={[s.input, neu.insetSoft]} selectionColor={withAlpha(C.accent, 0.25)} />
+        <TextInput value={rate} onChangeText={(v) => setRate(normAmount(v))} keyboardType="decimal-pad" placeholder={t.savings.annualRatePlaceholder} placeholderTextColor={C.textMuted} style={[s.input, neu.insetSoft]} selectionColor={withAlpha(C.accent, 0.25)} />
       </Field>
       <Field label={t.savings.targetFieldLabel}>
-        <View style={[s.amtField, neu.insetSoft]}><Text style={s.cur}>{currency}</Text><TextInput value={target} onChangeText={setTarget} keyboardType="decimal-pad" placeholder={t.savings.targetPlaceholder} placeholderTextColor={C.textMuted} style={s.amtInput} selectionColor={withAlpha(C.accent, 0.25)} /></View>
+        <View style={[s.amtField, neu.insetSoft]}><Text style={s.cur}>{currency}</Text><TextInput value={target} onChangeText={(v) => setTarget(normAmount(v))} keyboardType="decimal-pad" placeholder={t.savings.targetPlaceholder} placeholderTextColor={C.textMuted} style={s.amtInput} selectionColor={withAlpha(C.accent, 0.25)} /></View>
       </Field>
       {parseFloat(target) > 0 && (
         <Field label={t.savings.goalNameLabel}>
@@ -227,7 +245,7 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
 
   const save = useCallback(() => {
     if (!account) return;
-    const v = parseFloat(value);
+    const v = parseFloat(normAmount(value));
     if (isNaN(v) || v < 0) { showToast(t.savings.enterValidValue, 'error'); return; }
     onSnapshot(account.id, v, note.trim() || undefined, snap);
     showToast(t.savings.valueUpdated, 'success'); successNotification(); onClose();
@@ -243,7 +261,7 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
         {SNAP_TYPES.map((st) => {
           const on = snap === st.key;
           return (
-            <TouchableOpacity key={st.key} onPress={() => { setSnap(st.key); lightTap(); }} style={[s.snapPill, neu.raised, on && { backgroundColor: withAlpha(C.accent, 0.14) }]} activeOpacity={0.8}>
+            <TouchableOpacity key={st.key} onPress={() => { setSnap(st.key); lightTap(); }} style={[s.snapPill, neu.raised, on && { backgroundColor: withAlpha(C.accent, 0.14) }]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t.savings[st.labelKey]} accessibilityState={{ selected: on }}>
               <Feather name={st.icon} size={13} color={on ? C.accent : C.textMuted} />
               <Text style={[s.snapText, on && { color: C.accent, fontWeight: '700' }]}>{t.savings[st.labelKey]}</Text>
             </TouchableOpacity>
@@ -251,7 +269,7 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
         })}
       </View>
       <Field label={t.savings.newValueLabel}>
-        <View style={[s.amtField, neu.insetSoft]}><Text style={s.cur}>{currency}</Text><TextInput value={value} onChangeText={setValue} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor={C.textMuted} style={s.amtInput} selectionColor={withAlpha(C.accent, 0.25)} /></View>
+        <View style={[s.amtField, neu.insetSoft]}><Text style={s.cur}>{currency}</Text><TextInput value={value} onChangeText={(v) => setValue(normAmount(v))} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor={C.textMuted} style={s.amtInput} selectionColor={withAlpha(C.accent, 0.25)} /></View>
       </Field>
       {preview && Math.abs(preview.diff) > 0.001 && (
         <View style={[s.preview, { backgroundColor: withAlpha(preview.diff >= 0 ? C.positive : C.neutral, 0.1) }]}>

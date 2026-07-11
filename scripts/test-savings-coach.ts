@@ -33,6 +33,7 @@ console.log('coachingEngine priority');
 // 1. Stale beats everything (account last touched 20 days ago).
 const staleAcc = [mk('Bank', 'bank', 4000, 4500, [[4300, 25], [4500, 20]])];
 eq('stale account → stale', selectNudge(input('savings', staleAcc, 1500))?.kind, 'stale');
+eq('stale nudge carries account id (not just name)', selectNudge(input('savings', staleAcc, 1500))?.data.id, 'Bank');
 
 // 2. Runway fires on savings tab (fresh accounts, 3 months covered < 6).
 const freshLow = [mk('Bank', 'bank', 4000, 4500, [[4300, 5], [4500, 1]])];

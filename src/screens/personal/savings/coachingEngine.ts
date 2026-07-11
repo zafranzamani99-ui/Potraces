@@ -36,15 +36,16 @@ const STALE_DAYS = 7;
 
 const toDate = (v: Date | string | number): Date => (v instanceof Date ? v : new Date(v));
 
-function mostStale(accounts: SavingsAccount[], now: Date): { name: string; days: number } | null {
-  let name: string | null = null;
+function mostStale(accounts: SavingsAccount[], now: Date): { id: string; name: string; days: number } | null {
+  let id: string | null = null;
+  let name = '';
   let maxDays = 0;
   for (const a of accounts) {
     const last = a.history.length ? toDate(a.history[a.history.length - 1].date) : toDate(a.createdAt);
     const days = differenceInDays(now, last);
-    if (days >= STALE_DAYS && days > maxDays) { maxDays = days; name = a.name; }
+    if (days >= STALE_DAYS && days > maxDays) { maxDays = days; id = a.id; name = a.name; }
   }
-  return name ? { name, days: maxDays } : null;
+  return id ? { id, name, days: maxDays } : null;
 }
 
 function bestPerformerThisMonth(accounts: SavingsAccount[], now: Date): { name: string; pct: number } | null {
@@ -77,7 +78,7 @@ export function buildNudges(input: CoachInput): Nudge[] {
     if (r.months < r.targetMonths) {
       out.push({
         kind: 'runway', tone: 'savings', icon: 'shield',
-        data: { months: Math.round(r.months * 10) / 10, gap: r.gapToTarget, targetMonths: r.targetMonths },
+        data: { months: Math.round(r.months * 10) / 10, gap: r.gapToTarget, targetMonths: r.targetMonths, saved: portfolio.totalCurrent },
       });
     }
   }

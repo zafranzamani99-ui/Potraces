@@ -48,11 +48,19 @@ export const useSavingsStore = create<SavingsState>()(
         }),
 
       updateAccount: (id, updates) =>
-        set((state) => ({
-          accounts: state.accounts.map((a) =>
-            a.id === id ? { ...a, ...updates, updatedAt: new Date() } : a
-          ),
-        })),
+        set((state) => {
+          // Round money fields so the edit path matches addAccount/addSnapshot
+          // and the app-wide roundMoney write-site convention (utils/money.ts).
+          const u: Partial<typeof updates> = { ...updates };
+          if (typeof u.currentValue === 'number') u.currentValue = roundMoney(u.currentValue);
+          if (typeof u.initialInvestment === 'number') u.initialInvestment = roundMoney(u.initialInvestment);
+          if (typeof u.target === 'number') u.target = roundMoney(u.target);
+          return {
+            accounts: state.accounts.map((a) =>
+              a.id === id ? { ...a, ...u, updatedAt: new Date() } : a
+            ),
+          };
+        }),
 
       deleteAccount: (id) => {
         set((state) => ({

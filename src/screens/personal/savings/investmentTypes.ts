@@ -96,8 +96,11 @@ export function getTypeInfo(rawType: string | undefined | null, resolveCustom?: 
     }
   }
 
-  // Unknown: preserve the raw id so keys stay unique; present as "Other".
-  return { ...INVESTMENT_TYPES.other, id: raw };
+  // Unknown / unmigrated: collapse into the single "Other" bucket. Allocation
+  // slices key by type id, so all unknowns merge into one "Other" row (rather
+  // than several identical-looking ones); account rows key by account.id, so
+  // there is no React key collision.
+  return INVESTMENT_TYPES.other;
 }
 
 /** Risk class for a raw type. */

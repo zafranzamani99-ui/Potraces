@@ -63,10 +63,10 @@ const a = getTypeInfo('investment');
 const b = getTypeInfo('savings');
 check("'investment' and 'savings' get DISTINCT ids (no key collision)", a.id !== b.id);
 
-// ── Unknown types keep a unique id but present as "Other" ──
+// ── Unknown / unmigrated types collapse into the single "Other" bucket ──
 eq('unknown weird_x → name', getTypeInfo('weird_x').name, 'Other');
-eq('unknown weird_x → id preserved (unique)', getTypeInfo('weird_x').id, 'weird_x');
-check('two different unknowns → distinct ids', getTypeInfo('foo').id !== getTypeInfo('bar').id);
+eq('unknown weird_x → collapses to other id', getTypeInfo('weird_x').id, 'other');
+check('two different unknowns → merge into one Other bucket', getTypeInfo('foo').id === 'other' && getTypeInfo('bar').id === 'other');
 
 // ── custom_* uses the resolver, defaults to savings class ──
 const custom = getTypeInfo('custom_abc', (id) =>
@@ -76,7 +76,7 @@ eq('custom_abc → name from resolver', custom.name, 'My Crypto Bag');
 eq('custom_abc → id preserved', custom.id, 'custom_abc');
 eq('custom_abc → class default savings', custom.class, 'savings');
 eq('custom_abc without resolver → Other name', getTypeInfo('custom_abc').name, 'Other');
-eq('custom_abc without resolver → id preserved', getTypeInfo('custom_abc').id, 'custom_abc');
+eq('custom_abc without resolver → other id', getTypeInfo('custom_abc').id, 'other');
 
 // ── Empty / null → other ──
 eq('empty string → other', getTypeInfo('').id, 'other');

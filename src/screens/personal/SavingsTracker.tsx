@@ -4,7 +4,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { subMonths } from 'date-fns';
+import { subMonths, parseISO, differenceInDays } from 'date-fns';
 import { useSavingsStore } from '../../store/savingsStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -87,7 +87,11 @@ const SavingsTracker: React.FC = () => {
     return () => task.cancel();
   }, []);
 
-  useFocusEffect(useCallback(() => () => { if (accounts.length > 0) recordOpen(); }, [accounts.length, recordOpen]));
+  // Record the "since last check" baseline only on real blur/unmount. Read the
+  // count fresh from the store so the callback identity stays stable while
+  // focused (using accounts.length as a dep would re-fire recordOpen on every
+  // add/delete, silently wiping the "since last check" pill mid-session).
+  useFocusEffect(useCallback(() => () => { if (useSavingsStore.getState().accounts.length > 0) recordOpen(); }, [recordOpen]));
 
   const now = useMemo(() => new Date(), []); // fixed at mount — fine for a pushed screen
 
@@ -118,12 +122,18 @@ const SavingsTracker: React.FC = () => {
   const avgMonthlySpend = useMemo(() => {
     const cutoff = subMonths(now, 3);
     let total = 0;
+    let earliest: Date | null = null;
     for (const tx of transactions) {
       if ((tx as any).type !== 'expense') continue;
       const d = (tx as any).date instanceof Date ? (tx as any).date : new Date((tx as any).date);
-      if (d >= cutoff) total += (tx as any).amount || 0;
+      if (d >= cutoff) { total += (tx as any).amount || 0; if (!earliest || d < earliest) earliest = d; }
     }
-    return total / 3;
+    if (!earliest) return 0;
+    // Divide by the ACTUAL months of data present (clamped to [1,3]) so new users
+    // with < 3 months of history don't get an understated spend (which would
+    // inflate the runway and suppress the emergency-fund nudge).
+    const monthsSpan = Math.min(3, Math.max(differenceInDays(now, earliest) / 30, 1));
+    return total / monthsSpan;
   }, [transactions, now]);
 
   const nudge = useMemo<Nudge | null>(() => selectNudge({
@@ -135,11 +145,11 @@ const SavingsTracker: React.FC = () => {
 
   // ── Echo ──
   const savingsChips: EchoChip[] = useMemo(() => [
-    { label: 'am I on track?', question: 'based on my current pace, am I on track to hit my savings targets?' },
-    { label: 'too concentrated?', question: 'is my portfolio too concentrated in one type? should I diversify?' },
-    { label: 'best performer?', question: 'which of my savings/investments is doing best and worst, and why?' },
-    { label: 'patut simpan lagi?', question: 'patut ke aku tambah simpanan bulan ni, atau cukup dah?' },
-  ], []);
+    { label: t.savings.chipOnTrack, question: t.savings.chipOnTrackQ },
+    { label: t.savings.chipConcentrated, question: t.savings.chipConcentratedQ },
+    { label: t.savings.chipBest, question: t.savings.chipBestQ },
+    { label: t.savings.chipSaveMore, question: t.savings.chipSaveMoreQ },
+  ], [t]);
   const snapshot = useMemo(() => buildSavingsSnapshot({ accounts, portfolio, breakdown: computeBreakdown(accounts, resolveCustom), currency, now, resolveCustom }), [accounts, portfolio, currency, now, resolveCustom]);
 
   const openEcho = useCallback((prompt?: string) => {
@@ -161,7 +171,7 @@ const SavingsTracker: React.FC = () => {
   const nudgeCopy = useMemo(() => (nudge ? renderNudge(nudge, t, fmtShort) : null), [nudge, t, fmtShort]);
   const onNudgeAction = useCallback(() => {
     if (!nudge) return;
-    if (nudge.kind === 'stale') { const a = tabAccounts.find((x) => x.name === nudge.data.name); if (a) openUpdate(a); }
+    if (nudge.kind === 'stale') { const a = tabAccounts.find((x) => x.id === nudge.data.id); if (a) openUpdate(a); }
     else if (nudge.kind === 'runway' || nudge.kind === 'addedThisMonth') openAdd();
     else if (nudge.kind === 'concentration') openEcho(savingsChips[1].question);
   }, [nudge, tabAccounts, openUpdate, openAdd, openEcho, savingsChips]);
@@ -201,7 +211,7 @@ const SavingsTracker: React.FC = () => {
               )}
               <View style={styles.ranges}>
                 {TIME_RANGES.map((r) => (
-                  <TouchableOpacity key={r} onPress={() => { setTimeRange(r); selectionChanged(); }} style={[styles.range, timeRange === r && styles.rangeOn]} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={r === 'ALL' ? t.savings.timeRangeAll : r}>
+                  <TouchableOpacity key={r} onPress={() => { setTimeRange(r); selectionChanged(); }} style={[styles.range, timeRange === r && styles.rangeOn]} activeOpacity={0.7} accessibilityRole="button" accessibilityState={{ selected: timeRange === r }} accessibilityLabel={r === 'ALL' ? t.savings.timeRangeAll : r}>
                     <Text style={[styles.rangeText, timeRange === r && styles.rangeTextOn]}>{r === 'ALL' ? t.savings.timeRangeAll : r}</Text>
                   </TouchableOpacity>
                 ))}
@@ -250,12 +260,12 @@ const SavingsTracker: React.FC = () => {
                   <Text style={styles.coachBody}>{nudgeCopy.body}</Text>
                   <View style={styles.coachActions}>
                     {nudgeCopy.action && (
-                      <Pressable onPress={onNudgeAction} style={[styles.coachCta, { backgroundColor: nudgeCopy.tone === 'investment' ? C.bronze : C.accent }]}>
+                      <Pressable onPress={onNudgeAction} style={[styles.coachCta, { backgroundColor: nudgeCopy.tone === 'investment' ? C.bronze : C.accent }]} accessibilityRole="button" accessibilityLabel={nudgeCopy.action}>
                         <Text style={styles.coachCtaText}>{nudgeCopy.action}</Text>
                         <Feather name="arrow-right" size={13} color="#fff" />
                       </Pressable>
                     )}
-                    <Pressable onPress={() => openEcho(nudgeCopy.echoPrompt)} style={[styles.coachAsk, neu.raised]}>
+                    <Pressable onPress={() => openEcho(nudgeCopy.echoPrompt)} style={[styles.coachAsk, neu.raised]} accessibilityRole="button" accessibilityLabel={t.savings.askEcho}>
                       <Feather name="zap" size={12} color={C.accent} />
                       <Text style={styles.coachAskText}>{t.savings.askEcho}</Text>
                     </Pressable>
@@ -283,7 +293,7 @@ const SavingsTracker: React.FC = () => {
             {tabAccounts.length > 1 && (
               <View style={styles.sortRow}>
                 {SORT_OPTS.map((o) => (
-                  <TouchableOpacity key={o.key} onPress={() => { setSortBy(o.key); selectionChanged(); }} style={[styles.sortChip, neu.raised, sortBy === o.key && { backgroundColor: C.accent }]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t.savings[o.labelKey]}>
+                  <TouchableOpacity key={o.key} onPress={() => { setSortBy(o.key); selectionChanged(); }} style={[styles.sortChip, neu.raised, sortBy === o.key && { backgroundColor: C.accent }]} activeOpacity={0.8} accessibilityRole="button" accessibilityState={{ selected: sortBy === o.key }} accessibilityLabel={t.savings[o.labelKey]}>
                     <Text style={[styles.sortChipText, sortBy === o.key && { color: '#fff' }]}>{t.savings[o.labelKey]}</Text>
                   </TouchableOpacity>
                 ))}
@@ -309,7 +319,7 @@ const SavingsTracker: React.FC = () => {
                 <Text style={styles.growTag}>{t.savings.growTitle} · {t.savings.growOptional}</Text>
                 <Text style={styles.growTitle}>{t.savings.growCashTitle}</Text>
                 <Text style={styles.growBody}>{t.savings.growCashBody}</Text>
-                <TouchableOpacity onPress={() => { lightTap(); Linking.openURL('https://versa.com.my').catch(() => showToast(t.savings.growTitle, 'info')); }} style={styles.growGo} accessibilityRole="button" accessibilityLabel={t.savings.growExplore}>
+                <TouchableOpacity onPress={() => { lightTap(); Linking.openURL('https://versa.com.my').catch(() => showToast(t.savings.couldNotOpenLink, 'error')); }} style={styles.growGo} accessibilityRole="button" accessibilityLabel={t.savings.growExplore}>
                   <Text style={styles.growGoText}>{t.savings.growExplore}</Text>
                   <Feather name="arrow-up-right" size={13} color={C.accent} />
                 </TouchableOpacity>
@@ -367,7 +377,7 @@ function timeRangeFilter(portfolio: Portfolio, range: TimeRange, now: Date): num
   if (spark.length < 2) return [];
   if (range === 'ALL') return spark.map((p) => p.value);
   const cutoff = { '1M': subMonths(now, 1), '3M': subMonths(now, 3), '6M': subMonths(now, 6), '1Y': subMonths(now, 12) }[range];
-  const filtered = spark.filter((p) => new Date(p.date) >= cutoff);
+  const filtered = spark.filter((p) => parseISO(p.date) >= cutoff); // parseISO reads the yyyy-MM-dd key as local, matching the local `cutoff`
   return filtered.length >= 2 ? filtered.map((p) => p.value) : spark.map((p) => p.value);
 }
 

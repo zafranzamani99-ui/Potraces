@@ -2089,6 +2089,15 @@ export const ms: Translations = {
     unlockUnlimitedBody: 'Anda pada had percuma 5 akaun. Potraces Plus buang had itu.',
     emptySavingsTab: 'Belum ada akaun simpanan',
     emptyInvestTab: 'Belum ada pelaburan',
+    chipOnTrack: 'aku on track?',
+    chipOnTrackQ: 'ikut kadar sekarang, aku on track tak nak capai sasaran simpanan?',
+    chipConcentrated: 'terlalu tertumpu?',
+    chipConcentratedQ: 'portfolio aku terlalu tertumpu pada satu jenis ke? patut pelbagaikan?',
+    chipBest: 'paling untung?',
+    chipBestQ: 'simpanan dan pelaburan mana paling untung dan paling rugi, dan kenapa?',
+    chipSaveMore: 'patut simpan lagi?',
+    chipSaveMoreQ: 'patut ke aku tambah simpanan bulan ni, atau cukup dah?',
+    couldNotOpenLink: 'Tak dapat buka pautan',
   },
 
   subscriptions: {

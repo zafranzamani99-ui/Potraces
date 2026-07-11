@@ -2118,6 +2118,15 @@ export const en = {
     unlockUnlimitedBody: "You're on the free 5-account limit. Potraces Plus removes it.",
     emptySavingsTab: 'No savings accounts yet',
     emptyInvestTab: 'No investments yet',
+    chipOnTrack: 'am I on track?',
+    chipOnTrackQ: 'based on my current pace, am I on track to hit my savings targets?',
+    chipConcentrated: 'too concentrated?',
+    chipConcentratedQ: 'is my portfolio too concentrated in one type? should I diversify?',
+    chipBest: 'best performer?',
+    chipBestQ: 'which of my savings and investments is doing best and worst, and why?',
+    chipSaveMore: 'save more?',
+    chipSaveMoreQ: 'should I add more to my savings this month, or is it enough?',
+    couldNotOpenLink: "Couldn't open link",
   },
 
   subscriptions: {
