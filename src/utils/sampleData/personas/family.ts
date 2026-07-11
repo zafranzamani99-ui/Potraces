@@ -209,7 +209,7 @@ export const family: Persona = {
 
     // ─── 8. Savings + Investments ──────────────────────────────────
     c.savings(
-      { name: 'ASB', type: 'investment', initialInvestment: 30000, currentValue: 45000, annualRate: 4.25, description: 'Amanah Saham Bumiputera — RM 500/bulan' },
+      { name: 'ASB', type: 'asb', initialInvestment: 30000, currentValue: 45000, annualRate: 4.25, description: 'Amanah Saham Bumiputera — RM 500/bulan' },
       [
         { value: 30000, note: 'pembukaan dari simpanan lama', source: 'manual' },
         { value: 36000, note: 'top-up bonus tahunan', source: 'manual' },
@@ -218,7 +218,7 @@ export const family: Persona = {
       ],
     );
     c.savings(
-      { name: 'SSPN anak sulung', type: 'savings', initialInvestment: 8000, currentValue: 12000, annualRate: 3.5, description: 'Simpanan pendidikan anak pertama' },
+      { name: 'SSPN anak sulung', type: 'esa', initialInvestment: 8000, currentValue: 12000, annualRate: 3.5, description: 'Simpanan pendidikan anak pertama' },
       [
         { value: 8000, note: 'opening bila anak lahir', source: 'manual' },
         { value: 10000, note: 'top up bonus', source: 'manual' },
@@ -226,7 +226,7 @@ export const family: Persona = {
       ],
     );
     c.savings(
-      { name: 'SSPN anak kedua', type: 'savings', initialInvestment: 5000, currentValue: 8000, annualRate: 3.5, description: 'Simpanan pendidikan anak kedua' },
+      { name: 'SSPN anak kedua', type: 'esa', initialInvestment: 5000, currentValue: 8000, annualRate: 3.5, description: 'Simpanan pendidikan anak kedua' },
       [
         { value: 5000, note: 'opening bila anak kedua lahir', source: 'manual' },
         { value: 6500, note: 'top up angpau', source: 'manual' },
@@ -234,7 +234,7 @@ export const family: Persona = {
       ],
     );
     c.savings(
-      { name: 'Tabung Haji', type: 'savings', initialInvestment: 14000, currentValue: 20000, annualRate: 3.1, description: 'Simpanan haji + umrah sekeluarga' },
+      { name: 'Tabung Haji', type: 'tabung_haji', initialInvestment: 14000, currentValue: 20000, annualRate: 3.1, description: 'Simpanan haji + umrah sekeluarga' },
       [
         { value: 14000, note: 'opening lama', source: 'manual' },
         { value: 17000, note: 'top up raya + bonus', source: 'manual' },

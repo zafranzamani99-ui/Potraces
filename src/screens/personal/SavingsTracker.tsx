@@ -747,8 +747,8 @@ const SavingsTracker: React.FC = () => {
         {ready && breakdown && (
           <View style={styles.breakdownCard}>
             <Text style={styles.sectionLabel}>{t.savings.whereMoneyLives}</Text>
-            {breakdown.map((item) => (
-              <View key={item.name} style={styles.breakdownRow}>
+            {breakdown.map((item, idx) => (
+              <View key={`${item.name}_${idx}`} style={styles.breakdownRow}>
                 <Text style={styles.breakdownName} numberOfLines={1}>{item.name}</Text>
                 <View style={styles.breakdownBarContainer}>
                   <View
