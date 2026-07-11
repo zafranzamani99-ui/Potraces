@@ -1,0 +1,26 @@
+name: CI
+
+# Runs the typecheck + full tsx test suite on every push and PR so a regression
+# can't reach main unnoticed. Native/EAS builds are intentionally out of scope here.
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: typecheck + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck + test suite
+        run: npm test

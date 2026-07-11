@@ -18,6 +18,7 @@ import { useT } from '../../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { lightTap } from '../../services/haptics';
+import { markNewImportRows } from '../../utils/importDedup';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import WalletPicker from '../../components/common/WalletPicker';
@@ -192,13 +193,23 @@ const ImportFromCsv: React.FC = () => {
           onPress: () => {
             setStep('importing');
             try {
+              // Skip rows already present in this wallet so a re-import can't double-book.
+              const existing = usePersonalStore.getState().transactions;
+              const candidates = preview.filter((p) => p.valid && !skipRows.has(p.rowIndex));
+              const isNew = markNewImportRows(existing, candidates.map((p) => ({
+                amount: p.amount!,
+                type: p.type,
+                date: p.date!,
+                description: p.description || t.importCsv.imported,
+                walletId: selectedWalletId,
+              })));
               // Track the net wallet effect so the LIVE balance actually moves on import.
-              // Without this the wallet stayed wrong until a sync-time reconcile (and
-              // permanently wrong with sync off). Reconcile replays these same
-              // transactions, so applying the net once keeps live + reconciled in agreement.
+              // Reconcile replays these same transactions, so applying the net once keeps
+              // live + reconciled in agreement.
               let netDelta = 0; // + income (add), − expense (deduct)
-              for (const p of preview) {
-                if (!p.valid || skipRows.has(p.rowIndex)) continue;
+              let imported = 0;
+              candidates.forEach((p, i) => {
+                if (!isNew[i]) return; // duplicate already in this wallet
                 addTransaction({
                   amount: p.amount!,
                   category: p.category || 'other',
@@ -210,10 +221,21 @@ const ImportFromCsv: React.FC = () => {
                   walletId: selectedWalletId,
                 });
                 netDelta += p.type === 'income' ? p.amount! : -p.amount!;
+                imported++;
+              });
+              const skipped = candidates.length - imported;
+              const walletName = wallets.find((w) => w.id === selectedWalletId)?.name ?? '';
+              if (imported === 0) {
+                setStep('map');
+                Alert.alert(t.common.importAllDuplicates, t.common.importAllDuplicatesMsg.replace('{n}', String(skipped)).replace('{wallet}', walletName));
+                return;
               }
               if (netDelta > 0) useWalletStore.getState().addToWallet(selectedWalletId, netDelta);
               else if (netDelta < 0) useWalletStore.getState().deductFromWallet(selectedWalletId, -netDelta);
               navigation.goBack();
+              if (skipped > 0) {
+                Alert.alert(t.common.importedTitle, t.common.importedWithSkipsMsg.replace('{imported}', String(imported)).replace('{skipped}', String(skipped)));
+              }
             } catch (e: any) {
               setStep('map');
               Alert.alert(t.importCsv.importFailed, e?.message ?? t.importCsv.importFailedMsg);

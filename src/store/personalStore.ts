@@ -26,6 +26,13 @@ export const usePersonalStore = create<PersonalState>()(
         _deletedGoalIds: [],
       }),
 
+      // WALLET-BALANCE INVARIANT: a transaction with a walletId moves that wallet exactly
+      // once. addTransaction does NOT apply the delta — the CALLER pairs an
+      // addToWallet/deductFromWallet with each add (income→add, expense→deduct), because
+      // some callers set balances another way (sampleData seeds via initialBalance and must
+      // NOT get an auto-delta). updateTransaction/deleteTransaction below DO move the wallet
+      // (reverse old, apply new). reconcileWalletBalances() is the source of truth and
+      // self-heals drift on sync. Locked by scripts/test-transaction-wallet-invariant.ts.
       addTransaction: (transaction) => {
         if (!Number.isFinite(transaction.amount) || transaction.amount <= 0) return '';
         const id = newId();

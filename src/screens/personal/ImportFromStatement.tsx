@@ -21,6 +21,7 @@ import { useT } from '../../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { lightTap } from '../../services/haptics';
+import { markNewImportRows } from '../../utils/importDedup';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
@@ -167,31 +168,54 @@ const ImportFromStatement: React.FC = () => {
           onPress: () => {
             setStep('importing');
             try {
-              // Move the LIVE wallet balance too (reconcile replays these txns, so the
-              // net is applied once) — otherwise the wallet stays wrong, permanently so
-              // with sync off.
+              // Skip rows already present in this wallet so a re-import can't double-book.
+              const existing = usePersonalStore.getState().transactions;
+              const included = rows
+                .filter((r) => r._include)
+                .map((r) => ({ r, date: new Date(r.date) }))
+                .filter((x) => !isNaN(x.date.getTime()));
+              const isNew = markNewImportRows(existing, included.map((x) => ({
+                amount: x.r.amount,
+                type: x.r.type,
+                date: x.date,
+                description: x.r.description,
+                walletId: selectedWalletId,
+              })));
+              // Move the LIVE wallet balance too (reconcile replays these txns, so the net
+              // is applied once) — otherwise the wallet stays wrong, permanently so with
+              // sync off.
               let netDelta = 0; // + income (add), − expense (deduct)
-              for (const r of rows) {
-                if (!r._include) continue;
-                const date = new Date(r.date);
-                if (isNaN(date.getTime())) continue;
+              let imported = 0;
+              included.forEach((x, i) => {
+                if (!isNew[i]) return; // duplicate already in this wallet
                 addTransaction({
-                  amount: r.amount,
-                  category: r._category ?? 'other',
-                  description: r.description,
-                  date,
-                  type: r.type,
+                  amount: x.r.amount,
+                  category: x.r._category ?? 'other',
+                  description: x.r.description,
+                  date: x.date,
+                  type: x.r.type,
                   mode: 'personal',
                   inputMethod: 'statement-import' as any,
                   walletId: selectedWalletId,
                 });
-                netDelta += r.type === 'income' ? r.amount : -r.amount;
+                netDelta += x.r.type === 'income' ? x.r.amount : -x.r.amount;
+                imported++;
+              });
+              const skipped = included.length - imported;
+              const walletName = wallets.find((w) => w.id === selectedWalletId)?.name ?? '';
+              if (imported === 0) {
+                setStep('review');
+                Alert.alert(t.common.importAllDuplicates, t.common.importAllDuplicatesMsg.replace('{n}', String(skipped)).replace('{wallet}', walletName));
+                return;
               }
               if (selectedWalletId) {
                 if (netDelta > 0) useWalletStore.getState().addToWallet(selectedWalletId, netDelta);
                 else if (netDelta < 0) useWalletStore.getState().deductFromWallet(selectedWalletId, -netDelta);
               }
               navigation.goBack();
+              if (skipped > 0) {
+                Alert.alert(t.common.importedTitle, t.common.importedWithSkipsMsg.replace('{imported}', String(imported)).replace('{skipped}', String(skipped)));
+              }
             } catch (e: any) {
               setStep('review');
               Alert.alert(t.importStatement.importFailed, e?.message ?? t.importStatement.importFailedMsg);
