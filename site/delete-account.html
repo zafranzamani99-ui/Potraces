@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#FEFDFB">
 <title>Potraces — Delete Account &amp; Data</title>
 <meta name="description" content="How to delete your Potraces account and all associated data — in the app or by request. Built in Malaysia.">
 <link rel="icon" href="/assets/icon.png" type="image/png">
@@ -19,139 +21,195 @@
 <meta name="twitter:title" content="Potraces — Delete Account &amp; Data">
 <meta name="twitter:description" content="How to delete your Potraces account and all associated data — in the app or by request. Built in Malaysia.">
 <meta name="twitter:image" content="https://jejakbaki.my/assets/icon.png">
+
+<!-- Fonts — Outfit / Fraunces italic / IBM Plex Mono (TENANG) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Shared design system — tokens FIRST, then site. -->
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+
 <style>
-  :root { --bg:#F9F9F7; --ink:#2C2C28; --muted:#6B6B66; --accent:#4F5104; --surface:#FFFFFF; --border:#E8E6E0; }
-  * { box-sizing: border-box; }
-  body { margin:0; padding:32px 20px 80px; font: 16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
-  .wrap { max-width: 720px; margin: 0 auto; }
-  h1 { font-size: 28px; margin:0 0 4px; color:var(--accent); }
-  h2 { font-size: 20px; margin: 32px 0 8px; color:var(--ink); }
-  p, li { color:var(--ink); }
-  .meta { color:var(--muted); font-size:13px; margin: 0 0 24px; }
-  .card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding: 20px 24px; margin: 16px 0; }
-  ul { padding-left: 20px; }
-  li { margin: 4px 0; }
-  a { color: var(--accent); }
-  .lang-switch { display:flex; gap:8px; margin: 0 0 24px; }
-  .lang-switch button { padding:6px 14px; border:1px solid var(--border); background:var(--surface); border-radius:999px; cursor:pointer; font-size:13px; color:var(--ink); }
-  .lang-switch button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
-  .hide { display:none; }
-  footer { margin-top: 48px; color:var(--muted); font-size:13px; }
+/* Hallmark · TENANG v5 · studied: aave.com · delete-account.html */
+/* Page-unique only: calm doc head (eyebrow badge + hairline + ink-pill CTA). Kit carries the rest. */
+.doc-head{padding-bottom:var(--space-xl);border-bottom:1px solid var(--ink-12);margin-bottom:var(--space-xl)}
+.doc-head .eyebrow{font-family:var(--font-mono);font-size:var(--text-xs);font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45)}
+.doc-head h1{max-width:18ch;margin-bottom:var(--space-md)}
+.doc-head .lead{color:var(--ink-65);font-size:var(--text-md);line-height:var(--leading-relaxed);max-width:56ch;margin:0 0 var(--space-lg)}
+.doc-cta{display:flex;flex-wrap:wrap;align-items:center;gap:18px}
+.doc-cta .meta{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);margin:0}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <p style="margin:0 0 16px;font-size:14px"><a href="/" style="color:var(--accent);text-decoration:none">← Potraces</a></p>
-  <div class="lang-switch" role="group" aria-label="Language">
-    <button id="btn-en" class="active" aria-pressed="true" onclick="show('en')">English</button>
-    <button id="btn-ms" aria-pressed="false" onclick="show('ms')">Bahasa Malaysia</button>
-  </div>
+<div class="grain" aria-hidden="true"></div>
+<a class="skip" href="#main" data-en="Skip to content" data-bm="Terus ke kandungan">Skip to content</a>
 
-  <section id="en">
-    <h1>Delete your Potraces account &amp; data</h1>
-    <p class="meta">Last updated: 17 June 2026</p>
-
-    <div class="card">
-      <p>You can permanently delete your Potraces account and everything stored with it at any time. There are two ways to do it.</p>
+<header class="nav nav--minimal" id="nav">
+  <div class="container">
+    <a class="nav-back" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg><span data-en="Potraces" data-bm="Potraces">Potraces</span></a>
+    <div class="lang-toggle" role="group" aria-label="Language / Bahasa">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="ms" aria-pressed="false">BM</button>
     </div>
+  </div>
+</header>
 
-    <h2>1. Delete from inside the app</h2>
-    <p>This is the fastest way:</p>
-    <ul>
-      <li>Open Potraces and go to the <strong>Account</strong> screen.</li>
-      <li>Tap <strong>Delete account</strong>.</li>
-      <li>Confirm. This permanently deletes your account and all associated cloud data, and signs you out.</li>
-    </ul>
+<main id="main">
+  <section id="en">
+    <div class="prose">
+      <div class="doc-head">
+        <span class="eyebrow">Account &amp; data</span>
+        <h1>Delete your Potraces account &amp; <span class="accent-word">data</span></h1>
+        <p class="lead">You can permanently delete your Potraces account and everything stored with it at any time. There are two ways to do it.</p>
+        <div class="doc-cta">
+          <a class="btn btn-pill--ink" href="mailto:zafranzamani99@gmail.com?subject=Delete%20my%20Potraces%20account">Request deletion by email</a>
+          <span class="meta">Last updated: 17 June 2026</span>
+        </div>
+      </div>
 
-    <h2>2. Request deletion by email</h2>
-    <p>If you can no longer open the app — for example, you've already uninstalled it — email us and we'll delete your account for you:</p>
-    <ul>
-      <li>Email <a href="mailto:zafranzamani99@gmail.com?subject=Delete%20my%20Potraces%20account">zafranzamani99@gmail.com</a> from the email address (or with the phone number) linked to your account.</li>
-      <li>Use the subject line <strong>"Delete my Potraces account"</strong> so we can find your request quickly.</li>
-    </ul>
+      <h2>1. Delete from inside the app</h2>
+      <p>This is the fastest way:</p>
+      <ul>
+        <li>Open Potraces and go to the <strong>Account</strong> screen.</li>
+        <li>Tap <strong>Delete account</strong>.</li>
+        <li>Confirm. This permanently deletes your account and all associated cloud data, and signs you out.</li>
+      </ul>
 
-    <h2>3. What gets deleted</h2>
-    <p>Whichever way you choose, we permanently remove all data tied to your account, including:</p>
-    <ul>
-      <li>Transactions, wallets, debts, splits, and goals</li>
-      <li>Receipt images and the notes you saved</li>
-      <li>Seller/business data (products, orders, seasons, customers)</li>
-      <li>Your profile and account details</li>
-      <li>The login itself — your sign-in is removed, so the account no longer exists</li>
-    </ul>
-    <p>Deletion is <strong>permanent</strong> and cannot be undone. If you want a copy of your data first, export it from <strong>Settings → Export Data</strong> before deleting.</p>
+      <h2>2. Request deletion by email</h2>
+      <p>If you can no longer open the app — for example, you've already uninstalled it — email us and we'll delete your account for you:</p>
+      <ul>
+        <li>Email <a href="mailto:zafranzamani99@gmail.com?subject=Delete%20my%20Potraces%20account">zafranzamani99@gmail.com</a> from the email address (or with the phone number) linked to your account.</li>
+        <li>Use the subject line <strong>"Delete my Potraces account"</strong> so we can find your request quickly.</li>
+      </ul>
 
-    <h2>4. How long it takes</h2>
-    <p>Cached files on your device are removed immediately. We purge all associated rows from our database within <strong>7 days</strong> of the request.</p>
+      <h2>3. What gets deleted</h2>
+      <p>Whichever way you choose, we permanently remove all data tied to your account, including:</p>
+      <ul>
+        <li>Transactions, wallets, debts, splits, and goals</li>
+        <li>Receipt images and the notes you saved</li>
+        <li>Seller/business data (products, orders, seasons, customers)</li>
+        <li>Your profile and account details</li>
+        <li>The login itself — your sign-in is removed, so the account no longer exists</li>
+      </ul>
+      <p>Deletion is <strong>permanent</strong> and cannot be undone. If you want a copy of your data first, export it from <strong>Settings → Export Data</strong> before deleting.</p>
 
-    <h2>5. Questions</h2>
-    <p>For anything about deletion or your data, email <a href="mailto:zafranzamani99@gmail.com">zafranzamani99@gmail.com</a>. See also our <a href="privacy.html">Privacy Policy</a>.</p>
+      <h2>4. How long it takes</h2>
+      <p>Cached files on your device are removed immediately. We purge all associated rows from our database within <strong>7 days</strong> of the request.</p>
+
+      <h2>5. Questions</h2>
+      <p>For anything about deletion or your data, email <a href="mailto:zafranzamani99@gmail.com">zafranzamani99@gmail.com</a>. See also our <a href="privacy.html">Privacy Policy</a>.</p>
+    </div>
   </section>
 
   <section id="ms" class="hide">
-    <h1>Padam akaun &amp; data Potraces anda</h1>
-    <p class="meta">Kemas kini terakhir: 17 Jun 2026</p>
+    <div class="prose">
+      <div class="doc-head">
+        <span class="eyebrow">Akaun &amp; data</span>
+        <h1>Padam akaun &amp; <span class="accent-word">data</span> Potraces anda</h1>
+        <p class="lead">Anda boleh memadam akaun Potraces dan semua yang disimpan bersamanya secara kekal pada bila-bila masa. Terdapat dua cara untuk melakukannya.</p>
+        <div class="doc-cta">
+          <a class="btn btn-pill--ink" href="mailto:zafranzamani99@gmail.com?subject=Padam%20akaun%20Potraces%20saya">Mohon pemadaman melalui emel</a>
+          <span class="meta">Kemas kini terakhir: 17 Jun 2026</span>
+        </div>
+      </div>
 
-    <div class="card">
-      <p>Anda boleh memadam akaun Potraces dan semua yang disimpan bersamanya secara kekal pada bila-bila masa. Terdapat dua cara untuk melakukannya.</p>
+      <h2>1. Padam dari dalam aplikasi</h2>
+      <p>Ini cara paling pantas:</p>
+      <ul>
+        <li>Buka Potraces dan pergi ke skrin <strong>Akaun</strong>.</li>
+        <li>Tekan <strong>Padam akaun</strong>.</li>
+        <li>Sahkan. Ini akan memadam akaun anda dan semua data awan berkaitan secara kekal, dan mengeluarkan anda dari akaun.</li>
+      </ul>
+
+      <h2>2. Mohon pemadaman melalui emel</h2>
+      <p>Jika anda tidak lagi boleh membuka aplikasi — contohnya, anda telah pun menyahpasangnya — emel kami dan kami akan memadam akaun anda untuk anda:</p>
+      <ul>
+        <li>Emel <a href="mailto:zafranzamani99@gmail.com?subject=Padam%20akaun%20Potraces%20saya">zafranzamani99@gmail.com</a> daripada alamat emel (atau dengan nombor telefon) yang dipautkan ke akaun anda.</li>
+        <li>Gunakan tajuk <strong>"Padam akaun Potraces saya"</strong> supaya kami boleh mencari permohonan anda dengan cepat.</li>
+      </ul>
+
+      <h2>3. Apa yang dipadam</h2>
+      <p>Tidak kira cara yang anda pilih, kami membuang semua data yang terikat dengan akaun anda secara kekal, termasuk:</p>
+      <ul>
+        <li>Transaksi, dompet, hutang, perkongsian, dan matlamat</li>
+        <li>Imej resit dan nota yang anda simpan</li>
+        <li>Data penjual/perniagaan (produk, pesanan, musim, pelanggan)</li>
+        <li>Profil dan butiran akaun anda</li>
+        <li>Log masuk itu sendiri — log masuk anda dibuang, jadi akaun tidak lagi wujud</li>
+      </ul>
+      <p>Pemadaman adalah <strong>kekal</strong> dan tidak boleh dibatalkan. Jika anda mahu salinan data anda dahulu, eksportkannya dari <strong>Tetapan → Eksport Data</strong> sebelum memadam.</p>
+
+      <h2>4. Berapa lama ia mengambil masa</h2>
+      <p>Fail cache pada peranti anda dibuang serta-merta. Kami memadam semua baris berkaitan dari pangkalan data kami dalam <strong>7 hari</strong> dari permohonan.</p>
+
+      <h2>5. Soalan</h2>
+      <p>Untuk apa-apa tentang pemadaman atau data anda, emel <a href="mailto:zafranzamani99@gmail.com">zafranzamani99@gmail.com</a>. Lihat juga <a href="privacy.html">Dasar Privasi</a> kami.</p>
     </div>
-
-    <h2>1. Padam dari dalam aplikasi</h2>
-    <p>Ini cara paling pantas:</p>
-    <ul>
-      <li>Buka Potraces dan pergi ke skrin <strong>Akaun</strong>.</li>
-      <li>Tekan <strong>Padam akaun</strong>.</li>
-      <li>Sahkan. Ini akan memadam akaun anda dan semua data awan berkaitan secara kekal, dan mengeluarkan anda dari akaun.</li>
-    </ul>
-
-    <h2>2. Mohon pemadaman melalui emel</h2>
-    <p>Jika anda tidak lagi boleh membuka aplikasi — contohnya, anda telah pun menyahpasangnya — emel kami dan kami akan memadam akaun anda untuk anda:</p>
-    <ul>
-      <li>Emel <a href="mailto:zafranzamani99@gmail.com?subject=Padam%20akaun%20Potraces%20saya">zafranzamani99@gmail.com</a> daripada alamat emel (atau dengan nombor telefon) yang dipautkan ke akaun anda.</li>
-      <li>Gunakan tajuk <strong>"Padam akaun Potraces saya"</strong> supaya kami boleh mencari permohonan anda dengan cepat.</li>
-    </ul>
-
-    <h2>3. Apa yang dipadam</h2>
-    <p>Tidak kira cara yang anda pilih, kami membuang semua data yang terikat dengan akaun anda secara kekal, termasuk:</p>
-    <ul>
-      <li>Transaksi, dompet, hutang, perkongsian, dan matlamat</li>
-      <li>Imej resit dan nota yang anda simpan</li>
-      <li>Data penjual/perniagaan (produk, pesanan, musim, pelanggan)</li>
-      <li>Profil dan butiran akaun anda</li>
-      <li>Log masuk itu sendiri — log masuk anda dibuang, jadi akaun tidak lagi wujud</li>
-    </ul>
-    <p>Pemadaman adalah <strong>kekal</strong> dan tidak boleh dibatalkan. Jika anda mahu salinan data anda dahulu, eksportkannya dari <strong>Tetapan → Eksport Data</strong> sebelum memadam.</p>
-
-    <h2>4. Berapa lama ia mengambil masa</h2>
-    <p>Fail cache pada peranti anda dibuang serta-merta. Kami memadam semua baris berkaitan dari pangkalan data kami dalam <strong>7 hari</strong> dari permohonan.</p>
-
-    <h2>5. Soalan</h2>
-    <p>Untuk apa-apa tentang pemadaman atau data anda, emel <a href="mailto:zafranzamani99@gmail.com">zafranzamani99@gmail.com</a>. Lihat juga <a href="privacy.html">Dasar Privasi</a> kami.</p>
   </section>
+</main>
 
-  <footer>© 2026 Potraces. Built in Malaysia.</footer>
-</div>
+<footer class="footer--legal">
+  <div class="container">
+    <span>© <span id="year">2026</span> Potraces · <span data-en="Built in Malaysia" data-bm="Buatan Malaysia">Built in Malaysia</span></span>
+  </div>
+</footer>
+
 <script>
-var LANG_STORAGE = 'potraces_lang'; // shared with index.html / privacy.html
-function show(lang){
-  if (lang!=='ms') lang='en';
-  document.getElementById('en').classList.toggle('hide', lang!=='en');
-  document.getElementById('ms').classList.toggle('hide', lang!=='ms');
-  document.getElementById('btn-en').classList.toggle('active', lang==='en');
-  document.getElementById('btn-ms').classList.toggle('active', lang==='ms');
-  document.getElementById('btn-en').setAttribute('aria-pressed', String(lang==='en'));
-  document.getElementById('btn-ms').setAttribute('aria-pressed', String(lang==='ms'));
-  document.documentElement.setAttribute('lang', lang);
-  try { localStorage.setItem(LANG_STORAGE, lang); } catch(e){}
-}
-// 1) carry over the choice made on the marketing site; 2) else device language
-var saved = null;
-try { saved = localStorage.getItem(LANG_STORAGE); } catch(e){}
-if (saved === 'ms' || saved === 'en') {
-  show(saved);
-} else if ((navigator.language||'').toLowerCase().startsWith('ms')) {
-  show('ms');
-}
+/* ── language toggle (persisted; shared 'potraces_lang' key across ALL pages) ── */
+(function(){
+  var STORAGE='potraces_lang';
+  function apply(lang){
+    document.documentElement.setAttribute('lang', lang);
+    document.querySelectorAll('.lang-toggle button').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang')===lang));
+    });
+    document.querySelectorAll('[data-en]').forEach(function(el){
+      if(el.children.length) return;                         /* leaf-only swap */
+      var t = lang==='ms' ? el.getAttribute('data-bm') : el.getAttribute('data-en');
+      if(t!=null) el.textContent = t;
+    });
+    document.querySelectorAll('[data-ph-en]').forEach(function(inp){
+      inp.setAttribute('placeholder', lang==='ms' ? inp.getAttribute('data-ph-bm') : inp.getAttribute('data-ph-en'));
+    });
+    document.querySelectorAll('[data-aria-en]').forEach(function(el){
+      el.setAttribute('aria-label', lang==='ms' ? el.getAttribute('data-aria-bm') : el.getAttribute('data-aria-en'));
+    });
+    try{ localStorage.setItem(STORAGE, lang); }catch(e){}
+    window.dispatchEvent(new CustomEvent('pt:lang',{detail:{lang:lang}}));  /* dynamic content re-renders */
+  }
+  window.__ptLang = function(){ return document.documentElement.getAttribute('lang')==='ms' ? 'ms' : 'en'; };
+  var saved='en';
+  try{ saved = localStorage.getItem(STORAGE) || 'en'; }catch(e){}
+  apply(saved);
+  document.querySelectorAll('.lang-toggle button').forEach(function(b){
+    b.addEventListener('click', function(){ apply(b.getAttribute('data-lang')); });
+  });
+})();
+
+/* ── whole-section prose swap: driven by the shared lang toggle above ── */
+(function(){
+  function sync(lang){
+    if(lang!=='ms') lang='en';
+    document.getElementById('en').classList.toggle('hide', lang!=='en');
+    document.getElementById('ms').classList.toggle('hide', lang!=='ms');
+  }
+  sync(window.__ptLang());
+  window.addEventListener('pt:lang', function(e){ sync(e.detail.lang); });
+})();
+
+/* ── nav scroll-shadow state ── */
+(function(){
+  var nav=document.getElementById('nav');
+  if(!nav || nav.classList.contains('nav--sticky')) return;
+  function onScroll(){ nav.classList.toggle('scrolled', window.scrollY>12); }
+  onScroll();
+  window.addEventListener('scroll', onScroll, {passive:true});
+})();
+
+/* ── current year ── */
+(function(){ var y=document.getElementById('year'); if(y) y.textContent=new Date().getFullYear(); })();
 </script>
 </body>
 </html>

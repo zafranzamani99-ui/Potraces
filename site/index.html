@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <!--
-  Potraces — marketing site V2 (site root /).  jejakbaki.my
+  Potraces — marketing site (site root /).  jejakbaki.my
   Single self-contained file. Inline CSS + minimal vanilla JS. No build step, no framework.
-  Palette: CALM design system (matches src/constants/index.ts + docs/order.html). NO red, NO bright green; positive = olive.
+  Palette: TENANG v5 design world (tokens.css) — the studied aave.com system translated:
+  warm white body, ink at opacity steps, ONE pastel sage accent living in giant-radius
+  panels, Outfit weight-500 display, one Fraunces-italic word per headline. NO red numbers.
+  The CALM olive app palette survives only inside phone-mock screens (--app-* tokens).
   Bilingual EN / Bahasa Melayu via data-en / data-bm on LEAF elements only, swapped in-place by JS (persisted).
 
   ── PLACEHOLDERS / TODO (swap when real assets exist) ──────────────────────────
   • STORE BADGES: app not yet on App Store / Play Store. Badges render in an honest
-    "Coming soon" state and link to #waitlist. When listings go live, replace href with the
+    "Coming soon" state and link to /beta.html. When listings go live, replace href with the
     real store URLs and swap to official downloaded artwork.
   • SCREENSHOTS: no PNGs yet. Phone screens are CSS mockups using exact CALM colors.
   • OG IMAGE: /assets/og-card.png (1200×630, CALM olive card). Regenerate via `node docs/scripts/gen-og-card.js` if copy changes.
@@ -18,7 +21,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="theme-color" content="#4F5104">
+<meta name="theme-color" content="#FEFDFB">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://iydqeeonaljqapulboaz.supabase.co">
 
 <title>Potraces — Calm money tracking for irregular earners in Malaysia</title>
@@ -52,7 +55,9 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
 
 <!-- Structured data -->
 <script type="application/ld+json">
@@ -89,542 +94,306 @@
 </script>
 
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#F9F9F7;--bg2:#F5F3EF;--surface:#fff;
-  --olive:#4F5104;--olive-dark:#3D3E04;--olive-light:#6B6D1A;--olive-deep:#332D03;
-  --bronze:#786148;--bronze2:#855800;--gold:#8A5C00;--gold-bright:#DEAB22;
-  --sky:#6BA3BE;--mauve:#A688B8;--terracotta:#A8482E;--biz:#8A5C00;
-  --text:#1A1A1A;--text2:#555;--text3:#6B6B6B;--text-muted:#6E6E6E;
-  --border:#E5E0D8;--border2:#F0EDE8;--cream:#FFF7E6;
-  --r-xs:4px;--r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-2xl:28px;--r-full:9999px;
-  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-  --shadow-md:0 4px 16px rgba(0,0,0,.08);
-  --shadow-lg:0 8px 24px rgba(0,0,0,.10);
-  --shadow-xl:0 12px 40px rgba(0,0,0,.12),0 4px 12px rgba(0,0,0,.06);
-  --maxw:1120px;
-  --nav-h:64px;
-  --d:0ms; /* per-tile reveal stagger */
-  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  --ff:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-}
-html{scroll-behavior:smooth;overflow-x:clip}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-body{font-family:var(--ff);background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
-img,svg{max-width:100%;display:block}
-a{color:inherit;text-decoration:none}
-button{font-family:inherit;cursor:pointer}
-.tnum{font-variant-numeric:tabular-nums}
-.block{display:block}
+/* Hallmark · TENANG v5 · studied: aave.com · index.html */
+/* HOME — the full studied pattern: centered hero + real phone, one ink showcase,
+   sage chart panel, quiet numbered sections, two-column FAQs, cream final CTA.
+   Everything below is page-local; --app-* rules live INSIDE phone frames only. */
 
-/* full-page soft-light grain — kills the flat figma look */
-.grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.04;mix-blend-mode:soft-light;background-image:var(--grain)}
+/* ── quiet numbered index marks (the book's numbering, kept as a quiet label) ── */
+.sec-mark{display:flex;justify-content:center;align-items:baseline;gap:10px;font-family:var(--font-mono);font-size:var(--text-xs);font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45);margin-bottom:var(--space-lg)}
+.sec-mark .no::after{content:"·";margin-left:10px;color:var(--sage-deep)}
+.panel--ink .sec-mark{color:var(--on-ink-40)}
 
-/* layout */
-.container{width:100%;max-width:var(--maxw);margin:0 auto;padding:0 20px}
-section{position:relative;z-index:2}
-.eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--bronze2);background:rgba(154,100,0,.07);padding:6px 13px;border-radius:var(--r-full);border:1px solid rgba(154,100,0,.12)}
-.section-head{max-width:680px;margin:0 auto 44px;text-align:center}
-.section-head h2{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:600;letter-spacing:-.5px;line-height:1.2;margin:18px 0 14px}
-.section-head p{font-size:clamp(1rem,2vw,1.12rem);color:var(--text2);line-height:1.6}
-.h-accent{color:var(--olive)}
+/* ── HERO (studied hero pattern: badge eyebrow, giant H1, pill form, phone below) ── */
+.hero-mark{color:var(--ink-45);margin-bottom:18px}
+.hero-center .waitlist{width:100%;text-align:left;margin-top:6px}
+.trust-row{display:flex;flex-wrap:wrap;gap:8px 22px;justify-content:center;margin-top:26px}
+.trust-row>span{display:inline-flex;align-items:center;gap:8px;font-size:var(--text-sm);color:var(--ink-65)}
+.trust-row svg{width:15px;height:15px;flex-shrink:0;stroke:var(--sage-deep);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.trust-row .dot{display:none}
+.hero-stage{margin-top:var(--space-3xl);display:flex;flex-direction:column;align-items:center;gap:14px;width:100%}
+.hero-stage .phone{width:292px}
+.hero-center .store-cta{display:flex;flex-direction:column;align-items:center;margin-top:var(--space-2xl)}
+.hero-center .store-cta .badges{justify-content:center}
 
-/* skip link */
-.skip{position:absolute;left:0;top:-60px;z-index:1000;background:var(--olive);color:#fff;padding:12px 18px;border-radius:0 0 var(--r-md) 0;font-weight:600}
-.skip:focus{top:0}
+/* ── INK SHOWCASE (the ONE near-ink section — the real product) ── */
+.panel--ink .section-head p{color:var(--on-ink-65)}
+.panel--ink .shot-caption b{color:var(--on-ink)}
+.panel--ink .shot-caption span{color:var(--on-ink-40)}
+.ink-phones{display:flex;flex-wrap:wrap;gap:40px 48px;justify-content:center;align-items:flex-start}
+.ink-phones>div{display:flex;flex-direction:column;gap:12px;flex:0 1 240px;min-width:0}
+.ink-phones .phone{width:236px;padding:9px;border-radius:38px}
+.ink-phones .phone::before{width:70px;height:6px;top:16px}
+.ink-phones .phone-screen{border-radius:29px}
+.ink-actions{display:flex;justify-content:center;margin-top:var(--space-2xl)}
+.ink-wau{width:34px;height:34px;margin:28px auto 0;opacity:.5;border-radius:var(--radius-sm);overflow:hidden}
+.ink-wau svg{width:100%;height:100%;display:block}
 
-/* focus */
-a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(79,81,4,.4);border-radius:var(--r-sm)}
+/* ── EXTRA PHONES row (budget + seller, floating white-framed devices) ── */
+.phones-row{display:flex;flex-wrap:wrap;gap:44px 56px;justify-content:center;align-items:flex-start;margin-top:var(--space-xl)}
+.phones-row>div{display:flex;flex-direction:column;gap:12px;flex:0 1 260px;min-width:0}
+.phones-row .phone{width:248px}
 
-/* ─── NAV ─── */
-.nav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-h);display:flex;align-items:center;transition:background .25s ease,box-shadow .25s ease,border-color .25s ease;border-bottom:1px solid transparent}
-.nav.scrolled{background:rgba(249,249,247,.88);backdrop-filter:saturate(140%) blur(14px);-webkit-backdrop-filter:saturate(140%) blur(14px);border-bottom-color:var(--border);box-shadow:0 1px 0 rgba(0,0,0,.02),0 6px 18px rgba(0,0,0,.04)}
-.nav .container{display:flex;align-items:center;justify-content:space-between;gap:16px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.18rem;letter-spacing:-.4px}
-.brand .logo{width:38px;height:38px;border-radius:11px;overflow:hidden;flex-shrink:0;box-shadow:var(--shadow);display:block}
-.brand .logo svg{width:100%;height:100%;display:block}
-.nav-links{display:none;align-items:center;gap:4px}
-.nav-links a{font-size:.94rem;font-weight:500;color:var(--text2);padding:9px 13px;border-radius:var(--r-md);transition:color .15s,background .15s}
-.nav-links a:hover{color:var(--text);background:rgba(26,26,26,.05)}
-.nav-right{display:flex;align-items:center;gap:10px}
+/* ── SAGE BALANCE PANEL: 3 benefit cards + month card + calm chart ── */
+.benefit-cards{display:grid;gap:16px;margin:var(--space-2xl) 0}
+@media (min-width:760px){.benefit-cards{grid-template-columns:repeat(3,1fr)}}
+.bcard{display:flex;gap:12px;align-items:flex-start;font-size:.95rem;color:var(--ink-90)}
+.bcard svg{width:18px;height:18px;flex-shrink:0;margin-top:2px;stroke:var(--sage-deep);fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.balance-grid{display:grid;gap:20px;align-items:start}
+@media (min-width:900px){.balance-grid{grid-template-columns:1fr 1.15fr}}
+.balance-col{display:flex;flex-direction:column;gap:20px;min-width:0}
+/* month card (the whole point, as one calm card) */
+.m-lbl{color:var(--ink-45)}
+.m-bal{font-size:2.4rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-tight);font-variant-numeric:tabular-nums;margin:4px 0 2px}
+.m-bal small{font-size:1rem;font-weight:var(--fw-regular);color:var(--ink-45);margin-right:3px}
+.m-sub{color:var(--ink-45);margin-bottom:10px}
+.m-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--ink-06);font-size:.92rem}
+.m-row .k{color:var(--ink-65)}
+.m-row .v{font-family:var(--font-mono);font-weight:var(--fw-medium);font-variant-numeric:tabular-nums}
+.m-tot{display:flex;justify-content:space-between;gap:12px;padding:10px 0 2px;font-weight:var(--fw-medium);border-top:1px solid var(--ink-12);margin-top:2px}
+.m-tot .tnum{font-family:var(--font-mono)}
+.m-ft{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);margin-top:12px}
+/* week card (the book, kept — restyled as a calm list) */
+.wk-title{font-size:var(--text-md);font-weight:var(--fw-medium);margin-bottom:10px}
+.wk-head{display:flex;justify-content:space-between;gap:12px;padding-bottom:6px;border-bottom:1px solid var(--ink-12);color:var(--ink-45)}
+.wk-row{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--ink-06);font-size:.92rem}
+.wk-row .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:var(--fw-medium)}
+.wk-safe{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:12px}
+.wk-safe .mono-caps{color:var(--ink-45)}
+.wk-safe .fig{font-family:var(--font-mono);font-size:1.3rem;font-weight:var(--fw-medium);font-variant-numeric:tabular-nums}
+.jot{font-family:var(--font-mono);font-size:var(--text-sm);color:var(--ink-65);display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-top:14px}
+.jot b{font-weight:var(--fw-medium);color:var(--ink)}
+.jot em{font-style:normal;color:var(--ink-45)}
+.wk-note{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);margin-top:10px}
+.stage-wau{width:22px;height:22px;border-radius:6px;overflow:hidden;display:inline-block;flex-shrink:0}
+.stage-wau svg{width:100%;height:100%;display:block}
+/* chart bars (calm: sage bars, dotted grid, mono labels — kit .chart-calm does the rest) */
+.chart-calm .bar-sage{fill:var(--sage)}
+.chart-calm .bar-deep{fill:var(--sage-deep)}
 
-.lang-toggle{display:inline-flex;background:rgba(26,26,26,.06);border:1px solid var(--border);border-radius:var(--r-full);padding:3px;gap:2px}
-.lang-toggle button{border:none;background:transparent;color:var(--text3);font-size:.8rem;font-weight:600;padding:8px 14px;border-radius:var(--r-full);min-height:44px;transition:color .15s}
-.lang-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--olive);box-shadow:var(--shadow)}
+/* ── №04 CATALOGUE (features) — hairline entries, quiet demos ── */
+.cat{display:flex;flex-direction:column}
+.cat-entry{display:grid;gap:16px;padding:34px 0;border-bottom:1px solid var(--ink-12)}
+.cat-entry:last-child{border-bottom:none}
+@media (min-width:860px){.cat-entry{grid-template-columns:64px 1fr 360px;gap:28px;align-items:start}}
+.cat-no{display:flex;flex-direction:column;gap:8px;font-family:var(--font-mono);font-size:var(--text-xs);font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);color:var(--ink-45);padding-top:5px}
+.cat-no svg{width:17px;height:17px;stroke:var(--sage-deep);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.cat-entry h3{font-size:var(--text-lg);font-weight:var(--fw-medium);max-width:26ch;margin-bottom:6px}
+.cat-entry .ti-sub{font-size:.9rem;color:var(--ink-65)}
+.cat-demo{min-width:0}
 
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:.95rem;border:none;border-radius:var(--r-full);padding:12px 22px;min-height:46px;transition:transform .12s ease,box-shadow .2s,background .2s;white-space:nowrap}
-.btn:active{transform:scale(.97)}
-.btn-primary{background:var(--olive);color:#fff;box-shadow:0 4px 14px rgba(79,81,4,.22)}
-.btn-primary:hover{background:var(--olive-dark);box-shadow:0 6px 20px rgba(79,81,4,.28)}
-.nav .btn{padding:9px 18px;min-height:42px;font-size:.9rem}
-.btn-sm{padding:8px 16px;min-height:40px;font-size:.88rem}
+/* typed line → parsed card */
+.parsed{font-family:var(--font-mono);font-size:.84rem;background:var(--surface);border:1px solid var(--ink-06);border-radius:var(--radius-lg);padding:14px 16px;box-shadow:var(--shadow-sm)}
+.ptyped{background:var(--sage-pale);border-radius:var(--radius-pill);padding:8px 14px;margin-bottom:8px;color:var(--ink)}
+.prow{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--ink-06)}
+.prow:last-child{border-bottom:none}
+.prow .k{color:var(--ink-45);text-transform:uppercase;font-size:.66rem;letter-spacing:var(--tracking-caps);padding-top:3px}
+.prow .v{font-weight:var(--fw-medium);text-align:right}
+.tag-olive{background:var(--sage-pale);color:var(--sage-text);border-radius:var(--radius-pill);padding:2px 10px;font-size:.7rem;text-transform:uppercase;letter-spacing:var(--tracking-caps)}
+.scan-tag{display:inline-flex;align-items:center;gap:7px;margin-top:10px;font-family:var(--font-mono);font-size:.72rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--sage-text)}
+.scan-tag svg{width:13px;height:13px;stroke:var(--sage-deep);fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 
-/* hamburger */
-.hamburger{display:inline-flex;flex-direction:column;justify-content:center;gap:5px;width:44px;height:44px;align-items:center;background:transparent;border:1px solid var(--border);border-radius:var(--r-md)}
-.hamburger span{width:20px;height:2px;background:var(--text);border-radius:2px;transition:transform .2s,opacity .2s}
-.hamburger[aria-expanded="true"] span:nth-child(1){transform:translateY(7px) rotate(45deg)}
-.hamburger[aria-expanded="true"] span:nth-child(2){opacity:0}
-.hamburger[aria-expanded="true"] span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+/* receipt demo */
+.receipt{background:var(--surface);border:1px solid var(--ink-06);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);padding:14px 16px;font-family:var(--font-mono);font-size:.84rem}
+.receipt .rh{font-weight:var(--fw-medium);margin-bottom:8px}
+.rrow{display:flex;justify-content:space-between;gap:10px;padding:4px 0;color:var(--ink-65)}
+.rtot{display:flex;justify-content:space-between;gap:10px;padding-top:8px;margin-top:6px;border-top:1px solid var(--ink-12);font-weight:var(--fw-medium);color:var(--ink)}
 
-.mobile-sheet{position:fixed;inset:0;z-index:99;background:rgba(249,249,247,.98);backdrop-filter:blur(8px);display:flex;flex-direction:column;padding:calc(var(--nav-h) + 16px) 24px 32px;transform:translateY(-12px);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
-.mobile-sheet.open{opacity:1;transform:translateY(0);pointer-events:auto}
-.mobile-sheet a{font-size:1.3rem;font-weight:600;padding:16px 4px;border-bottom:1px solid var(--border2);color:var(--text)}
-.mobile-sheet .btn-primary{margin-top:24px;font-size:1.05rem;padding:16px}
-
-/* ─── HERO ─── */
-.hero{padding:calc(var(--nav-h) + 56px) 0 72px;position:relative;overflow:hidden}
-.hero::before{content:'';position:absolute;inset:-15% -10% 0;z-index:0;pointer-events:none;
-  background:radial-gradient(60% 50% at 18% 22%,rgba(79,81,4,.10),transparent 70%),
-            radial-gradient(50% 45% at 85% 18%,rgba(178,120,10,.10),transparent 70%),
-            radial-gradient(55% 50% at 75% 80%,rgba(139,115,85,.08),transparent 72%),
-            radial-gradient(45% 40% at 30% 90%,rgba(107,163,190,.06),transparent 70%);
-  filter:blur(6px);animation:meshDrift 46s ease-in-out infinite}
-@keyframes meshDrift{0%,100%{transform:translate(0,0)}50%{transform:translate(-10px,8px)}}
-.hero-bg-wau{position:absolute;top:-80px;right:-140px;width:560px;height:560px;opacity:.06;pointer-events:none;z-index:0;animation:floaty 10s ease-in-out infinite}
-.hero-bg-wau.lo{top:auto;right:auto;bottom:-40px;left:-90px;width:180px;height:180px;opacity:.03;animation:floaty 13s ease-in-out infinite reverse}
-@keyframes floaty{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-18px) rotate(2deg)}}
-.hero .container{position:relative;z-index:2;display:grid;grid-template-columns:1fr;gap:48px;align-items:center}
-.hero-copy h1{font-size:clamp(2.1rem,6vw,3.6rem);font-weight:700;letter-spacing:-.8px;line-height:1.08;margin:20px 0 18px;color:var(--text)}
-.hero-copy .lead{font-size:clamp(1.02rem,2.3vw,1.2rem);color:var(--text2);line-height:1.6;max-width:560px}
-
-/* waitlist (elevated cream tile) */
-.waitlist{margin-top:26px;max-width:480px}
-.wl-tile{background:var(--cream);border:1px solid rgba(178,120,10,.20);border-radius:var(--r-xl);padding:18px;box-shadow:var(--shadow)}
-.wl-frame{display:flex;align-items:center;gap:9px;font-size:.86rem;font-weight:600;color:var(--bronze2);margin-bottom:12px;line-height:1.4}
-.wl-frame .wl-ic{width:22px;height:22px;border-radius:7px;overflow:hidden;flex-shrink:0}
-.wl-frame .wl-ic svg{width:100%;height:100%}
-.waitlist .wl-pill{display:flex;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:6px 6px 6px 18px;box-shadow:var(--shadow);transition:box-shadow .2s,border-color .2s}
-.waitlist .wl-pill:focus-within{box-shadow:var(--shadow),0 0 0 3px rgba(79,81,4,.12);border-color:var(--bronze)}
-.waitlist .wl-pill input[name="contact"]{flex:1;border:none;outline:none;background:transparent;font-family:inherit;font-size:1rem;color:var(--text);min-width:0}
-/* the pill wrapper already shows focus (form:focus-within), so don't stack the
-   global input focus ring on top — it would draw a mismatched inner box. */
-.waitlist input:focus,.waitlist input:focus-visible{box-shadow:none}
-.waitlist input::placeholder{color:var(--text-muted)}
-.waitlist .btn{flex-shrink:0}
-.wl-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.waitlist .micro{font-size:.78rem;color:var(--text3);margin-top:10px;padding-left:4px}
-/* beta download buttons in the post-signup success state */
-.wl-dl-lbl{font-size:.85rem;font-weight:600;color:var(--olive);margin:16px 0 8px;padding-left:2px}
-.wl-dl-soon{font-size:.85rem;line-height:1.5;color:var(--text3);margin:14px 0 0;padding-left:2px}
-.wl-dl-row{display:flex;gap:10px;flex-wrap:wrap}
-.wl-dl-btn{display:inline-flex;align-items:center;gap:6px;background:var(--olive);color:#fff;text-decoration:none;font-weight:600;font-size:.95rem;padding:10px 18px;border-radius:var(--r-full);box-shadow:var(--shadow);transition:background .15s}
-.wl-dl-btn:hover{background:var(--olive-dark)}
-.wl-msg{font-size:.86rem;font-weight:600;margin-top:10px;padding-left:4px;color:var(--olive);min-height:1.2em}
-/* PDPA consent row */
-.wl-consent{display:flex;align-items:flex-start;gap:9px;margin-top:12px;padding-left:2px;font-size:.8rem;line-height:1.45;color:var(--text2);cursor:pointer}
-.wl-consent input{flex-shrink:0;width:18px;height:18px;margin:1px 0 0;accent-color:var(--olive);cursor:pointer}
-.wl-consent span{flex:1}
-/* social proof line */
-.wl-proof{font-size:.82rem;font-weight:600;color:var(--bronze2);margin-top:12px;padding-left:4px;display:none;font-variant-numeric:tabular-nums}
-.wl-proof.show{display:block}
-/* success state (replaces the form in-place) */
-.wl-success{animation:wlFade .35s ease}
-@keyframes wlFade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-.wl-success .wl-pos{display:flex;align-items:center;gap:11px;font-size:1.02rem;font-weight:700;color:var(--text);line-height:1.35}
-.wl-success .wl-pos .wl-tick{flex-shrink:0;width:28px;height:28px;border-radius:var(--r-full);background:var(--olive);display:inline-flex;align-items:center;justify-content:center}
-.wl-success .wl-pos .wl-tick svg{width:15px;height:15px;stroke:#fff;stroke-width:3;fill:none}
-.wl-success .wl-pos span{font-variant-numeric:tabular-nums}
-.wl-success .wl-share-lbl{font-size:.82rem;font-weight:600;color:var(--text2);margin:16px 0 8px;line-height:1.45}
-.wl-share-row{display:flex;gap:8px;align-items:stretch}
-.wl-share-row .wl-link{flex:1;min-width:0;border:1px solid var(--border);background:var(--surface);border-radius:var(--r-md);padding:11px 13px;font-family:inherit;font-size:.86rem;color:var(--text2);outline:none}
-.wl-share-row .wl-link:focus{border-color:var(--bronze)}
-.wl-copy{flex-shrink:0;background:var(--surface);color:var(--olive);border:1px solid var(--border);border-radius:var(--r-md);font-family:inherit;font-weight:600;font-size:.86rem;padding:0 16px;min-height:44px;cursor:pointer;transition:background .15s,border-color .15s}
-.wl-copy:hover{border-color:var(--bronze)}
-.wl-copy.done{color:var(--olive);border-color:var(--olive);background:rgba(79,81,4,.06)}
-.wl-wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:9px;background:rgba(79,81,4,.07);color:var(--olive);border:1px solid rgba(79,81,4,.18);border-radius:var(--r-full);font-family:inherit;font-weight:600;font-size:.9rem;min-height:46px;text-decoration:none;cursor:pointer;transition:background .15s}
-.wl-wa:hover{background:rgba(79,81,4,.12)}
-.wl-wa svg{width:18px;height:18px;flex-shrink:0}
-
-/* store badges */
-.store-cta{margin-top:28px}
-.store-label{font-size:.82rem;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);margin-bottom:12px;display:flex;align-items:center;gap:8px}
-.store-label .soon-tag{font-size:.66rem;letter-spacing:.6px;background:rgba(178,120,10,.12);color:var(--gold);padding:3px 8px;border-radius:var(--r-full);font-weight:700}
-.badges{display:flex;flex-wrap:wrap;gap:12px}
-.badge-link{display:inline-block;border-radius:11px;transition:transform .12s,opacity .2s;opacity:.92;line-height:0;padding:0}
-.badge-link:hover{transform:translateY(-2px);opacity:1}
-.badge-link svg{height:54px;width:auto;display:block;border-radius:9px}
-.hero-trust{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:26px;font-size:.85rem;color:var(--text3);font-weight:500}
-.hero-trust span{display:inline-flex;align-items:center;gap:7px}
-.hero-trust svg{width:16px;height:16px;stroke:var(--olive);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.hero-trust .dot{width:3px;height:3px;border-radius:50%;background:var(--border);padding:0}
-
-/* ─── PHONE MOCKUP ─── */
-.phone{width:280px;max-width:100%;margin:0 auto;border-radius:38px;
-  background:linear-gradient(145deg,#2A2A28,#141413 55%,#000);padding:11px;position:relative;
-  border:1px solid rgba(255,255,255,.04);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 2px 4px rgba(51,45,3,.10),0 16px 32px rgba(51,45,3,.14),0 40px 80px rgba(26,26,26,.18)}
-.phone::before{content:'';position:absolute;top:20px;left:50%;transform:translateX(-50%);width:90px;height:7px;background:#000;border-radius:var(--r-full);z-index:5;opacity:.65}
-.phone-screen{background:var(--bg);border-radius:28px;overflow:hidden;aspect-ratio:9/19.3;display:flex;flex-direction:column;position:relative;box-shadow:inset 0 0 3px 1px rgba(0,0,0,.35)}
-.phone-screen::after{content:'';position:absolute;inset:0;background:linear-gradient(120deg,rgba(255,255,255,.10) 0%,transparent 25%);pointer-events:none;z-index:4}
-.hero-phone-wrap{position:relative;display:flex;justify-content:center}
-.hero-phone-wrap::after{content:'';position:absolute;inset:-40px;background:radial-gradient(circle at 50% 42%,rgba(139,115,85,.22),rgba(79,81,4,.10) 40%,transparent 68%);z-index:-1;filter:blur(8px)}
-.hero-phone-wrap .phone{transform:perspective(1200px) rotateY(-4deg) rotateX(2deg) scale(1.02)}
-
-/* floating live chips on hero phone */
-.chip{position:absolute;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid var(--border);box-shadow:var(--shadow-lg);border-radius:14px;padding:10px 13px;font-size:.8rem;font-weight:600;max-width:170px;z-index:3;color:var(--text);line-height:1.35}
-.chip .ca{color:var(--olive)}
-.chip.c-a{top:9%;left:-22px;animation:bob 6s ease-in-out infinite}
-.chip.c-b{top:44%;right:-26px;animation:bob 6s ease-in-out .8s infinite;display:flex;align-items:center;gap:9px}
-.chip.c-c{bottom:9%;left:-14px;animation:bob 6s ease-in-out 1.6s infinite;display:flex;align-items:center;gap:9px}
-.chip .spark{display:flex;align-items:flex-end;gap:2px;height:18px}
-.chip .spark i{width:3px;border-radius:2px;background:var(--olive);display:block}
-.chip .miniqr{width:26px;height:26px;border-radius:6px;flex-shrink:0;background:conic-gradient(from 0deg,#1A1A1A 25%,#fff 0 50%,#1A1A1A 0 75%,#fff 0) 0 0/8px 8px,#fff}
-@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-
-/* app header inside mockup */
-.app-hd{background:linear-gradient(135deg,var(--olive-dark) 0%,var(--olive) 55%,var(--olive-light) 100%);padding:26px 18px 22px;color:#fff;position:relative;overflow:hidden}
-.app-hd::before{content:'';position:absolute;top:-40%;right:-15%;width:160px;height:160px;background:radial-gradient(circle,rgba(255,255,255,.08),transparent 70%);border-radius:50%}
-.app-hd .lbl{font-size:9px;letter-spacing:1.4px;text-transform:uppercase;color:rgba(255,255,255,.65);font-weight:600}
-.app-hd .bal{font-size:38px;font-weight:500;letter-spacing:-1px;margin:4px 0 2px;position:relative;z-index:1}
-.app-hd .bal small{font-size:18px;font-weight:400;opacity:.8;margin-right:3px}
-.app-hd .sub{font-size:10.5px;color:rgba(255,255,255,.7)}
-.app-pills{display:flex;gap:8px;margin-top:16px;position:relative;z-index:1}
-.app-pill{flex:1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:9px 10px}
-.app-pill .pl{font-size:8px;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.6);font-weight:600}
-.app-pill .pv{font-size:14px;font-weight:500;margin-top:2px}
-.app-body{padding:14px;flex:1;background:var(--bg);display:flex;flex-direction:column;gap:10px;overflow:hidden}
-.app-card{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:13px 14px;border:1px solid var(--border2)}
-.app-seclbl{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--bronze);font-weight:700;margin-bottom:9px}
-.weekbar{display:flex;align-items:flex-end;gap:6px;height:54px}
-.weekbar .wb{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end}
-.weekbar .wb i{width:100%;background:var(--border);border-radius:4px;display:block}
-.weekbar .wb.on i{background:var(--olive)}
-.weekbar .wb span{font-size:8px;color:var(--text-muted);font-weight:600}
-.txn{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2)}
-.txn:last-child{border-bottom:none}
-.txn .ic{width:32px;height:32px;border-radius:9px;background:var(--bg2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.txn .ic svg{width:15px;height:15px;stroke:var(--olive);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.txn .nm{flex:1;min-width:0}
-.txn .nm b{font-size:12px;font-weight:600;display:block}
-.txn .nm em{font-size:9.5px;color:var(--text3);font-style:normal}
-.txn .amt{font-size:12.5px;font-weight:600;letter-spacing:-.2px}
-.txn .amt.in{color:var(--olive)}
-.txn .amt.out{color:var(--text)}
-
-/* ─── MARQUEE ─── */
-.marquee-band{background:var(--cream);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:18px 0;overflow:hidden}
-.marquee-lbl{text-align:center;font-size:.78rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--bronze2);margin-bottom:14px}
-.marquee-wrap{position:relative;overflow:hidden}
-.marquee{display:flex;gap:14px;width:max-content;animation:scroll 34s linear infinite}
-.marquee:hover{animation-play-state:paused}
-@keyframes scroll{to{transform:translateX(-50%)}}
-.mq-chip{border:1px solid var(--border);background:var(--surface);border-radius:var(--r-full);padding:8px 15px;font-size:.85rem;font-weight:600;color:var(--text2);white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
-.mq-chip.trust::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0}
-.marquee-fade{position:absolute;top:0;bottom:0;width:60px;pointer-events:none;z-index:2}
-.marquee-fade.l{left:0;background:linear-gradient(90deg,var(--cream),rgba(255,247,230,0))}
-.marquee-fade.r{right:0;background:linear-gradient(270deg,var(--cream),rgba(255,247,230,0))}
-
-/* ─── HERO-FEATURE (big device, safe to spend) ─── */
-.herofeat{padding:96px 0;background:var(--surface)}
-.herofeat .container{display:grid;grid-template-columns:1fr;gap:48px;align-items:center}
-.herofeat .hf-copy h2{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:600;letter-spacing:-.5px;line-height:1.18;margin:16px 0 16px}
-.herofeat .hf-copy p{font-size:1.06rem;color:var(--text2);line-height:1.6;margin-bottom:22px}
-.hf-list{list-style:none;display:flex;flex-direction:column;gap:13px}
-.hf-list li{display:flex;align-items:flex-start;gap:11px;font-size:1rem;color:var(--text2);font-weight:500}
-.hf-list li svg{width:20px;height:20px;stroke:var(--olive);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;margin-top:2px}
-
-/* ─── BENTO ─── */
-.bento{padding:72px 0;background:var(--bg2)}
-.bento-grid{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
-.tile{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-xl);box-shadow:none;padding:22px;transition:transform .15s ease,box-shadow .2s,border-color .2s;display:flex;flex-direction:column;gap:12px}
-.tile:hover{transform:translateY(-2px);border-color:var(--border);box-shadow:var(--shadow)}
-.tile.cream{background:var(--cream)}
-.tile.olive{background:rgba(79,81,4,.06);border-color:rgba(79,81,4,.18)}
-.tile h3{font-size:1.12rem;font-weight:600;letter-spacing:-.2px;line-height:1.3}
-.tile .ti-sub{font-size:.9rem;color:var(--text3);line-height:1.5}
-.tile .ti-ic{width:40px;height:40px;border-radius:var(--r-md);background:var(--cream);border:1px solid rgba(178,120,10,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.tile.cream .ti-ic,.tile.olive .ti-ic{background:var(--surface)}
-.tile .ti-ic svg{width:21px;height:21px;stroke:var(--olive);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-/* bento mock: parsed quick-add */
-.parsed{display:flex;flex-direction:column;gap:8px}
-.parsed .ptyped{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:10px 15px;font-size:.9rem;color:var(--text);font-weight:500}
-.parsed .prow{display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-md);padding:9px 13px;font-size:.85rem}
-.parsed .prow .k{color:var(--text3);font-size:.72rem;letter-spacing:.4px;text-transform:uppercase;font-weight:600}
-.parsed .prow .v{font-weight:600}
-.tag-olive{color:var(--olive)}
-/* receipt */
-.receipt{background:var(--bg2);border:1px dashed var(--border);border-radius:var(--r-md);padding:14px 16px;font-size:.84rem;color:var(--text2)}
-.receipt .rh{font-weight:700;color:var(--text);font-size:.95rem;margin-bottom:8px}
-.receipt .rrow{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted var(--border)}
-.receipt .rtot{display:flex;justify-content:space-between;padding-top:8px;margin-top:4px;font-weight:700;color:var(--olive)}
-.scan-tag{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;font-size:.78rem;font-weight:600;color:var(--olive);background:rgba(79,81,4,.08);padding:6px 12px;border-radius:var(--r-full);margin-top:10px}
-.scan-tag svg{width:14px;height:14px;stroke:var(--olive);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-/* debt rows */
-.debt-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border2)}
+/* hutang rows */
+.debt-row{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--ink-06)}
 .debt-row:last-child{border-bottom:none}
-.debt-row .av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;color:#fff;flex-shrink:0}
-.debt-row .info{flex:1;min-width:0}
-.debt-row .info b{font-size:.9rem;font-weight:600;display:block}
-.dchip{display:inline-block;font-size:.62rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:3px 8px;border-radius:var(--r-full);margin-top:3px}
-.dchip-owe{background:rgba(193,105,79,.12);color:var(--terracotta)}
-.dchip-owed{background:rgba(79,81,4,.1);color:var(--olive)}
-.debt-row .da{font-weight:600;font-size:.92rem}
-.da.owe{color:var(--terracotta)}
-.da.owed{color:var(--olive)}
-/* budget */
-.budgrow{display:flex;flex-direction:column;gap:6px}
-.budgrow .bt{display:flex;justify-content:space-between;font-size:.86rem}
-.budgrow .bt b{font-weight:600}
-.budgrow .bt span{color:var(--text3)}
-.bar{height:8px;border-radius:var(--r-full);background:var(--border2);overflow:hidden}
-.bar i{display:block;height:100%;border-radius:var(--r-full);background:var(--olive)}
-.bar.warn i{background:var(--gold)}
-.budnote{font-size:.78rem;color:var(--bronze);display:flex;align-items:center;gap:6px}
-.budnote svg{width:14px;height:14px;stroke:var(--bronze);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-/* wallets */
-.wrow{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border2)}
+.debt-row .av{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:.72rem;font-weight:var(--fw-medium);color:var(--on-ink)}
+.debt-row .info{display:flex;align-items:center;gap:8px;min-width:0}
+.debt-row .info b{font-weight:var(--fw-semibold);font-size:.92rem}
+.dchip{font-family:var(--font-mono);font-size:.6rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;background:var(--ink-06);border-radius:var(--radius-pill);padding:3px 8px;color:var(--ink-65);white-space:nowrap}
+.dchip-owed{background:var(--sage-pale);color:var(--sage-text)}
+.debt-row .da{margin-left:auto;font-family:var(--font-mono);font-weight:var(--fw-medium);font-variant-numeric:tabular-nums}
+
+/* wallet rows */
+.wrow{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--ink-06);font-size:.9rem}
 .wrow:last-child{border-bottom:none}
-.wrow .wi{width:30px;height:30px;border-radius:8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.wrow .wi svg{width:15px;height:15px;stroke:var(--olive);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.wrow .wn{flex:1;min-width:0}
-.wrow .wn b{font-size:.88rem;font-weight:600;display:block}
-.wrow .wn em{font-size:.72rem;color:var(--text3);font-style:normal}
-.wrow .wa{font-size:.9rem;font-weight:600}
-.wrow .wa.muted{color:var(--text3)}
+.wrow .wi{width:32px;height:32px;border-radius:50%;background:var(--sage-pale);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.wrow .wi svg{width:15px;height:15px;stroke:var(--sage-deep);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.wrow .wn{min-width:0}
+.wrow .wn b{display:block;font-weight:var(--fw-medium);font-size:.88rem}
+.wrow .wn em{font-style:normal;font-size:.72rem;color:var(--ink-45)}
+.wrow .wa{margin-left:auto;font-family:var(--font-mono);font-weight:var(--fw-medium);white-space:nowrap;font-variant-numeric:tabular-nums}
+.wrow .wa.muted{color:var(--ink-45)}
 
-/* ─── DARK AI ─── */
-.darkai{padding:80px 0;background:linear-gradient(135deg,var(--olive-deep) 0%,var(--olive) 55%,var(--olive-light) 110%);color:#fff;position:relative;overflow:hidden}
-.darkai::before{content:'';position:absolute;top:-30%;right:-10%;width:340px;height:340px;background:radial-gradient(circle,rgba(255,255,255,.08),transparent 70%);border-radius:50%}
-.darkai::after{content:'';position:absolute;bottom:-40%;left:-8%;width:300px;height:300px;background:radial-gradient(circle,rgba(255,255,255,.05),transparent 70%);border-radius:50%}
-.darkai-wau{position:absolute;top:50%;left:50%;width:420px;height:420px;transform:translate(-50%,-50%);opacity:.10;pointer-events:none;z-index:0;animation:floaty 12s ease-in-out infinite}
-.darkai .container{position:relative;z-index:2;display:grid;grid-template-columns:1fr;gap:44px;align-items:center}
-.darkai .eyebrow{color:#fff;background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.2)}
-.darkai h2{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:700;letter-spacing:-.5px;line-height:1.18;margin:16px 0 14px}
-.darkai .ai-body{font-size:1.06rem;color:rgba(255,255,255,.85);line-height:1.6}
-.ai-chat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:var(--r-2xl);padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow-lg);backdrop-filter:blur(4px)}
-.ai-chat .bub{max-width:84%;padding:11px 14px;border-radius:16px;font-size:.92rem;line-height:1.5}
-.ai-chat .bub.user{align-self:flex-end;background:var(--olive);color:#fff;border-bottom-right-radius:5px;border:1px solid rgba(255,255,255,.12)}
-.ai-chat .bub.bot{align-self:flex-start;background:var(--surface);color:var(--text);border-bottom-left-radius:5px;box-shadow:var(--shadow)}
-.ai-chat .ai-tag{font-size:.82rem;color:rgba(255,255,255,.7);text-align:center;margin-top:4px}
+/* soft budgets (page voice; app voice inside phones below) */
+.budgrow .bt{display:flex;justify-content:space-between;gap:10px;font-size:.88rem;margin-bottom:7px}
+.budgrow .bt b{font-weight:var(--fw-medium)}
+.budgrow .bt .tnum{font-family:var(--font-mono)}
+.budgrow .bar{height:8px;border-radius:var(--radius-pill);background:var(--ink-06);overflow:hidden}
+.budgrow .bar i{display:block;height:100%;background:var(--sage);border-radius:inherit}
+.budgrow .bar.warn i{background:var(--sage-deep)}
+.budgrow .budnote{display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--ink-65);margin-top:7px}
+.budgrow .budnote svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 
-/* ─── TWO MODES ─── */
-.modes{padding:56px 0;background:var(--surface)}
-.modes-grid{display:grid;grid-template-columns:1fr;gap:20px;max-width:920px;margin:32px auto 0}
-.mode-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2xl);padding:28px;box-shadow:var(--shadow-md);position:relative;overflow:hidden;display:flex;flex-direction:column;gap:16px}
-.mode-card .badge-mode{display:inline-flex;align-items:center;gap:7px;font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:6px 12px;border-radius:var(--r-full);align-self:flex-start}
-.mode-personal .badge-mode{background:rgba(79,81,4,.1);color:var(--olive)}
-.mode-business .badge-mode{background:rgba(178,120,10,.12);color:var(--biz)}
-.mode-card h3{font-size:1.4rem;font-weight:600;letter-spacing:-.4px}
-.mode-card p{color:var(--text2);line-height:1.6;font-size:.96rem}
-.mode-card ul{list-style:none;display:flex;flex-direction:column;gap:10px}
-.mode-card li{display:flex;align-items:flex-start;gap:10px;font-size:.94rem;color:var(--text2)}
-.mode-card li svg{width:17px;height:17px;flex-shrink:0;margin-top:2px;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.mode-personal li svg{stroke:var(--olive)}
-.mode-business li svg{stroke:var(--biz)}
-/* mode mini mocks */
-.mini-dash{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-lg);padding:14px;margin-top:auto}
-.mini-dash .md-lbl{font-size:.66rem;letter-spacing:1px;text-transform:uppercase;color:var(--bronze);font-weight:700}
-.mini-dash .md-bal{font-size:1.5rem;font-weight:300;letter-spacing:-.5px;color:var(--text);margin-top:2px}
-.mini-dash .md-bal small{font-size:.85rem;font-weight:400;color:var(--text3);margin-right:2px}
-.mini-dash .md-pills{display:flex;gap:8px;margin-top:10px}
-.mini-dash .md-pill{flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 9px}
-.mini-dash .md-pill em{font-size:.6rem;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);font-style:normal;font-weight:600;display:block}
-.mini-dash .md-pill b{font-size:.82rem;font-weight:600;color:var(--olive)}
-.mini-pos{margin-top:auto;display:flex;flex-direction:column;gap:8px}
-.mini-pos .mp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.mini-pos .mp-tile{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-sm);padding:9px 10px}
-.mini-pos .mp-tile b{font-size:.78rem;font-weight:600;color:var(--text);display:block}
-.mini-pos .mp-tile span{font-size:.82rem;font-weight:700;color:var(--biz)}
-.mini-qr{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-md);padding:11px 12px;display:flex;align-items:center;gap:11px}
-.mini-qr .mq{width:40px;height:40px;border-radius:7px;flex-shrink:0;background:conic-gradient(from 0deg,#1A1A1A 25%,#fff 0 50%,#1A1A1A 0 75%,#fff 0) 0 0/10px 10px,#fff}
-.mini-qr .mqi b{font-size:.72rem;font-weight:700;color:var(--text);display:block}
-.mini-qr .mqi span{font-size:.9rem;font-weight:700;color:var(--biz)}
-.mini-qr .mqi em{font-size:.66rem;color:var(--text3);font-style:normal;display:block}
+/* ── №05 ECHO — quiet Q&A rows ── */
+.qa{max-width:720px;margin:0 auto;display:flex;flex-direction:column}
+.qa-row{padding:20px 0;border-bottom:1px solid var(--ink-12)}
+.qa-row:last-of-type{border-bottom:none}
+.qa-q{display:block;font-size:var(--text-md);font-weight:var(--fw-medium);color:var(--ink-90)}
+.qa-a{display:block;font-family:var(--font-mono);font-size:var(--text-sm);color:var(--ink-65);margin-top:9px;padding-left:16px;border-left:2px solid var(--sage)}
+.ai-body{color:var(--ink-65);line-height:var(--leading-relaxed)}
+.footnote{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);margin-top:14px}
 
-/* ─── HOW ─── */
-.how{padding:72px 0;background:var(--bg2)}
-.steps-grid{display:grid;grid-template-columns:1fr;gap:24px;max-width:920px;margin:0 auto}
-.step-card{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--olive);border-radius:var(--r-xl);padding:28px 26px;box-shadow:var(--shadow);text-align:left;position:relative}
-.step-card .si{width:40px;height:40px;margin:0 0 16px}
-.step-card .si svg{width:40px;height:40px;stroke:var(--olive);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.step-card h3{font-size:1.2rem;font-weight:600;margin-bottom:9px}
-.step-card p{color:var(--text2);font-size:.95rem;line-height:1.55}
+/* ── №06 TWO MODES ── */
+.modes-grid{display:grid;gap:22px;align-items:stretch}
+@media (min-width:860px){.modes-grid{grid-template-columns:1fr 1fr}}
+.mode-card{display:flex;flex-direction:column}
+.badge-mode{align-self:flex-start;font-family:var(--font-mono);font-size:.66rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--sage-text);background:var(--sage-pale);border-radius:var(--radius-pill);padding:4px 10px}
+.mode-card h3{font-size:var(--text-xl);font-weight:var(--fw-medium);margin:14px 0 6px}
+.mode-card>p{color:var(--ink-65);font-size:.94rem;line-height:1.6;margin-bottom:14px}
+.mode-card ul{list-style:none;display:flex;flex-direction:column;gap:9px;margin:0 0 20px;padding:0}
+.mode-card li{display:flex;gap:9px;font-size:.9rem;color:var(--ink-65);align-items:flex-start}
+.mode-card li svg{width:15px;height:15px;flex-shrink:0;margin-top:2px;stroke:var(--sage-deep);fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.mode-card .mini-dash,.mode-card .mini-pos{margin-top:auto}
+.mini-dash{background:var(--bg-soft);border-radius:var(--radius-lg);padding:16px 18px}
+.md-lbl{font-family:var(--font-mono);font-size:var(--text-xs);font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45)}
+.md-bal{font-size:1.8rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-tight);margin:4px 0 12px;font-variant-numeric:tabular-nums}
+.md-bal small{font-size:.95rem;font-weight:var(--fw-regular);color:var(--ink-45);margin-right:3px}
+.md-pills{display:flex;gap:10px}
+.md-pill{flex:1;background:var(--surface);border:1px solid var(--ink-06);border-radius:var(--radius-md);padding:8px 10px}
+.md-pill em{display:block;font-style:normal;font-family:var(--font-mono);font-size:.6rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45);margin-bottom:2px}
+.md-pill b{font-family:var(--font-mono);font-size:.88rem;font-weight:var(--fw-medium);font-variant-numeric:tabular-nums}
 
-/* ─── SCREENSHOTS GALLERY ─── */
-.gallery{padding:72px 0;background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);overflow:hidden}
-.gallery-wrap{position:relative;margin-top:36px}
-.gallery-scroll{display:flex;justify-content:safe center;gap:24px;overflow-x:auto;padding:10px 20px 28px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-.gallery-scroll::-webkit-scrollbar{display:none}
-.gallery-item{scroll-snap-align:center;flex-shrink:0;width:256px;display:flex;flex-direction:column;gap:10px}
-.gallery-item .phone{width:256px}
-/* placeholder mocks: size the screen to its content so there's no empty lower half.
-   When real full-height screenshots go in, restore aspect-ratio:9/19.3 here. */
-.gallery-item .phone-screen{aspect-ratio:auto;min-height:380px}
-.gallery-item .gl-cap{text-align:center;font-size:.8rem;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--bronze)}
-.gallery-fade{position:absolute;top:0;right:0;bottom:0;width:48px;background:linear-gradient(270deg,var(--bg2),rgba(245,243,239,0));pointer-events:none;z-index:2}
-.gallery-hint{text-align:center;font-size:.82rem;color:var(--text3);margin-top:4px}
+/* seller mini-POS (page voice; app voice inside phones below) */
+.mini-pos{display:flex;flex-direction:column;gap:10px}
+.mp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mp-tile{background:var(--bg-soft);border-radius:var(--radius-md);padding:10px 12px;font-size:.85rem}
+.mp-tile b{display:block;font-weight:var(--fw-medium);margin-bottom:2px}
+.mp-tile .tnum{font-family:var(--font-mono);color:var(--ink-65)}
+.mini-qr{display:flex;align-items:center;gap:12px;background:var(--bg-soft);border-radius:var(--radius-md);padding:10px 12px}
+.mini-qr .mq{width:46px;height:46px;flex-shrink:0;border-radius:var(--radius-sm);background-color:var(--surface);background-image:repeating-linear-gradient(0deg,var(--ink) 0 3px,transparent 3px 6px),repeating-linear-gradient(90deg,var(--ink) 0 3px,transparent 3px 6px);border:3px solid var(--surface)}
+.mini-qr .mqi b{display:block;font-size:.72rem;font-family:var(--font-mono);font-weight:var(--fw-medium);text-transform:uppercase;letter-spacing:var(--tracking-caps)}
+.mini-qr .mqi .tnum{font-family:var(--font-mono);font-weight:var(--fw-medium)}
+.mini-qr .mqi em{display:block;font-style:normal;font-size:.7rem;color:var(--ink-45)}
 
-/* goals arc mock */
-.goal-screen{padding:20px 16px;display:flex;flex-direction:column;align-items:center;gap:12px;background:var(--bg);flex:1}
-.goal-title{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze);font-weight:700;align-self:flex-start}
-.goal-arc{width:150px;height:150px;border-radius:50%;background:conic-gradient(var(--olive) 0deg 216deg,var(--border2) 216deg 360deg);display:flex;align-items:center;justify-content:center;position:relative;margin-top:6px}
-.goal-arc::after{content:'';position:absolute;inset:14px;background:var(--bg);border-radius:50%}
-.goal-arc .ga-in{position:relative;z-index:1;text-align:center}
-.goal-arc .ga-in b{font-size:20px;font-weight:700;color:var(--olive);display:block}
-.goal-arc .ga-in span{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
-.goal-meta{text-align:center;margin-top:4px}
-.goal-meta b{font-size:13px;font-weight:700;color:var(--text);display:block}
-.goal-meta span{font-size:11px;color:var(--text3)}
-.goal-list{align-self:stretch;margin-top:10px;display:flex;flex-direction:column;gap:8px}
-.goal-list .gl-row{display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-md);padding:9px 12px;font-size:11px}
-.goal-list .gl-k{color:var(--text3)}
-.goal-list .gl-v{font-weight:700;color:var(--text)}
-.goal-list .gl-v.in{color:var(--olive)}
-/* notes mock */
-.note-screen{padding:16px;display:flex;flex-direction:column;gap:10px;background:var(--bg);flex:1}
-.note-title{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze);font-weight:700}
-.note-paper{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-lg);padding:13px;font-size:12px;color:var(--text);line-height:1.6;box-shadow:var(--shadow)}
-.note-detect{background:var(--cream);border:1px solid rgba(178,120,10,.22);border-radius:var(--r-lg);padding:12px;display:flex;flex-direction:column;gap:9px}
-.note-detect .nd-h{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--gold);font-weight:700;display:flex;align-items:center;gap:5px}
-.note-detect .nd-h svg{width:12px;height:12px;stroke:var(--gold);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.note-detect .nd-row{display:flex;justify-content:space-between;font-size:11px}
-.note-detect .nd-row .k{color:var(--text3)}
-.note-detect .nd-row .v{font-weight:600}
-.note-detect .nd-btn{background:var(--olive);color:#fff;text-align:center;font-size:11px;font-weight:600;padding:8px;border-radius:var(--r-full);margin-top:2px}
-/* echo mock */
-.echo-screen{padding:16px;display:flex;flex-direction:column;gap:10px;background:var(--bg);flex:1}
-.bubble{max-width:80%;padding:10px 13px;border-radius:16px;font-size:11.5px;line-height:1.5}
-.bubble.user{align-self:flex-end;background:var(--olive);color:#fff;border-bottom-right-radius:5px}
-.bubble.bot{align-self:flex-start;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-bottom-left-radius:5px;box-shadow:var(--shadow)}
-.echo-bar{margin-top:auto;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:7px 8px 7px 14px}
-.echo-bar .pt{flex:1;font-size:11px;color:var(--text-muted)}
-.echo-bar .mic{width:30px;height:30px;border-radius:50%;background:var(--olive);display:flex;align-items:center;justify-content:center}
-.echo-bar .mic svg{width:13px;height:13px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-/* debts gallery screen */
-.dscreen{padding:16px;display:flex;flex-direction:column;gap:6px;background:var(--bg);flex:1}
-.dscreen .ds-title{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze);font-weight:700;margin-bottom:6px}
-.dscreen .dcard{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-lg);padding:6px 13px;box-shadow:var(--shadow)}
+/* ── №07 THREE STEPS — white cards on the cream wash ── */
+.steps-grid{display:grid;gap:16px}
+@media (min-width:760px){.steps-grid{grid-template-columns:repeat(3,1fr);gap:20px}}
+.step-card .si{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:var(--text-xs);font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);color:var(--ink-45)}
+.step-card .si svg{width:17px;height:17px;stroke:var(--sage-deep);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.step-card h3{font-size:var(--text-lg);font-weight:var(--fw-medium);margin:12px 0 6px}
+.step-card p{font-size:.92rem;color:var(--ink-65);line-height:1.6}
 
-/* ─── PERSONAS ─── */
-.who{padding:72px 0;background:var(--surface)}
-.persona-grid{display:grid;grid-template-columns:1fr;gap:18px}
-.persona{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:24px;box-shadow:var(--shadow);transition:transform .15s,box-shadow .2s,border-color .2s}
-.persona:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);border-color:var(--bronze)}
-.persona .pe{width:46px;height:46px;border-radius:50%;background:var(--cream);border:1px solid rgba(178,120,10,.18);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
-.persona .pe svg{width:23px;height:23px;stroke:var(--olive);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.persona h3{font-size:1.12rem;font-weight:600;margin-bottom:8px}
-.persona .sit{font-size:.92rem;color:var(--text3);line-height:1.5;margin-bottom:10px}
-.persona .help{font-size:.92rem;color:var(--text2);line-height:1.5}
-.persona .help b{color:var(--olive);font-weight:600}
+/* ── №08 ATTACHMENTS — floating white cards ── */
+.artifact-grid{display:grid;gap:20px}
+@media (min-width:820px){.artifact-grid{grid-template-columns:repeat(2,1fr)}}
+.artifact{display:flex;flex-direction:column;gap:12px;min-width:0}
+.artifact .gl-cap{font-family:var(--font-mono);font-size:.72rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45);border-top:1px solid var(--ink-06);padding-top:10px;margin-top:auto}
+.goal-title,.note-title,.ds-title{font-size:var(--text-md);font-weight:var(--fw-medium)}
+.goal-arc .ga-in{display:flex;align-items:baseline;gap:8px}
+.goal-arc .ga-in b{font-size:2.3rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-tight);font-variant-numeric:tabular-nums}
+.goal-arc .ga-in span{font-family:var(--font-mono);font-size:var(--text-xs);font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45)}
+.goal-meta{display:flex;justify-content:space-between;gap:10px;font-family:var(--font-mono);font-size:.84rem;border-top:1px solid var(--ink-12);padding-top:8px}
+.goal-meta span{color:var(--ink-45)}
+.goal-list{display:flex;flex-direction:column}
+.gl-row{display:flex;justify-content:space-between;gap:10px;font-family:var(--font-mono);font-size:.82rem;padding:6px 0;border-bottom:1px solid var(--ink-06)}
+.gl-row:last-child{border-bottom:none}
+.gl-row .gl-k{color:var(--ink-65)}
+.gl-row .gl-v{font-weight:var(--fw-medium)}
+.note-paper{font-size:1.02rem;color:var(--ink-90);background:var(--sage-pale);border-radius:var(--radius-md);padding:12px 14px}
+.note-detect .nd-h{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:.7rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--sage-text);margin:4px 0 6px}
+.note-detect .nd-h svg{width:13px;height:13px;stroke:var(--sage-deep);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nd-row{display:flex;justify-content:space-between;gap:10px;font-family:var(--font-mono);font-size:.84rem;padding:5px 0}
+.nd-row .k{color:var(--ink-65)}
+.nd-btn{align-self:flex-start;display:inline-block;margin-top:8px;font-size:.82rem;font-weight:var(--fw-medium);background:var(--ink);color:var(--on-ink);border-radius:var(--radius-pill);padding:9px 18px}
+.gallery-hint{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);margin-top:18px;text-align:center}
 
-/* ─── STORY ─── */
-.story{padding:72px 0;background:var(--cream);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-.story .container{max-width:860px}
-.story-inner{display:grid;grid-template-columns:1fr;gap:34px;align-items:center}
-.story-wau{width:200px;margin:0 auto;animation:floaty 11s ease-in-out infinite}
-.story-wau svg{border-radius:28px;box-shadow:var(--shadow-lg)}
-.story-text .kicker{font-size:1.3rem;font-weight:600;color:var(--olive);letter-spacing:-.3px;margin-bottom:14px}
-.story-text p{color:var(--text2);line-height:1.75;font-size:1.04rem;margin-bottom:14px;max-width:600px}
+/* ── №09 WHO — hairline persona grid ── */
+.persona-grid{display:grid;gap:0 44px}
+@media (min-width:700px){.persona-grid{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:1000px){.persona-grid{grid-template-columns:repeat(3,1fr)}}
+.persona{padding:24px 0;border-top:1px solid var(--ink-12)}
+.persona .pe{width:44px;height:44px;border-radius:var(--radius-md);background:var(--sage-pale);display:flex;align-items:center;justify-content:center}
+.persona .pe svg{width:22px;height:22px;stroke:var(--sage-deep);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.persona h3{font-size:var(--text-lg);font-weight:var(--fw-medium);margin:12px 0 4px}
+.persona .sit{font-size:.88rem;color:var(--ink-45)}
+.persona .help{font-size:.94rem;color:var(--ink-65);margin-top:7px;line-height:1.55}
+.persona .help b{color:var(--ink);font-weight:var(--fw-semibold)}
+
+/* ── №10 COLOPHON ── */
+.story-inner{max-width:620px;margin:0 auto;display:flex;flex-direction:column;align-items:center;text-align:center;gap:20px}
+.story-wau{width:88px;height:88px;border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-md)}
+.story-wau svg{width:100%;height:100%;display:block}
+.kicker{font-family:var(--font-mono);font-size:var(--text-xs);font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45);margin-bottom:14px}
+.story-text p{font-size:var(--text-md);line-height:var(--leading-relaxed);color:var(--ink-65);margin-bottom:12px}
 .story-text p:last-child{margin-bottom:0}
 
-/* ─── SECURITY ─── */
-.security{padding:72px 0;background:var(--bg)}
-.sec-grid{display:grid;grid-template-columns:1fr;gap:18px;margin-top:36px}
-.sec-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:22px;box-shadow:var(--shadow);display:flex;gap:15px;align-items:flex-start}
-.sec-item .si-ic{width:42px;height:42px;border-radius:var(--r-md);background:var(--cream);border:1px solid rgba(178,120,10,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.sec-item .si-ic svg{width:21px;height:21px;stroke:var(--olive);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.sec-item h3{font-size:1.05rem;font-weight:600;margin-bottom:6px}
-.sec-item p{font-size:.92rem;color:var(--text2);line-height:1.55}
-.sec-item p a{color:var(--olive);font-weight:600;text-decoration:underline;text-underline-offset:2px}
-.disclaimer{margin-top:30px;text-align:center;font-size:.9rem;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-lg);padding:18px 22px;max-width:680px;margin-left:auto;margin-right:auto}
-.disclaimer b{color:var(--text2)}
+/* ── №11 PRIVATE RECORDS ── */
+.sec-grid{display:grid;gap:18px}
+@media (min-width:760px){.sec-grid{grid-template-columns:1fr 1fr}}
+.sec-item{display:flex;gap:14px}
+.sec-item .si-ic{width:40px;height:40px;flex-shrink:0;border-radius:var(--radius-md);background:var(--sage-pale);display:flex;align-items:center;justify-content:center}
+.sec-item .si-ic svg{width:17px;height:17px;stroke:var(--sage-deep);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sec-item h3{font-size:1.05rem;font-weight:var(--fw-medium);margin-bottom:4px}
+.sec-item p{font-size:.9rem;color:var(--ink-65);line-height:1.55}
+.sec-item a{color:var(--sage-text);font-weight:var(--fw-medium);text-decoration:underline;text-decoration-thickness:1.5px;text-underline-offset:3px}
+.disclaimer{margin-top:28px;font-size:.88rem;color:var(--ink-65)}
 
-/* ─── PRICING NOTE ─── */
-.pricing{padding:56px 0;background:var(--surface)}
-.pricing-card{max-width:680px;margin:0 auto;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2xl);padding:36px 28px;box-shadow:var(--shadow-md);position:relative;overflow:hidden}
-.pricing-card::before{content:'';position:absolute;top:-50px;right:-50px;width:160px;height:160px;background:radial-gradient(circle,rgba(178,120,10,.10),transparent 70%);border-radius:50%}
-.pricing-card .tag{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--olive);background:rgba(79,81,4,.1);padding:6px 13px;border-radius:var(--r-full);margin-bottom:14px}
-.pricing-card h3{font-size:1.6rem;font-weight:600;letter-spacing:-.4px;margin-bottom:10px}
-.pricing-card p{color:var(--text2);line-height:1.6;position:relative;z-index:1}
+/* pricing — an honest card */
+.pricing-card{max-width:560px;margin:0 auto}
+.pricing-card .badge{margin-bottom:14px}
+.pricing-card h3{font-size:var(--text-xl);font-weight:var(--fw-medium);margin:0 0 6px}
+.pricing-card p{color:var(--ink-65);line-height:1.6}
 
-/* ─── FAQ ─── */
-.faq{padding:72px 0;background:var(--surface);border-top:1px solid var(--border)}
-.faq-list{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
-.faq-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow);transition:border-color .2s}
-.faq-item[open]{border-color:var(--bronze)}
-.faq-item summary{list-style:none;cursor:pointer;padding:20px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:1.05rem;font-weight:600;color:var(--text)}
-.faq-item summary::-webkit-details-marker{display:none}
-.faq-item summary .q-ic{width:24px;height:24px;flex-shrink:0;position:relative;transition:transform .2s}
-.faq-item[open] summary .q-ic{transform:rotate(45deg)}
-.faq-item summary .q-ic::before,.faq-item summary .q-ic::after{content:'';position:absolute;background:var(--olive);border-radius:2px}
-.faq-item summary .q-ic::before{top:11px;left:4px;width:16px;height:2px}
-.faq-item summary .q-ic::after{top:4px;left:11px;width:2px;height:16px}
-.faq-answer{padding:0 22px 22px;color:var(--text2);line-height:1.65;font-size:.98rem}
+/* ── №12 FAQ — two-column (kit .faq-2col) ── */
+.faq-left .eyebrow{margin-bottom:var(--space-sm)}
 
-/* ─── FINAL CTA ─── */
-.final-cta{padding:80px 0;background:linear-gradient(135deg,var(--olive-deep) 0%,var(--olive) 55%,var(--olive-light) 110%);color:#fff;position:relative;overflow:hidden;text-align:center}
-.final-cta::before{content:'';position:absolute;top:-30%;right:-10%;width:340px;height:340px;background:radial-gradient(circle,rgba(255,255,255,.08),transparent 70%);border-radius:50%}
-.final-cta::after{content:'';position:absolute;bottom:-40%;left:-8%;width:300px;height:300px;background:radial-gradient(circle,rgba(255,255,255,.05),transparent 70%);border-radius:50%}
-.final-cta-wau{position:absolute;top:50%;left:50%;width:150px;height:150px;transform:translate(-50%,-50%);opacity:.15;pointer-events:none;z-index:0;animation:floaty 11s ease-in-out infinite}
-.final-cta .container{position:relative;z-index:2;max-width:640px}
-.final-cta h2{font-size:clamp(1.8rem,5vw,2.7rem);font-weight:700;letter-spacing:-.6px;line-height:1.15;margin-bottom:16px}
-.final-cta p{font-size:1.1rem;color:rgba(255,255,255,.85);line-height:1.6;margin-bottom:30px}
-.final-cta .waitlist{margin:30px auto 0}
-.final-cta .wl-tile{background:var(--cream);border-color:rgba(178,120,10,.20)}
-.final-cta .beta-link{margin-top:16px;display:inline-flex;align-items:center;gap:7px;font-size:.95rem;font-weight:600;color:#fff;text-decoration:underline;text-underline-offset:3px;transition:color .15s;padding:11px 6px}
-.final-cta .beta-link:hover{color:var(--cream)}
+/* ── FINAL CTA — cream giant-radius panel ── */
+.cta-panel{display:flex;flex-direction:column;align-items:center;text-align:center}
+.cta-panel h2{font-size:var(--text-3xl);font-weight:var(--fw-medium);letter-spacing:var(--tracking-display);line-height:var(--leading-tight);margin:18px 0 10px}
+.cta-panel>p{color:var(--ink-65);max-width:52ch}
+.cta-panel .waitlist{width:100%;text-align:left}
+.cta-wau{width:56px;height:56px;border-radius:var(--radius-md);overflow:hidden}
+.cta-wau svg{width:100%;height:100%;display:block}
+.beta-link{color:var(--ink);text-decoration:underline;text-underline-offset:3px;display:inline-flex;gap:7px;align-items:center;font-weight:var(--fw-medium);padding:11px 6px;margin-top:16px}
 
-/* ─── FOOTER ─── */
-.footer{background:var(--bg);border-top:1px solid var(--border);padding:56px 0 32px}
-.footer-grid{display:grid;grid-template-columns:1fr;gap:36px;margin-bottom:40px}
-.footer-brand .brand{margin-bottom:14px}
-.footer-brand .bline{font-size:.92rem;color:var(--text3);line-height:1.6;max-width:300px}
-.footer-cols{display:grid;grid-template-columns:1fr 1fr;gap:30px}
-.footer-col h4{font-size:.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--bronze);font-weight:700;margin-bottom:14px}
-.footer-col a,.footer-col span{display:block;font-size:.92rem;color:var(--text2);padding:10px 0;transition:color .15s}
-.footer-col a:hover{color:var(--olive)}
-.footer-bottom{border-top:1px solid var(--border2);padding-top:24px;display:flex;flex-direction:column;gap:14px;align-items:flex-start}
-.footer-bottom .fb-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;width:100%}
-.footer-bottom .copy{font-size:.84rem;color:var(--text3)}
-.footer-bottom .made{font-size:.84rem;color:var(--text3);display:inline-flex;align-items:center;gap:6px}
-.footer-disclaimer{font-size:.78rem;color:var(--text-muted);line-height:1.5;max-width:680px}
+/* ── APP-MOCK INTERIORS (inside .phone-screen ONLY — the calm app, untouched) ── */
+.scr{padding:34px 14px 14px;display:flex;flex-direction:column;gap:10px;background:var(--app-bg);flex:1;min-height:0}
+.scr-title{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--app-text-2);font-weight:var(--fw-semibold)}
+.qls-typed{background:var(--app-surface);border:1px solid var(--app-border);border-radius:9999px;padding:9px 13px;font-size:11.5px;font-weight:var(--fw-medium);color:var(--app-text)}
+.qls-row{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;padding:5px 0;border-bottom:1px solid var(--app-border);color:var(--app-text)}
+.qls-row:last-child{border-bottom:none}
+.qls-row .k{color:var(--app-text-2);text-transform:uppercase;font-size:8.5px;letter-spacing:.5px;font-weight:var(--fw-semibold)}
+.qls-row .v{font-weight:var(--fw-semibold)}
+.qls-kept{display:flex;justify-content:space-between;align-items:center;background:var(--app-cream);border:1px solid var(--app-border);border-radius:10px;padding:9px 12px;font-size:10.5px;color:var(--app-text-2)}
+.qls-kept b{color:var(--app-olive);font-weight:var(--fw-semibold);font-size:12px}
+.weekbar{display:flex;gap:5px;align-items:flex-end;height:54px}
+.weekbar .wb{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px}
+.weekbar .wb i{width:100%;background:var(--app-border);border-radius:3px 3px 0 0;display:block}
+.weekbar .wb.on i{background:var(--app-olive)}
+.weekbar .wb span{font-size:7.5px;color:var(--app-text-2)}
+.echo-screen{padding:34px 12px 12px;display:flex;flex-direction:column;gap:8px;background:var(--app-bg);flex:1;min-height:0}
+.echo-screen .bubble{max-width:86%;padding:8px 11px;border-radius:13px;font-size:10.5px;line-height:1.45}
+.echo-screen .bubble.user{align-self:flex-end;background:var(--app-olive);color:var(--app-surface);border-bottom-right-radius:4px}
+.echo-screen .bubble.bot{align-self:flex-start;background:var(--app-surface);border:1px solid var(--app-border);color:var(--app-text);border-bottom-left-radius:4px}
+.echo-bar{margin-top:auto;display:flex;align-items:center;gap:8px;background:var(--app-surface);border:1px solid var(--app-border);border-radius:9999px;padding:7px 7px 7px 13px}
+.echo-bar .pt{flex:1;font-size:10.5px;color:var(--app-text-2)}
+.echo-bar .mic{width:24px;height:24px;border-radius:50%;background:var(--app-olive);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.echo-bar .mic svg{width:12px;height:12px;stroke:var(--app-surface);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.phone-screen .budgrow .bt{font-size:11px;margin-bottom:6px;color:var(--app-text)}
+.phone-screen .budgrow .bar{height:7px;border:1px solid var(--app-border);border-radius:9999px;background:var(--app-bg)}
+.phone-screen .budgrow .bar i{background:var(--app-olive)}
+.phone-screen .budgrow .bar.warn i{background:var(--app-olive-light)}
+.phone-screen .budgrow .budnote{font-size:9.5px;color:var(--app-text-2);margin-top:6px}
+.phone-screen .budgrow .budnote[style]{color:var(--app-olive)!important}
+.phone-screen .mp-tile{border:1px solid var(--app-border);background:var(--app-surface);border-radius:10px;color:var(--app-text);font-size:10.5px}
+.phone-screen .mp-tile .tnum{color:var(--app-olive);font-weight:var(--fw-semibold)}
+.phone-screen .mini-qr{border:1px solid var(--app-border);background:var(--app-surface);border-radius:10px}
+.phone-screen .mini-qr .mq{width:40px;height:40px;background-image:repeating-linear-gradient(0deg,var(--app-text) 0 3px,transparent 3px 6px),repeating-linear-gradient(90deg,var(--app-text) 0 3px,transparent 3px 6px);background-color:var(--app-surface);border-color:var(--app-surface);outline:1px solid var(--app-border)}
+.phone-screen .mini-qr .mqi b{color:var(--app-text);font-family:var(--font);letter-spacing:0;text-transform:none;font-size:10px}
+.phone-screen .mini-qr .mqi .tnum{color:var(--app-olive);font-size:12px}
+.phone-screen .mini-qr .mqi em{font-size:9px;color:var(--app-text-2)}
 
-/* reveal */
-.reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease;transition-delay:var(--d)}
-.reveal.in{opacity:1;transform:none}
-@media (prefers-reduced-motion:reduce){
-  .reveal{opacity:1;transform:none;transition:none}
-  .hero::before,.hero-bg-wau,.chip,.marquee,.story-wau,.darkai-wau,.final-cta-wau{animation:none !important}
-}
-
-/* ─── RESPONSIVE ─── */
-@media (max-width:559px){.chip{display:none}}
-@media (min-width:560px){
-  .footer-cols{grid-template-columns:repeat(3,1fr)}
-  .bento-grid{grid-template-columns:repeat(2,1fr)}
-}
-@media (min-width:768px){
-  .container{padding:0 32px}
-  .modes-grid{grid-template-columns:1fr 1fr}
-  .steps-grid{grid-template-columns:repeat(3,1fr)}
-  .persona-grid{grid-template-columns:1fr 1fr}
-  .sec-grid{grid-template-columns:1fr 1fr}
-  .story-inner{grid-template-columns:220px 1fr}
-  .footer-grid{grid-template-columns:1.4fr 2fr}
-  .footer-cols{grid-template-columns:repeat(3,1fr)}
-  .herofeat .container{grid-template-columns:.95fr 1.05fr;gap:64px}
-  .darkai .container{grid-template-columns:1.05fr .95fr;gap:56px}
-}
-@media (min-width:900px){
-  .nav-links{display:flex}
-  .hamburger{display:none}
-  .hero .container{grid-template-columns:1.05fr .95fr;gap:56px}
-  .hero-copy{order:1}
-  .hero-phone-wrap{order:2}
-  .persona-grid{grid-template-columns:repeat(3,1fr)}
-  /* bento → clean 3-col; tiles hug their content (no stretched/empty cards) */
-  .bento-grid{grid-template-columns:repeat(3,1fr)}
-}
-@media (min-width:1100px){
-  .persona-grid{grid-template-columns:repeat(5,1fr)}
-}
-@media (max-width:899px){
-  .nav-right .lang-toggle{display:none}
-  .nav-right .btn-beta-nav{display:none}
-}
-@media (max-width:379px){
-  .badges{flex-direction:column}
-  .badge-link svg{height:50px}
+/* small screens breathe */
+@media (max-width:600px){
+  .ink-phones{gap:32px}
+  .phones-row{gap:36px}
+  .wk-safe{flex-direction:column;align-items:flex-start}
 }
 </style>
 </head>
@@ -632,19 +401,19 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 <div class="grain" aria-hidden="true"></div>
 <a class="skip" href="#main" data-en="Skip to content" data-bm="Terus ke kandungan">Skip to content</a>
 
-<!-- ════════════ NAV ════════════ -->
+<!-- ════════════ NAV — quiet white, one ink pill ════════════ -->
 <header class="nav" id="nav">
   <div class="container">
     <a class="brand" href="#top" aria-label="Potraces home">
       <span class="logo" aria-hidden="true" id="navlogo"></span>
       <span>Potraces</span>
+      <span class="brand-tag" data-en="Buku duit untuk rezeki tak tetap" data-bm="Buku duit untuk rezeki tak tetap">Buku duit untuk rezeki tak tetap</span>
     </a>
     <nav class="nav-links" aria-label="Primary">
       <a href="#features" data-en="Features" data-bm="Ciri">Features</a>
       <a href="#how" data-en="How it works" data-bm="Cara guna">How it works</a>
       <a href="/quick-log.html" data-en="Quick Log" data-bm="Log Pantas">Quick Log</a>
       <a href="#who" data-en="Who it's for" data-bm="Untuk siapa">Who it's for</a>
-      <a href="#privacy" data-en="Privacy" data-bm="Privasi">Privacy</a>
       <a href="#faq" data-en="FAQ" data-bm="Soalan">FAQ</a>
     </nav>
     <div class="nav-right">
@@ -678,104 +447,64 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 <main id="main">
 <span id="top"></span>
 
-<!-- ════════════ HERO ════════════ -->
-<section class="hero">
-  <div class="hero-bg-wau" aria-hidden="true" id="herowau"></div>
-  <div class="hero-bg-wau lo" aria-hidden="true" id="herowau2"></div>
+<!-- ════════════ HERO — the studied pattern: badge eyebrow · giant H1 with ONE italic word · pill form · real phone ════════════ -->
+<section class="hero hero-center">
   <div class="container">
-    <div class="hero-copy">
-      <span class="eyebrow" data-en="Built in Malaysia, for irregular income" data-bm="Buatan Malaysia, untuk rezeki tak tetap">Built in Malaysia, for irregular income</span>
-      <h1>
-        <span data-en="Know " data-bm="Tau ">Know </span><span class="h-accent" data-en="what's safe to spend" data-bm="berapa boleh belanja">what's safe to spend</span><span data-en=" — even when the money's not steady." data-bm=" — walaupun duit masuk tak tetap."> — even when the money's not steady.</span>
-      </h1>
-      <p class="lead">
-        <span data-en="For kuih sellers, gig riders and freelancers. Track what came in, what went out, what's kept — calmly." data-bm="Untuk penjual kuih, rider gig & freelancer. Track duit masuk, duit keluar, apa yang berbaki — tak yah stress." class="block">For kuih sellers, gig riders and freelancers. Track what came in, what went out, what's kept — calmly.</span>
-      </p>
+    <span class="eyebrow">
+      <span class="ic" aria-hidden="true" id="herowau"></span>
+      <span data-en="Built in Malaysia, for irregular income" data-bm="Buatan Malaysia, untuk rezeki tak tetap">Built in Malaysia, for irregular income</span>
+    </span>
+    <h1>
+      <span data-en="Know what's " data-bm="Tau berapa boleh ">Know what's </span><span class="accent-word" data-en="safe" data-bm="belanja">safe</span><span data-en=" to spend — even when the money's not steady." data-bm=" — walaupun duit masuk tak tetap."> to spend — even when the money's not steady.</span>
+    </h1>
+    <p class="lead">
+      <span data-en="For kuih sellers, gig riders and freelancers. Track what came in, what went out, what's kept — calmly." data-bm="Untuk penjual kuih, rider gig & freelancer. Track duit masuk, duit keluar, apa yang berbaki — tak yah stress." class="block">For kuih sellers, gig riders and freelancers. Track what came in, what went out, what's kept — calmly.</span>
+    </p>
 
-      <!-- waitlist (elevated) -->
-      <div class="waitlist" id="waitlist">
-        <div class="wl-tile">
-          <div class="wl-frame">
-            <span class="wl-ic" aria-hidden="true" id="wlicon"></span>
-            <span data-en="Be first in line. One ping when it's live." data-bm="Jadi yang pertama tau. Satu ping je bila dah live.">Be first in line. One ping when it's live.</span>
-          </div>
-          <form id="waitlistForm" novalidate>
-            <div class="wl-pill">
-              <label for="wl-email" class="wl-label">
-                <span data-en="Email" data-bm="Emel">Email</span>
-              </label>
-              <input id="wl-email" name="contact" type="email" inputmode="email" autocomplete="email"
-                data-ph-en="Your email" data-ph-bm="Emel kau"
-                placeholder="Your email" required>
-              <input type="text" name="hp_company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0">
-              <button type="submit" class="btn btn-primary" data-en="Notify me" data-bm="Bagitau saya">Notify me</button>
-            </div>
-            <label class="wl-consent">
-              <input type="checkbox" name="consent">
-              <span data-en="I agree to be emailed once when Potraces launches." data-bm="Aku setuju kena email sekali je bila Potraces dah live.">I agree to be emailed once when Potraces launches.</span>
+    <!-- waitlist — the single primary action -->
+    <div class="waitlist" id="waitlist">
+      <div class="wl-tile">
+        <div class="wl-frame">
+          <span class="wl-ic" aria-hidden="true" id="wlicon"></span>
+          <span data-en="Be first in line. One ping when it's live." data-bm="Jadi yang pertama tau. Satu ping je bila dah live.">Be first in line. One ping when it's live.</span>
+          <span class="badge badge--sage" aria-hidden="true" style="margin-left:auto">BETA</span>
+        </div>
+        <form id="waitlistForm" novalidate>
+          <div class="wl-pill">
+            <label for="wl-email" class="wl-label">
+              <span data-en="Email" data-bm="Emel">Email</span>
             </label>
-          </form>
-          <p class="wl-msg" id="wlMsg" role="status" aria-live="polite"></p>
-          <p class="wl-proof" id="wlProof" role="status" aria-live="polite"></p>
-          <p class="micro" data-en="No card. We message you once when it's live." data-bm="Takde kad. Kami msg sekali je bila dah ready.">No card. We message you once when it's live.</p>
-        </div>
-      </div>
-
-      <!-- store badges -->
-      <div class="store-cta">
-        <div class="store-label">
-          <span data-en="Coming soon to" data-bm="Akan datang di">Coming soon to</span>
-          <span class="soon-tag" data-en="Beta" data-bm="Beta">Beta</span>
-        </div>
-        <div class="badges">
-          <a class="badge-link" href="/beta.html" aria-label="Coming soon on the App Store — join the beta">
-            <svg width="162" height="54" viewBox="0 0 162 54" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-              <rect width="162" height="54" rx="9" fill="#000"/>
-              <rect x="0.5" y="0.5" width="161" height="53" rx="8.5" fill="none" stroke="#A6A6A6" stroke-width="1"/>
-              <path d="M33.5 27.2c0-2.9 2.4-4.3 2.5-4.4-1.4-2-3.5-2.3-4.3-2.3-1.8-.2-3.5 1.1-4.5 1.1-.9 0-2.4-1-3.9-1-2 0-3.8 1.2-4.9 3-2.1 3.6-.5 9 1.5 11.9 1 1.5 2.2 3 3.7 3 1.5-.1 2.1-1 3.9-1s2.4 1 3.9 1 2.6-1.4 3.6-2.9c1.1-1.7 1.6-3.3 1.6-3.4-.1 0-3.1-1.2-3.1-4.6zm-3-8.4c.8-1 1.4-2.4 1.2-3.8-1.2.1-2.6.8-3.5 1.8-.8.9-1.4 2.3-1.3 3.7 1.3.1 2.7-.7 3.6-1.7z" fill="#fff"/>
-              <text x="48" y="22" fill="#fff" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="9" font-weight="400">Download on the</text>
-              <text x="48" y="40" fill="#fff" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="20" font-weight="600" letter-spacing="-0.5">App Store</text>
-            </svg>
-          </a>
-          <a class="badge-link" href="/beta.html" aria-label="Coming soon on Google Play — join the beta">
-            <svg width="182" height="54" viewBox="0 0 182 54" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-              <rect width="182" height="54" rx="9" fill="#000"/>
-              <rect x="0.5" y="0.5" width="181" height="53" rx="8.5" fill="none" stroke="#A6A6A6" stroke-width="1"/>
-              <g transform="translate(18 14)">
-                <path d="M0 0.9C0 .3.3-.1.8.1l13.2 13L10.6 16 0 .9z" fill="#34A853" transform="translate(0 0)"/>
-                <path d="M.4.2 12.4 12 9.8 14.6.5 24.8C.2 24.6 0 24.2 0 23.7V1.3C0 .9.2.4.4.2z" fill="#00D2FF"/>
-                <path d="M9.8 14.6 12.4 12l3.9 2.2c1.3.7 1.3 1.9 0 2.6l-3.5 2-3-4.2z" fill="#FFBC00"/>
-                <path d="M.5 24.8 9.8 14.6l3 4.2-9.6 5.4c-1 .6-1.9.3-2.7-.4z" fill="#EA4335"/>
-              </g>
-              <text x="52" y="22" fill="#fff" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="9" font-weight="400">GET IT ON</text>
-              <text x="52" y="41" fill="#fff" font-family="-apple-system,Roboto,Arial,sans-serif" font-size="20" font-weight="500" letter-spacing="0">Google Play</text>
-            </svg>
-          </a>
-        </div>
-      </div>
-
-      <div class="hero-trust">
-        <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span data-en="Your data stays yours" data-bm="Data kau, milik kau">Your data stays yours</span></span>
-        <span class="dot" aria-hidden="true"></span>
-        <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12" y2="20"/></svg><span data-en="Works offline" data-bm="Boleh guna offline">Works offline</span></span>
-        <span class="dot" aria-hidden="true"></span>
-        <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-4.5-9-9a4.8 4.8 0 0 1 9-2 4.8 4.8 0 0 1 9 2c-2 4.5-9 9-9 9z"/></svg><span data-en="RM + Bahasa Melayu" data-bm="RM + Bahasa Melayu">RM + Bahasa Melayu</span></span>
+            <input id="wl-email" name="contact" type="email" inputmode="email" autocomplete="email"
+              data-ph-en="Your email" data-ph-bm="Emel kau"
+              placeholder="Your email" required>
+            <input type="text" name="hp_company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0">
+            <button type="submit" class="btn btn-primary" data-en="Notify me" data-bm="Bagitau saya">Notify me</button>
+          </div>
+          <label class="wl-consent">
+            <input type="checkbox" name="consent">
+            <span data-en="I agree to be emailed once when Potraces launches." data-bm="Aku setuju kena email sekali je bila Potraces dah live.">I agree to be emailed once when Potraces launches.</span>
+          </label>
+        </form>
+        <p class="wl-msg" id="wlMsg" role="status" aria-live="polite"></p>
+        <p class="wl-proof" id="wlProof" role="status" aria-live="polite"></p>
+        <p class="micro" data-en="No card. We message you once when it's live." data-bm="Takde kad. Kami msg sekali je bila dah ready.">No card. We message you once when it's live.</p>
       </div>
     </div>
 
-    <!-- HERO PHONE -->
-    <div class="hero-phone-wrap reveal">
-      <span class="chip c-a" aria-hidden="true"><span class="tnum">+ RM 45 </span><span class="ca" data-en="came in" data-bm="masuk">came in</span><span data-en=" · kuih order" data-bm=" · order kuih"> · kuih order</span></span>
-      <span class="chip c-b" aria-hidden="true">
-        <span class="spark"><i style="height:40%"></i><i style="height:70%"></i><i style="height:55%"></i><i style="height:90%"></i><i style="height:65%"></i></span>
-        <span class="block"><span data-en="kept this week" data-bm="berbaki minggu ni">kept this week</span><br><span class="ca tnum">RM 320</span></span>
-      </span>
-      <span class="chip c-c" aria-hidden="true">
-        <span class="miniqr"></span>
-        <span class="block"><span data-en="paid " data-bm="bayar ">paid </span><span class="ca tnum">RM 12</span><br>DuitNow</span>
-      </span>
+    <!-- trust row — quiet inline notes -->
+    <div class="hero-trust trust-row">
+      <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span data-en="Your data stays yours" data-bm="Data kau, milik kau">Your data stays yours</span></span>
+      <span class="dot" aria-hidden="true"></span>
+      <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12" y2="20"/></svg><span data-en="Works offline" data-bm="Boleh guna offline">Works offline</span></span>
+      <span class="dot" aria-hidden="true"></span>
+      <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-4.5-9-9a4.8 4.8 0 0 1 9-2 4.8 4.8 0 0 1 9 2c-2 4.5-9 9-9 9z"/></svg><span data-en="RM + Bahasa Melayu" data-bm="RM + Bahasa Melayu">RM + Bahasa Melayu</span></span>
+    </div>
+
+    <!-- HERO OBJECT: the real app, front and centre -->
+    <div class="hero-stage reveal">
       <div class="phone" role="img" aria-label="Potraces dashboard showing the balance kept this month, with came-in and went-out amounts">
-        <div class="phone-screen">
+        <!-- SHOT SLOT "dashboard": when the real capture lands, replace the inner mock with <img class="shot" src="/assets/screens/dashboard.png" alt="Potraces dashboard — kept this month"> -->
+        <div class="phone-screen" data-shot="dashboard">
           <div class="app-hd">
             <div class="lbl" data-en="Kept this month" data-bm="Berbaki bulan ni">Kept this month</div>
             <div class="bal tnum"><small>RM</small>1,284<span style="font-size:18px;font-weight:400;opacity:.8">.50</span></div>
@@ -825,11 +554,48 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
           </div>
         </div>
       </div>
+      <div class="shot-caption">
+        <b data-en="Dashboard" data-bm="Dashboard">Dashboard</b>
+        <span data-en="What's kept, front and centre." data-bm="Apa yang berbaki, depan mata.">What's kept, front and centre.</span>
+      </div>
+    </div>
+
+    <!-- store badges -->
+    <div class="store-cta">
+      <div class="store-label">
+        <span data-en="Coming soon to" data-bm="Akan datang di">Coming soon to</span>
+        <span class="soon-tag" data-en="Beta" data-bm="Beta">Beta</span>
+      </div>
+      <div class="badges">
+        <a class="badge-link" href="/beta.html" aria-label="Coming soon on the App Store — join the beta">
+          <svg width="162" height="54" viewBox="0 0 162 54" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+            <rect width="162" height="54" rx="9" fill="#000"/>
+            <rect x="0.5" y="0.5" width="161" height="53" rx="8.5" fill="none" stroke="#A6A6A6" stroke-width="1"/>
+            <path d="M33.5 27.2c0-2.9 2.4-4.3 2.5-4.4-1.4-2-3.5-2.3-4.3-2.3-1.8-.2-3.5 1.1-4.5 1.1-.9 0-2.4-1-3.9-1-2 0-3.8 1.2-4.9 3-2.1 3.6-.5 9 1.5 11.9 1 1.5 2.2 3 3.7 3 1.5-.1 2.1-1 3.9-1s2.4 1 3.9 1 2.6-1.4 3.6-2.9c1.1-1.7 1.6-3.3 1.6-3.4-.1 0-3.1-1.2-3.1-4.6zm-3-8.4c.8-1 1.4-2.4 1.2-3.8-1.2.1-2.6.8-3.5 1.8-.8.9-1.4 2.3-1.3 3.7 1.3.1 2.7-.7 3.6-1.7z" fill="#fff"/>
+            <text x="48" y="22" fill="#fff" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="9" font-weight="400">Download on the</text>
+            <text x="48" y="40" fill="#fff" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="20" font-weight="600" letter-spacing="-0.5">App Store</text>
+          </svg>
+        </a>
+        <a class="badge-link" href="/beta.html" aria-label="Coming soon on Google Play — join the beta">
+          <svg width="182" height="54" viewBox="0 0 182 54" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+            <rect width="182" height="54" rx="9" fill="#000"/>
+            <rect x="0.5" y="0.5" width="181" height="53" rx="8.5" fill="none" stroke="#A6A6A6" stroke-width="1"/>
+            <g transform="translate(18 14)">
+              <path d="M0 0.9C0 .3.3-.1.8.1l13.2 13L10.6 16 0 .9z" fill="#34A853" transform="translate(0 0)"/>
+              <path d="M.4.2 12.4 12 9.8 14.6.5 24.8C.2 24.6 0 24.2 0 23.7V1.3C0 .9.2.4.4.2z" fill="#00D2FF"/>
+              <path d="M9.8 14.6 12.4 12l3.9 2.2c1.3.7 1.3 1.9 0 2.6l-3.5 2-3-4.2z" fill="#FFBC00"/>
+              <path d="M.5 24.8 9.8 14.6l3 4.2-9.6 5.4c-1 .6-1.9.3-2.7-.4z" fill="#EA4335"/>
+            </g>
+            <text x="52" y="22" fill="#fff" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="9" font-weight="400">GET IT ON</text>
+            <text x="52" y="41" fill="#fff" font-family="-apple-system,Roboto,Arial,sans-serif" font-size="20" font-weight="500" letter-spacing="0">Google Play</text>
+          </svg>
+        </a>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ════════════ MARQUEE ════════════ -->
+<!-- ════════════ TICKER — quiet trust strip (#marquee mechanics preserved) ════════════ -->
 <section class="marquee-band reveal" aria-label="Plays nice with your money">
   <div class="container">
     <div class="marquee-lbl" data-en="Plays nice with your money" data-bm="Sesuai dengan duit korang">Plays nice with your money</div>
@@ -856,190 +622,382 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
   </div>
 </section>
 
-<!-- ════════════ HERO-FEATURE ════════════ -->
-<section class="herofeat">
-  <div class="container">
-    <div class="hero-phone-wrap reveal" style="order:1">
-      <div class="phone" role="img" aria-label="Potraces safe-to-spend dashboard">
-        <div class="phone-screen">
-          <div class="app-hd">
-            <div class="lbl" data-en="Kept this month" data-bm="Berbaki bulan ni">Kept this month</div>
-            <div class="bal tnum"><small>RM</small>1,284<span style="font-size:18px;font-weight:400;opacity:.8">.50</span></div>
-            <div class="sub" data-en="across cash, bank & e-wallet" data-bm="merentas tunai, bank & e-wallet">across cash, bank &amp; e-wallet</div>
-            <div class="app-pills">
-              <div class="app-pill">
-                <div class="pl" data-en="Came in" data-bm="Masuk">Came in</div>
-                <div class="pv tnum">RM 2,940</div>
-              </div>
-              <div class="app-pill">
-                <div class="pl" data-en="Went out" data-bm="Keluar">Went out</div>
-                <div class="pv tnum">RM 1,655</div>
+<!-- ════════════ №01 · THE ONE INK SECTION — the real app, showcased ════════════ -->
+<section class="showcase">
+  <div class="container-wide">
+    <div class="panel panel--ink">
+      <p class="sec-mark"><span class="no">No. 01</span><span class="ttl" data-en="From the book to the phone" data-bm="Dari buku ke telefon">From the book to the phone</span></p>
+      <div class="section-head reveal">
+        <span class="eyebrow" data-en="The product, up close" data-bm="Produk, dari dekat">The product, up close</span>
+        <h2>
+          <span data-en="Five screens you'll actually " data-bm="Lima skrin yang kau memang akan ">Five screens you'll actually </span><span class="accent-word" data-en="live" data-bm="guna">live</span><span data-en=" in." data-bm="."> in.</span>
+        </h2>
+        <p data-en="The real app, in RM. Swipe through." data-bm="App yang sebenar, dalam RM. Leret je.">The real app, in RM. Swipe through.</p>
+      </div>
+      <div class="ink-phones reveal">
+        <!-- quick-log -->
+        <div>
+          <div class="phone" role="img" aria-label="Potraces quick log — a typed line sorted into amount, type and wallet">
+            <!-- SHOT SLOT "quick-log": when the real capture lands, replace the inner mock with <img class="shot" src="/assets/screens/quick-log.png" alt="Potraces quick log — one typed line, sorted"> -->
+            <div class="phone-screen" data-shot="quick-log">
+              <div class="scr">
+                <div class="scr-title" data-en="Quick log" data-bm="Log pantas">Quick log</div>
+                <div class="qls-typed">order kuih rm45</div>
+                <div>
+                  <div class="qls-row"><span class="k" data-en="Amount" data-bm="Jumlah">Amount</span><span class="v tnum">RM 45.00</span></div>
+                  <div class="qls-row"><span class="k" data-en="Type" data-bm="Jenis">Type</span><span class="v" data-en="Came in" data-bm="Masuk">Came in</span></div>
+                  <div class="qls-row"><span class="k" data-en="Wallet" data-bm="Dompet">Wallet</span><span class="v">TNG eWallet</span></div>
+                  <div class="qls-row"><span class="k">DuitNow</span><span class="v"><span data-en="paid " data-bm="bayar ">paid </span><span class="tnum">RM 12</span></span></div>
+                </div>
+                <div class="qls-kept"><span data-en="kept this week" data-bm="berbaki minggu ni">kept this week</span><b class="tnum">RM 320</b></div>
               </div>
             </div>
           </div>
-          <div class="app-body">
-            <div class="app-card">
-              <div class="app-seclbl" data-en="Safe to spend" data-bm="Boleh belanja">Safe to spend</div>
-              <div class="budgrow">
-                <div class="bt"><b data-en="This week" data-bm="Minggu ni">This week</b><span class="tnum">RM 380 / 540</span></div>
-                <div class="bar"><i style="width:70%"></i></div>
-                <div class="budnote" style="color:var(--olive)"><span data-en="Comfortable — RM 160 to spare" data-bm="Selesa — lebih RM 160">Comfortable — RM 160 to spare</span></div>
+          <div class="shot-caption">
+            <b data-en="Quick Log" data-bm="Log Pantas">Quick Log</b>
+            <span data-en="Type one line — we sort it." data-bm="Taip satu baris — kami susun.">Type one line — we sort it.</span>
+          </div>
+        </div>
+        <!-- echo-chat -->
+        <div>
+          <div class="phone" role="img" aria-label="Echo chat answering questions about your own money">
+            <!-- SHOT SLOT "echo-chat": when the real capture lands, replace the inner mock with <img class="shot" src="/assets/screens/echo-chat.png" alt="Ask Echo — straight answers from your own numbers"> -->
+            <div class="phone-screen" data-shot="echo-chat">
+              <div class="echo-screen">
+                <span class="bubble user">berapa aku belanja makan bulan ni?</span>
+                <span class="bubble bot" data-en="RM 240 so far — RM 160 under your soft ceiling." data-bm="RM 240 setakat ni — RM 160 bawah siling lembut kau.">RM 240 so far — RM 160 under your soft ceiling.</span>
+                <span class="bubble user">boleh ke aku belanja RM 100 weekend ni?</span>
+                <span class="bubble bot" data-en="Yep — you'd still keep RM 380 for the month." data-bm="Boleh — kau masih berbaki RM 380 bulan ni.">Yep — you'd still keep RM 380 for the month.</span>
+                <div class="echo-bar">
+                  <span class="pt" data-en="Ask anything…" data-bm="Tanya apa-apa…">Ask anything…</span>
+                  <span class="mic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg></span>
+                </div>
               </div>
             </div>
-            <div class="app-card">
-              <div class="app-seclbl" data-en="Recent" data-bm="Terkini">Recent</div>
-              <div class="txn">
-                <span class="ic"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></span>
-                <span class="nm"><b data-en="Kuih order" data-bm="Order kuih">Kuih order</b><em data-en="Came in · TNG" data-bm="Masuk · TNG">Came in · TNG</em></span>
-                <span class="amt in tnum">+RM 45.00</span>
-              </div>
-              <div class="txn">
-                <span class="ic"><svg viewBox="0 0 24 24"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z"/></svg></span>
-                <span class="nm"><b>Kopi O</b><em data-en="Food · cash" data-bm="Makan · tunai">Food · cash</em></span>
-                <span class="amt out tnum">-RM 2.50</span>
-              </div>
-            </div>
+          </div>
+          <div class="shot-caption">
+            <b data-en="Ask Echo" data-bm="Tanya Echo">Ask Echo</b>
+            <span data-en="Straight answers from your own numbers." data-bm="Jawapan terus dari nombor kau sendiri.">Straight answers from your own numbers.</span>
           </div>
         </div>
       </div>
-    </div>
-    <div class="hf-copy reveal" style="order:2">
-      <span class="eyebrow" data-en="The whole point" data-bm="Tujuan utama">The whole point</span>
-      <h2>
-        <span data-en="See " data-bm="Tengok ">See </span><span class="h-accent" data-en="what's safe to spend" data-bm="berapa boleh belanja">what's safe to spend</span><span data-en=" today." data-bm=" hari ni."> today.</span>
-      </h2>
-      <p>
-        <span data-en="Your hero balance shows real cash only — credit and BNPL never get counted as money you have." data-bm="Baki utama tunjuk duit betul je — kredit & BNPL tak dikira duit kau ada." class="block">Your hero balance shows real cash only — credit and BNPL never get counted as money you have.</span>
-      </p>
-      <ul class="hf-list">
-        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Soft ceilings, never red alerts" data-bm="Siling lembut, takde alert merah">Soft ceilings, never red alerts</span></li>
-        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="'Getting close' — not 'over budget'" data-bm="'Dah dekat' — bukan 'dah lebih'">'Getting close' — not 'over budget'</span></li>
-        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="One number you can trust at a glance" data-bm="Satu nombor yang kau boleh percaya sekali pandang">One number you can trust at a glance</span></li>
-      </ul>
+      <div class="ink-actions reveal">
+        <a class="btn" href="/quick-log.html" data-en="Quick Log" data-bm="Log Pantas">Quick Log</a>
+      </div>
+      <div class="ink-wau" aria-hidden="true" id="darkwau"></div>
     </div>
   </div>
 </section>
 
-<!-- ════════════ BENTO (FEATURES) ════════════ -->
-<section class="bento" id="features">
+<!-- ════════════ №02 · EXTRA LEAVES — the remaining screens, floating ════════════ -->
+<section class="extra">
   <div class="container">
+    <p class="sec-mark"><span class="no">No. 02</span><span class="ttl" data-en="Extra leaves" data-bm="Lagi helaian">Extra leaves</span></p>
+    <div class="phones-row reveal">
+      <!-- budget -->
+      <div>
+        <div class="phone" role="img" aria-label="Soft budgets — getting close, never scolding">
+          <!-- SHOT SLOT "budget": when the real capture lands, replace the inner mock with <img class="shot" src="/assets/screens/budget.png" alt="Potraces soft budgets"> -->
+          <div class="phone-screen" data-shot="budget">
+            <div class="scr">
+              <div class="scr-title" data-en="Soft budgets" data-bm="Bajet lembut">Soft budgets</div>
+              <div class="app-card">
+                <div class="budgrow">
+                  <div class="bt"><b data-en="This week" data-bm="Minggu ni">This week</b><span class="tnum">RM 380 / 540</span></div>
+                  <div class="bar"><i style="width:70%"></i></div>
+                  <div class="budnote" style="color:var(--olive)"><span data-en="Comfortable — RM 160 to spare" data-bm="Selesa — lebih RM 160">Comfortable — RM 160 to spare</span></div>
+                </div>
+              </div>
+              <div class="app-card">
+                <div class="budgrow">
+                  <div class="bt"><b data-en="Transport" data-bm="Pengangkutan">Transport</b><span class="tnum">RM 175 / 200</span></div>
+                  <div class="bar warn"><i style="width:88%"></i></div>
+                  <div class="budnote"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span data-en="Getting close — RM 25 left" data-bm="Dah dekat — tinggal RM 25">Getting close — RM 25 left</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="shot-caption">
+          <b data-en="Soft budgets" data-bm="Bajet lembut">Soft budgets</b>
+          <span data-en="'Getting close' — never scolding." data-bm="'Dah dekat' — bukan leter.">'Getting close' — never scolding.</span>
+        </div>
+      </div>
+      <!-- seller -->
+      <div>
+        <div class="phone" role="img" aria-label="Seller mode — menu tiles and a DuitNow QR for the exact amount">
+          <!-- SHOT SLOT "seller": when the real capture lands, replace the inner mock with <img class="shot" src="/assets/screens/seller.png" alt="Potraces seller mode"> -->
+          <div class="phone-screen" data-shot="seller">
+            <div class="scr">
+              <div class="scr-title" data-en="Seller mode" data-bm="Mod penjual">Seller mode</div>
+              <div class="mini-pos">
+                <div class="mp-grid">
+                  <div class="mp-tile"><b data-en="Kuih lapis" data-bm="Kuih lapis">Kuih lapis</b><span class="tnum">RM 4.00</span></div>
+                  <div class="mp-tile"><b data-en="Brownies" data-bm="Brownies">Brownies</b><span class="tnum">RM 12.00</span></div>
+                </div>
+                <div class="mini-qr">
+                  <span class="mq"></span>
+                  <span class="mqi"><b data-en="DuitNow QR" data-bm="DuitNow QR">DuitNow QR</b><span class="tnum">RM 16.00</span><em data-en="exact amount" data-bm="jumlah tepat">exact amount</em></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="shot-caption">
+          <b data-en="Seller mode" data-bm="Mod penjual">Seller mode</b>
+          <span data-en="Take orders, get paid by DuitNow QR." data-bm="Terima order, terima bayaran guna DuitNow QR.">Take orders, get paid by DuitNow QR.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ №03 · THE BALANCE — sage giant-radius panel: benefits, month card, calm chart ════════════ -->
+<section class="balance">
+  <div class="container-wide">
+    <div class="panel panel--sage-radial">
+      <p class="sec-mark"><span class="no">No. 03</span><span class="ttl" data-en="The balance" data-bm="Baki">The balance</span></p>
+      <div class="section-head reveal">
+        <span class="eyebrow" data-en="The whole point" data-bm="Tujuan utama">The whole point</span>
+        <h2>
+          <span data-en="See what's " data-bm="Tengok berapa boleh ">See what's </span><span class="accent-word" data-en="safe" data-bm="belanja">safe</span><span data-en=" to spend today." data-bm=" hari ni."> to spend today.</span>
+        </h2>
+        <p>
+          <span data-en="Your hero balance shows real cash only — credit and BNPL never get counted as money you have." data-bm="Baki utama tunjuk duit betul je — kredit & BNPL tak dikira duit kau ada." class="block">Your hero balance shows real cash only — credit and BNPL never get counted as money you have.</span>
+        </p>
+      </div>
+      <!-- the 3 core benefits, as floating white cards -->
+      <div class="benefit-cards reveal">
+        <div class="card bcard"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Soft ceilings, never red alerts" data-bm="Siling lembut, takde alert merah">Soft ceilings, never red alerts</span></div>
+        <div class="card bcard"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span data-en="'Getting close' — not 'over budget'" data-bm="'Dah dekat' — bukan 'dah lebih'">'Getting close' — not 'over budget'</span></div>
+        <div class="card bcard"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span data-en="One number you can trust at a glance" data-bm="Satu nombor yang kau boleh percaya sekali pandang">One number you can trust at a glance</span></div>
+      </div>
+      <div class="balance-grid">
+        <!-- the month, as one calm card -->
+        <div class="card month-card reveal">
+          <div class="m-lbl mono-caps" data-en="Kept this month" data-bm="Berbaki bulan ni">Kept this month</div>
+          <div class="m-bal tnum"><small>RM</small>1,284<span style="font-size:1rem;font-weight:400;opacity:.8">.50</span></div>
+          <p class="m-sub mono-caps" data-en="across cash, bank & e-wallet" data-bm="merentas tunai, bank & e-wallet">across cash, bank &amp; e-wallet</p>
+          <div class="m-row"><span class="k" data-en="Came in" data-bm="Masuk">Came in</span><span class="v tnum">RM 2,940</span></div>
+          <div class="m-row"><span class="k" data-en="Went out" data-bm="Keluar">Went out</span><span class="v tnum">RM 1,655</span></div>
+          <div class="m-tot"><span data-en="Safe to spend" data-bm="Boleh belanja">Safe to spend</span><span class="tnum">RM 380 / 540</span></div>
+          <div class="budgrow" style="margin-top:10px">
+            <div class="bt"><b data-en="This week" data-bm="Minggu ni">This week</b><span class="tnum">RM 380 / 540</span></div>
+            <div class="bar"><i style="width:70%"></i></div>
+            <div class="budnote"><span data-en="Comfortable — RM 160 to spare" data-bm="Selesa — lebih RM 160">Comfortable — RM 160 to spare</span></div>
+          </div>
+          <div style="margin-top:12px">
+            <p class="mono-caps" style="color:var(--ink-45);margin-bottom:2px" data-en="Recent" data-bm="Terkini">Recent</p>
+            <div class="m-row"><span class="k" data-en="Kuih order" data-bm="Order kuih">Kuih order</span><span class="v tnum">+RM 45.00</span></div>
+            <div class="m-row"><span class="k">Kopi O</span><span class="v tnum">-RM 2.50</span></div>
+          </div>
+          <div class="m-ft" data-en="every amount in ink — no red numbers" data-bm="semua jumlah dalam dakwat — takde nombor merah">every amount in ink — no red numbers</div>
+        </div>
+        <!-- the week: calm chart + the book, kept -->
+        <div class="balance-col">
+          <div class="chart-calm reveal">
+            <svg viewBox="0 0 560 210" aria-hidden="true" focusable="false">
+              <line class="grid" x1="20" y1="40" x2="540" y2="40"/>
+              <line class="grid" x1="20" y1="95" x2="540" y2="95"/>
+              <line class="grid" x1="20" y1="150" x2="540" y2="150"/>
+              <rect class="bar-sage" x="40"  y="130" width="30" height="45"  rx="4"/>
+              <rect class="bar-deep" x="112" y="82"  width="30" height="93"  rx="4"/>
+              <rect class="bar-sage" x="184" y="108" width="30" height="67"  rx="4"/>
+              <rect class="bar-deep" x="256" y="55"  width="30" height="120" rx="4"/>
+              <rect class="bar-sage" x="328" y="118" width="30" height="57"  rx="4"/>
+              <rect class="bar-deep" x="400" y="33"  width="30" height="142" rx="4"/>
+              <rect class="bar-sage" x="472" y="100" width="30" height="75"  rx="4"/>
+              <polyline class="ln-ink" points="55,120 127,105 199,115 271,85 343,112 415,70 487,102"/>
+              <text class="axis-lbl" x="55"  y="195" text-anchor="middle">M</text>
+              <text class="axis-lbl" x="127" y="195" text-anchor="middle">T</text>
+              <text class="axis-lbl" x="199" y="195" text-anchor="middle">W</text>
+              <text class="axis-lbl" x="271" y="195" text-anchor="middle">T</text>
+              <text class="axis-lbl" x="343" y="195" text-anchor="middle">F</text>
+              <text class="axis-lbl" x="415" y="195" text-anchor="middle">S</text>
+              <text class="axis-lbl" x="487" y="195" text-anchor="middle">S</text>
+            </svg>
+            <p class="chart-caption"><span data-en="Example week of sales — an illustration, not real data" data-bm="Contoh minggu jualan — ilustrasi, bukan data sebenar">Example week of sales — an illustration, not real data</span></p>
+          </div>
+          <div class="card week-card reveal">
+            <h3 class="wk-title" data-en="This week — the book, kept" data-bm="Minggu ni — buku, terjaga">This week — the book, kept</h3>
+            <div class="wk-head"><span class="mono-caps" data-en="Entry" data-bm="Butiran">Entry</span><span class="mono-caps" data-en="Masuk / Keluar" data-bm="Masuk / Keluar">Masuk / Keluar</span></div>
+            <div class="wk-row"><span data-en="Order kuih — Kak Ros" data-bm="Order kuih — Kak Ros">Order kuih — Kak Ros</span><span class="v tnum">+RM45</span></div>
+            <div class="wk-row"><span data-en="Grab — 14 trips" data-bm="Grab — 14 trip">Grab — 14 trips</span><span class="v tnum">+RM128</span></div>
+            <div class="wk-row"><span data-en="Petrol" data-bm="Minyak">Petrol</span><span class="v tnum">-RM12</span></div>
+            <div class="wk-safe">
+              <div>
+                <span class="mono-caps block" data-en="Safe to spend" data-bm="Baki selamat untuk belanja">Safe to spend</span>
+                <span class="fig" data-en="RM38/day" data-bm="RM38/hari">RM38/day</span>
+              </div>
+              <span class="badge badge--sage" data-en="SAFE TO SPEND" data-bm="BOLEH BELANJA">SAFE TO SPEND</span>
+            </div>
+            <p class="jot" aria-hidden="true">
+              <b class="tnum">+ RM 45</b>
+              <em><span data-en="came in" data-bm="masuk">came in</span><span data-en=" · kuih order" data-bm=" · order kuih"> · kuih order</span></em>
+            </p>
+            <p class="wk-note">
+              <span data-en="the app does the math itself ✍" data-bm="app kira sendiri ✍">the app does the math itself ✍</span>
+              <span class="stage-wau" aria-hidden="true" id="herowau2"></span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ №04 · THE CATALOGUE (FEATURES) ════════════ -->
+<section class="catalog" id="features">
+  <div class="container">
+    <p class="sec-mark"><span class="no">No. 04</span><span class="ttl" data-en="The catalogue" data-bm="Katalog">The catalogue</span></p>
     <div class="section-head reveal">
       <span class="eyebrow" data-en="What it does" data-bm="Apa ia buat">What it does</span>
       <h2>
-        <span data-en="Everything for money that " data-bm="Semua untuk duit yang ">Everything for money that </span><span class="h-accent" data-en="doesn't arrive on schedule" data-bm="masuk tak ikut jadual">doesn't arrive on schedule</span><span data-en="." data-bm=".">.</span>
+        <span data-en="Everything for money that doesn't arrive on " data-bm="Semua untuk duit yang masuk tak ikut ">Everything for money that doesn't arrive on </span><span class="accent-word" data-en="schedule" data-bm="jadual">schedule</span><span data-en="." data-bm=".">.</span>
       </h2>
       <p data-en="Plain tools, plain language. Log it your way — snap, type, or just ask." data-bm="Alat simple, bahasa simple. Catat ikut gaya kau — snap, taip, atau tanya je.">Plain tools, plain language. Log it your way — snap, type, or just ask.</p>
     </div>
-    <div class="bento-grid">
-      <!-- quick-add (cream, big) -->
-      <article class="tile cream t-quick reveal" style="--d:0ms">
-        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div>
-        <h3 data-en="Type it like you'd text a friend. We sort it." data-bm="Taip macam tekan member. Kami susun.">Type it like you'd text a friend. We sort it.</h3>
-        <div class="parsed">
-          <div class="ptyped">nasi lemak rm8</div>
-          <div class="prow"><span class="k" data-en="Amount" data-bm="Jumlah">Amount</span><span class="v tnum">RM 8.00</span></div>
-          <div class="prow"><span class="k" data-en="Category" data-bm="Kategori">Category</span><span class="v" data-en="Food" data-bm="Makan">Food</span></div>
-          <div class="prow"><span class="k" data-en="Wallet" data-bm="Dompet">Wallet</span><span class="v" data-en="Cash" data-bm="Tunai">Cash</span></div>
-          <div class="prow"><span class="k" data-en="Type" data-bm="Jenis">Type</span><span class="v tag-olive" data-en="Went out" data-bm="Keluar">Went out</span></div>
-        </div>
-        <p class="ti-sub" data-en="Understands EN, BM and Manglish." data-bm="Faham EN, BM dan Manglish.">Understands EN, BM and Manglish.</p>
-      </article>
-      <!-- receipt -->
-      <article class="tile t-receipt reveal" style="--d:70ms">
-        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/></svg></div>
-        <h3 data-en="Snap the receipt. Done in seconds." data-bm="Snap resit. Siap dalam saat.">Snap the receipt. Done in seconds.</h3>
-        <div class="receipt">
-          <div class="rh">Kedai Runcit Pak Mat</div>
-          <div class="rrow"><span>Roti</span><span class="tnum">RM 3.50</span></div>
-          <div class="rrow"><span>Telur</span><span class="tnum">RM 6.90</span></div>
-          <div class="rrow"><span>Susu</span><span class="tnum">RM 8.20</span></div>
-          <div class="rtot"><span data-en="Total" data-bm="Jumlah">Total</span><span class="tnum">RM 18.60</span></div>
-        </div>
-        <span class="scan-tag"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Read & sorted automatically" data-bm="Dibaca & disusun automatik">Read &amp; sorted automatically</span></span>
-      </article>
-      <!-- debts -->
-      <article class="tile t-debts reveal" style="--d:140ms">
-        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></div>
-        <h3 data-en="Who owes who — no awkward chats." data-bm="Sapa hutang sapa — tak yah kekok.">Who owes who — no awkward chats.</h3>
+    <div class="cat">
+      <!-- 4.1 quick-add -->
+      <article class="cat-entry t-quick reveal" style="--d:0ms">
+        <div class="cat-no"><span>4.1</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div>
         <div>
+          <h3 data-en="Type it like you'd text a friend. We sort it." data-bm="Taip macam tekan member. Kami susun.">Type it like you'd text a friend. We sort it.</h3>
+          <p class="ti-sub" data-en="Understands EN, BM and Manglish." data-bm="Faham EN, BM dan Manglish.">Understands EN, BM and Manglish.</p>
+        </div>
+        <div class="cat-demo">
+          <div class="parsed">
+            <div class="ptyped">nasi lemak rm8</div>
+            <div class="prow"><span class="k" data-en="Amount" data-bm="Jumlah">Amount</span><span class="v tnum">RM 8.00</span></div>
+            <div class="prow"><span class="k" data-en="Category" data-bm="Kategori">Category</span><span class="v" data-en="Food" data-bm="Makan">Food</span></div>
+            <div class="prow"><span class="k" data-en="Wallet" data-bm="Dompet">Wallet</span><span class="v" data-en="Cash" data-bm="Tunai">Cash</span></div>
+            <div class="prow"><span class="k" data-en="Type" data-bm="Jenis">Type</span><span class="v tag-olive" data-en="Went out" data-bm="Keluar">Went out</span></div>
+          </div>
+          <span class="scan-tag"><span data-en="Saved. That's it." data-bm="Siap simpan. Itu je.">Saved. That's it.</span><b class="tnum">✓</b></span>
+        </div>
+      </article>
+      <!-- 4.2 receipt -->
+      <article class="cat-entry t-receipt reveal" style="--d:70ms">
+        <div class="cat-no"><span>4.2</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/></svg></div>
+        <div>
+          <h3 data-en="Snap the receipt. Done in seconds." data-bm="Snap resit. Siap dalam saat.">Snap the receipt. Done in seconds.</h3>
+        </div>
+        <div class="cat-demo">
+          <div class="receipt">
+            <div class="rh">Kedai Runcit Pak Mat</div>
+            <div class="rrow"><span>Roti</span><span class="tnum">RM 3.50</span></div>
+            <div class="rrow"><span>Telur</span><span class="tnum">RM 6.90</span></div>
+            <div class="rrow"><span>Susu</span><span class="tnum">RM 8.20</span></div>
+            <div class="rtot"><span data-en="Total" data-bm="Jumlah">Total</span><span class="tnum">RM 18.60</span></div>
+          </div>
+          <span class="scan-tag"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Read & sorted automatically" data-bm="Dibaca & disusun automatik">Read &amp; sorted automatically</span></span>
+        </div>
+      </article>
+      <!-- 4.3 debts -->
+      <article class="cat-entry t-debts reveal" style="--d:140ms">
+        <div class="cat-no"><span>4.3</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></div>
+        <div>
+          <h3 data-en="Who owes who — no awkward chats." data-bm="Sapa hutang sapa — tak yah kekok.">Who owes who — no awkward chats.</h3>
+        </div>
+        <div class="cat-demo">
           <div class="debt-row">
             <span class="av" style="background:var(--terracotta)">A</span>
             <span class="info"><b>Ali</b><span class="dchip dchip-owe" data-en="I owe" data-bm="Aku hutang">I owe</span></span>
             <span class="da owe tnum">RM 25.00</span>
           </div>
           <div class="debt-row">
-            <span class="av" style="background:var(--olive)">S</span>
+            <span class="av" style="background:var(--sage-deep)">S</span>
             <span class="info"><b>Siti</b><span class="dchip dchip-owed" data-en="They owe me" data-bm="Dia hutang aku">They owe me</span></span>
             <span class="da owed tnum">RM 60.00</span>
           </div>
         </div>
       </article>
-      <!-- budget (olive) -->
-      <article class="tile olive t-budget reveal" style="--d:210ms">
-        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></div>
-        <h3 data-en="You're getting close — not over. Chill." data-bm="Dah dekat — belum lebih. Chill.">You're getting close — not over. Chill.</h3>
-        <div class="budgrow">
-          <div class="bt"><b data-en="Transport" data-bm="Pengangkutan">Transport</b><span class="tnum">RM 175 / 200</span></div>
-          <div class="bar warn"><i style="width:88%"></i></div>
-          <div class="budnote"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span data-en="Getting close — RM 25 left" data-bm="Dah dekat — tinggal RM 25">Getting close — RM 25 left</span></div>
+      <!-- 4.4 budget -->
+      <article class="cat-entry t-budget reveal" style="--d:210ms">
+        <div class="cat-no"><span>4.4</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></div>
+        <div>
+          <h3 data-en="You're getting close — not over. Chill." data-bm="Dah dekat — belum lebih. Chill.">You're getting close — not over. Chill.</h3>
+        </div>
+        <div class="cat-demo">
+          <div class="budgrow">
+            <div class="bt"><b data-en="Transport" data-bm="Pengangkutan">Transport</b><span class="tnum">RM 175 / 200</span></div>
+            <div class="bar warn"><i style="width:88%"></i></div>
+            <div class="budnote"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span data-en="Getting close — RM 25 left" data-bm="Dah dekat — tinggal RM 25">Getting close — RM 25 left</span></div>
+          </div>
         </div>
       </article>
-      <!-- wallets -->
-      <article class="tile t-wallets reveal" style="--d:280ms">
-        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg></div>
-        <h3 data-en="Cash, bank and e-wallet in one place." data-bm="Tunai, bank & e-wallet satu tempat.">Cash, bank and e-wallet in one place.</h3>
+      <!-- 4.5 wallets -->
+      <article class="cat-entry t-wallets reveal" style="--d:280ms">
+        <div class="cat-no"><span>4.5</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg></div>
         <div>
+          <h3 data-en="Cash, bank and e-wallet in one place." data-bm="Tunai, bank & e-wallet satu tempat.">Cash, bank and e-wallet in one place.</h3>
+        </div>
+        <div class="cat-demo">
           <div class="wrow"><span class="wi"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg></span><span class="wn"><b data-en="Cash" data-bm="Tunai">Cash</b><em data-en="in hand" data-bm="dalam tangan">in hand</em></span><span class="wa tnum">RM 320.00</span></div>
           <div class="wrow"><span class="wi"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10l7-5 7 5v11"/><path d="M9 21v-6h6v6"/></svg></span><span class="wn"><b>Maybank</b><em data-en="bank" data-bm="bank">bank</em></span><span class="wa tnum">RM 740.50</span></div>
           <div class="wrow"><span class="wi"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg></span><span class="wn"><b>TNG eWallet</b><em data-en="e-wallet" data-bm="e-wallet">e-wallet</em></span><span class="wa tnum">RM 224.00</span></div>
           <div class="wrow"><span class="wi"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span><span class="wn"><b>Atome</b><em data-en="credit · not your money" data-bm="kredit · bukan duit kau">credit · not your money</em></span><span class="wa muted tnum">-RM 90.00</span></div>
         </div>
       </article>
-      <!-- offline -->
-      <article class="tile t-offline reveal" style="--d:350ms">
-        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12" y2="20"/></svg></div>
-        <h3 data-en="Patchy signal? Log now, it syncs later." data-bm="Line teruk? Log dulu, sync kemudian.">Patchy signal? Log now, it syncs later.</h3>
-        <p class="ti-sub" data-en="Saves on your phone first." data-bm="Simpan dalam phone kau dulu.">Saves on your phone first.</p>
+      <!-- 4.6 offline -->
+      <article class="cat-entry t-offline reveal" style="--d:350ms">
+        <div class="cat-no"><span>4.6</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12" y2="20"/></svg></div>
+        <div>
+          <h3 data-en="Patchy signal? Log now, it syncs later." data-bm="Line teruk? Log dulu, sync kemudian.">Patchy signal? Log now, it syncs later.</h3>
+          <p class="ti-sub" data-en="Saves on your phone first." data-bm="Simpan dalam phone kau dulu.">Saves on your phone first.</p>
+        </div>
+        <div class="cat-demo"></div>
       </article>
     </div>
   </div>
 </section>
 
-<!-- ════════════ DARK AI ════════════ -->
-<section class="darkai">
-  <div class="darkai-wau" aria-hidden="true" id="darkwau"></div>
-  <div class="container">
-    <div class="ai-copy reveal">
-      <span class="eyebrow" data-en="Your money, answered" data-bm="Duit kau, dijawab">Your money, answered</span>
-      <h2>
-        <span data-en="Ask about your money. In your own words." data-bm="Tanya pasal duit kau. Guna ayat kau sendiri." class="block">Ask about your money. In your own words.</span>
-      </h2>
-      <p class="ai-body">
-        <span data-en="Type a question in English, BM or Manglish and get a straight answer — Echo reads your own numbers, nothing else." data-bm="Taip soalan dalam English, BM atau Manglish, dapat jawapan terus — Echo baca nombor kau je, takde benda lain." class="block">Type a question in English, BM or Manglish and get a straight answer — Echo reads your own numbers, nothing else.</span>
-      </p>
-    </div>
-    <div class="ai-chat reveal">
-      <span class="bub user">berapa aku belanja makan bulan ni?</span>
-      <span class="bub bot" data-en="RM 240 so far — RM 160 under your soft ceiling." data-bm="RM 240 setakat ni — RM 160 bawah siling lembut kau.">RM 240 so far — RM 160 under your soft ceiling.</span>
-      <span class="bub user">boleh ke aku belanja RM 100 weekend ni?</span>
-      <span class="bub bot" data-en="Yep — you'd still keep RM 380 for the month." data-bm="Boleh — kau masih berbaki RM 380 bulan ni.">Yep — you'd still keep RM 380 for the month.</span>
-      <span class="ai-tag" data-en="Calm by design. No scolding, no red numbers." data-bm="Tenang by design. Takde leter, takde nombor merah.">Calm by design. No scolding, no red numbers.</span>
+<!-- ════════════ №05 · ASK & ANSWER — Echo, on a soft wash ════════════ -->
+<section class="askecho">
+  <div class="container-wide">
+    <div class="panel panel--soft">
+      <p class="sec-mark"><span class="no">No. 05</span><span class="ttl" data-en="Ask & answer" data-bm="Tanya & jawab">Ask &amp; answer</span></p>
+      <div class="section-head reveal">
+        <span class="eyebrow" data-en="Your money, answered" data-bm="Duit kau, dijawab">Your money, answered</span>
+        <h2>
+          <span data-en="Ask about your money. In your own words." data-bm="Tanya pasal duit kau. Guna ayat kau sendiri." class="block">Ask about your money. In your own words.</span>
+        </h2>
+        <p class="ai-body">
+          <span data-en="Type a question in English, BM or Manglish and get a straight answer — Echo reads your own numbers, nothing else." data-bm="Taip soalan dalam English, BM atau Manglish, dapat jawapan terus — Echo baca nombor kau je, takde benda lain." class="block">Type a question in English, BM or Manglish and get a straight answer — Echo reads your own numbers, nothing else.</span>
+        </p>
+      </div>
+      <div class="qa reveal">
+        <div class="qa-row">
+          <span class="qa-q">berapa aku belanja makan bulan ni?</span>
+          <span class="qa-a" data-en="RM 240 so far — RM 160 under your soft ceiling." data-bm="RM 240 setakat ni — RM 160 bawah siling lembut kau.">RM 240 so far — RM 160 under your soft ceiling.</span>
+        </div>
+        <div class="qa-row">
+          <span class="qa-q">boleh ke aku belanja RM 100 weekend ni?</span>
+          <span class="qa-a" data-en="Yep — you'd still keep RM 380 for the month." data-bm="Boleh — kau masih berbaki RM 380 bulan ni.">Yep — you'd still keep RM 380 for the month.</span>
+        </div>
+        <p class="jot" aria-hidden="true">
+          <span class="mono-caps" data-en="Ask Echo" data-bm="Tanya Echo">Ask Echo</span>
+          <em data-en="Yep — you'd still keep RM 380 for the month." data-bm="Boleh — kau masih berbaki RM 380 bulan ni.">Yep — you'd still keep RM 380 for the month.</em>
+        </p>
+        <p class="footnote ai-tag" data-en="Calm by design. No scolding, no red numbers." data-bm="Tenang by design. Takde leter, takde nombor merah.">Calm by design. No scolding, no red numbers.</p>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ════════════ TWO MODES ════════════ -->
+<!-- ════════════ №06 · TWO MODES ════════════ -->
 <section class="modes">
   <div class="container">
+    <p class="sec-mark"><span class="no">No. 06</span><span class="ttl" data-en="Two books" data-bm="Dua buku">Two books</span></p>
     <div class="section-head reveal">
       <span class="eyebrow" data-en="Two modes, one app" data-bm="Dua mod, satu app">Two modes, one app</span>
       <h2>
-        <span data-en="Your own money and your " data-bm="Duit sendiri dan ">Your own money and your </span><span class="h-accent" data-en="little business" data-bm="bisnes kecik kau">little business</span><span data-en=", side by side." data-bm=", sebelah-menyebelah.">, side by side.</span>
+        <span data-en="Your own money and your little " data-bm="Duit sendiri dan ">Your own money and your little </span><span class="accent-word" data-en="business" data-bm="bisnes">business</span><span data-en=", side by side." data-bm=" kecik kau, sebelah-menyebelah.">, side by side.</span>
       </h2>
       <p data-en="Switch in a tap. Same calm app, two clear spaces." data-bm="Tukar dengan satu ketik. App yang sama, dua ruang jelas.">Switch in a tap. Same calm app, two clear spaces.</p>
     </div>
     <div class="modes-grid">
-      <article class="mode-card mode-personal reveal" style="--d:0ms">
+      <article class="card mode-card mode-personal reveal" style="--d:0ms">
         <span class="badge-mode" data-en="Personal" data-bm="Peribadi">Personal</span>
         <h3 data-en="For your own money" data-bm="Untuk duit sendiri">For your own money</h3>
         <p data-en="Log what came in and went out, set soft budgets, build goals, ask plain questions." data-bm="Catat duit masuk & keluar, set bajet lembut, bina matlamat, tanya soalan biasa.">Log what came in and went out, set soft budgets, build goals, ask plain questions.</p>
@@ -1057,7 +1015,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
           </div>
         </div>
       </article>
-      <article class="mode-card mode-business reveal" style="--d:90ms">
+      <article class="card mode-card mode-business reveal" style="--d:90ms">
         <span class="badge-mode" data-en="Seller / Stall" data-bm="Penjual / Gerai">Seller / Stall</span>
         <h3 data-en="For your little business" data-bm="Untuk bisnes kecik kau">For your little business</h3>
         <p data-en="Share one shop link, take orders, and see what you kept each season." data-bm="Kongsi satu link kedai, terima order, tengok berapa berbaki tiap musim.">Share one shop link, take orders, and see what you kept each season.</p>
@@ -1081,131 +1039,103 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
   </div>
 </section>
 
-<!-- ════════════ HOW ════════════ -->
+<!-- ════════════ №07 · THREE STEPS — white cards on a cream wash ════════════ -->
 <section class="how" id="how">
-  <div class="container">
-    <div class="section-head reveal">
-      <span class="eyebrow" data-en="How it works" data-bm="Cara guna">How it works</span>
-      <h2>
-        <span data-en="Three steps. That's it." data-bm="Tiga langkah. Itu je." class="block">Three steps. That's it.</span>
-      </h2>
-    </div>
-    <div class="steps-grid">
-      <article class="step-card reveal" style="--d:0ms">
-        <div class="si" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></div>
-        <h3 data-en="Add it your way" data-bm="Tambah ikut gaya kau">Add it your way</h3>
-        <p data-en="Snap a receipt, type a line, or just ask." data-bm="Snap resit, taip satu baris, atau tanya je.">Snap a receipt, type a line, or just ask.</p>
-      </article>
-      <article class="step-card reveal" style="--d:90ms">
-        <div class="si" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
-        <h3 data-en="We sort it" data-bm="Kami susun">We sort it</h3>
-        <p data-en="Amount, category and wallet, filled in for you." data-bm="Jumlah, kategori & dompet, kami isikan.">Amount, category and wallet, filled in for you.</p>
-      </article>
-      <article class="step-card reveal" style="--d:180ms">
-        <div class="si" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
-        <h3 data-en="See what's kept" data-bm="Tengok apa berbaki">See what's kept</h3>
-        <p data-en="Your real balance and what's safe to spend." data-bm="Baki betul kau dan berapa boleh belanja.">Your real balance and what's safe to spend.</p>
-      </article>
+  <div class="container-wide">
+    <div class="panel panel--cream">
+      <p class="sec-mark"><span class="no">No. 07</span><span class="ttl" data-en="Three steps" data-bm="Tiga langkah">Three steps</span></p>
+      <div class="section-head reveal">
+        <span class="eyebrow" data-en="How it works" data-bm="Cara guna">How it works</span>
+        <h2>
+          <span data-en="Three steps. That's it." data-bm="Tiga langkah. Itu je." class="block">Three steps. That's it.</span>
+        </h2>
+      </div>
+      <div class="steps-grid">
+        <article class="card step-card reveal" style="--d:0ms">
+          <div class="si" aria-hidden="true"><span>01</span><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></div>
+          <h3 data-en="Add it your way" data-bm="Tambah ikut gaya kau">Add it your way</h3>
+          <p data-en="Snap a receipt, type a line, or just ask." data-bm="Snap resit, taip satu baris, atau tanya je.">Snap a receipt, type a line, or just ask.</p>
+        </article>
+        <article class="card step-card reveal" style="--d:90ms">
+          <div class="si" aria-hidden="true"><span>02</span><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+          <h3 data-en="We sort it" data-bm="Kami susun">We sort it</h3>
+          <p data-en="Amount, category and wallet, filled in for you." data-bm="Jumlah, kategori & dompet, kami isikan.">Amount, category and wallet, filled in for you.</p>
+        </article>
+        <article class="card step-card reveal" style="--d:180ms">
+          <div class="si" aria-hidden="true"><span>03</span><svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <h3 data-en="See what's kept" data-bm="Tengok apa berbaki">See what's kept</h3>
+          <p data-en="Your real balance and what's safe to spend." data-bm="Baki betul kau dan berapa boleh belanja.">Your real balance and what's safe to spend.</p>
+        </article>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ════════════ SCREENSHOTS ════════════ -->
+<!-- ════════════ №08 · ATTACHMENTS — a look inside ════════════ -->
 <section class="gallery">
   <div class="container">
+    <p class="sec-mark"><span class="no">No. 08</span><span class="ttl" data-en="Attachments" data-bm="Lampiran">Attachments</span></p>
     <div class="section-head reveal">
       <span class="eyebrow" data-en="A look inside" data-bm="Tengok dalam">A look inside</span>
       <h2>
         <span data-en="Calm screens, real numbers." data-bm="Skrin tenang, nombor betul." class="block">Calm screens, real numbers.</span>
       </h2>
     </div>
-  </div>
-  <div class="gallery-wrap reveal">
-    <div class="gallery-fade" aria-hidden="true"></div>
-    <div class="gallery-scroll">
+    <div class="artifact-grid reveal">
       <!-- 1 Goals -->
-      <div class="gallery-item">
-        <div class="phone" role="img" aria-label="Goals screen with a savings progress arc">
-          <div class="phone-screen">
-            <div class="goal-screen">
-              <div class="goal-title" data-en="Raya fund" data-bm="Tabung Raya">Raya fund</div>
-              <div class="goal-arc"><span class="ga-in"><b class="tnum">60%</b><span data-en="saved" data-bm="disimpan">saved</span></span></div>
-              <div class="goal-meta"><b class="tnum">RM 1,800 / 3,000</b><span data-en="RM 1,200 to go" data-bm="lagi RM 1,200">RM 1,200 to go</span></div>
-              <div class="goal-list">
-                <div class="gl-row"><span class="gl-k" data-en="Auto-save" data-bm="Auto-simpan">Auto-save</span><span class="gl-v tnum" data-en="RM 300 / mo" data-bm="RM 300 / bln">RM 300 / mo</span></div>
-                <div class="gl-row"><span class="gl-k" data-en="Added in Jun" data-bm="Masuk Jun">Added in Jun</span><span class="gl-v in tnum">+ RM 300</span></div>
-                <div class="gl-row"><span class="gl-k" data-en="Added in May" data-bm="Masuk Mei">Added in May</span><span class="gl-v in tnum">+ RM 300</span></div>
-              </div>
-            </div>
-          </div>
+      <div class="card artifact">
+        <div class="goal-title" data-en="Raya fund" data-bm="Tabung Raya">Raya fund</div>
+        <div class="goal-arc"><span class="ga-in"><b class="tnum">60%</b><span data-en="saved" data-bm="disimpan">saved</span></span></div>
+        <div class="goal-meta"><b class="tnum">RM 1,800 / 3,000</b><span data-en="RM 1,200 to go" data-bm="lagi RM 1,200">RM 1,200 to go</span></div>
+        <div class="goal-list">
+          <div class="gl-row"><span class="gl-k" data-en="Auto-save" data-bm="Auto-simpan">Auto-save</span><span class="gl-v tnum" data-en="RM 300 / mo" data-bm="RM 300 / bln">RM 300 / mo</span></div>
+          <div class="gl-row"><span class="gl-k" data-en="Added in Jun" data-bm="Masuk Jun">Added in Jun</span><span class="gl-v in tnum">+ RM 300</span></div>
+          <div class="gl-row"><span class="gl-k" data-en="Added in May" data-bm="Masuk Mei">Added in May</span><span class="gl-v in tnum">+ RM 300</span></div>
         </div>
         <div class="gl-cap" data-en="Goals" data-bm="Matlamat">Goals</div>
       </div>
       <!-- 2 Notes & AI -->
-      <div class="gallery-item">
-        <div class="phone" role="img" aria-label="Notes screen detecting a commitment">
-          <div class="phone-screen">
-            <div class="note-screen">
-              <div class="note-title" data-en="Notes" data-bm="Nota">Notes</div>
-              <div class="note-paper">bayar Astro 89.90 tiap bulan</div>
-              <div class="note-detect">
-                <div class="nd-h"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1-6.3-4.6L5.7 21 8 13.9 2 9.4h7.6z"/></svg><span data-en="Commitment found" data-bm="Komitmen dijumpai">Commitment found</span></div>
-                <div class="nd-row"><span class="k">Astro</span><span class="v tnum" data-en="RM 89.90 / month" data-bm="RM 89.90 / bulan">RM 89.90 / month</span></div>
-                <div class="nd-btn" data-en="Add it" data-bm="Tambah">Add it</div>
-              </div>
-            </div>
-          </div>
+      <div class="card artifact">
+        <div class="note-title" data-en="Notes" data-bm="Nota">Notes</div>
+        <div class="note-paper">bayar Astro 89.90 tiap bulan</div>
+        <div class="note-detect">
+          <div class="nd-h"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1-6.3-4.6L5.7 21 8 13.9 2 9.4h7.6z"/></svg><span data-en="Commitment found" data-bm="Komitmen dijumpai">Commitment found</span></div>
+          <div class="nd-row"><span class="k">Astro</span><span class="v tnum" data-en="RM 89.90 / month" data-bm="RM 89.90 / bulan">RM 89.90 / month</span></div>
+          <div class="nd-btn" data-en="Add it" data-bm="Tambah">Add it</div>
         </div>
         <div class="gl-cap" data-en="Notes & AI" data-bm="Nota & AI">Notes &amp; AI</div>
       </div>
       <!-- 3 Echo -->
-      <div class="gallery-item">
-        <div class="phone" role="img" aria-label="Echo chat screen">
-          <div class="phone-screen">
-            <div class="echo-screen">
-              <span class="bubble user">berapa aku belanja makan bulan ni?</span>
-              <span class="bubble bot" data-en="RM 240 so far — RM 160 under your soft ceiling." data-bm="RM 240 setakat ni — RM 160 bawah siling lembut kau.">RM 240 so far — RM 160 under your soft ceiling.</span>
-              <span class="bubble user">boleh ke aku belanja RM 100 weekend ni?</span>
-              <span class="bubble bot" data-en="Yep — you'd still keep RM 380 for the month." data-bm="Boleh — kau masih berbaki RM 380 bulan ni.">Yep — you'd still keep RM 380 for the month.</span>
-              <div class="echo-bar">
-                <span class="pt" data-en="Ask anything…" data-bm="Tanya apa-apa…">Ask anything…</span>
-                <span class="mic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg></span>
-              </div>
-            </div>
-          </div>
+      <div class="card artifact">
+        <div class="qa-row">
+          <span class="qa-q">berapa aku belanja makan bulan ni?</span>
+          <span class="qa-a" data-en="RM 240 so far — RM 160 under your soft ceiling." data-bm="RM 240 setakat ni — RM 160 bawah siling lembut kau.">RM 240 so far — RM 160 under your soft ceiling.</span>
+        </div>
+        <div class="qa-row">
+          <span class="qa-q">boleh ke aku belanja RM 100 weekend ni?</span>
+          <span class="qa-a" data-en="Yep — you'd still keep RM 380 for the month." data-bm="Boleh — kau masih berbaki RM 380 bulan ni.">Yep — you'd still keep RM 380 for the month.</span>
         </div>
         <div class="gl-cap" data-en="Ask Echo" data-bm="Tanya Echo">Ask Echo</div>
       </div>
       <!-- 4 Debts -->
-      <div class="gallery-item">
-        <div class="phone" role="img" aria-label="Debts and splits screen">
-          <div class="phone-screen">
-            <div class="dscreen">
-              <div class="ds-title" data-en="Debts & splits" data-bm="Hutang & pecah bil">Debts &amp; splits</div>
-              <div class="dcard">
-                <div class="debt-row"><span class="av" style="background:var(--terracotta)">A</span><span class="info"><b>Ali</b><span class="dchip dchip-owe" data-en="I owe" data-bm="Aku hutang">I owe</span></span><span class="da owe tnum">RM 25.00</span></div>
-              </div>
-              <div class="dcard">
-                <div class="debt-row"><span class="av" style="background:var(--olive)">S</span><span class="info"><b>Siti</b><span class="dchip dchip-owed" data-en="They owe me" data-bm="Dia hutang aku">They owe me</span></span><span class="da owed tnum">RM 60.00</span></div>
-              </div>
-              <div class="dcard">
-                <div class="debt-row"><span class="av" style="background:var(--bronze)">R</span><span class="info"><b data-en="Raya split" data-bm="Pecah bil Raya">Raya split</b><span class="dchip dchip-owed" data-en="They owe me" data-bm="Dia hutang aku">They owe me</span></span><span class="da owed tnum">RM 40.00</span></div>
-              </div>
-            </div>
-          </div>
+      <div class="card artifact">
+        <div class="ds-title" data-en="Debts & splits" data-bm="Hutang & pecah bil">Debts &amp; splits</div>
+        <div>
+          <div class="debt-row"><span class="av" style="background:var(--terracotta)">A</span><span class="info"><b>Ali</b><span class="dchip dchip-owe" data-en="I owe" data-bm="Aku hutang">I owe</span></span><span class="da owe tnum">RM 25.00</span></div>
+          <div class="debt-row"><span class="av" style="background:var(--sage-deep)">S</span><span class="info"><b>Siti</b><span class="dchip dchip-owed" data-en="They owe me" data-bm="Dia hutang aku">They owe me</span></span><span class="da owed tnum">RM 60.00</span></div>
+          <div class="debt-row"><span class="av" style="background:var(--gold-deep)">R</span><span class="info"><b data-en="Raya split" data-bm="Pecah bil Raya">Raya split</b><span class="dchip dchip-owed" data-en="They owe me" data-bm="Dia hutang aku">They owe me</span></span><span class="da owed tnum">RM 40.00</span></div>
         </div>
         <div class="gl-cap" data-en="Debts & splits" data-bm="Hutang & pecah bil">Debts &amp; splits</div>
       </div>
     </div>
-  </div>
-  <div class="container">
     <p class="gallery-hint" data-en="Swipe to look inside" data-bm="Leret untuk tengok dalam">Swipe to look inside</p>
   </div>
 </section>
 
-<!-- ════════════ WHO IT'S FOR ════════════ -->
+<!-- ════════════ №09 · WHO IT'S FOR ════════════ -->
 <section class="who" id="who">
   <div class="container">
+    <p class="sec-mark"><span class="no">No. 09</span><span class="ttl" data-en="The book's owners" data-bm="Pemilik buku">The book's owners</span></p>
     <div class="section-head reveal">
       <span class="eyebrow" data-en="Who it's for" data-bm="Untuk siapa">Who it's for</span>
       <h2>
@@ -1247,9 +1177,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
   </div>
 </section>
 
-<!-- ════════════ STORY ════════════ -->
+<!-- ════════════ №10 · COLOPHON — why a kite ════════════ -->
 <section class="story">
   <div class="container">
+    <p class="sec-mark"><span class="no">No. 10</span><span class="ttl" data-en="Colophon" data-bm="Kolofon">Colophon</span></p>
     <div class="story-inner">
       <div class="story-wau reveal" aria-hidden="true" id="storywau"></div>
       <div class="story-text reveal">
@@ -1262,9 +1193,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
   </div>
 </section>
 
-<!-- ════════════ SECURITY ════════════ -->
+<!-- ════════════ №11 · PRIVATE RECORDS — privacy ════════════ -->
 <section class="security" id="privacy">
   <div class="container">
+    <p class="sec-mark"><span class="no">No. 11</span><span class="ttl" data-en="Private records" data-bm="Rekod peribadi">Private records</span></p>
     <div class="section-head reveal">
       <span class="eyebrow" data-en="Your data, your call" data-bm="Data kau, kau yang tentukan">Your data, your call</span>
       <h2>
@@ -1272,28 +1204,28 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
       </h2>
     </div>
     <div class="sec-grid">
-      <article class="sec-item reveal" style="--d:0ms">
+      <article class="card sec-item reveal" style="--d:0ms">
         <span class="si-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg></span>
         <div>
           <h3 data-en="Stays on your phone" data-bm="Simpan dalam phone kau">Stays on your phone</h3>
           <p data-en="Your records live on your device first, not on our servers." data-bm="Rekod kau duduk dalam phone kau dulu, bukan server kami.">Your records live on your device first, not on our servers.</p>
         </div>
       </article>
-      <article class="sec-item reveal" style="--d:70ms">
+      <article class="card sec-item reveal" style="--d:70ms">
         <span class="si-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
         <div>
           <h3 data-en="Backup only if you want" data-bm="Backup kalau kau nak je">Backup only if you want</h3>
           <p data-en="Turn on backup to your own cloud — off until you say so." data-bm="Hidupkan backup ke cloud kau sendiri — off sampai kau kata ya.">Turn on backup to your own cloud — off until you say so.</p>
         </div>
       </article>
-      <article class="sec-item reveal" style="--d:140ms">
+      <article class="card sec-item reveal" style="--d:140ms">
         <span class="si-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
         <div>
           <h3 data-en="Export or delete anytime" data-bm="Export atau padam bila-bila">Export or delete anytime</h3>
           <p data-en="Take everything with you, or wipe it. Your choice." data-bm="Bawa semua sekali, atau padam terus. Kau punya pilihan.">Take everything with you, or wipe it. Your choice.</p>
         </div>
       </article>
-      <article class="sec-item reveal" style="--d:210ms">
+      <article class="card sec-item reveal" style="--d:210ms">
         <span class="si-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg></span>
         <div>
           <h3 data-en="Just a tracker, not advice" data-bm="Alat jejak je, bukan nasihat">Just a tracker, not advice</h3>
@@ -1301,110 +1233,115 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
         </div>
       </article>
     </div>
-    <div class="disclaimer reveal">
+    <div class="footnote disclaimer reveal">
       <b data-en="Potraces is a calm tracker, not a financial advisor." data-bm="Potraces alat jejak yang tenang, bukan penasihat kewangan.">Potraces is a calm tracker, not a financial advisor.</b>
     </div>
   </div>
 </section>
 
-<!-- ════════════ PRICING NOTE ════════════ -->
-<section class="pricing">
+<!-- ════════════ PRICING — an honest card ════════════ -->
+<section class="pricing" style="padding-top:0">
   <div class="container">
-    <div class="pricing-card reveal">
-      <span class="tag" data-en="Free during beta" data-bm="Free masa beta">Free during beta</span>
-      <h3 data-en="No card. No catch." data-bm="Takde kad. Takde tipu.">No card. No catch.</h3>
+    <div class="card card-lg pricing-card reveal">
+      <span class="badge badge--sage" data-en="Free during beta" data-bm="Free masa beta">Free during beta</span>
+      <h3><span class="hl" data-en="No card. No catch." data-bm="Takde kad. Takde tipu.">No card. No catch.</span></h3>
       <p data-en="Free while we're in beta. Fair pricing comes later — we'll tell you first." data-bm="Free masa beta. Harga berpatutan nanti — kami bagitau dulu.">Free while we're in beta. Fair pricing comes later — we'll tell you first.</p>
     </div>
   </div>
 </section>
 
-<!-- ════════════ FAQ ════════════ -->
+<!-- ════════════ №12 · FAQ — two-column: big label left, hairline accordion right ════════════ -->
 <section class="faq" id="faq">
   <div class="container">
-    <div class="section-head reveal">
-      <span class="eyebrow" data-en="FAQ" data-bm="Soalan">FAQ</span>
-      <h2>
-        <span data-en="Quick answers." data-bm="Jawapan pantas." class="block">Quick answers.</span>
-      </h2>
-    </div>
-    <div class="faq-list">
-      <details class="faq-item reveal">
-        <summary><span data-en="When does Potraces launch?" data-bm="Bila Potraces keluar?">When does Potraces launch?</span><span class="q-ic" aria-hidden="true"></span></summary>
-        <div class="faq-answer"><span data-en="It's in beta now. Join the waitlist and we'll message you once, when it's live." data-bm="Tengah beta sekarang. Join waitlist, kami msg sekali je bila dah live.">It's in beta now. Join the waitlist and we'll message you once, when it's live.</span></div>
-      </details>
-      <details class="faq-item reveal">
-        <summary><span data-en="What if I earn from a few different places?" data-bm="Macam mana kalau aku buat duit dari banyak tempat?">What if I earn from a few different places?</span><span class="q-ic" aria-hidden="true"></span></summary>
-        <div class="faq-answer"><span data-en="That's exactly the point. Kuih orders, gig shifts, freelance jobs — log them all and see what came in, in one calm view." data-bm="Itu memang tujuannya. Order kuih, shift gig, kerja freelance — log semua, tengok apa masuk dalam satu paparan tenang.">That's exactly the point. Kuih orders, gig shifts, freelance jobs — log them all and see what came in, in one calm view.</span></div>
-      </details>
-      <details class="faq-item reveal">
-        <summary><span data-en="Can I use it for Raya season then go back to personal?" data-bm="Boleh ke guna masa musim Raya pastu balik ke peribadi?">Can I use it for Raya season then go back to personal?</span><span class="q-ic" aria-hidden="true"></span></summary>
-        <div class="faq-answer"><span data-en="Yes. Switch between personal and seller mode anytime — your stuff stays put in each space." data-bm="Boleh. Tukar antara mod peribadi & penjual bila-bila — barang kau kekal dalam ruang masing-masing.">Yes. Switch between personal and seller mode anytime — your stuff stays put in each space.</span></div>
-      </details>
-      <details class="faq-item reveal">
-        <summary><span data-en="Is my data safe?" data-bm="Data aku selamat tak?">Is my data safe?</span><span class="q-ic" aria-hidden="true"></span></summary>
-        <div class="faq-answer"><span data-en="It stays on your phone by default, and only on your own cloud if you turn on backup. We don't sell it." data-bm="Simpan dalam phone kau by default, dan ke cloud kau je kalau kau on backup. Kami tak jual.">It stays on your phone by default, and only on your own cloud if you turn on backup. We don't sell it.</span></div>
-      </details>
-      <details class="faq-item reveal">
-        <summary><span data-en="Does it work offline?" data-bm="Boleh guna offline tak?">Does it work offline?</span><span class="q-ic" aria-hidden="true"></span></summary>
-        <div class="faq-answer"><span data-en="Yep. Log even with patchy signal — it saves on your phone and syncs later." data-bm="Boleh. Log walaupun line teruk — simpan dalam phone, sync kemudian.">Yep. Log even with patchy signal — it saves on your phone and syncs later.</span></div>
-      </details>
-      <details class="faq-item reveal">
-        <summary><span data-en="Is it free?" data-bm="Free ke?">Is it free?</span><span class="q-ic" aria-hidden="true"></span></summary>
-        <div class="faq-answer"><span data-en="Free during the beta, no card needed. Fair pricing comes later and we'll tell you first." data-bm="Free masa beta, takde kad. Harga berpatutan nanti, kami bagitau dulu.">Free during the beta, no card needed. Fair pricing comes later and we'll tell you first.</span></div>
-      </details>
-      <details class="faq-item reveal">
-        <summary><span data-en="Is this financial advice?" data-bm="Ni nasihat kewangan ke?">Is this financial advice?</span><span class="q-ic" aria-hidden="true"></span></summary>
-        <div class="faq-answer"><span data-en="No. Potraces shows your own money clearly so you can decide — it's a tracker, not an advisor." data-bm="Bukan. Potraces tunjuk duit kau dengan jelas supaya kau boleh decide — alat jejak, bukan penasihat.">No. Potraces shows your own money clearly so you can decide — it's a tracker, not an advisor.</span></div>
-      </details>
+    <p class="sec-mark"><span class="no">No. 12</span><span class="ttl" data-en="Q & A" data-bm="Soal jawab">Q &amp; A</span></p>
+    <div class="faq-2col">
+      <div class="faq-left reveal">
+        <div><span class="eyebrow" data-en="FAQ" data-bm="Soalan">FAQ</span></div>
+        <h2 class="faq-label">
+          <span data-en="Quick answers." data-bm="Jawapan pantas." class="block">Quick answers.</span>
+        </h2>
+      </div>
+      <div class="faq-list">
+        <details class="faq-item reveal">
+          <summary><span data-en="When does Potraces launch?" data-bm="Bila Potraces keluar?">When does Potraces launch?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <div class="faq-answer"><span data-en="It's in beta now. Join the waitlist and we'll message you once, when it's live." data-bm="Tengah beta sekarang. Join waitlist, kami msg sekali je bila dah live.">It's in beta now. Join the waitlist and we'll message you once, when it's live.</span></div>
+        </details>
+        <details class="faq-item reveal">
+          <summary><span data-en="What if I earn from a few different places?" data-bm="Macam mana kalau aku buat duit dari banyak tempat?">What if I earn from a few different places?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <div class="faq-answer"><span data-en="That's exactly the point. Kuih orders, gig shifts, freelance jobs — log them all and see what came in, in one calm view." data-bm="Itu memang tujuannya. Order kuih, shift gig, kerja freelance — log semua, tengok apa masuk dalam satu paparan tenang.">That's exactly the point. Kuih orders, gig shifts, freelance jobs — log them all and see what came in, in one calm view.</span></div>
+        </details>
+        <details class="faq-item reveal">
+          <summary><span data-en="Can I use it for Raya season then go back to personal?" data-bm="Boleh ke guna masa musim Raya pastu balik ke peribadi?">Can I use it for Raya season then go back to personal?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <div class="faq-answer"><span data-en="Yes. Switch between personal and seller mode anytime — your stuff stays put in each space." data-bm="Boleh. Tukar antara mod peribadi & penjual bila-bila — barang kau kekal dalam ruang masing-masing.">Yes. Switch between personal and seller mode anytime — your stuff stays put in each space.</span></div>
+        </details>
+        <details class="faq-item reveal">
+          <summary><span data-en="Is my data safe?" data-bm="Data aku selamat tak?">Is my data safe?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <div class="faq-answer"><span data-en="It stays on your phone by default, and only on your own cloud if you turn on backup. We don't sell it." data-bm="Simpan dalam phone kau by default, dan ke cloud kau je kalau kau on backup. Kami tak jual.">It stays on your phone by default, and only on your own cloud if you turn on backup. We don't sell it.</span></div>
+        </details>
+        <details class="faq-item reveal">
+          <summary><span data-en="Does it work offline?" data-bm="Boleh guna offline tak?">Does it work offline?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <div class="faq-answer"><span data-en="Yep. Log even with patchy signal — it saves on your phone and syncs later." data-bm="Boleh. Log walaupun line teruk — simpan dalam phone, sync kemudian.">Yep. Log even with patchy signal — it saves on your phone and syncs later.</span></div>
+        </details>
+        <details class="faq-item reveal">
+          <summary><span data-en="Is it free?" data-bm="Free ke?">Is it free?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <div class="faq-answer"><span data-en="Free during the beta, no card needed. Fair pricing comes later and we'll tell you first." data-bm="Free masa beta, takde kad. Harga berpatutan nanti, kami bagitau dulu.">Free during the beta, no card needed. Fair pricing comes later and we'll tell you first.</span></div>
+        </details>
+        <details class="faq-item reveal">
+          <summary><span data-en="Is this financial advice?" data-bm="Ni nasihat kewangan ke?">Is this financial advice?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <div class="faq-answer"><span data-en="No. Potraces shows your own money clearly so you can decide — it's a tracker, not an advisor." data-bm="Bukan. Potraces tunjuk duit kau dengan jelas supaya kau boleh decide — alat jejak, bukan penasihat.">No. Potraces shows your own money clearly so you can decide — it's a tracker, not an advisor.</span></div>
+        </details>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ════════════ FINAL CTA ════════════ -->
-<section class="final-cta">
-  <div class="final-cta-wau" aria-hidden="true" id="ctawau"></div>
-  <div class="container">
-    <h2>
-      <span data-en="Jom mula. It's free during beta." data-bm="Jom mula. Free masa beta." class="block">Jom mula. It's free during beta.</span>
-    </h2>
-    <p>
-      <span data-en="Money that comes in lumps, finally making sense. Get in early." data-bm="Duit yang masuk tak menentu, akhirnya masuk akal. Join awal." class="block">Money that comes in lumps, finally making sense. Get in early.</span>
-    </p>
-    <div class="waitlist">
-      <div class="wl-tile">
-        <div class="wl-frame">
-          <span class="wl-ic" aria-hidden="true" id="wlicon2"></span>
-          <span data-en="Be first in line. One ping when it's live." data-bm="Jadi yang pertama tau. Satu ping je bila dah live.">Be first in line. One ping when it's live.</span>
-        </div>
-        <form id="waitlistForm2" novalidate>
-          <div class="wl-pill">
-            <label for="wl-email2" class="wl-label">
-              <span data-en="Email" data-bm="Emel">Email</span>
-            </label>
-            <input id="wl-email2" name="contact" type="email" inputmode="email" autocomplete="email"
-              data-ph-en="Your email" data-ph-bm="Emel kau"
-              placeholder="Your email" required>
-            <input type="text" name="hp_company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0">
-            <button type="submit" class="btn btn-primary" data-en="Notify me" data-bm="Bagitau saya">Notify me</button>
+<!-- ════════════ FINAL CTA — cream giant-radius panel ════════════ -->
+<section class="final-cta" id="join">
+  <div class="container-wide">
+    <div class="panel panel--cream cta-panel">
+      <div class="cta-wau" aria-hidden="true" id="ctawau"></div>
+      <h2>
+        <span data-en="Jom mula. It's free during beta." data-bm="Jom mula. Free masa beta." class="block">Jom mula. It's free during beta.</span>
+      </h2>
+      <p>
+        <span data-en="Money that comes in lumps, finally making sense. Get in early." data-bm="Duit yang masuk tak menentu, akhirnya masuk akal. Join awal." class="block">Money that comes in lumps, finally making sense. Get in early.</span>
+      </p>
+      <div class="waitlist">
+        <div class="wl-tile">
+          <div class="wl-frame">
+            <span class="wl-ic" aria-hidden="true" id="wlicon2"></span>
+            <span data-en="Be first in line. One ping when it's live." data-bm="Jadi yang pertama tau. Satu ping je bila dah live.">Be first in line. One ping when it's live.</span>
           </div>
-          <label class="wl-consent">
-            <input type="checkbox" name="consent">
-            <span data-en="I agree to be emailed once when Potraces launches." data-bm="Aku setuju kena email sekali je bila Potraces dah live.">I agree to be emailed once when Potraces launches.</span>
-          </label>
-        </form>
-        <p class="wl-msg" id="wlMsg2" role="status" aria-live="polite"></p>
-        <p class="wl-proof" id="wlProof2" role="status" aria-live="polite"></p>
-        <p class="micro" data-en="No card. We message you once when it's live." data-bm="Takde kad. Kami msg sekali je bila dah ready.">No card. We message you once when it's live.</p>
+          <form id="waitlistForm2" novalidate>
+            <div class="wl-pill">
+              <label for="wl-email2" class="wl-label">
+                <span data-en="Email" data-bm="Emel">Email</span>
+              </label>
+              <input id="wl-email2" name="contact" type="email" inputmode="email" autocomplete="email"
+                data-ph-en="Your email" data-ph-bm="Emel kau"
+                placeholder="Your email" required>
+              <input type="text" name="hp_company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0">
+              <button type="submit" class="btn btn-primary" data-en="Notify me" data-bm="Bagitau saya">Notify me</button>
+            </div>
+            <label class="wl-consent">
+              <input type="checkbox" name="consent">
+              <span data-en="I agree to be emailed once when Potraces launches." data-bm="Aku setuju kena email sekali je bila Potraces dah live.">I agree to be emailed once when Potraces launches.</span>
+            </label>
+          </form>
+          <p class="wl-msg" id="wlMsg2" role="status" aria-live="polite"></p>
+          <p class="wl-proof" id="wlProof2" role="status" aria-live="polite"></p>
+          <p class="micro" data-en="No card. We message you once when it's live." data-bm="Takde kad. Kami msg sekali je bila dah ready.">No card. We message you once when it's live.</p>
+        </div>
       </div>
+      <a class="beta-link" href="/beta.html">
+        <span data-en="Already testing? Send beta feedback" data-bm="Tengah test? Hantar feedback beta">Already testing? Send beta feedback</span>
+      </a>
     </div>
-    <a class="beta-link" href="/beta.html">
-      <span data-en="Already testing? Send beta feedback" data-bm="Tengah test? Hantar feedback beta">Already testing? Send beta feedback</span>
-    </a>
   </div>
 </section>
 </main>
 
-<!-- ════════════ FOOTER ════════════ -->
+<!-- ════════════ COLOPHON FOOTER ════════════ -->
 <footer class="footer">
   <div class="container">
     <div class="footer-grid">
@@ -1447,6 +1384,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
     </div>
   </div>
 </footer>
+
 
 <script>
 /* ── inline wau SVG (sage), injected into logo + watermark slots ── */

@@ -2,9 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#FEFDFB">
 <title>Potraces — Privacy Policy</title>
 <meta name="description" content="How Potraces collects, stores, and lets you export or delete your data. Built in Malaysia.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://jejakbaki.my/privacy.html">
 <link rel="icon" href="/assets/icon.png" type="image/png">
 <link rel="apple-touch-icon" href="/assets/icon.png">
 <meta property="og:type" content="website">
@@ -19,175 +23,234 @@
 <meta name="twitter:title" content="Potraces — Privacy Policy">
 <meta name="twitter:description" content="How Potraces collects, stores, and lets you export or delete your data. Built in Malaysia.">
 <meta name="twitter:image" content="https://jejakbaki.my/assets/icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
 <style>
-  :root { --bg:#F9F9F7; --ink:#2C2C28; --muted:#6B6B66; --accent:#4F5104; --surface:#FFFFFF; --border:#E8E6E0; }
-  * { box-sizing: border-box; }
-  body { margin:0; padding:32px 20px 80px; font: 16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
-  .wrap { max-width: 720px; margin: 0 auto; }
-  h1 { font-size: 28px; margin:0 0 4px; color:var(--accent); }
-  h2 { font-size: 20px; margin: 32px 0 8px; color:var(--ink); }
-  p, li { color:var(--ink); }
-  .meta { color:var(--muted); font-size:13px; margin: 0 0 24px; }
-  .card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding: 20px 24px; margin: 16px 0; }
-  ul { padding-left: 20px; }
-  li { margin: 4px 0; }
-  a { color: var(--accent); }
-  .lang-switch { display:flex; gap:8px; margin: 0 0 24px; }
-  .lang-switch button { padding:6px 14px; border:1px solid var(--border); background:var(--surface); border-radius:999px; cursor:pointer; font-size:13px; color:var(--ink); }
-  .lang-switch button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
-  .hide { display:none; }
-  footer { margin-top: 48px; color:var(--muted); font-size:13px; }
+/* Hallmark · TENANG v5 · studied: aave.com · privacy.html */
+
+/* ── DOC PAGE HEAD — small centered header: quiet mono eyebrow + weight-500 title ── */
+.doc-head{max-width:var(--maxw-prose);margin:0 auto;padding:calc(var(--nav-h) + 56px) 20px 0;text-align:center}
+.doc-ref{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;gap:6px 16px;
+  font-family:var(--font-mono);font-size:var(--text-xs);font-weight:var(--fw-medium);
+  letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45)}
+.doc-badge{display:inline-block;margin-top:16px;font-family:var(--font-mono);font-size:.66rem;
+  font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;
+  color:var(--sage-text);background:var(--sage-pale);padding:4px 12px;border-radius:var(--radius-pill)}
+.doc-head h1{font-size:var(--text-3xl);font-weight:var(--fw-medium);letter-spacing:var(--tracking-display);
+  line-height:var(--leading-tight);margin:18px 0 10px}
+.doc-head .meta{font-family:var(--font-mono);font-size:var(--text-sm);color:var(--ink-45);
+  font-variant-numeric:tabular-nums;margin:0 0 28px}
+/* preamble — quiet sage-pale tint card, colour lives in the panel */
+.doc-intro{background:var(--sage-pale);border-radius:var(--radius-lg);padding:18px 22px;text-align:left}
+.doc-intro p{color:var(--ink-65);line-height:var(--leading-relaxed);margin:0}
+
+/* kit .prose already carries the nav offset; the doc-head above owns it here */
+.doc-head + .prose,.doc-head ~ .prose{padding-top:32px}
+/* clause numbers — quiet mono, ink-45 (hierarchy via opacity, not weight) */
+.prose h2 .cl{font-family:var(--font-mono);font-size:.62em;font-weight:var(--fw-medium);
+  letter-spacing:var(--tracking-caps);color:var(--ink-45);margin-right:10px;vertical-align:2px}
+/* end-of-document mark — honest mono small print */
+.doc-end{max-width:var(--maxw-prose);margin:0 auto;padding:0 20px 56px;text-align:center;
+  font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-caps);
+  text-transform:uppercase;color:var(--ink-45)}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <p style="margin:0 0 16px;font-size:14px"><a href="/" style="color:var(--accent);text-decoration:none">← Potraces</a></p>
-  <div class="lang-switch" role="group" aria-label="Language">
-    <button id="btn-en" class="active" aria-pressed="true" onclick="show('en')">English</button>
-    <button id="btn-ms" aria-pressed="false" onclick="show('ms')">Bahasa Malaysia</button>
+<div class="grain" aria-hidden="true"></div>
+<a class="skip" href="#main" data-en="Skip to content" data-bm="Terus ke kandungan">Skip to content</a>
+
+<header class="nav nav--minimal" id="nav">
+  <div class="container">
+    <a class="nav-back" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg><span data-en="Potraces" data-bm="Potraces">Potraces</span></a>
+    <div class="lang-toggle" role="group" aria-label="Language / Bahasa">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="ms" aria-pressed="false">BM</button>
+    </div>
   </div>
+</header>
 
+<main id="main">
   <section id="en">
-    <h1>Privacy Policy</h1>
-    <p class="meta">Last updated: 17 June 2026</p>
-
-    <div class="card">
-      <p>Potraces is a personal &amp; small-business finance app built in Malaysia. This policy explains what we collect, why, where we store it, and how to get your data out or delete it.</p>
+    <div class="doc-head">
+      <p class="doc-ref"><span>Doc. Ref: PTR-LGL-01 · Privacy</span><span>jejakbaki.my</span></p>
+      <span class="doc-badge" aria-hidden="true">Official copy</span>
+      <h1><span class="accent-word">Privacy</span> Policy</h1>
+      <p class="meta">Last updated: 17 June 2026</p>
+      <div class="doc-intro">
+        <p>Potraces is a personal &amp; small-business finance app built in Malaysia. This policy explains what we collect, why, where we store it, and how to get your data out or delete it.</p>
+      </div>
     </div>
 
-    <h2>1. What we collect</h2>
-    <ul>
-      <li><strong>Transactions you enter</strong>: amount, category, note, date, wallet, receipt image, and edit history.</li>
-      <li><strong>Account info</strong> (business mode only): phone number, encrypted session tokens, and an Expo push notification token used only to alert you about new online orders.</li>
-      <li><strong>Device info</strong>: OS version, app version, and crash/error logs (no personal content is included).</li>
-    </ul>
+    <div class="prose">
+      <h2 id="en-1"><span class="cl" aria-hidden="true">Cl. 1</span>1. What we collect</h2>
+      <ul>
+        <li><strong>Transactions you enter</strong>: amount, category, note, date, wallet, receipt image, and edit history.</li>
+        <li><strong>Account info</strong> (business mode only): phone number, encrypted session tokens, and an Expo push notification token used only to alert you about new online orders.</li>
+        <li><strong>Device info</strong>: OS version, app version, and crash/error logs (no personal content is included).</li>
+      </ul>
 
-    <h2>2. What we do not collect</h2>
-    <ul>
-      <li>When you add a person to a debt or split, we read only the contact you pick (to fill in their name and number). We do not scan your full address book, photos, messages, call logs, or location, beyond the specific image you choose to upload as a receipt.</li>
-      <li>We do not sell or share your data with advertisers.</li>
-      <li>We do not track you across other apps or websites.</li>
-    </ul>
+      <h2 id="en-2"><span class="cl" aria-hidden="true">Cl. 2</span>2. What we do not collect</h2>
+      <ul>
+        <li>When you add a person to a debt or split, we read only the contact you pick (to fill in their name and number). We do not scan your full address book, photos, messages, call logs, or location, beyond the specific image you choose to upload as a receipt.</li>
+        <li>We do not sell or share your data with advertisers.</li>
+        <li>We do not track you across other apps or websites.</li>
+      </ul>
 
-    <h2>3. Where your data lives</h2>
-    <ul>
-      <li><strong>Personal mode</strong>: data is stored locally on your device (encrypted device storage) and, if you enable cloud backup, synced to our Supabase project hosted in Singapore (ap-southeast-1).</li>
-      <li><strong>Business/seller mode</strong>: data syncs to the same Supabase project so it can reach your customers' order pages.</li>
-      <li>Receipt images are stored in Supabase Storage, access-controlled to your account.</li>
-      <li><strong>Sign-in providers</strong>: when you create or access your account with <strong>Google Sign-In</strong> or <strong>Sign in with Apple</strong>, that provider returns a stable user ID, your email, and your name to create and identify your account. We don't get your password.</li>
-      <li><strong>Other service providers</strong> (some outside Malaysia): Telegram (delivers your one-time login code), Stripe (card payments for sellers; PCI-compliant — we don't store card numbers), Vercel (hosts the seller order-link page), Expo (push notifications), and the AI providers in section 6. They process data only to provide their feature.</li>
-    </ul>
+      <h2 id="en-3"><span class="cl" aria-hidden="true">Cl. 3</span>3. Where your data lives</h2>
+      <ul>
+        <li><strong>Personal mode</strong>: data is stored locally on your device (encrypted device storage) and, if you enable cloud backup, synced to our Supabase project hosted in Singapore (ap-southeast-1).</li>
+        <li><strong>Business/seller mode</strong>: data syncs to the same Supabase project so it can reach your customers' order pages.</li>
+        <li>Receipt images are stored in Supabase Storage, access-controlled to your account.</li>
+        <li><strong>Sign-in providers</strong>: when you create or access your account with <strong>Google Sign-In</strong> or <strong>Sign in with Apple</strong>, that provider returns a stable user ID, your email, and your name to create and identify your account. We don't get your password.</li>
+        <li><strong>Other service providers</strong> (some outside Malaysia): Telegram (delivers your one-time login code), Stripe (card payments for sellers; PCI-compliant — we don't store card numbers), Vercel (hosts the seller order-link page), Expo (push notifications), and the AI providers in section 6. They process data only to provide their feature.</li>
+      </ul>
 
-    <h2>4. How long we keep it</h2>
-    <p>As long as your account exists. If you delete your account, we purge all associated rows from the database within 7 days. Cached files on disk are removed immediately when you uninstall or use the in-app deletion flow.</p>
+      <h2 id="en-4"><span class="cl" aria-hidden="true">Cl. 4</span>4. How long we keep it</h2>
+      <p>As long as your account exists. If you delete your account, we purge all associated rows from the database within 7 days. Cached files on disk are removed immediately when you uninstall or use the in-app deletion flow.</p>
 
-    <h2>5. Your rights</h2>
-    <ul>
-      <li><strong>Export</strong>: Settings → Export Data. You can download everything as CSV or PDF.</li>
-      <li><strong>Delete</strong>: in the app, go to Account → Delete account. This permanently deletes your account and all your data (personal and seller) and signs you out. You can also request deletion — including if you've already uninstalled the app — on our <a href="delete-account.html">account &amp; data deletion page</a>.</li>
-      <li><strong>Access</strong>: email us for a copy of what we have.</li>
-    </ul>
+      <h2 id="en-5"><span class="cl" aria-hidden="true">Cl. 5</span>5. Your rights</h2>
+      <ul>
+        <li><strong>Export</strong>: Settings → Export Data. You can download everything as CSV or PDF.</li>
+        <li><strong>Delete</strong>: in the app, go to Account → Delete account. This permanently deletes your account and all your data (personal and seller) and signs you out. You can also request deletion — including if you've already uninstalled the app — on our <a href="delete-account.html">account &amp; data deletion page</a>.</li>
+        <li><strong>Access</strong>: email us for a copy of what we have.</li>
+      </ul>
 
-    <h2>6. AI features</h2>
-    <p>Optional AI features (receipt scanning, note-to-entry, voice input "Echo", and Money Chat) send the text, image, or voice recording you submit — and, for Money Chat, a short summary of your finances — to our third-party AI providers <strong>Anthropic (Claude)</strong> and <strong>Google (Gemini)</strong>, both in the United States, strictly to generate the response. Specifically:</p>
-    <ul>
-      <li><strong>Receipt photos</strong> you scan are sent to Google (Gemini) to read the amount, date, and line items.</li>
-      <li><strong>Voice input (Echo)</strong> records audio and uploads the raw recording to Google (Gemini) for transcription. Where your device supports it, on-device speech recognition is used first; the upload is the fallback when on-device recognition isn't available.</li>
-    </ul>
-    <p>Providers process this data only to return the result and, per their terms, do not retain it to train their models. We do not store prompts, recordings, or responses beyond what you save. The AI gives general information only — not financial, investment, tax, or legal advice. We strip card numbers from receipts before sending. Providers' terms apply — do not submit data you consider highly sensitive.</p>
+      <h2 id="en-6"><span class="cl" aria-hidden="true">Cl. 6</span>6. AI features</h2>
+      <p>Optional AI features (receipt scanning, note-to-entry, voice input "Echo", and Money Chat) send the text, image, or voice recording you submit — and, for Money Chat, a short summary of your finances — to our third-party AI providers <strong>Anthropic (Claude)</strong> and <strong>Google (Gemini)</strong>, both in the United States, strictly to generate the response. Specifically:</p>
+      <ul>
+        <li><strong>Receipt photos</strong> you scan are sent to Google (Gemini) to read the amount, date, and line items.</li>
+        <li><strong>Voice input (Echo)</strong> records audio and uploads the raw recording to Google (Gemini) for transcription. Where your device supports it, on-device speech recognition is used first; the upload is the fallback when on-device recognition isn't available.</li>
+      </ul>
+      <p>Providers process this data only to return the result and, per their terms, do not retain it to train their models. We do not store prompts, recordings, or responses beyond what you save. The AI gives general information only — not financial, investment, tax, or legal advice. We strip card numbers from receipts before sending. Providers' terms apply — do not submit data you consider highly sensitive.</p>
 
-    <h2>7. Children</h2>
-    <p>Potraces is not directed at children under 13. If we learn we've collected data from a child, we delete it.</p>
+      <h2 id="en-7"><span class="cl" aria-hidden="true">Cl. 7</span>7. Children</h2>
+      <p>Potraces is not directed at children under 13. If we learn we've collected data from a child, we delete it.</p>
 
-    <h2>8. Changes</h2>
-    <p>We may update this policy. Material changes will be announced in the app. Minor edits show up here with a new "last updated" date.</p>
+      <h2 id="en-8"><span class="cl" aria-hidden="true">Cl. 8</span>8. Changes</h2>
+      <p>We may update this policy. Material changes will be announced in the app. Minor edits show up here with a new "last updated" date.</p>
 
-    <h2>9. Contact</h2>
-    <p>Email: <a href="mailto:zafranzamani99@gmail.com">zafranzamani99@gmail.com</a></p>
+      <h2 id="en-9"><span class="cl" aria-hidden="true">Cl. 9</span>9. Contact</h2>
+      <p>Email: <a href="mailto:zafranzamani99@gmail.com">zafranzamani99@gmail.com</a></p>
+    </div>
+    <p class="doc-end" aria-hidden="true">End of document</p>
   </section>
 
   <section id="ms" class="hide">
-    <h1>Dasar Privasi</h1>
-    <p class="meta">Kemas kini terakhir: 17 Jun 2026</p>
-
-    <div class="card">
-      <p>Potraces ialah aplikasi kewangan peribadi &amp; perniagaan kecil yang dibina di Malaysia. Dasar ini menerangkan apa yang kami kumpul, mengapa, di mana ia disimpan, dan bagaimana untuk mengeluarkan atau memadam data anda.</p>
+    <div class="doc-head">
+      <p class="doc-ref"><span>No. Rujukan: PTR-LGL-01 · Privasi</span><span>jejakbaki.my</span></p>
+      <span class="doc-badge" aria-hidden="true">Salinan rasmi</span>
+      <h1>Dasar <span class="accent-word">Privasi</span></h1>
+      <p class="meta">Kemas kini terakhir: 17 Jun 2026</p>
+      <div class="doc-intro">
+        <p>Potraces ialah aplikasi kewangan peribadi &amp; perniagaan kecil yang dibina di Malaysia. Dasar ini menerangkan apa yang kami kumpul, mengapa, di mana ia disimpan, dan bagaimana untuk mengeluarkan atau memadam data anda.</p>
+      </div>
     </div>
 
-    <h2>1. Apa yang kami kumpul</h2>
-    <ul>
-      <li><strong>Transaksi yang anda masukkan</strong>: jumlah, kategori, nota, tarikh, dompet, imej resit, dan sejarah suntingan.</li>
-      <li><strong>Maklumat akaun</strong> (mod perniagaan sahaja): nombor telefon, token sesi yang disulitkan, dan token notifikasi Expo yang digunakan hanya untuk memberitahu anda tentang pesanan dalam talian yang baharu.</li>
-      <li><strong>Maklumat peranti</strong>: versi OS, versi aplikasi, dan log ralat (tiada kandungan peribadi disertakan).</li>
-    </ul>
+    <div class="prose">
+      <h2 id="ms-1"><span class="cl" aria-hidden="true">Fs. 1</span>1. Apa yang kami kumpul</h2>
+      <ul>
+        <li><strong>Transaksi yang anda masukkan</strong>: jumlah, kategori, nota, tarikh, dompet, imej resit, dan sejarah suntingan.</li>
+        <li><strong>Maklumat akaun</strong> (mod perniagaan sahaja): nombor telefon, token sesi yang disulitkan, dan token notifikasi Expo yang digunakan hanya untuk memberitahu anda tentang pesanan dalam talian yang baharu.</li>
+        <li><strong>Maklumat peranti</strong>: versi OS, versi aplikasi, dan log ralat (tiada kandungan peribadi disertakan).</li>
+      </ul>
 
-    <h2>2. Apa yang kami tidak kumpul</h2>
-    <ul>
-      <li>Apabila anda menambah seseorang ke dalam hutang atau perkongsian, kami hanya membaca kenalan yang anda pilih (untuk mengisi nama dan nombor mereka). Kami tidak mengimbas seluruh buku alamat, gambar, mesej, log panggilan atau lokasi anda, melainkan imej khusus yang anda pilih untuk dimuat naik sebagai resit.</li>
-      <li>Kami tidak menjual atau berkongsi data anda dengan pengiklan.</li>
-      <li>Kami tidak menjejak anda di aplikasi atau laman web lain.</li>
-    </ul>
+      <h2 id="ms-2"><span class="cl" aria-hidden="true">Fs. 2</span>2. Apa yang kami tidak kumpul</h2>
+      <ul>
+        <li>Apabila anda menambah seseorang ke dalam hutang atau perkongsian, kami hanya membaca kenalan yang anda pilih (untuk mengisi nama dan nombor mereka). Kami tidak mengimbas seluruh buku alamat, gambar, mesej, log panggilan atau lokasi anda, melainkan imej khusus yang anda pilih untuk dimuat naik sebagai resit.</li>
+        <li>Kami tidak menjual atau berkongsi data anda dengan pengiklan.</li>
+        <li>Kami tidak menjejak anda di aplikasi atau laman web lain.</li>
+      </ul>
 
-    <h2>3. Di mana data anda disimpan</h2>
-    <ul>
-      <li><strong>Mod peribadi</strong>: data disimpan secara tempatan pada peranti anda dan, jika anda aktifkan sandaran awan, disegerakkan ke projek Supabase kami di Singapura (ap-southeast-1).</li>
-      <li><strong>Mod perniagaan/penjual</strong>: data disegerakkan ke Supabase yang sama supaya halaman pesanan pelanggan anda boleh berfungsi.</li>
-      <li>Imej resit disimpan dalam Supabase Storage, dikawal akses kepada akaun anda sahaja.</li>
-      <li><strong>Pembekal log masuk</strong>: apabila anda mencipta atau mengakses akaun dengan <strong>Google Sign-In</strong> atau <strong>Sign in with Apple</strong>, pembekal itu memulangkan ID pengguna yang stabil, emel, dan nama anda untuk mencipta dan mengenal pasti akaun anda. Kami tidak menerima kata laluan anda.</li>
-      <li><strong>Pembekal perkhidmatan lain</strong> (sebahagiannya di luar Malaysia): Telegram (menghantar kod log masuk sekali guna anda), Stripe (pembayaran kad untuk penjual; mematuhi PCI — kami tidak simpan nombor kad), Vercel (menghoskan halaman pautan pesanan penjual), Expo (notifikasi tolak), dan pembekal AI dalam seksyen 6. Mereka memproses data hanya untuk menyediakan ciri mereka.</li>
-    </ul>
+      <h2 id="ms-3"><span class="cl" aria-hidden="true">Fs. 3</span>3. Di mana data anda disimpan</h2>
+      <ul>
+        <li><strong>Mod peribadi</strong>: data disimpan secara tempatan pada peranti anda dan, jika anda aktifkan sandaran awan, disegerakkan ke projek Supabase kami di Singapura (ap-southeast-1).</li>
+        <li><strong>Mod perniagaan/penjual</strong>: data disegerakkan ke Supabase yang sama supaya halaman pesanan pelanggan anda boleh berfungsi.</li>
+        <li>Imej resit disimpan dalam Supabase Storage, dikawal akses kepada akaun anda sahaja.</li>
+        <li><strong>Pembekal log masuk</strong>: apabila anda mencipta atau mengakses akaun dengan <strong>Google Sign-In</strong> atau <strong>Sign in with Apple</strong>, pembekal itu memulangkan ID pengguna yang stabil, emel, dan nama anda untuk mencipta dan mengenal pasti akaun anda. Kami tidak menerima kata laluan anda.</li>
+        <li><strong>Pembekal perkhidmatan lain</strong> (sebahagiannya di luar Malaysia): Telegram (menghantar kod log masuk sekali guna anda), Stripe (pembayaran kad untuk penjual; mematuhi PCI — kami tidak simpan nombor kad), Vercel (menghoskan halaman pautan pesanan penjual), Expo (notifikasi tolak), dan pembekal AI dalam seksyen 6. Mereka memproses data hanya untuk menyediakan ciri mereka.</li>
+      </ul>
 
-    <h2>4. Berapa lama kami simpan</h2>
-    <p>Selagi akaun anda wujud. Jika anda padam akaun, kami akan memadam semua baris berkaitan dari pangkalan data dalam 7 hari. Fail cache pada peranti dipadam serta-merta apabila anda nyahpasang atau gunakan aliran padam dalam aplikasi.</p>
+      <h2 id="ms-4"><span class="cl" aria-hidden="true">Fs. 4</span>4. Berapa lama kami simpan</h2>
+      <p>Selagi akaun anda wujud. Jika anda padam akaun, kami akan memadam semua baris berkaitan dari pangkalan data dalam 7 hari. Fail cache pada peranti dipadam serta-merta apabila anda nyahpasang atau gunakan aliran padam dalam aplikasi.</p>
 
-    <h2>5. Hak anda</h2>
-    <ul>
-      <li><strong>Eksport</strong>: Tetapan → Eksport Data. Anda boleh muat turun semua sebagai CSV atau PDF.</li>
-      <li><strong>Padam</strong>: dalam app, pergi ke Akaun → Padam akaun. Ini memadam akaun dan semua data anda (peribadi dan penjual) secara kekal dan mengeluarkan anda dari akaun. Anda juga boleh memohon pemadaman — termasuk jika anda telah pun menyahpasang aplikasi — di <a href="delete-account.html">halaman pemadaman akaun &amp; data</a> kami.</li>
-      <li><strong>Akses</strong>: emel kami untuk salinan data yang kami simpan.</li>
-    </ul>
+      <h2 id="ms-5"><span class="cl" aria-hidden="true">Fs. 5</span>5. Hak anda</h2>
+      <ul>
+        <li><strong>Eksport</strong>: Tetapan → Eksport Data. Anda boleh muat turun semua sebagai CSV atau PDF.</li>
+        <li><strong>Padam</strong>: dalam app, pergi ke Akaun → Padam akaun. Ini memadam akaun dan semua data anda (peribadi dan penjual) secara kekal dan mengeluarkan anda dari akaun. Anda juga boleh memohon pemadaman — termasuk jika anda telah pun menyahpasang aplikasi — di <a href="delete-account.html">halaman pemadaman akaun &amp; data</a> kami.</li>
+        <li><strong>Akses</strong>: emel kami untuk salinan data yang kami simpan.</li>
+      </ul>
 
-    <h2>6. Ciri AI</h2>
-    <p>Ciri AI pilihan (imbasan resit, nota-ke-entri, input suara "Echo", dan Money Chat) menghantar teks, imej, atau rakaman suara yang anda masukkan — dan, untuk Money Chat, ringkasan ringkas kewangan anda — kepada pembekal AI pihak ketiga kami <strong>Anthropic (Claude)</strong> dan <strong>Google (Gemini)</strong>, kedua-duanya di Amerika Syarikat, secara ketat hanya untuk menjana respons. Secara khusus:</p>
-    <ul>
-      <li><strong>Gambar resit</strong> yang anda imbas dihantar ke Google (Gemini) untuk membaca jumlah, tarikh, dan butiran barisan.</li>
-      <li><strong>Input suara (Echo)</strong> merakam audio dan memuat naik rakaman mentah ke Google (Gemini) untuk transkripsi. Jika peranti anda menyokongnya, pengecaman suara atas-peranti digunakan dahulu; muat naik hanyalah sandaran apabila pengecaman atas-peranti tidak tersedia.</li>
-    </ul>
-    <p>Pembekal memproses data ini hanya untuk memulangkan hasil dan, mengikut syarat mereka, tidak menyimpannya untuk melatih model mereka. Kami tidak menyimpan arahan, rakaman, atau respons melebihi apa yang anda simpan. AI memberi maklumat umum sahaja — bukan nasihat kewangan, pelaburan, cukai, atau undang-undang. Kami membuang nombor kad daripada resit sebelum menghantar. Syarat pembekal terpakai — jangan masukkan data yang anda anggap sangat sensitif.</p>
+      <h2 id="ms-6"><span class="cl" aria-hidden="true">Fs. 6</span>6. Ciri AI</h2>
+      <p>Ciri AI pilihan (imbasan resit, nota-ke-entri, input suara "Echo", dan Money Chat) menghantar teks, imej, atau rakaman suara yang anda masukkan — dan, untuk Money Chat, ringkasan ringkas kewangan anda — kepada pembekal AI pihak ketiga kami <strong>Anthropic (Claude)</strong> dan <strong>Google (Gemini)</strong>, kedua-duanya di Amerika Syarikat, secara ketat hanya untuk menjana respons. Secara khusus:</p>
+      <ul>
+        <li><strong>Gambar resit</strong> yang anda imbas dihantar ke Google (Gemini) untuk membaca jumlah, tarikh, dan butiran barisan.</li>
+        <li><strong>Input suara (Echo)</strong> merakam audio dan memuat naik rakaman mentah ke Google (Gemini) untuk transkripsi. Jika peranti anda menyokongnya, pengecaman suara atas-peranti digunakan dahulu; muat naik hanyalah sandaran apabila pengecaman atas-peranti tidak tersedia.</li>
+      </ul>
+      <p>Pembekal memproses data ini hanya untuk memulangkan hasil dan, mengikut syarat mereka, tidak menyimpannya untuk melatih model mereka. Kami tidak menyimpan arahan, rakaman, atau respons melebihi apa yang anda simpan. AI memberi maklumat umum sahaja — bukan nasihat kewangan, pelaburan, cukai, atau undang-undang. Kami membuang nombor kad daripada resit sebelum menghantar. Syarat pembekal terpakai — jangan masukkan data yang anda anggap sangat sensitif.</p>
 
-    <h2>7. Kanak-kanak</h2>
-    <p>Potraces tidak ditujukan kepada kanak-kanak di bawah 13 tahun. Jika kami dapat tahu kami telah mengumpul data kanak-kanak, kami akan memadamnya.</p>
+      <h2 id="ms-7"><span class="cl" aria-hidden="true">Fs. 7</span>7. Kanak-kanak</h2>
+      <p>Potraces tidak ditujukan kepada kanak-kanak di bawah 13 tahun. Jika kami dapat tahu kami telah mengumpul data kanak-kanak, kami akan memadamnya.</p>
 
-    <h2>8. Perubahan</h2>
-    <p>Kami boleh mengemas kini dasar ini. Perubahan penting akan diumumkan dalam aplikasi. Penyuntingan kecil muncul di sini dengan tarikh "kemas kini terakhir" yang baharu.</p>
+      <h2 id="ms-8"><span class="cl" aria-hidden="true">Fs. 8</span>8. Perubahan</h2>
+      <p>Kami boleh mengemas kini dasar ini. Perubahan penting akan diumumkan dalam aplikasi. Penyuntingan kecil muncul di sini dengan tarikh "kemas kini terakhir" yang baharu.</p>
 
-    <h2>9. Hubungi</h2>
-    <p>Emel: <a href="mailto:zafranzamani99@gmail.com">zafranzamani99@gmail.com</a></p>
+      <h2 id="ms-9"><span class="cl" aria-hidden="true">Fs. 9</span>9. Hubungi</h2>
+      <p>Emel: <a href="mailto:zafranzamani99@gmail.com">zafranzamani99@gmail.com</a></p>
+    </div>
+    <p class="doc-end" aria-hidden="true">Tamat dokumen</p>
   </section>
+</main>
 
-  <footer>© 2026 Potraces. Built in Malaysia.</footer>
-</div>
+<footer class="footer--legal">
+  <p data-en="© 2026 Potraces. Built in Malaysia." data-bm="© 2026 Potraces. Dibina di Malaysia.">© 2026 Potraces. Built in Malaysia.</p>
+</footer>
+
 <script>
-var LANG_STORAGE = 'potraces_lang'; // shared with index.html / beta.html
-function show(lang){
-  if (lang!=='ms') lang='en';
-  document.getElementById('en').classList.toggle('hide', lang!=='en');
-  document.getElementById('ms').classList.toggle('hide', lang!=='ms');
-  document.getElementById('btn-en').classList.toggle('active', lang==='en');
-  document.getElementById('btn-ms').classList.toggle('active', lang==='ms');
-  document.getElementById('btn-en').setAttribute('aria-pressed', String(lang==='en'));
-  document.getElementById('btn-ms').setAttribute('aria-pressed', String(lang==='ms'));
-  document.documentElement.setAttribute('lang', lang);
-  try { localStorage.setItem(LANG_STORAGE, lang); } catch(e){}
-}
-// 1) carry over the choice made on the marketing site; 2) else device language
-var saved = null;
-try { saved = localStorage.getItem(LANG_STORAGE); } catch(e){}
-if (saved === 'ms' || saved === 'en') {
-  show(saved);
-} else if ((navigator.language||'').toLowerCase().startsWith('ms')) {
-  show('ms');
-}
+/* Whole-section EN/BM switch (toggles #en/#ms, not just leaves) driven by the shared
+   .nav--minimal lang-toggle. Persists to 'potraces_lang' (shared with index.html / beta.html),
+   and also swaps chrome leaves (skip link, footer). */
+(function(){
+  var STORAGE='potraces_lang';
+  var enSec=document.getElementById('en'), msSec=document.getElementById('ms');
+  function apply(lang){
+    if(lang!=='ms') lang='en';
+    document.documentElement.setAttribute('lang', lang);
+    enSec.classList.toggle('hide', lang!=='en');
+    msSec.classList.toggle('hide', lang!=='ms');
+    document.querySelectorAll('.lang-toggle button').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang')===lang));
+    });
+    document.querySelectorAll('[data-en]').forEach(function(el){
+      if(el.children.length) return;                         /* leaf-only swap */
+      var t = lang==='ms' ? el.getAttribute('data-bm') : el.getAttribute('data-en');
+      if(t!=null) el.textContent = t;
+    });
+    try{ localStorage.setItem(STORAGE, lang); }catch(e){}
+  }
+  /* 1) carry over the choice made on the marketing site; 2) else device language */
+  var saved=null;
+  try{ saved=localStorage.getItem(STORAGE); }catch(e){}
+  if(saved!=='ms' && saved!=='en'){
+    saved=(navigator.language||'').toLowerCase().startsWith('ms') ? 'ms' : 'en';
+  }
+  apply(saved);
+  document.querySelectorAll('.lang-toggle button').forEach(function(b){
+    b.addEventListener('click', function(){ apply(b.getAttribute('data-lang')); });
+  });
+})();
+
+/* nav scroll-shadow state (chrome parity with the rest of the site) */
+(function(){
+  var nav=document.getElementById('nav');
+  if(!nav) return;
+  function onScroll(){ nav.classList.toggle('scrolled', window.scrollY>12); }
+  onScroll();
+  window.addEventListener('scroll', onScroll, {passive:true});
+})();
 </script>
 </body>
 </html>

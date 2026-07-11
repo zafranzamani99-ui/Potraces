@@ -1,0 +1,127 @@
+/* Hallmark · macrostructure: design-system · tone: tenang-pastel-light · studied: yes · DNA-source: url (https://aave.com via Playwright capture) */
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 */
+/*
+  Potraces · jejakbaki.my — SINGLE SOURCE OF TRUTH for design tokens.
+  "TENANG" v5 — the studied aave.com system, translated into the Potraces family.
+  Observed DNA (Playwright, 2026-07-11): light white base · warm near-black ink at
+  opacity steps · ONE pastel accent (their lavender #978EFF -> our pastel SAGE) ·
+  grotesk display at WEIGHT 500 with -5% tracking (never extra-bold) · one italic-serif
+  accent word per headline · flat pill buttons r=99 · giant-radius pastel panels ·
+  exactly ONE near-ink section showing the real product · calm thin-line data-viz ·
+  huge whitespace · content max ~986px, prose ~620px.
+
+  WORLD LAWS:
+  · Base is warm white. Colour lives in PANELS (pastel sage / cream washes, radius 24-48px), not in text.
+  · Ink #221E19 does the talking, at .9/.65/.45 opacity steps.
+  · SAGE is the one accent (pastel of the app's olive — same family, aave's role for lavender).
+    Amounts stay ink (no red numbers, no green numbers — house law survives every system).
+  · Display type = Outfit at weight 500, tracking -0.04em. Boldness comes from SIZE, not weight.
+  · ONE word per headline may be Fraunces ITALIC in sage — the studied signature
+    (deliberate reference-following exception to the roman-headline default; max 1 word, never a whole heading).
+  · Buttons are flat pills: ink pill (nav/primary-dark), sage pill + ink text (primary), pale tint (ghost). No glow, no gradient-on-text, no letterpress.
+  · Max ONE near-ink section per page, and it must showcase the real product UI.
+  · Phone mocks: interiors use --app-* (the actual CALM app). data-shot slot convention unchanged.
+  · Motion gentle: fades/lifts only; reduced-motion collapses everything.
+  Link order: <link rel="stylesheet" href="/tokens.css"> then <link rel="stylesheet" href="/site.css">
+  Fonts (CSP-safe): https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&family=IBM+Plex+Mono:wght@400;500&display=swap
+  theme-color: #FEFDFB
+*/
+:root{
+
+  /* ─────────── 1 · BASE ─────────── */
+  --bg:#FEFDFB;                 /* warm white body */
+  --bg-soft:#F8F6F1;            /* soft alternate */
+  --surface:#FFFFFF;            /* cards */
+  --ink:#221E19;                /* warm near-black */
+  --ink-90:rgba(34,30,25,.90);  /* headlines */
+  --ink-65:rgba(34,30,25,.65);  /* secondary text */
+  --ink-45:rgba(34,30,25,.45);  /* captions / placeholders */
+  --ink-12:rgba(34,30,25,.12);  /* hairlines */
+  --ink-06:rgba(34,30,25,.06);  /* faint fills */
+
+  /* ─────────── 2 · SAGE (the one accent — pastel of the app olive) ─────────── */
+  --sage:#B7C97D;               /* pill fill (ink text on top) */
+  --sage-bright:#C9D89A;        /* hover-lighten */
+  --sage-deep:#8FA254;          /* pressed / icon strokes */
+  --sage-text:#66783A;          /* links, accents ON WHITE (readable) */
+  --sage-pale:#EFF3E0;          /* ghost pill / tint chip */
+  --sage-pale-2:#E4EBCC;        /* tint hover */
+  --sage-a35:rgba(183,201,125,.35);
+  --sage-a18:rgba(183,201,125,.18);
+
+  /* panel washes (colour lives here) */
+  --panel-sage:linear-gradient(180deg,#EFF3DC 0%,#DFE8C2 100%);
+  --panel-sage-radial:radial-gradient(120% 90% at 50% 0%,#F3F6E4 0%,#DFE8C2 100%);
+  --panel-cream:linear-gradient(180deg,#FFF6E2 0%,#F7ECD0 100%);
+  --panel-soft:linear-gradient(180deg,#F8F6F1 0%,#EFEDE5 100%);
+
+  /* warm secondary (tiny doses: highlights, chart second series) */
+  --gold:#D9A62E; --gold-deep:#B2841F; --gold-pale:#F7ECD0;
+  --terracotta:#A8482E;         /* "I owe" chip only — never alarm */
+
+  /* ─────────── 3 · INK SECTION (max one per page — the real-product showcase) ─────────── */
+  --ink-panel:#1B1814;          /* near-black warm plane */
+  --ink-panel-2:#26221C;        /* raised card on ink */
+  --on-ink:#F7F5F0;
+  --on-ink-65:rgba(247,245,240,.65);
+  --on-ink-40:rgba(247,245,240,.40);
+  --on-ink-12:rgba(247,245,240,.12);
+
+  /* ─────────── 4 · APP-MOCK scope (inside phone frames only — the real CALM app) ─────────── */
+  --app-bg:#F9F9F7; --app-surface:#ffffff; --app-olive:#4F5104; --app-olive-light:#6B6D1A;
+  --app-text:#1A1A1A; --app-text-2:#555555; --app-border:#E5E0D8; --app-cream:#FFF7E6;
+
+  /* ─────────── 5 · TYPE ─────────── */
+  --font:'Outfit',-apple-system,'Segoe UI',Roboto,sans-serif;          /* grotesk, medium weights */
+  --font-accent:'Fraunces',Georgia,serif;                              /* ITALIC accent word only */
+  --font-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;   /* labels, numerals, captions */
+  --fw-regular:400; --fw-medium:500; --fw-semibold:600;                /* no 700+, per studied DNA */
+
+  --text-xs:clamp(0.72rem,0.70rem + 0.10vw,0.78rem);
+  --text-sm:clamp(0.84rem,0.81rem + 0.15vw,0.92rem);
+  --text-base:1.03rem;
+  --text-md:clamp(1.06rem,1.00rem + 0.25vw,1.20rem);
+  --text-lg:clamp(1.20rem,1.10rem + 0.50vw,1.48rem);   /* leads */
+  --text-xl:clamp(1.45rem,1.25rem + 0.90vw,1.95rem);
+  --text-2xl:clamp(1.80rem,1.45rem + 1.60vw,2.60rem);  /* card titles */
+  --text-3xl:clamp(2.20rem,1.60rem + 2.50vw,3.40rem);  /* H2 — studied 40px band */
+  --text-display:clamp(2.80rem,1.80rem + 4.60vw,4.80rem); /* hero — studied 72px band, weight 500 */
+  --tracking-display:-0.045em;   /* studied -5% */
+  --tracking-tight:-0.02em; --tracking-normal:0; --tracking-caps:0.10em;
+  --leading-tight:1.08; --leading-snug:1.2; --leading-normal:1.55; --leading-relaxed:1.7;
+
+  /* ─────────── 6 · SPACE ─────────── */
+  --space-3xs:2px; --space-2xs:4px; --space-xs:8px; --space-sm:12px; --space-md:16px;
+  --space-lg:24px; --space-xl:32px; --space-2xl:48px; --space-3xl:64px; --space-4xl:96px; --space-5xl:128px;
+  --section-y:clamp(72px,6vw + 48px,140px);            /* studied: huge whitespace */
+
+  /* ─────────── 7 · RADIUS (soft, generous — studied) ─────────── */
+  --radius-sm:10px; --radius-md:14px; --radius-lg:20px; --radius-xl:28px;
+  --radius-panel:clamp(24px,4vw,44px);                 /* the giant panel corners */
+  --radius-pill:999px;
+
+  /* ─────────── 8 · DEPTH (soft float, no glow) ─────────── */
+  --shadow-sm:0 1px 2px rgba(34,30,25,.05),0 4px 12px rgba(34,30,25,.05);
+  --shadow-md:0 2px 4px rgba(34,30,25,.05),0 12px 32px rgba(34,30,25,.08);
+  --shadow-lg:0 4px 8px rgba(34,30,25,.05),0 24px 64px rgba(34,30,25,.10);
+  --shadow-phone:0 4px 10px rgba(34,30,25,.08),0 32px 80px rgba(34,30,25,.16);
+  --focus-ring:0 0 0 3px var(--sage-a35),0 0 0 1.5px var(--sage-deep);   /* instant, never animated */
+
+  /* ─────────── 9 · MOTION ─────────── */
+  --dur-fast:120ms; --dur-base:220ms; --dur-slow:400ms;
+  --ease-out:cubic-bezier(.22,.61,.36,1); --ease-in:cubic-bezier(.55,.06,.68,.19); --ease-in-out:cubic-bezier(.65,0,.35,1);
+
+  /* ─────────── 10 · Z / LAYOUT (studied widths) ─────────── */
+  --z-grain:1; --z-base:2; --z-sheet:99; --z-nav:100; --z-skip:1000;
+  --maxw:990px; --maxw-wide:1160px; --maxw-prose:620px; --nav-h:76px;
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  /* ─────────── 11 · LEGACY ALIASES (safety while pages migrate) ─────────── */
+  --bg2:var(--bg-soft); --text:var(--ink-90); --text2:var(--ink-65); --text3:var(--ink-45);
+  --text-muted:var(--ink-45); --border:var(--ink-12); --border2:var(--ink-06); --cream:var(--gold-pale);
+  --olive:var(--sage-text); --olive-dark:var(--sage-deep); --olive-light:var(--sage); --olive-deep:var(--ink);
+  --bronze:var(--ink-45); --bronze2:var(--ink-65); --gold-bright:var(--gold); --sky:var(--sage-text); --mauve:var(--sage-text); --biz:var(--gold-deep);
+  --ff:var(--font); --r-xs:6px; --r-sm:var(--radius-sm); --r-md:var(--radius-md); --r-lg:var(--radius-lg);
+  --r-xl:var(--radius-xl); --r-2xl:var(--radius-panel); --r-full:var(--radius-pill);
+  --shadow:var(--shadow-sm); --shadow-nav:var(--shadow-sm); --shadow-xl:var(--shadow-lg); --d:0ms;
+}

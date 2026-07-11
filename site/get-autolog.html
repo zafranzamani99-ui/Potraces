@@ -1,17 +1,19 @@
 <!DOCTYPE html>
 <!--
   Potraces — Get Auto Log (Apple Pay auto-log download landing).  jejakbaki.my/autolog
-  Single self-contained file. Reuses the head/nav/footer/scripts VERBATIM from site/index.html
-  so it's pixel-consistent with the rest of the site. Only page-specific styles are scoped below
-  the shared design system. No build step, no framework, no external images/CDNs (CSP blocks them).
-  Landed on from Safari after tapping the /dl/auto-log download link — mobile-first.
+  TENANG v5: the studied aave.com system — white body, ink at opacity steps, ONE pastel
+  sage accent, Outfit weight-500 display, one Fraunces-italic word per headline, flat
+  r=999 pills, colour living in a giant-radius panel. Chrome + design system come from
+  /tokens.css + /site.css (shared, byte-identical site-wide). Only a slim page-unique
+  <style> and this page's copy live below. No build step, no framework, no external
+  images/CDNs (CSP blocks them). Mobile-first — landed on from Safari after tapping /dl/auto-log.
 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="theme-color" content="#4F5104">
+<meta name="theme-color" content="#FEFDFB">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://iydqeeonaljqapulboaz.supabase.co">
 
 <title>Add Potraces Auto Log</title>
@@ -45,176 +47,40 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Shared design system — tokens FIRST, then site. -->
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
 
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#F9F9F7;--bg2:#F5F3EF;--surface:#fff;
-  --olive:#4F5104;--olive-dark:#3D3E04;--olive-light:#6B6D1A;--olive-deep:#332D03;
-  --bronze:#786148;--bronze2:#855800;--gold:#8A5C00;--gold-bright:#DEAB22;
-  --sky:#6BA3BE;--mauve:#A688B8;--terracotta:#A8482E;--biz:#8A5C00;
-  --text:#1A1A1A;--text2:#555;--text3:#6B6B6B;--text-muted:#6E6E6E;
-  --border:#E5E0D8;--border2:#F0EDE8;--cream:#FFF7E6;
-  --r-xs:4px;--r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-2xl:28px;--r-full:9999px;
-  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-  --shadow-md:0 4px 16px rgba(0,0,0,.08);
-  --shadow-lg:0 8px 24px rgba(0,0,0,.10);
-  --shadow-xl:0 12px 40px rgba(0,0,0,.12),0 4px 12px rgba(0,0,0,.06);
-  --maxw:1120px;
-  --nav-h:64px;
-  --d:0ms; /* per-tile reveal stagger */
-  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  --ff:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-}
-html{scroll-behavior:smooth;overflow-x:clip}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-body{font-family:var(--ff);background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
-img,svg{max-width:100%;display:block}
-a{color:inherit;text-decoration:none}
-button{font-family:inherit;cursor:pointer}
-.tnum{font-variant-numeric:tabular-nums}
-.block{display:block}
+/* Hallmark · TENANG v5 · studied: aave.com · get-autolog.html */
+/* Page-unique only: the setup hero panel, hairline numbered steps, quiet footnotes.
+   Everything else (nav, pills, panel, eyebrow, accent-word, faq-2col, footer) is the
+   shared kit in /tokens.css + /site.css. White body — colour lives in the sage panel. */
 
-/* full-page soft-light grain — kills the flat figma look */
-.grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.04;mix-blend-mode:soft-light;background-image:var(--grain)}
+/* ── HERO — centered stack on ONE giant-radius sage wash (studied hero pattern) ── */
+.al-hero{padding:calc(var(--nav-h) + 28px) 0 0}
+.al-panel{display:flex;flex-direction:column;align-items:center;text-align:center}
+.al-file{color:var(--ink-45);margin-bottom:var(--space-lg)}
+.al-panel .badge{margin-bottom:var(--space-md)}
+.al-panel h1{font-size:var(--text-display);font-weight:var(--fw-medium);letter-spacing:var(--tracking-display);line-height:var(--leading-tight);max-width:14ch;margin:0 0 var(--space-md)}
+.al-panel .lead{font-size:var(--text-lg);color:var(--ink-65);line-height:var(--leading-normal);max-width:var(--maxw-prose);margin:0 0 var(--space-xl)}
+.al-hand{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);margin-top:14px}
+.al-meta{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);margin-top:var(--space-lg);padding-top:14px;border-top:1px solid var(--ink-12);max-width:52ch}
 
-/* layout */
-.container{width:100%;max-width:var(--maxw);margin:0 auto;padding:0 20px}
-section{position:relative;z-index:2}
-.eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--bronze2);background:rgba(154,100,0,.07);padding:6px 13px;border-radius:var(--r-full);border:1px solid rgba(154,100,0,.12)}
-.section-head{max-width:680px;margin:0 auto 44px;text-align:center}
-.section-head h2{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:600;letter-spacing:-.5px;line-height:1.2;margin:18px 0 14px}
-.section-head p{font-size:clamp(1rem,2vw,1.12rem);color:var(--text2);line-height:1.6}
-.h-accent{color:var(--olive)}
+/* mono kicker — quiet section file-label voice */
+.al-kicker{color:var(--ink-45);display:inline-block;margin-bottom:var(--space-md)}
 
-/* skip link */
-.skip{position:absolute;left:0;top:-60px;z-index:1000;background:var(--olive);color:#fff;padding:12px 18px;border-radius:0 0 var(--r-md) 0;font-weight:600}
-.skip:focus{top:0}
+/* ── STEPS — hairline numbered rows, sage number chips ── */
+.al-steps{list-style:none;max-width:var(--maxw-prose);margin:0 auto;border-top:1px solid var(--ink-12)}
+.al-step{display:flex;gap:18px;align-items:flex-start;padding:24px 4px;border-bottom:1px solid var(--ink-12)}
+.al-num{font-family:var(--font-mono);font-size:var(--text-sm);font-weight:var(--fw-medium);color:var(--sage-text);background:var(--sage-pale);border-radius:var(--radius-pill);width:34px;height:34px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center}
+.al-step h3{font-size:var(--text-md);font-weight:var(--fw-medium);margin-bottom:5px}
+.al-step p{color:var(--ink-65);line-height:var(--leading-relaxed);max-width:58ch}
 
-/* focus */
-a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(79,81,4,.4);border-radius:var(--r-sm)}
-
-/* ─── NAV ─── */
-.nav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-h);display:flex;align-items:center;transition:background .25s ease,box-shadow .25s ease,border-color .25s ease;border-bottom:1px solid transparent}
-.nav.scrolled{background:rgba(249,249,247,.88);backdrop-filter:saturate(140%) blur(14px);-webkit-backdrop-filter:saturate(140%) blur(14px);border-bottom-color:var(--border);box-shadow:0 1px 0 rgba(0,0,0,.02),0 6px 18px rgba(0,0,0,.04)}
-.nav .container{display:flex;align-items:center;justify-content:space-between;gap:16px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.18rem;letter-spacing:-.4px}
-.brand .logo{width:38px;height:38px;border-radius:11px;overflow:hidden;flex-shrink:0;box-shadow:var(--shadow);display:block}
-.brand .logo svg{width:100%;height:100%;display:block}
-.nav-links{display:none;align-items:center;gap:4px}
-.nav-links a{font-size:.94rem;font-weight:500;color:var(--text2);padding:9px 13px;border-radius:var(--r-md);transition:color .15s,background .15s}
-.nav-links a:hover{color:var(--text);background:rgba(26,26,26,.05)}
-.nav-links a.active{color:var(--olive);background:rgba(79,81,4,.08)}
-.nav-right{display:flex;align-items:center;gap:10px}
-
-.lang-toggle{display:inline-flex;background:rgba(26,26,26,.06);border:1px solid var(--border);border-radius:var(--r-full);padding:3px;gap:2px}
-.lang-toggle button{border:none;background:transparent;color:var(--text3);font-size:.8rem;font-weight:600;padding:8px 14px;border-radius:var(--r-full);min-height:44px;transition:color .15s}
-.lang-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--olive);box-shadow:var(--shadow)}
-
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:.95rem;border:none;border-radius:var(--r-full);padding:12px 22px;min-height:46px;transition:transform .12s ease,box-shadow .2s,background .2s;white-space:nowrap}
-.btn:active{transform:scale(.97)}
-.btn-primary{background:var(--olive);color:#fff;box-shadow:0 4px 14px rgba(79,81,4,.22)}
-.btn-primary:hover{background:var(--olive-dark);box-shadow:0 6px 20px rgba(79,81,4,.28)}
-.nav .btn{padding:9px 18px;min-height:42px;font-size:.9rem}
-.btn-sm{padding:8px 16px;min-height:40px;font-size:.88rem}
-
-/* hamburger */
-.hamburger{display:inline-flex;flex-direction:column;justify-content:center;gap:5px;width:44px;height:44px;align-items:center;background:transparent;border:1px solid var(--border);border-radius:var(--r-md)}
-.hamburger span{width:20px;height:2px;background:var(--text);border-radius:2px;transition:transform .2s,opacity .2s}
-.hamburger[aria-expanded="true"] span:nth-child(1){transform:translateY(7px) rotate(45deg)}
-.hamburger[aria-expanded="true"] span:nth-child(2){opacity:0}
-.hamburger[aria-expanded="true"] span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
-
-.mobile-sheet{position:fixed;inset:0;z-index:99;background:rgba(249,249,247,.98);backdrop-filter:blur(8px);display:flex;flex-direction:column;padding:calc(var(--nav-h) + 16px) 24px 32px;transform:translateY(-12px);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
-.mobile-sheet.open{opacity:1;transform:translateY(0);pointer-events:auto}
-.mobile-sheet a{font-size:1.3rem;font-weight:600;padding:16px 4px;border-bottom:1px solid var(--border2);color:var(--text)}
-.mobile-sheet a.active{color:var(--olive)}
-.mobile-sheet .btn-primary{margin-top:24px;font-size:1.05rem;padding:16px}
-
-/* reveal */
-.reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease;transition-delay:var(--d)}
-.reveal.in{opacity:1;transform:none}
-@media (prefers-reduced-motion:reduce){
-  .reveal{opacity:1;transform:none;transition:none}
-}
-
-/* ─── FOOTER ─── */
-.footer{background:var(--bg);border-top:1px solid var(--border);padding:56px 0 32px}
-.footer-grid{display:grid;grid-template-columns:1fr;gap:36px;margin-bottom:40px}
-.footer-brand .brand{margin-bottom:14px}
-.footer-brand .bline{font-size:.92rem;color:var(--text3);line-height:1.6;max-width:300px}
-.footer-cols{display:grid;grid-template-columns:1fr 1fr;gap:30px}
-.footer-col h4{font-size:.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--bronze);font-weight:700;margin-bottom:14px}
-.footer-col a,.footer-col span{display:block;font-size:.92rem;color:var(--text2);padding:10px 0;transition:color .15s}
-.footer-col a:hover{color:var(--olive)}
-.footer-bottom{border-top:1px solid var(--border2);padding-top:24px;display:flex;flex-direction:column;gap:14px;align-items:flex-start}
-.footer-bottom .fb-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;width:100%}
-.footer-bottom .copy{font-size:.84rem;color:var(--text3)}
-.footer-bottom .made{font-size:.84rem;color:var(--text3);display:inline-flex;align-items:center;gap:6px}
-.footer-disclaimer{font-size:.78rem;color:var(--text-muted);line-height:1.5;max-width:680px}
-
-/* ─── RESPONSIVE (shared chrome) ─── */
-@media (min-width:560px){
-  .footer-cols{grid-template-columns:repeat(3,1fr)}
-}
-@media (min-width:768px){
-  .container{padding:0 32px}
-  .footer-grid{grid-template-columns:1.4fr 2fr}
-  .footer-cols{grid-template-columns:repeat(3,1fr)}
-}
-@media (min-width:900px){
-  .nav-links{display:flex}
-  .hamburger{display:none}
-}
-@media (max-width:899px){
-  .nav-right .lang-toggle{display:none}
-  .nav-right .btn-beta-nav{display:none}
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   PAGE-SPECIFIC — Get Auto Log (download landing, mobile-first)
-   ══════════════════════════════════════════════════════════════════ */
-
-/* hero */
-.gs-hero{padding:calc(var(--nav-h) + 40px) 0 48px;position:relative;overflow:hidden}
-.gs-hero::before{content:'';position:absolute;inset:-15% -10% 0;z-index:0;pointer-events:none;
-  background:radial-gradient(60% 50% at 18% 22%,rgba(79,81,4,.10),transparent 70%),
-            radial-gradient(50% 45% at 85% 18%,rgba(178,120,10,.10),transparent 70%),
-            radial-gradient(45% 40% at 30% 90%,rgba(107,163,190,.06),transparent 70%);
-  filter:blur(6px)}
-.gs-hero .container{position:relative;z-index:2;max-width:600px;text-align:center}
-.gs-hero h1{font-size:clamp(1.9rem,7vw,2.6rem);font-weight:700;letter-spacing:-.7px;line-height:1.12;margin:18px 0 14px;color:var(--text)}
-.gs-hero .lead{font-size:clamp(1rem,3vw,1.12rem);color:var(--text2);line-height:1.6;max-width:480px;margin:0 auto}
-
-.gs-cta{margin-top:30px;display:flex;flex-direction:column;align-items:center;gap:12px}
-.gs-cta .btn-primary{font-size:1.08rem;padding:17px 34px;min-height:58px;width:100%;max-width:340px;box-shadow:0 6px 22px rgba(79,81,4,.30)}
-.gs-cta .gs-meta{font-size:.84rem;color:var(--text3)}
-
-/* numbered steps */
-.gs-how{padding:52px 0 60px;background:var(--bg2)}
-.gs-steps{display:flex;flex-direction:column;gap:18px;max-width:640px;margin:0 auto}
-.gs-step{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:22px 20px;box-shadow:var(--shadow);display:flex;gap:16px;align-items:flex-start}
-.gs-step .gs-num{width:34px;height:34px;border-radius:50%;background:var(--olive);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.98rem;flex-shrink:0;box-shadow:0 3px 10px rgba(79,81,4,.28)}
-.gs-step:nth-child(2) .gs-num{background:var(--gold-bright);color:var(--olive-deep);box-shadow:0 3px 10px rgba(222,171,34,.32)}
-.gs-step:nth-child(3) .gs-num{background:var(--olive-light);box-shadow:0 3px 10px rgba(107,109,26,.28)}
-.gs-step:nth-child(4) .gs-num{background:var(--bronze2);box-shadow:0 3px 10px rgba(133,88,0,.28)}
-.gs-step-body h3{font-size:1.04rem;font-weight:600;letter-spacing:-.2px;margin-bottom:5px}
-.gs-step-body p{color:var(--text2);font-size:.92rem;line-height:1.55}
-
-/* troubleshooting cards */
-.gs-trouble{padding:52px 0 64px;background:var(--surface)}
-.gs-cards{display:flex;flex-direction:column;gap:14px;max-width:640px;margin:0 auto}
-.gs-card{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-lg);padding:18px 20px}
-.gs-card h3{font-size:.96rem;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px}
-.gs-card h3::before{content:'⚠';font-size:.9rem;flex-shrink:0}
-.gs-card p{font-size:.9rem;color:var(--text2);line-height:1.55}
-
-.gs-note{max-width:520px;margin:36px auto 0;text-align:center;font-size:.86rem;color:var(--text3);line-height:1.6}
-
-@media (min-width:768px){
-  .gs-step{padding:26px 24px}
-}
+/* ── FOOTNOTE — the honest small print, quiet ink-45, never alarmed ── */
+.al-footnote{max-width:var(--maxw-wide);margin:var(--space-2xl) auto 0;font-size:var(--text-sm);color:var(--ink-45);line-height:var(--leading-relaxed)}
 </style>
 </head>
 <body>
@@ -224,9 +90,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 <!-- ════════════ NAV ════════════ -->
 <header class="nav" id="nav">
   <div class="container">
-    <a class="brand" href="/#top" aria-label="Potraces home">
+    <a class="brand" href="/" aria-label="Potraces home">
       <span class="logo" aria-hidden="true" id="navlogo"></span>
-      <span>Potraces</span>
+      <span data-en="Potraces" data-bm="Potraces">Potraces</span>
     </a>
     <nav class="nav-links" aria-label="Primary">
       <a href="/" data-en="Home" data-bm="Laman utama">Home</a>
@@ -257,92 +123,99 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 </div>
 
 <main id="main">
-<span id="top"></span>
 
-<!-- ════════════ HERO + DOWNLOAD ════════════ -->
-<section class="gs-hero">
+<!-- ════════════ HERO — download panel (colour lives here) ════════════ -->
+<section class="al-hero">
   <div class="container">
-    <span class="eyebrow" data-en="Advanced · Apple Pay" data-bm="Advanced · Apple Pay">Advanced · Apple Pay</span>
-    <h1>
-      <span data-en="Add Auto Log" data-bm="Tambah Auto Log" class="block">Add Auto Log</span>
-    </h1>
-    <p class="lead">
-      <span data-en="Logs your Apple Pay taps automatically. Set up Quick Log (Back Tap) first — this reuses the same key." data-bm="Log tapping Apple Pay kau secara automatik. Setup Quick Log (Back Tap) dulu — ni guna key yang sama." class="block">Logs your Apple Pay taps automatically. Set up Quick Log (Back Tap) first — this reuses the same key.</span>
-    </p>
-    <div class="gs-cta">
-      <a class="btn btn-primary" href="/dl/auto-log" data-en="Add the Shortcut" data-bm="Tambah Shortcut">Add the Shortcut</a>
-      <span class="gs-meta" data-en="For iPhone users who pay with Apple Pay. Optional." data-bm="Untuk pengguna iPhone yang bayar guna Apple Pay. Optional je.">For iPhone users who pay with Apple Pay. Optional.</span>
+    <div class="panel panel--sage-radial al-panel reveal">
+      <span class="mono-caps al-file"><span data-en="M-02" data-bm="M-02">M-02</span> · <span data-en="Owner's manual" data-bm="Manual pengguna">Owner's manual</span></span>
+      <span class="eyebrow">
+        <span class="ic" id="herowau" aria-hidden="true"></span>
+        <span data-en="Advanced · Apple Pay" data-bm="Advanced · Apple Pay">Advanced · Apple Pay</span>
+      </span>
+      <span class="badge badge--sage" data-en="Percuma · Free" data-bm="Percuma">Percuma · Free</span>
+      <h1>
+        <span data-en="Add " data-bm="Tambah ">Add </span><span class="accent-word" data-en="Auto" data-bm="Auto">Auto</span><span data-en=" Log" data-bm=" Log"> Log</span>
+      </h1>
+      <p class="lead">
+        <span data-en="Logs your Apple Pay taps automatically. Set up Quick Log (Back Tap) first — this reuses the same key." data-bm="Log tapping Apple Pay kau secara automatik. Setup Quick Log (Back Tap) dulu — ni guna key yang sama." class="block">Logs your Apple Pay taps automatically. Set up Quick Log (Back Tap) first — this reuses the same key.</span>
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-pill--sage btn-lg" href="/dl/auto-log" data-en="Add the Shortcut" data-bm="Tambah Shortcut">Add the Shortcut</a>
+      </div>
+      <p class="al-hand" data-en="reuses your Quick Log key" data-bm="guna key Quick Log yang sama">reuses your Quick Log key</p>
+      <p class="al-meta" data-en="For iPhone users who pay with Apple Pay. Optional." data-bm="Untuk pengguna iPhone yang bayar guna Apple Pay. Optional je.">For iPhone users who pay with Apple Pay. Optional.</p>
     </div>
   </div>
 </section>
 
 <!-- ════════════ SET IT UP ════════════ -->
-<section class="gs-how" id="setup">
+<section class="al-how" id="setup">
   <div class="container">
     <div class="section-head reveal">
-      <span class="eyebrow" data-en="Set it up" data-bm="Setup ia">Set it up</span>
+      <span class="mono-caps al-kicker"><span data-en="§ 1" data-bm="§ 1">§ 1</span> · <span data-en="Set it up" data-bm="Setup ia">Set it up</span></span>
       <h2>
-        <span data-en="A bit more wiring, once." data-bm="Sikit lagi wiring, sekali je." class="block">A bit more wiring, once.</span>
+        <span data-en="A bit more " data-bm="Sikit lagi ">A bit more </span><span class="accent-word" data-en="wiring," data-bm="wiring,">wiring,</span><span data-en=" once." data-bm=" sekali je."> once.</span>
       </h2>
     </div>
-    <div class="gs-steps">
-      <article class="gs-step reveal" style="--d:0ms">
-        <span class="gs-num" aria-hidden="true">1</span>
-        <div class="gs-step-body">
+    <ol class="al-steps">
+      <li class="al-step reveal" style="--d:0ms">
+        <span class="al-num" aria-hidden="true">1</span>
+        <div>
           <h3 data-en="Add the shortcut" data-bm="Tambah shortcut">Add the shortcut</h3>
           <p data-en="Tap the button above, then in Safari tap the download → the file → 'Add Shortcut'." data-bm="Tap butang atas tu, lepas tu dalam Safari tap download → file tu → 'Add Shortcut'.">Tap the button above, then in Safari tap the download → the file → 'Add Shortcut'.</p>
         </div>
-      </article>
-      <article class="gs-step reveal" style="--d:70ms">
-        <span class="gs-num" aria-hidden="true">2</span>
-        <div class="gs-step-body">
+      </li>
+      <li class="al-step reveal" style="--d:70ms">
+        <span class="al-num" aria-hidden="true">2</span>
+        <div>
           <h3 data-en="Create the automation" data-bm="Buat automation">Create the automation</h3>
           <p data-en="Open Shortcuts → Automation → New → Transaction (or Wallet on iOS 26). Set 'Run Immediately' and turn notifications off." data-bm="Buka Shortcuts → Automation → New → Transaction (atau Wallet kat iOS 26). Set 'Run Immediately' dan matikan notifications.">Open Shortcuts → Automation → New → Transaction (or Wallet on iOS 26). Set 'Run Immediately' and turn notifications off.</p>
         </div>
-      </article>
-      <article class="gs-step reveal" style="--d:140ms">
-        <span class="gs-num" aria-hidden="true">3</span>
-        <div class="gs-step-body">
+      </li>
+      <li class="al-step reveal" style="--d:140ms">
+        <span class="al-num" aria-hidden="true">3</span>
+        <div>
           <h3 data-en="Feed it the payment" data-bm="Bagi dia info bayaran">Feed it the payment</h3>
           <p data-en="Add a Text action that reads Amount, Merchant and Card (double-tap each to pick the field), joined with | like Amount|Merchant|Card. Then add 'Run Shortcut → Potraces Auto Log' with that text." data-bm="Tambah Text action yang baca Amount, Merchant dan Card (double-tap setiap satu untuk pilih field tu), gabung dengan | macam Amount|Merchant|Card. Lepas tu tambah 'Run Shortcut → Potraces Auto Log' dengan text tu.">Add a Text action that reads Amount, Merchant and Card (double-tap each to pick the field), joined with | like Amount|Merchant|Card. Then add 'Run Shortcut → Potraces Auto Log' with that text.</p>
         </div>
-      </article>
-      <article class="gs-step reveal" style="--d:210ms">
-        <span class="gs-num" aria-hidden="true">4</span>
-        <div class="gs-step-body">
+      </li>
+      <li class="al-step reveal" style="--d:210ms">
+        <span class="al-num" aria-hidden="true">4</span>
+        <div>
           <h3 data-en="Pay with Apple Pay" data-bm="Bayar guna Apple Pay">Pay with Apple Pay</h3>
           <p data-en="Potraces logs it automatically as category 'Other' — just set the real category later in the app." data-bm="Potraces log automatik sebagai kategori 'Other' — kau set kategori sebenar lepas tu dalam app.">Potraces logs it automatically as category 'Other' — just set the real category later in the app.</p>
         </div>
-      </article>
-    </div>
+      </li>
+    </ol>
   </div>
 </section>
 
-<!-- ════════════ TROUBLESHOOTING ════════════ -->
-<section class="gs-trouble" id="help">
+<!-- ════════════ TROUBLESHOOTING — studied two-column FAQ ════════════ -->
+<section class="al-trouble" id="help">
   <div class="container">
-    <div class="section-head reveal">
-      <span class="eyebrow" data-en="If it doesn't work" data-bm="Kalau tak jalan">If it doesn't work</span>
-      <h2>
-        <span data-en="Common hiccups" data-bm="Masalah biasa" class="block">Common hiccups</span>
-      </h2>
+    <div class="faq-2col">
+      <div class="reveal">
+        <span class="mono-caps al-kicker"><span data-en="§ 2" data-bm="§ 2">§ 2</span> · <span data-en="If it doesn't work" data-bm="Kalau tak jalan">If it doesn't work</span></span>
+        <h2 class="faq-label" data-en="Common hiccups" data-bm="Masalah biasa">Common hiccups</h2>
+      </div>
+      <div class="faq-list reveal">
+        <details class="faq-item">
+          <summary><span data-en="Nothing logged after paying?" data-bm="Tak ada apa-apa log lepas bayar?">Nothing logged after paying?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <p class="faq-answer" data-en="Apple's transaction trigger can be slow or miss a tap — it's an iOS limitation. Try another payment." data-bm="Transaction trigger Apple boleh lambat atau miss satu tap — ni limitation iOS. Cuba bayar sekali lagi.">Apple's transaction trigger can be slow or miss a tap — it's an iOS limitation. Try another payment.</p>
+        </details>
+        <details class="faq-item">
+          <summary><span data-en="Amount is 0 or wrong?" data-bm="Amount 0 atau salah?">Amount is 0 or wrong?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <p class="faq-answer" data-en="Rebuild the Text action — each field must be picked with the double-tap gesture, not typed." data-bm="Rebuild Text action tu — setiap field kena pilih guna double-tap gesture, bukan taip sendiri.">Rebuild the Text action — each field must be picked with the double-tap gesture, not typed.</p>
+        </details>
+        <details class="faq-item">
+          <summary><span data-en="No key error?" data-bm="Error 'no key'?">No key error?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <p class="faq-answer" data-en="Set up Quick Log (Back Tap) first — that's what saves the key Auto Log reuses." data-bm="Setup Quick Log (Back Tap) dulu — itu yang simpan key yang Auto Log guna semula.">Set up Quick Log (Back Tap) first — that's what saves the key Auto Log reuses.</p>
+        </details>
+      </div>
     </div>
-    <div class="gs-cards">
-      <article class="gs-card reveal" style="--d:0ms">
-        <h3 data-en="Nothing logged after paying?" data-bm="Tak ada apa-apa log lepas bayar?">Nothing logged after paying?</h3>
-        <p data-en="Apple's transaction trigger can be slow or miss a tap — it's an iOS limitation. Try another payment." data-bm="Transaction trigger Apple boleh lambat atau miss satu tap — ni limitation iOS. Cuba bayar sekali lagi.">Apple's transaction trigger can be slow or miss a tap — it's an iOS limitation. Try another payment.</p>
-      </article>
-      <article class="gs-card reveal" style="--d:60ms">
-        <h3 data-en="Amount is 0 or wrong?" data-bm="Amount 0 atau salah?">Amount is 0 or wrong?</h3>
-        <p data-en="Rebuild the Text action — each field must be picked with the double-tap gesture, not typed." data-bm="Rebuild Text action tu — setiap field kena pilih guna double-tap gesture, bukan taip sendiri.">Rebuild the Text action — each field must be picked with the double-tap gesture, not typed.</p>
-      </article>
-      <article class="gs-card reveal" style="--d:120ms">
-        <h3 data-en="No key error?" data-bm="Error 'no key'?">No key error?</h3>
-        <p data-en="Set up Quick Log (Back Tap) first — that's what saves the key Auto Log reuses." data-bm="Setup Quick Log (Back Tap) dulu — itu yang simpan key yang Auto Log guna semula.">Set up Quick Log (Back Tap) first — that's what saves the key Auto Log reuses.</p>
-      </article>
-    </div>
-    <p class="gs-note reveal">
-      <span data-en="Works only with Apple Pay contactless taps — not DuitNow QR, TnG or cash. Few Malaysian banks support Apple Pay." data-bm="Hanya berfungsi dengan Apple Pay contactless tap — bukan DuitNow QR, TnG atau tunai. Sikit je bank Malaysia sokong Apple Pay." class="block">Works only with Apple Pay contactless taps — not DuitNow QR, TnG or cash. Few Malaysian banks support Apple Pay.</span>
+    <p class="al-footnote reveal">
+      <span data-en="Works only with Apple Pay contactless taps — not DuitNow QR, TnG or cash. Few Malaysian banks support Apple Pay." data-bm="Hanya berfungsi dengan Apple Pay contactless tap — bukan DuitNow QR, TnG atau tunai. Sikit je bank Malaysia sokong Apple Pay.">Works only with Apple Pay contactless taps — not DuitNow QR, TnG or cash. Few Malaysian banks support Apple Pay.</span>
     </p>
   </div>
 </section>
@@ -354,9 +227,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
   <div class="container">
     <div class="footer-grid">
       <div class="footer-brand">
-        <a class="brand" href="/#top" aria-label="Potraces home">
+        <a class="brand" href="/" aria-label="Potraces home">
           <span class="logo" aria-hidden="true" id="footlogo"></span>
-          <span>Potraces</span>
+          <span data-en="Potraces" data-bm="Potraces">Potraces</span>
         </a>
         <p class="bline" data-en="Calm money tracking for irregular earners in Malaysia." data-bm="Jejak duit yang tenang untuk pencari rezeki tak tetap di Malaysia.">Calm money tracking for irregular earners in Malaysia.</p>
       </div>
@@ -384,7 +257,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
       <div class="fb-row">
         <span class="copy">© <span id="year">2026</span> Potraces · jejakbaki.my</span>
         <span class="made">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8B7355" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-4.5-9-9a4.8 4.8 0 0 1 9-2 4.8 4.8 0 0 1 9 2c-2 4.5-9 9-9 9z"/></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-4.5-9-9a4.8 4.8 0 0 1 9-2 4.8 4.8 0 0 1 9 2c-2 4.5-9 9-9 9z"/></svg>
           <span data-en="Made in Malaysia" data-bm="Buatan Malaysia">Made in Malaysia</span>
         </span>
       </div>
@@ -394,7 +267,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 </footer>
 
 <script>
-/* ── inline wau SVG (sage), injected into logo + watermark slots ── */
+/* ── inline wau SVG (sage) — PRESERVED VERBATIM from this page (contract #5), injected into logo slots ── */
 var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" role="img" aria-label="Potraces wau kite logo">\
 <rect width="1024" height="1024" fill="#5E7B6A"/>\
 <circle cx="512" cy="490" r="350" fill="#F1E7D3" opacity="0.05"/>\
@@ -438,12 +311,12 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
 </g>\
 <circle cx="512" cy="368" r="11" fill="#B2780A"/>\
 </g></svg>';
-['navlogo','footlogo'].forEach(function(id){
+['navlogo','footlogo','herowau','herowau2','storywau','darkwau','ctawau','wlicon','wlicon2'].forEach(function(id){
   var el = document.getElementById(id);
   if (el) el.innerHTML = WAU_SVG;
 });
 
-/* ── language toggle (persisted, shared key with the rest of the site) ── */
+/* ── language toggle (persisted; shared 'potraces_lang' key across ALL pages) ── */
 (function(){
   var STORAGE='potraces_lang';
   function apply(lang){
@@ -452,7 +325,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       b.setAttribute('aria-pressed', String(b.getAttribute('data-lang')===lang));
     });
     document.querySelectorAll('[data-en]').forEach(function(el){
-      if(el.children.length) return;
+      if(el.children.length) return;                         /* leaf-only swap */
       var t = lang==='ms' ? el.getAttribute('data-bm') : el.getAttribute('data-en');
       if(t!=null) el.textContent = t;
     });
@@ -463,7 +336,9 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       el.setAttribute('aria-label', lang==='ms' ? el.getAttribute('data-aria-bm') : el.getAttribute('data-aria-en'));
     });
     try{ localStorage.setItem(STORAGE, lang); }catch(e){}
+    window.dispatchEvent(new CustomEvent('pt:lang',{detail:{lang:lang}}));  /* dynamic content re-renders */
   }
+  window.__ptLang = function(){ return document.documentElement.getAttribute('lang')==='ms' ? 'ms' : 'en'; };
   var saved='en';
   try{ saved = localStorage.getItem(STORAGE) || 'en'; }catch(e){}
   apply(saved);
@@ -472,9 +347,10 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   });
 })();
 
-/* ── nav scroll state ── */
+/* ── nav scroll-shadow state ── */
 (function(){
   var nav=document.getElementById('nav');
+  if(!nav || nav.classList.contains('nav--sticky')) return;
   function onScroll(){ nav.classList.toggle('scrolled', window.scrollY>12); }
   onScroll();
   window.addEventListener('scroll', onScroll, {passive:true});
@@ -484,6 +360,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
 (function(){
   var btn=document.getElementById('hamburger');
   var sheet=document.getElementById('mobileSheet');
+  if(!btn || !sheet) return;
   function setOpen(open){
     btn.setAttribute('aria-expanded', String(open));
     btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
@@ -496,7 +373,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') setOpen(false); });
 })();
 
-/* ── scroll reveal ── */
+/* ── scroll reveal (degrades to instant on reduced-motion / no IntersectionObserver) ── */
 (function(){
   var els=document.querySelectorAll('.reveal');
   if(!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches){
@@ -508,7 +385,8 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   els.forEach(function(el){ io.observe(el); });
 })();
 
-document.getElementById('year').textContent = String(new Date().getFullYear());
+/* ── current year ── */
+(function(){ var y=document.getElementById('year'); if(y) y.textContent=new Date().getFullYear(); })();
 </script>
 </body>
 </html>

@@ -1,17 +1,22 @@
 <!DOCTYPE html>
 <!--
   Potraces — Get Shortcut (Back Tap Quick Log download landing).  jejakbaki.my/shortcut
-  Single self-contained file. Reuses the head/nav/footer/scripts VERBATIM from site/index.html
-  so it's pixel-consistent with the rest of the site. Only page-specific styles are scoped below
-  the shared design system. No build step, no framework, no external images/CDNs (CSP blocks them).
-  Landed on from Safari after tapping the /dl/quick-log download link — mobile-first.
+  TENANG v5: clean SETUP PAGE from the studied aave.com DNA — centered hero (eyebrow badge +
+  weight-500 display with ONE Fraunces italic sage word), flat ink pill CTA with an honest
+  mono footnote, numbered steps as floating white cards on ONE giant-radius sage panel,
+  troubleshooting as the two-column hairline FAQ accordion.
+  Chrome (nav/footer/lang/grain/buttons/panels/faq) is consumed by name from /tokens.css +
+  /site.css; only the gs-* setup layout lives below — the template get-autolog.html shares
+  (differs only in copy + download href).
+  No build step, no framework, no external images/CDNs (CSP blocks them). Mobile-first —
+  landed on from Safari after tapping the /dl/quick-log download link.
 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="theme-color" content="#4F5104">
+<meta name="theme-color" content="#FEFDFB">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://iydqeeonaljqapulboaz.supabase.co">
 
 <title>Add Potraces Quick Log</title>
@@ -45,176 +50,43 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Shared design system — tokens FIRST, then site. -->
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
 
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#F9F9F7;--bg2:#F5F3EF;--surface:#fff;
-  --olive:#4F5104;--olive-dark:#3D3E04;--olive-light:#6B6D1A;--olive-deep:#332D03;
-  --bronze:#786148;--bronze2:#855800;--gold:#8A5C00;--gold-bright:#DEAB22;
-  --sky:#6BA3BE;--mauve:#A688B8;--terracotta:#A8482E;--biz:#8A5C00;
-  --text:#1A1A1A;--text2:#555;--text3:#6B6B6B;--text-muted:#6E6E6E;
-  --border:#E5E0D8;--border2:#F0EDE8;--cream:#FFF7E6;
-  --r-xs:4px;--r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-2xl:28px;--r-full:9999px;
-  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-  --shadow-md:0 4px 16px rgba(0,0,0,.08);
-  --shadow-lg:0 8px 24px rgba(0,0,0,.10);
-  --shadow-xl:0 12px 40px rgba(0,0,0,.12),0 4px 12px rgba(0,0,0,.06);
-  --maxw:1120px;
-  --nav-h:64px;
-  --d:0ms; /* per-tile reveal stagger */
-  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  --ff:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-}
-html{scroll-behavior:smooth;overflow-x:clip}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-body{font-family:var(--ff);background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
-img,svg{max-width:100%;display:block}
-a{color:inherit;text-decoration:none}
-button{font-family:inherit;cursor:pointer}
-.tnum{font-variant-numeric:tabular-nums}
-.block{display:block}
+/* Hallmark · TENANG v5 · studied: aave.com · get-shortcut.html */
+/* Hallmark · pre-emit critique: P5 H4 E5 S4 R5 V4 */
+/* Page-unique only: the gs-* setup template (doc label row, mono spec footnote,
+   step cards floating on ONE sage panel, FAQ-pattern troubleshooting).
+   Nav, footer, .hero-center, .panel--sage, .card, .btn-pill--ink, .faq-2col,
+   .mono-caps, .badge, .reveal all come from /tokens.css + /site.css. */
 
-/* full-page soft-light grain — kills the flat figma look */
-.grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.04;mix-blend-mode:soft-light;background-image:var(--grain)}
+/* ── HERO extras ── */
+.gs-doclbl{display:flex;align-items:center;justify-content:center;gap:12px;color:var(--ink-45);margin-bottom:var(--space-lg)}
+/* honest mono small print under the CTA */
+.gs-meta{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);margin-top:var(--space-md)}
 
-/* layout */
-.container{width:100%;max-width:var(--maxw);margin:0 auto;padding:0 20px}
-section{position:relative;z-index:2}
-.eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--bronze2);background:rgba(154,100,0,.07);padding:6px 13px;border-radius:var(--r-full);border:1px solid rgba(154,100,0,.12)}
-.section-head{max-width:680px;margin:0 auto 44px;text-align:center}
-.section-head h2{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:600;letter-spacing:-.5px;line-height:1.2;margin:18px 0 14px}
-.section-head p{font-size:clamp(1rem,2vw,1.12rem);color:var(--text2);line-height:1.6}
-.h-accent{color:var(--olive)}
+/* ── quiet ordinal section label (steps are genuinely numbered content) ── */
+.gs-seclbl{display:flex;justify-content:center;gap:8px;color:var(--ink-45);margin-bottom:var(--space-md)}
 
-/* skip link */
-.skip{position:absolute;left:0;top:-60px;z-index:1000;background:var(--olive);color:#fff;padding:12px 18px;border-radius:0 0 var(--r-md) 0;font-weight:600}
-.skip:focus{top:0}
+/* ── STEP CARDS — white floats on the one sage panel ── */
+.gs-prep{max-width:52ch;margin:0 auto var(--space-xl);text-align:center;color:var(--ink-65);line-height:var(--leading-relaxed)}
+.gs-steps{display:grid;grid-template-columns:1fr;gap:16px}
+@media (min-width:768px){.gs-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.gs-step{display:flex;gap:16px;align-items:flex-start}
+.gs-num{flex-shrink:0;width:38px;height:38px;border-radius:var(--radius-pill);background:var(--sage-pale);color:var(--sage-text);
+  font-family:var(--font-mono);font-size:var(--text-sm);font-weight:var(--fw-medium);
+  display:flex;align-items:center;justify-content:center}
+.gs-step h3{font-size:var(--text-md);margin-bottom:6px}
+.gs-step p{color:var(--ink-65);font-size:.95rem;line-height:var(--leading-relaxed)}
 
-/* focus */
-a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(79,81,4,.4);border-radius:var(--r-sm)}
-
-/* ─── NAV ─── */
-.nav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-h);display:flex;align-items:center;transition:background .25s ease,box-shadow .25s ease,border-color .25s ease;border-bottom:1px solid transparent}
-.nav.scrolled{background:rgba(249,249,247,.88);backdrop-filter:saturate(140%) blur(14px);-webkit-backdrop-filter:saturate(140%) blur(14px);border-bottom-color:var(--border);box-shadow:0 1px 0 rgba(0,0,0,.02),0 6px 18px rgba(0,0,0,.04)}
-.nav .container{display:flex;align-items:center;justify-content:space-between;gap:16px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.18rem;letter-spacing:-.4px}
-.brand .logo{width:38px;height:38px;border-radius:11px;overflow:hidden;flex-shrink:0;box-shadow:var(--shadow);display:block}
-.brand .logo svg{width:100%;height:100%;display:block}
-.nav-links{display:none;align-items:center;gap:4px}
-.nav-links a{font-size:.94rem;font-weight:500;color:var(--text2);padding:9px 13px;border-radius:var(--r-md);transition:color .15s,background .15s}
-.nav-links a:hover{color:var(--text);background:rgba(26,26,26,.05)}
-.nav-links a.active{color:var(--olive);background:rgba(79,81,4,.08)}
-.nav-right{display:flex;align-items:center;gap:10px}
-
-.lang-toggle{display:inline-flex;background:rgba(26,26,26,.06);border:1px solid var(--border);border-radius:var(--r-full);padding:3px;gap:2px}
-.lang-toggle button{border:none;background:transparent;color:var(--text3);font-size:.8rem;font-weight:600;padding:8px 14px;border-radius:var(--r-full);min-height:44px;transition:color .15s}
-.lang-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--olive);box-shadow:var(--shadow)}
-
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:.95rem;border:none;border-radius:var(--r-full);padding:12px 22px;min-height:46px;transition:transform .12s ease,box-shadow .2s,background .2s;white-space:nowrap}
-.btn:active{transform:scale(.97)}
-.btn-primary{background:var(--olive);color:#fff;box-shadow:0 4px 14px rgba(79,81,4,.22)}
-.btn-primary:hover{background:var(--olive-dark);box-shadow:0 6px 20px rgba(79,81,4,.28)}
-.nav .btn{padding:9px 18px;min-height:42px;font-size:.9rem}
-.btn-sm{padding:8px 16px;min-height:40px;font-size:.88rem}
-
-/* hamburger */
-.hamburger{display:inline-flex;flex-direction:column;justify-content:center;gap:5px;width:44px;height:44px;align-items:center;background:transparent;border:1px solid var(--border);border-radius:var(--r-md)}
-.hamburger span{width:20px;height:2px;background:var(--text);border-radius:2px;transition:transform .2s,opacity .2s}
-.hamburger[aria-expanded="true"] span:nth-child(1){transform:translateY(7px) rotate(45deg)}
-.hamburger[aria-expanded="true"] span:nth-child(2){opacity:0}
-.hamburger[aria-expanded="true"] span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
-
-.mobile-sheet{position:fixed;inset:0;z-index:99;background:rgba(249,249,247,.98);backdrop-filter:blur(8px);display:flex;flex-direction:column;padding:calc(var(--nav-h) + 16px) 24px 32px;transform:translateY(-12px);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
-.mobile-sheet.open{opacity:1;transform:translateY(0);pointer-events:auto}
-.mobile-sheet a{font-size:1.3rem;font-weight:600;padding:16px 4px;border-bottom:1px solid var(--border2);color:var(--text)}
-.mobile-sheet a.active{color:var(--olive)}
-.mobile-sheet .btn-primary{margin-top:24px;font-size:1.05rem;padding:16px}
-
-/* reveal */
-.reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease;transition-delay:var(--d)}
-.reveal.in{opacity:1;transform:none}
-@media (prefers-reduced-motion:reduce){
-  .reveal{opacity:1;transform:none;transition:none}
-}
-
-/* ─── FOOTER ─── */
-.footer{background:var(--bg);border-top:1px solid var(--border);padding:56px 0 32px}
-.footer-grid{display:grid;grid-template-columns:1fr;gap:36px;margin-bottom:40px}
-.footer-brand .brand{margin-bottom:14px}
-.footer-brand .bline{font-size:.92rem;color:var(--text3);line-height:1.6;max-width:300px}
-.footer-cols{display:grid;grid-template-columns:1fr 1fr;gap:30px}
-.footer-col h4{font-size:.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--bronze);font-weight:700;margin-bottom:14px}
-.footer-col a,.footer-col span{display:block;font-size:.92rem;color:var(--text2);padding:10px 0;transition:color .15s}
-.footer-col a:hover{color:var(--olive)}
-.footer-bottom{border-top:1px solid var(--border2);padding-top:24px;display:flex;flex-direction:column;gap:14px;align-items:flex-start}
-.footer-bottom .fb-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;width:100%}
-.footer-bottom .copy{font-size:.84rem;color:var(--text3)}
-.footer-bottom .made{font-size:.84rem;color:var(--text3);display:inline-flex;align-items:center;gap:6px}
-.footer-disclaimer{font-size:.78rem;color:var(--text-muted);line-height:1.5;max-width:680px}
-
-/* ─── RESPONSIVE (shared chrome) ─── */
-@media (min-width:560px){
-  .footer-cols{grid-template-columns:repeat(3,1fr)}
-}
-@media (min-width:768px){
-  .container{padding:0 32px}
-  .footer-grid{grid-template-columns:1.4fr 2fr}
-  .footer-cols{grid-template-columns:repeat(3,1fr)}
-}
-@media (min-width:900px){
-  .nav-links{display:flex}
-  .hamburger{display:none}
-}
-@media (max-width:899px){
-  .nav-right .lang-toggle{display:none}
-  .nav-right .btn-beta-nav{display:none}
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   PAGE-SPECIFIC — Get Shortcut (download landing, mobile-first)
-   ══════════════════════════════════════════════════════════════════ */
-
-/* hero */
-.gs-hero{padding:calc(var(--nav-h) + 40px) 0 48px;position:relative;overflow:hidden}
-.gs-hero::before{content:'';position:absolute;inset:-15% -10% 0;z-index:0;pointer-events:none;
-  background:radial-gradient(60% 50% at 18% 22%,rgba(79,81,4,.10),transparent 70%),
-            radial-gradient(50% 45% at 85% 18%,rgba(178,120,10,.10),transparent 70%),
-            radial-gradient(45% 40% at 30% 90%,rgba(107,163,190,.06),transparent 70%);
-  filter:blur(6px)}
-.gs-hero .container{position:relative;z-index:2;max-width:600px;text-align:center}
-.gs-hero h1{font-size:clamp(1.9rem,7vw,2.6rem);font-weight:700;letter-spacing:-.7px;line-height:1.12;margin:18px 0 14px;color:var(--text)}
-.gs-hero .lead{font-size:clamp(1rem,3vw,1.12rem);color:var(--text2);line-height:1.6;max-width:480px;margin:0 auto}
-
-.gs-cta{margin-top:30px;display:flex;flex-direction:column;align-items:center;gap:12px}
-.gs-cta .btn-primary{font-size:1.08rem;padding:17px 34px;min-height:58px;width:100%;max-width:340px;box-shadow:0 6px 22px rgba(79,81,4,.30)}
-.gs-cta .gs-meta{font-size:.84rem;color:var(--text3)}
-
-/* numbered steps */
-.gs-how{padding:52px 0 60px;background:var(--bg2)}
-.gs-steps{display:flex;flex-direction:column;gap:18px;max-width:640px;margin:0 auto}
-.gs-step{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:22px 20px;box-shadow:var(--shadow);display:flex;gap:16px;align-items:flex-start}
-.gs-step .gs-num{width:34px;height:34px;border-radius:50%;background:var(--olive);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.98rem;flex-shrink:0;box-shadow:0 3px 10px rgba(79,81,4,.28)}
-.gs-step:nth-child(2) .gs-num{background:var(--gold-bright);color:var(--olive-deep);box-shadow:0 3px 10px rgba(222,171,34,.32)}
-.gs-step:nth-child(3) .gs-num{background:var(--olive-light);box-shadow:0 3px 10px rgba(107,109,26,.28)}
-.gs-step:nth-child(4) .gs-num{background:var(--bronze2);box-shadow:0 3px 10px rgba(133,88,0,.28)}
-.gs-step-body h3{font-size:1.04rem;font-weight:600;letter-spacing:-.2px;margin-bottom:5px}
-.gs-step-body p{color:var(--text2);font-size:.92rem;line-height:1.55}
-
-/* troubleshooting cards */
-.gs-trouble{padding:52px 0 64px;background:var(--surface)}
-.gs-cards{display:flex;flex-direction:column;gap:14px;max-width:640px;margin:0 auto}
-.gs-card{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-lg);padding:18px 20px}
-.gs-card h3{font-size:.96rem;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px}
-.gs-card h3::before{content:'⚠';font-size:.9rem;flex-shrink:0}
-.gs-card p{font-size:.9rem;color:var(--text2);line-height:1.55}
-
-.gs-note{max-width:520px;margin:36px auto 0;text-align:center;font-size:.86rem;color:var(--text3);line-height:1.6}
-
-@media (min-width:768px){
-  .gs-step{padding:26px 24px}
-}
+/* ── TROUBLESHOOTING — hairline accordion (kit .faq-2col) ── */
+.gs-q{display:flex;align-items:baseline;gap:12px;min-width:0}
+.gs-q .mono-caps{color:var(--sage-text);flex-shrink:0}
+.gs-foot{font-size:.82rem;color:var(--ink-45);line-height:1.5;margin-top:var(--space-2xl)}
 </style>
 </head>
 <body>
@@ -259,94 +131,133 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 <main id="main">
 <span id="top"></span>
 
-<!-- ════════════ HERO + DOWNLOAD ════════════ -->
-<section class="gs-hero">
+<!-- ════════════ HERO + DOWNLOAD (studied: eyebrow badge · display-500 · ink pill · honest mono footnote) ════════════ -->
+<section class="hero-center">
   <div class="container">
-    <span class="eyebrow" data-en="Potraces Quick Log" data-bm="Potraces Quick Log">Potraces Quick Log</span>
+    <p class="gs-doclbl">
+      <span class="mono-caps" data-en="Manual" data-bm="Manual">Manual</span>
+      <span class="mono-caps" aria-hidden="true">QL·01</span>
+      <span class="badge badge--sage" data-en="Free" data-bm="Percuma">Free</span>
+    </p>
+    <p class="eyebrow">
+      <span class="ic" aria-hidden="true" id="herowau"></span>
+      <span data-en="Potraces Quick Log" data-bm="Potraces Quick Log">Potraces Quick Log</span>
+    </p>
     <h1>
-      <span data-en="Add the Shortcut" data-bm="Tambah Shortcut" class="block">Add the Shortcut</span>
+      <span data-en="Add the" data-bm="Tambah">Add the</span>
+      <span class="accent-word" data-en="Shortcut" data-bm="Shortcut">Shortcut</span>
     </h1>
     <p class="lead">
       <span data-en="Tap the button below — Safari downloads it, then you add it to your iPhone." data-bm="Tap butang bawah ni — Safari akan download, lepas tu kau tambah ke iPhone kau." class="block">Tap the button below — Safari downloads it, then you add it to your iPhone.</span>
     </p>
-    <div class="gs-cta">
-      <a class="btn btn-primary" href="/dl/quick-log" data-en="Add the Shortcut" data-bm="Tambah Shortcut">Add the Shortcut</a>
-      <span class="gs-meta" data-en="24 KB · works on iPhone with iOS 16 or newer" data-bm="24 KB · boleh guna kat iPhone dengan iOS 16 ke atas">24 KB · works on iPhone with iOS 16 or newer</span>
-    </div>
+    <a class="btn btn-pill--ink btn-lg" href="/dl/quick-log" data-en="Add the Shortcut" data-bm="Tambah Shortcut">Add the Shortcut</a>
+    <p class="gs-meta" data-en="24 KB · works on iPhone with iOS 16 or newer" data-bm="24 KB · boleh guna kat iPhone dengan iOS 16 ke atas">24 KB · works on iPhone with iOS 16 or newer</p>
   </div>
 </section>
 
-<!-- ════════════ SET IT UP ════════════ -->
+<!-- ════════════ SET IT UP (step cards on ONE sage panel) ════════════ -->
 <section class="gs-how" id="setup">
   <div class="container">
+    <p class="gs-seclbl mono-caps reveal">
+      <span data-en="Sect. 01" data-bm="Bhg. 01">Sect. 01</span>
+      <span aria-hidden="true">·</span>
+      <span data-en="Set it up" data-bm="Setup ia">Set it up</span>
+    </p>
     <div class="section-head reveal">
-      <span class="eyebrow" data-en="Set it up" data-bm="Setup ia">Set it up</span>
       <h2>
         <span data-en="Four steps, once." data-bm="Empat langkah, sekali je." class="block">Four steps, once.</span>
       </h2>
     </div>
-    <p class="gs-note reveal" style="margin-top:0"><span class="block" data-en="First, in the Potraces app: Settings → Money Setup → Quick Log → tap Generate my key, then Copy key. Then come back here." data-bm="Mula-mula, dalam app Potraces: Settings → Tetapan Wang → Quick Log → tap Generate my key, lepas tu Copy key. Lepas tu balik sini.">First, in the Potraces app: Settings → Money Setup → Quick Log → tap Generate my key, then Copy key. Then come back here.</span></p>
-    <div class="gs-steps">
-      <article class="gs-step reveal" style="--d:0ms">
-        <span class="gs-num" aria-hidden="true">1</span>
-        <div class="gs-step-body">
-          <h3 data-en="Tap 'Add the Shortcut'" data-bm="Tap 'Tambah Shortcut'">Tap 'Add the Shortcut'</h3>
-          <p data-en="Safari downloads Potraces Quick Log to your iPhone." data-bm="Safari akan download Potraces Quick Log ke iPhone kau.">Safari downloads Potraces Quick Log to your iPhone.</p>
-        </div>
-      </article>
-      <article class="gs-step reveal" style="--d:70ms">
-        <span class="gs-num" aria-hidden="true">2</span>
-        <div class="gs-step-body">
-          <h3 data-en="Open the download" data-bm="Buka download tu">Open the download</h3>
-          <p data-en="Tap the ↓ at the top-right of Safari, tap the file, then tap 'Add Shortcut'." data-bm="Tap ikon ↓ kat atas-kanan Safari, tap file tu, lepas tu tap 'Add Shortcut'.">Tap the ↓ at the top-right of Safari, tap the file, then tap 'Add Shortcut'.</p>
-        </div>
-      </article>
-      <article class="gs-step reveal" style="--d:140ms">
-        <span class="gs-num" aria-hidden="true">3</span>
-        <div class="gs-step-body">
-          <h3 data-en="Run it once" data-bm="Run sekali">Run it once</h3>
-          <p data-en="Open the Shortcuts app and tap the Potraces Quick Log card. The key you copied in the app is already filled in — tap Done. The first time, iOS asks to let it connect to the internet — tap Always Allow. Then log a test expense." data-bm="Buka app Shortcuts dan tap card Potraces Quick Log. Key yang kau copy dalam app dah terisi — tap Done. Kali pertama, iOS akan tanya nak benarkan connect ke internet — tap Always Allow. Lepas tu log satu belanja test.">Open the Shortcuts app and tap the Potraces Quick Log card. The key you copied in the app is already filled in — tap Done. The first time, iOS asks to let it connect to the internet — tap Always Allow. Then log a test expense.</p>
-        </div>
-      </article>
-      <article class="gs-step reveal" style="--d:210ms">
-        <span class="gs-num" aria-hidden="true">4</span>
-        <div class="gs-step-body">
-          <h3 data-en="Assign it to Back Tap" data-bm="Assign kat Back Tap">Assign it to Back Tap</h3>
-          <p data-en="iPhone Settings → Accessibility → Touch → Back Tap → Double Tap → choose Potraces Quick Log. Now a double-tap on the back of your phone logs an expense." data-bm="Settings iPhone → Accessibility → Touch → Back Tap → Double Tap → pilih Potraces Quick Log. Lepas ni, double-tap belakang phone kau terus log belanja.">iPhone Settings → Accessibility → Touch → Back Tap → Double Tap → choose Potraces Quick Log. Now a double-tap on the back of your phone logs an expense.</p>
-        </div>
-      </article>
+    <div class="panel panel--sage reveal">
+      <p class="gs-prep"><span class="block" data-en="First, in the Potraces app: Settings → Money Setup → Quick Log → tap Generate my key, then Copy key. Then come back here." data-bm="Mula-mula, dalam app Potraces: Settings → Tetapan Wang → Quick Log → tap Generate my key, lepas tu Copy key. Lepas tu balik sini.">First, in the Potraces app: Settings → Money Setup → Quick Log → tap Generate my key, then Copy key. Then come back here.</span></p>
+      <div class="gs-steps">
+        <article class="card gs-step reveal" style="--d:0ms">
+          <span class="gs-num" aria-hidden="true">1</span>
+          <div class="gs-step-body">
+            <h3 data-en="Tap 'Add the Shortcut'" data-bm="Tap 'Tambah Shortcut'">Tap 'Add the Shortcut'</h3>
+            <p data-en="Safari downloads Potraces Quick Log to your iPhone." data-bm="Safari akan download Potraces Quick Log ke iPhone kau.">Safari downloads Potraces Quick Log to your iPhone.</p>
+          </div>
+        </article>
+        <article class="card gs-step reveal" style="--d:70ms">
+          <span class="gs-num" aria-hidden="true">2</span>
+          <div class="gs-step-body">
+            <h3 data-en="Open the download" data-bm="Buka download tu">Open the download</h3>
+            <p data-en="Tap the ↓ at the top-right of Safari, tap the file, then tap 'Add Shortcut'." data-bm="Tap ikon ↓ kat atas-kanan Safari, tap file tu, lepas tu tap 'Add Shortcut'.">Tap the ↓ at the top-right of Safari, tap the file, then tap 'Add Shortcut'.</p>
+          </div>
+        </article>
+        <article class="card gs-step reveal" style="--d:140ms">
+          <span class="gs-num" aria-hidden="true">3</span>
+          <div class="gs-step-body">
+            <h3 data-en="Run it once" data-bm="Run sekali">Run it once</h3>
+            <p data-en="Open the Shortcuts app and tap the Potraces Quick Log card. The key you copied in the app is already filled in — tap Done. The first time, iOS asks to let it connect to the internet — tap Always Allow. Then log a test expense." data-bm="Buka app Shortcuts dan tap card Potraces Quick Log. Key yang kau copy dalam app dah terisi — tap Done. Kali pertama, iOS akan tanya nak benarkan connect ke internet — tap Always Allow. Lepas tu log satu belanja test.">Open the Shortcuts app and tap the Potraces Quick Log card. The key you copied in the app is already filled in — tap Done. The first time, iOS asks to let it connect to the internet — tap Always Allow. Then log a test expense.</p>
+          </div>
+        </article>
+        <article class="card gs-step reveal" style="--d:210ms">
+          <span class="gs-num" aria-hidden="true">4</span>
+          <div class="gs-step-body">
+            <h3 data-en="Assign it to Back Tap" data-bm="Assign kat Back Tap">Assign it to Back Tap</h3>
+            <p data-en="iPhone Settings → Accessibility → Touch → Back Tap → Double Tap → choose Potraces Quick Log. Now a double-tap on the back of your phone logs an expense." data-bm="Settings iPhone → Accessibility → Touch → Back Tap → Double Tap → pilih Potraces Quick Log. Lepas ni, double-tap belakang phone kau terus log belanja.">iPhone Settings → Accessibility → Touch → Back Tap → Double Tap → choose Potraces Quick Log. Now a double-tap on the back of your phone logs an expense.</p>
+          </div>
+        </article>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ════════════ TROUBLESHOOTING ════════════ -->
+<!-- ════════════ TROUBLESHOOTING (studied FAQ pattern: big label left, hairline accordion right) ════════════ -->
 <section class="gs-trouble" id="help">
   <div class="container">
-    <div class="section-head reveal">
-      <span class="eyebrow" data-en="If it doesn't work" data-bm="Kalau tak jalan">If it doesn't work</span>
-      <h2>
-        <span data-en="Common hiccups" data-bm="Masalah biasa" class="block">Common hiccups</span>
-      </h2>
+    <p class="gs-seclbl mono-caps reveal">
+      <span data-en="Sect. 02" data-bm="Bhg. 02">Sect. 02</span>
+      <span aria-hidden="true">·</span>
+      <span data-en="If it doesn't work" data-bm="Kalau tak jalan">If it doesn't work</span>
+    </p>
+    <div class="faq-2col">
+      <h2 class="faq-label reveal" data-en="Common hiccups" data-bm="Masalah biasa">Common hiccups</h2>
+      <div class="faq-list">
+        <details class="faq-item reveal" style="--d:0ms">
+          <summary>
+            <span class="gs-q">
+              <span class="mono-caps" aria-hidden="true">Q1</span>
+              <span data-en="Nothing downloaded?" data-bm="Tak download apa-apa?">Nothing downloaded?</span>
+            </span>
+            <span class="q-ic" aria-hidden="true"></span>
+          </summary>
+          <p class="faq-answer" data-en="Tap 'Add the Shortcut' again — Safari sometimes needs a second tap." data-bm="Tap 'Tambah Shortcut' sekali lagi — Safari kadang-kadang perlukan tap kedua.">Tap 'Add the Shortcut' again — Safari sometimes needs a second tap.</p>
+        </details>
+        <details class="faq-item reveal" style="--d:60ms">
+          <summary>
+            <span class="gs-q">
+              <span class="mono-caps" aria-hidden="true">Q2</span>
+              <span data-en="'Safari cannot connect to the server'?" data-bm="'Safari cannot connect to the server'?">'Safari cannot connect to the server'?</span>
+            </span>
+            <span class="q-ic" aria-hidden="true"></span>
+          </summary>
+          <p class="faq-answer" data-en="Check your internet connection and try the button again." data-bm="Check internet kau dan cuba butang tu sekali lagi.">Check your internet connection and try the button again.</p>
+        </details>
+        <details class="faq-item reveal" style="--d:120ms">
+          <summary>
+            <span class="gs-q">
+              <span class="mono-caps" aria-hidden="true">Q3</span>
+              <span data-en="Shortcut shows an error instead of logging?" data-bm="Shortcut tunjuk error instead of log?">Shortcut shows an error instead of logging?</span>
+            </span>
+            <span class="q-ic" aria-hidden="true"></span>
+          </summary>
+          <p class="faq-answer" data-en="Your Quick Log key was revoked — that happens if you turned off Quick Log, turned off Cloud Backup, or signed out. In Potraces open Settings → Money Setup → Quick Log, tap Regenerate key, then Copy key. The shortcut asks for the new key on its next run — it's already pasted, just tap Done." data-bm="Key Quick Log kau kena revoke — ni jadi kalau kau matikan Quick Log, matikan Cloud Backup, atau sign out. Dalam Potraces buka Settings → Tetapan Wang → Quick Log, tap Regenerate key, lepas tu Copy key. Shortcut akan tanya key baru masa run seterusnya — dah auto-paste, tap Done je.">Your Quick Log key was revoked — that happens if you turned off Quick Log, turned off Cloud Backup, or signed out. In Potraces open Settings → Money Setup → Quick Log, tap Regenerate key, then Copy key. The shortcut asks for the new key on its next run — it's already pasted, just tap Done.</p>
+        </details>
+        <details class="faq-item reveal" style="--d:180ms">
+          <summary>
+            <span class="gs-q">
+              <span class="mono-caps" aria-hidden="true">Q4</span>
+              <span data-en="Haven't set up Quick Log in the app yet?" data-bm="Belum setup Quick Log dalam app lagi?">Haven't set up Quick Log in the app yet?</span>
+            </span>
+            <span class="q-ic" aria-hidden="true"></span>
+          </summary>
+          <p class="faq-answer" data-en="Do that first — the Potraces app is where you get the key this shortcut needs. Settings → Money Setup → Quick Log." data-bm="Buat itu dulu — app Potraces tempat kau dapat key yang shortcut ni perlukan. Settings → Tetapan Wang → Quick Log.">Do that first — the Potraces app is where you get the key this shortcut needs. Settings → Money Setup → Quick Log.</p>
+        </details>
+      </div>
     </div>
-    <div class="gs-cards">
-      <article class="gs-card reveal" style="--d:0ms">
-        <h3 data-en="Nothing downloaded?" data-bm="Tak download apa-apa?">Nothing downloaded?</h3>
-        <p data-en="Tap 'Add the Shortcut' again — Safari sometimes needs a second tap." data-bm="Tap 'Tambah Shortcut' sekali lagi — Safari kadang-kadang perlukan tap kedua.">Tap 'Add the Shortcut' again — Safari sometimes needs a second tap.</p>
-      </article>
-      <article class="gs-card reveal" style="--d:60ms">
-        <h3 data-en="'Safari cannot connect to the server'?" data-bm="'Safari cannot connect to the server'?">'Safari cannot connect to the server'?</h3>
-        <p data-en="Check your internet connection and try the button again." data-bm="Check internet kau dan cuba butang tu sekali lagi.">Check your internet connection and try the button again.</p>
-      </article>
-      <article class="gs-card reveal" style="--d:120ms">
-        <h3 data-en="Shortcut shows an error instead of logging?" data-bm="Shortcut tunjuk error instead of log?">Shortcut shows an error instead of logging?</h3>
-        <p data-en="Your Quick Log key was revoked — that happens if you turned off Quick Log, turned off Cloud Backup, or signed out. In Potraces open Settings → Money Setup → Quick Log, tap Regenerate key, then Copy key. The shortcut asks for the new key on its next run — it's already pasted, just tap Done." data-bm="Key Quick Log kau kena revoke — ni jadi kalau kau matikan Quick Log, matikan Cloud Backup, atau sign out. Dalam Potraces buka Settings → Tetapan Wang → Quick Log, tap Regenerate key, lepas tu Copy key. Shortcut akan tanya key baru masa run seterusnya — dah auto-paste, tap Done je.">Your Quick Log key was revoked — that happens if you turned off Quick Log, turned off Cloud Backup, or signed out. In Potraces open Settings → Money Setup → Quick Log, tap Regenerate key, then Copy key. The shortcut asks for the new key on its next run — it's already pasted, just tap Done.</p>
-      </article>
-      <article class="gs-card reveal" style="--d:180ms">
-        <h3 data-en="Haven't set up Quick Log in the app yet?" data-bm="Belum setup Quick Log dalam app lagi?">Haven't set up Quick Log in the app yet?</h3>
-        <p data-en="Do that first — the Potraces app is where you get the key this shortcut needs. Settings → Money Setup → Quick Log." data-bm="Buat itu dulu — app Potraces tempat kau dapat key yang shortcut ni perlukan. Settings → Tetapan Wang → Quick Log.">Do that first — the Potraces app is where you get the key this shortcut needs. Settings → Money Setup → Quick Log.</p>
-      </article>
-    </div>
-    <p class="gs-note reveal">
+    <p class="gs-foot reveal">
       <span data-en="Set up inside the Potraces app: Settings → Money Setup → Quick Log." data-bm="Setup dalam app Potraces: Settings → Tetapan Wang → Quick Log." class="block">Set up inside the Potraces app: Settings → Money Setup → Quick Log.</span>
     </p>
   </div>
@@ -443,12 +354,12 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
 </g>\
 <circle cx="512" cy="368" r="11" fill="#B2780A"/>\
 </g></svg>';
-['navlogo','footlogo'].forEach(function(id){
+['navlogo','footlogo','herowau','herowau2','storywau','darkwau','ctawau','wlicon','wlicon2'].forEach(function(id){
   var el = document.getElementById(id);
   if (el) el.innerHTML = WAU_SVG;
 });
 
-/* ── language toggle (persisted, shared key with the rest of the site) ── */
+/* ── language toggle (persisted; shared 'potraces_lang' key across ALL pages) ── */
 (function(){
   var STORAGE='potraces_lang';
   function apply(lang){
@@ -457,7 +368,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       b.setAttribute('aria-pressed', String(b.getAttribute('data-lang')===lang));
     });
     document.querySelectorAll('[data-en]').forEach(function(el){
-      if(el.children.length) return;
+      if(el.children.length) return;                         /* leaf-only swap */
       var t = lang==='ms' ? el.getAttribute('data-bm') : el.getAttribute('data-en');
       if(t!=null) el.textContent = t;
     });
@@ -468,7 +379,9 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       el.setAttribute('aria-label', lang==='ms' ? el.getAttribute('data-aria-bm') : el.getAttribute('data-aria-en'));
     });
     try{ localStorage.setItem(STORAGE, lang); }catch(e){}
+    window.dispatchEvent(new CustomEvent('pt:lang',{detail:{lang:lang}}));  /* dynamic content re-renders */
   }
+  window.__ptLang = function(){ return document.documentElement.getAttribute('lang')==='ms' ? 'ms' : 'en'; };
   var saved='en';
   try{ saved = localStorage.getItem(STORAGE) || 'en'; }catch(e){}
   apply(saved);
@@ -477,9 +390,10 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   });
 })();
 
-/* ── nav scroll state ── */
+/* ── nav scroll-shadow state ── */
 (function(){
   var nav=document.getElementById('nav');
+  if(!nav || nav.classList.contains('nav--sticky')) return;
   function onScroll(){ nav.classList.toggle('scrolled', window.scrollY>12); }
   onScroll();
   window.addEventListener('scroll', onScroll, {passive:true});
@@ -489,6 +403,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
 (function(){
   var btn=document.getElementById('hamburger');
   var sheet=document.getElementById('mobileSheet');
+  if(!btn || !sheet) return;
   function setOpen(open){
     btn.setAttribute('aria-expanded', String(open));
     btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
@@ -501,7 +416,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') setOpen(false); });
 })();
 
-/* ── scroll reveal ── */
+/* ── scroll reveal (degrades to instant on reduced-motion / no IntersectionObserver) ── */
 (function(){
   var els=document.querySelectorAll('.reveal');
   if(!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches){
@@ -513,7 +428,8 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   els.forEach(function(el){ io.observe(el); });
 })();
 
-document.getElementById('year').textContent = String(new Date().getFullYear());
+/* ── current year ── */
+(function(){ var y=document.getElementById('year'); if(y) y.textContent=new Date().getFullYear(); })();
 </script>
 </body>
 </html>
