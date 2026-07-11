@@ -19,6 +19,7 @@
     "test:authmigrate": "tsx scripts/test-authstore-migrate.ts",
     "test:deleteflow": "tsx scripts/test-delete-flow.ts",
     "test:calcengine": "tsx scripts/test-calculator-engine.ts",
+    "test:importdedup": "tsx scripts/test-import-dedup.ts",
     "test:splitshares": "tsx scripts/test-split-shares.ts",
     "test:sampledata": "tsx scripts/test-sample-data.ts"
   },
