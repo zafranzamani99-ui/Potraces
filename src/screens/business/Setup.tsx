@@ -10,6 +10,8 @@ import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { IncomeType } from '../../types';
 import { lightTap } from '../../services/haptics';
+import { useAuthStore } from '../../store/authStore';
+import { rememberIncomeType } from '../../services/businessSetup';
 
 const TILE_ICONS: Record<IncomeType, keyof typeof Feather.glyphMap> = {
   seller: 'shopping-bag',
@@ -39,6 +41,8 @@ const Setup: React.FC = () => {
   const handleConfirm = () => {
     if (!selected) return;
     useBusinessStore.setState({ incomeType: selected, businessSetupComplete: true });
+    const userId = useAuthStore.getState().business.userId;
+    if (userId) rememberIncomeType(userId, selected);
   };
 
   const handleBackToPersonal = () => {

@@ -111,8 +111,13 @@ export const useBusinessStore = create<BusinessState>()(
       completeSetup: () =>
         set({ businessSetupComplete: true }),
 
-      resetSetup: () =>
-        set({ businessSetupComplete: false, incomeType: null }),
+      resetSetup: () => {
+        set({ businessSetupComplete: false, incomeType: null });
+        // "change how I earn" — drop the remembered choice (local map + server) so
+        // it re-prompts and doesn't get restored on the next sign-in / relaunch.
+        // Lazy require avoids a store<->service import cycle.
+        try { require('../services/businessSetup').forgetCurrentIncomeType(); } catch {}
+      },
 
       addBusinessTransaction: (tx) => {
         const id = newId();

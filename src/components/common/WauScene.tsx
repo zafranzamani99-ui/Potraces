@@ -76,7 +76,7 @@ export const WauBody: React.FC<{ size: number }> = ({ size }) => (
 );
 
 /** The swallow-tail fins, on their own layer so they can flutter. */
-const WauFins: React.FC<{ size: number }> = ({ size }) => (
+export const WauFins: React.FC<{ size: number }> = ({ size }) => (
   <Svg width={size} height={size} viewBox="0 0 1024 1024">
     <Path d="M512 460 C470 535 432 600 374 660 C416 670 466 644 494 594 C504 560 510 510 512 460 Z" fill={CREAM} stroke={OLIVE} strokeWidth={7} strokeLinejoin="round" />
     <Path d="M512 460 C554 535 592 600 650 660 C608 670 558 644 530 594 C520 560 514 510 512 460 Z" fill={CREAM} stroke={OLIVE} strokeWidth={7} strokeLinejoin="round" />

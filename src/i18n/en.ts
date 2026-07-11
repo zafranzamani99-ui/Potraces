@@ -126,6 +126,7 @@ export const en = {
     continueWithGoogle: 'continue with Google',
     continueWithApple: 'continue with Apple',
     socialSignInFailed: 'sign-in failed, please try again',
+    checkingVerification: 'checking verification',
     googleFailedTryApple: 'Google sign-in failed — try “Continue with Apple” above',
     playServicesRequired: 'Google Play Services required',
     // Account / personal cloud-backup sign-in (AccountScreen)

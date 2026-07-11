@@ -125,6 +125,7 @@ export const ms: Translations = {
     continueWithGoogle: 'teruskan dengan Google',
     continueWithApple: 'teruskan dengan Apple',
     socialSignInFailed: 'log masuk gagal, sila cuba lagi',
+    checkingVerification: 'tengah semak pengesahan',
     googleFailedTryApple: 'Log masuk Google gagal — cuba “Continue with Apple” di atas',
     playServicesRequired: 'Google Play Services diperlukan',
     // Account / personal cloud-backup sign-in (AccountScreen)

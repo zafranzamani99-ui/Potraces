@@ -2,7 +2,7 @@
 // business client so every seller_* / storage call routes to the business account.
 import { supabaseBusiness as supabase } from './supabase';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { SellerProduct, SellerOrder, Season, SellerCustomer, IngredientCost, RecurringCost, CostTemplate, StockAdjustment, OrderStatus, SellerPaymentMethod, RecurringFrequency, SellerCostCategory } from '../types';
+import { SellerProduct, SellerOrder, Season, SellerCustomer, IngredientCost, RecurringCost, CostTemplate, StockAdjustment, OrderStatus, SellerPaymentMethod, RecurringFrequency, SellerCostCategory, IncomeType } from '../types';
 import { useSellerStore } from '../store/sellerStore';
 
 // ─── Safe date parsing ────────────────────────────────────────────────────────
@@ -23,6 +23,34 @@ async function getSession() {
     return refreshed ?? session;
   }
   return session;
+}
+
+// ─── Business income type (the "how does money come to you" setup) ────────────
+
+/** Read the account's saved income type from the server (null if unset/offline). */
+export async function getSellerIncomeType(): Promise<IncomeType | null> {
+  const session = await getSession();
+  if (!session) return null;
+  const { data } = await supabase
+    .from('seller_profiles')
+    .select('income_type')
+    .eq('user_id', session.user.id)
+    .maybeSingle();
+  return (data?.income_type as IncomeType) ?? null;
+}
+
+/** Save the account's income type to the server (best-effort). */
+export async function setSellerIncomeType(incomeType: IncomeType): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+  await supabase.from('seller_profiles').update({ income_type: incomeType }).eq('user_id', session.user.id);
+}
+
+/** Clear the account's income type on the server (best-effort). */
+export async function clearSellerIncomeType(): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+  await supabase.from('seller_profiles').update({ income_type: null }).eq('user_id', session.user.id);
 }
 
 // ─── Profile management ───────────────────────────────────────────────────────

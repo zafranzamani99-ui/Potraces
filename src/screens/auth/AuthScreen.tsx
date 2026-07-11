@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import Svg, { Path } from 'react-native-svg';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { signUpWithPhone, signInWithPhone, requestOtp, supabaseBusiness } from '../../services/supabase';
@@ -21,7 +22,18 @@ import { signInWithApple } from '../../services/appleAuth';
 import { confirmReuse } from '../../services/reuseAccount';
 import { useAuthStore } from '../../store/authStore';
 import { useAppStore } from '../../store/appStore';
+import WauLoader from '../../components/common/WauLoader';
 import { useT } from '../../i18n';
+
+// Official 4-color Google "G". ponytail: brand hex is spec-mandated, not theme tokens.
+const GoogleGLogo = ({ size = 18 }: { size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 48 48">
+    <Path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+    <Path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+    <Path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+    <Path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+  </Svg>
+);
 
 interface AuthScreenProps {
   onVerificationNeeded: (code: string, phone: string) => void;
@@ -55,6 +67,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
   }, []);
 
   const handleSubmit = useCallback(async () => {
+    Keyboard.dismiss();
     setError('');
     const cleaned = cleanPhone(phone);
     if (cleaned.length < 10) {
@@ -71,40 +84,40 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
     }
 
     setLoading(true);
+    // Keep the wau loader up for a beat so it reads as motion, not a flicker.
+    const startedAt = Date.now();
+    const holdLoader = async () => {
+      const rest = 2000 - (Date.now() - startedAt);
+      if (rest > 0) await new Promise((r) => setTimeout(r, rest));
+    };
     try {
       if (isLogin) {
         const data = await signInWithPhone(cleaned, password, supabaseBusiness);
         if (data.session) {
-          useAuthStore.getState().setBusinessAuth({
-            isAuthenticated: true, userId: data.session.user.id, phone: cleaned, provider: 'phone',
-          });
-
+          const userId = data.session.user.id;
           await ensureProfile();
-          const { data: profile } = await supabaseBusiness
-            .from('seller_profiles')
-            .select('is_verified')
-            .eq('user_id', data.session.user.id)
-            .maybeSingle();
-
-          if (profile?.is_verified) {
-            useAuthStore.getState().setBusinessAuth({ isVerified: true });
-            onAuthenticated();
-            confirmReuse('personal', { provider: 'phone', phone: cleaned, password }, tr);
-          } else {
-            const otp = await requestOtp(cleaned, supabaseBusiness);
-            onVerificationNeeded(otp.code, cleaned);
-          }
+          await holdLoader();
+          // Seamless sign-in: Telegram is a ONE-TIME gate at sign-up. A returning
+          // user who knows the password goes straight in — the wau loader covers
+          // the moment, no verify screen. (Sign-up below still verifies once.)
+          useAuthStore.getState().setBusinessAuth({
+            isAuthenticated: true, isVerified: true, userId, phone: cleaned, provider: 'phone',
+          });
+          onAuthenticated();
+          confirmReuse('personal', { provider: 'phone', phone: cleaned, password }, tr);
         }
       } else {
         const data = await signUpWithPhone(cleaned, password, supabaseBusiness);
         if (data.session) {
+          await ensureProfile();
+          const otp = await requestOtp(cleaned, supabaseBusiness);
+          await holdLoader();
+          // Set the OTP code BEFORE flipping isAuthenticated so the gate lands
+          // straight on the verify screen (no setup-screen flash in between).
+          onVerificationNeeded(otp.code, cleaned);
           useAuthStore.getState().setBusinessAuth({
             isAuthenticated: true, userId: data.session.user.id, phone: cleaned, provider: 'phone',
           });
-
-          await ensureProfile();
-          const otp = await requestOtp(cleaned, supabaseBusiness);
-          onVerificationNeeded(otp.code, cleaned);
         }
       }
     } catch (e: any) {
@@ -177,7 +190,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="on-drag"
-        bottomOffset={32}
+        bottomOffset={120}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -347,10 +360,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
           {({ pressed }) => (
             <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
               {socialLoading === 'google' ? (
-                <ActivityIndicator color={C.textPrimary} size="small" />
+                <ActivityIndicator color="#1F1F1F" size="small" />
               ) : (
                 <>
-                  <Text style={styles.googleG}>G</Text>
+                  <GoogleGLogo size={18} />
                   <Text style={styles.socialBtnText}>{tr.auth.continueWithGoogle}</Text>
                 </>
               )}
@@ -361,18 +374,18 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
         {/* Apple (iOS only) */}
         {Platform.OS === 'ios' && (
           <Pressable
-            style={[styles.socialBtn, styles.appleSocialBtn, socialLoading === 'apple' && { opacity: 0.6 }]}
+            style={[styles.socialBtn, socialLoading === 'apple' && { opacity: 0.6 }]}
             onPress={handleAppleSignIn}
             disabled={anyLoading}
           >
             {({ pressed }) => (
               <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
                 {socialLoading === 'apple' ? (
-                  <ActivityIndicator color={isDark ? C.background : C.textPrimary} size="small" />
+                  <ActivityIndicator color="#1F1F1F" size="small" />
                 ) : (
                   <>
-                    <Feather name="command" size={18} color={isDark ? C.background : C.textPrimary} />
-                    <Text style={[styles.socialBtnText, styles.appleBtnText]}>{tr.auth.continueWithApple}</Text>
+                    <Ionicons name="logo-apple" size={19} color="#000000" />
+                    <Text style={styles.socialBtnText}>{tr.auth.continueWithApple}</Text>
                   </>
                 )}
               </View>
@@ -380,6 +393,8 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
           </Pressable>
         )}
       </KeyboardAwareScrollView>
+
+      {anyLoading && <WauLoader label={tr.auth.checkingVerification} />}
     </View>
   );
 };
@@ -587,40 +602,29 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     letterSpacing: 0.3,
   },
+  // ponytail: fixed white brand buttons in both themes — matches Google/Apple guidelines.
   socialBtn: {
     width: '100%',
     paddingVertical: SPACING.md + 2,
     borderRadius: RADIUS.full,
-    backgroundColor: C.surface,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.12),
+    borderColor: '#DADCE0',
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 52,
     marginBottom: SPACING.sm + 2,
-  },
-  appleSocialBtn: {
-    backgroundColor: C === CALM_DARK ? '#FFFFFF' : '#000000',
-    borderColor: C === CALM_DARK ? '#FFFFFF' : '#000000',
   },
   socialBtnInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm + 2,
   },
-  googleG: {
-    fontSize: 20,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#4285F4',
-  },
   socialBtnText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#1F1F1F',
     letterSpacing: 0.2,
-  },
-  appleBtnText: {
-    color: C === CALM_DARK ? '#000000' : '#FFFFFF',
   },
 });
 

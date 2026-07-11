@@ -10,8 +10,10 @@ import { useAuthStore } from '../store/authStore';
 import { useCalm, useIsDark } from '../hooks/useCalm';
 import AuthScreen from '../screens/auth/AuthScreen';
 import OtpVerificationScreen from '../screens/auth/OtpVerificationScreen';
-import { requestOtp, signOut, getAuthSession, supabaseBusiness } from '../services/supabase';
+import { signOut, getAuthSession, supabaseBusiness } from '../services/supabase';
 import { clearProfileCache } from '../services/sellerSync';
+import { restoreIncomeType } from '../services/businessSetup';
+import WauLoader from '../components/common/WauLoader';
 import PersonalNavigator from './PersonalNavigator';
 import BusinessNavigator from './BusinessNavigator';
 import PersonalReports from '../screens/personal/Reports';
@@ -124,12 +126,12 @@ const AuthGatedBusiness: React.FC = () => {
   const isAuthenticated = useAuthStore((s) => s.business.isAuthenticated);
   const isVerified = useAuthStore((s) => s.business.isVerified);
   const provider = useAuthStore((s) => s.business.provider);
+  const userId = useAuthStore((s) => s.business.userId);
   const businessSetupComplete = useBusinessStore((s) => s.businessSetupComplete);
   const incomeType = useBusinessStore((s) => s.incomeType);
   const [otpCode, setOtpCode] = useState<string | null>(null);
   const [otpPhone, setOtpPhone] = useState('');
-  const [otpError, setOtpError] = useState<string | null>(null);
-  const lastOtpAtRef = useRef(0);
+  const [hydratedFor, setHydratedFor] = useState<string | null>(null);
 
   // Validate session on state change — reset stale auth state if no real Supabase session
   // Only relevant for phone auth — social providers are pre-verified
@@ -143,32 +145,21 @@ const AuthGatedBusiness: React.FC = () => {
     }
   }, [isAuthenticated, isVerified, provider]);
 
-  // Auto-request OTP if authenticated but not verified and no code yet (with cooldown)
-  // Only for phone auth — Google/Apple users skip OTP entirely
+  // Restore the remembered business income type on sign-in so a returning user
+  // skips the "how does money come to you" screen. Local per-user map first
+  // (instant, offline), else the server (new device / reinstall). Keyed by userId
+  // → account A's choice never pre-fills for account B.
   useEffect(() => {
-    if (provider !== 'phone') return;
-    if (isAuthenticated && !isVerified && !otpCode) {
-      const now = Date.now();
-      if (now - lastOtpAtRef.current < 30_000) return;
-      const phone = useAuthStore.getState().business.phone;
-      if (phone) {
-        lastOtpAtRef.current = now;
-        setOtpError(null);
-        requestOtp(phone, supabaseBusiness).then((otp) => {
-          setOtpCode(otp.code);
-          setOtpPhone(phone);
-        }).catch((err) => {
-          if (__DEV__) console.warn('[OTP request failed]', err?.message || err);
-          if (err?.message?.includes('Not authenticated')) {
-            useAuthStore.getState().resetBusiness();
-          } else {
-            setOtpError(err?.message || 'Failed to request verification code');
-          }
-          lastOtpAtRef.current = 0;
-        });
-      }
-    }
-  }, [isAuthenticated, isVerified, otpCode, provider]);
+    if (!isAuthenticated || !userId) { setHydratedFor(null); return; }
+    if (hydratedFor === userId) return;
+    let cancelled = false;
+    restoreIncomeType(userId).finally(() => { if (!cancelled) setHydratedFor(userId); });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, userId, hydratedFor]);
+
+  // No auto-OTP for authenticated-but-unverified users. Telegram verification is a
+  // one-time, non-blocking step surfaced only during sign-up (via otpCode), so app
+  // access is never gated on isVerified — returning sign-in stays seamless.
 
   const handleVerificationNeeded = useCallback((code: string, phone: string) => {
     setOtpCode(code);
@@ -204,16 +195,21 @@ const AuthGatedBusiness: React.FC = () => {
     );
   }
 
-  if (!isVerified || otpCode) {
+  if (otpCode) {
     return (
       <OtpVerificationScreen
         code={otpCode || ''}
         phone={otpPhone}
         onVerified={handleVerified}
         onBack={handleOtpBack}
-        initialError={otpError}
       />
     );
+  }
+
+  // Restoring the remembered income type (instant from local cache, or a brief
+  // server pull on a new device) — hold the loader instead of flashing Setup.
+  if (userId && !incomeType && hydratedFor !== userId) {
+    return <WauLoader />;
   }
 
   // Show setup screen if business setup not complete
