@@ -8,7 +8,7 @@
 import { format } from 'date-fns';
 import { SavingsAccount } from '../../../types';
 import { Portfolio, AllocSlice, computeAccountDerived } from './savingsMath';
-import { getTypeInfo, CustomResolver } from './investmentTypes';
+import { CustomResolver } from './investmentTypes';
 
 export interface SnapshotInput {
   accounts: SavingsAccount[];

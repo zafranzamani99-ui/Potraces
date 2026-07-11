@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, Modal, Pressable, TouchableOpacity, Alert, Keyboard } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
@@ -15,7 +15,7 @@ import { useToast } from '../../../context/ToastContext';
 import { useT } from '../../../i18n';
 import { lightTap, successNotification } from '../../../services/haptics';
 import { SavingsAccount, SnapshotType, SavingsSnapshot } from '../../../types';
-import { SAVINGS_TYPE_OPTIONS, getTypeInfo } from './investmentTypes';
+import { SAVINGS_TYPE_OPTIONS } from './investmentTypes';
 
 // ─────────────────────────── shared shell ───────────────────────────
 const SheetShell: React.FC<{ visible: boolean; onClose: () => void; title: React.ReactNode; children: React.ReactNode; footer?: React.ReactNode }> = ({ visible, onClose, title, children, footer }) => {
@@ -62,7 +62,6 @@ interface AddEditProps {
   onUpdate: (id: string, updates: Partial<SavingsAccount>) => void;
   onSnapshot: (id: string, value: number, note?: string, snapshotType?: SnapshotType) => void;
   onDelete: (id: string) => void;
-  investmentCats?: unknown;
 }
 
 export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, currency, onClose, onAdd, onUpdate, onSnapshot, onDelete }) => {
@@ -81,17 +80,23 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
   const [target, setTarget] = useState('');
   const [goalName, setGoalName] = useState('');
 
-  useEffect(() => {
-    if (!visible) return;
-    if (editing) {
-      setName(editing.name); setType(editing.type); setDescription(editing.description || '');
-      setInitial(String(editing.initialInvestment)); setCurrent(String(editing.currentValue));
-      setRate(editing.annualRate ? String(editing.annualRate) : ''); setTarget(editing.target ? String(editing.target) : '');
-      setGoalName(editing.goalName || '');
-    } else {
-      setName(''); setType('bank'); setDescription(''); setInitial(''); setCurrent(''); setRate(''); setTarget(''); setGoalName('');
+  // Reset the form when the sheet opens (or its target changes) — the
+  // "adjust state during render on prop change" pattern, not an effect.
+  const [syncKey, setSyncKey] = useState<string | null>(null);
+  const opened = visible ? (editing?.id ?? 'new') : null;
+  if (opened !== syncKey) {
+    setSyncKey(opened);
+    if (opened !== null) {
+      setName(editing?.name ?? '');
+      setType(editing?.type ?? 'bank');
+      setDescription(editing?.description ?? '');
+      setInitial(editing ? String(editing.initialInvestment) : '');
+      setCurrent(editing ? String(editing.currentValue) : '');
+      setRate(editing?.annualRate ? String(editing.annualRate) : '');
+      setTarget(editing?.target ? String(editing.target) : '');
+      setGoalName(editing?.goalName ?? '');
     }
-  }, [visible, editing]);
+  }
 
   const isCustomLike = type === 'other' || type.startsWith('custom_');
 
@@ -203,9 +208,13 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
   const [note, setNote] = useState('');
   const [snap, setSnap] = useState<SnapshotType>('manual');
 
-  useEffect(() => {
-    if (visible && account) { setValue(String(account.currentValue)); setNote(''); setSnap('manual'); }
-  }, [visible, account]);
+  // Reset when the sheet opens for a (new) account — adjust-during-render, not an effect.
+  const [syncKey, setSyncKey] = useState<string | null>(null);
+  const opened = visible && account ? account.id : null;
+  if (opened !== syncKey) {
+    setSyncKey(opened);
+    if (opened !== null && account) { setValue(String(account.currentValue)); setNote(''); setSnap('manual'); }
+  }
 
   const preview = useMemo(() => {
     if (!account) return null;

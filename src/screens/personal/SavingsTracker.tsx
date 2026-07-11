@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Pressable, InteractionManager } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Pressable, InteractionManager, Linking } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,7 +32,7 @@ import {
 } from './savings/savingsMath';
 import { selectNudge, Nudge } from './savings/coachingEngine';
 import { buildSavingsSnapshot } from './savings/savingsSnapshot';
-import { getTypeInfo, CustomResolver } from './savings/investmentTypes';
+import { CustomResolver } from './savings/investmentTypes';
 
 const MAX_ACCOUNTS = 5;
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | 'ALL';
@@ -89,7 +89,7 @@ const SavingsTracker: React.FC = () => {
 
   useFocusEffect(useCallback(() => () => { if (accounts.length > 0) recordOpen(); }, [accounts.length, recordOpen]));
 
-  const now = useMemo(() => new Date(), [accounts]); // stable per data change
+  const now = useMemo(() => new Date(), []); // fixed at mount — fine for a pushed screen
 
   // ── Whole-portfolio (hero) ──
   const portfolio = useMemo(() => computePortfolio(accounts, now), [accounts, now]);
@@ -201,7 +201,7 @@ const SavingsTracker: React.FC = () => {
               )}
               <View style={styles.ranges}>
                 {TIME_RANGES.map((r) => (
-                  <TouchableOpacity key={r} onPress={() => { setTimeRange(r); selectionChanged(); }} style={[styles.range, timeRange === r && styles.rangeOn]} activeOpacity={0.7}>
+                  <TouchableOpacity key={r} onPress={() => { setTimeRange(r); selectionChanged(); }} style={[styles.range, timeRange === r && styles.rangeOn]} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={r === 'ALL' ? t.savings.timeRangeAll : r}>
                     <Text style={[styles.rangeText, timeRange === r && styles.rangeTextOn]}>{r === 'ALL' ? t.savings.timeRangeAll : r}</Text>
                   </TouchableOpacity>
                 ))}
@@ -219,7 +219,7 @@ const SavingsTracker: React.FC = () => {
             </View>
 
             {/* ASK ECHO */}
-            <TouchableOpacity activeOpacity={0.85} onPress={() => openEcho()} style={[styles.askEcho, neu.insetSoft]}>
+            <TouchableOpacity activeOpacity={0.85} onPress={() => openEcho()} style={[styles.askEcho, neu.insetSoft]} accessibilityRole="button" accessibilityLabel={t.savings.askEchoBar}>
               <View style={[styles.askSpark, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
                 <Feather name="zap" size={14} color={C.accent} />
               </View>
@@ -228,7 +228,7 @@ const SavingsTracker: React.FC = () => {
             </TouchableOpacity>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
               {savingsChips.map((c) => (
-                <TouchableOpacity key={c.label} onPress={() => openEcho(c.question)} style={[styles.chip, neu.raised]} activeOpacity={0.8}>
+                <TouchableOpacity key={c.label} onPress={() => openEcho(c.question)} style={[styles.chip, neu.raised]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={c.label}>
                   <Text style={styles.chipText}>{c.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -283,7 +283,7 @@ const SavingsTracker: React.FC = () => {
             {tabAccounts.length > 1 && (
               <View style={styles.sortRow}>
                 {SORT_OPTS.map((o) => (
-                  <TouchableOpacity key={o.key} onPress={() => { setSortBy(o.key); selectionChanged(); }} style={[styles.sortChip, neu.raised, sortBy === o.key && { backgroundColor: C.accent }]} activeOpacity={0.8}>
+                  <TouchableOpacity key={o.key} onPress={() => { setSortBy(o.key); selectionChanged(); }} style={[styles.sortChip, neu.raised, sortBy === o.key && { backgroundColor: C.accent }]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t.savings[o.labelKey]}>
                     <Text style={[styles.sortChipText, sortBy === o.key && { color: '#fff' }]}>{t.savings[o.labelKey]}</Text>
                   </TouchableOpacity>
                 ))}
@@ -309,7 +309,7 @@ const SavingsTracker: React.FC = () => {
                 <Text style={styles.growTag}>{t.savings.growTitle} · {t.savings.growOptional}</Text>
                 <Text style={styles.growTitle}>{t.savings.growCashTitle}</Text>
                 <Text style={styles.growBody}>{t.savings.growCashBody}</Text>
-                <TouchableOpacity onPress={() => { lightTap(); showToast(t.savings.growTitle, 'info'); }} style={styles.growGo}>
+                <TouchableOpacity onPress={() => { lightTap(); Linking.openURL('https://versa.com.my').catch(() => showToast(t.savings.growTitle, 'info')); }} style={styles.growGo} accessibilityRole="button" accessibilityLabel={t.savings.growExplore}>
                   <Text style={styles.growGoText}>{t.savings.growExplore}</Text>
                   <Feather name="arrow-up-right" size={13} color={C.accent} />
                 </TouchableOpacity>
@@ -327,7 +327,6 @@ const SavingsTracker: React.FC = () => {
         visible={addEditOpen} editing={editing} currency={currency}
         onClose={() => { setAddEditOpen(false); setEditing(null); }}
         onAdd={addAccount} onUpdate={updateAccount} onSnapshot={addSnapshot} onDelete={deleteAccount}
-        investmentCats={investmentCats}
       />
       <UpdateValueSheet
         visible={updateOpen} account={updating} currency={currency}
