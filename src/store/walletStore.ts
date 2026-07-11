@@ -95,6 +95,13 @@ export const useWalletStore = create<WalletState>()(
           })),
         })),
 
+      // Wallet-delta primitives. INVARIANT: every ledger entry that affects a wallet — a
+      // transaction with a walletId, a transfer, a debt payment, a goal contribution —
+      // applies exactly ONE matching delta here, and reverses it on edit/delete.
+      // reconcileWalletBalances() recomputes the balance from that ledger and self-heals
+      // drift on sync, so a forgotten or doubled delta corrupts the LIVE balance until the
+      // next reconcile. Never call these for a tx you didn't record, or twice for one tx.
+      // Guarded by scripts/test-transaction-wallet-invariant.ts.
       deductFromWallet: (id, amount) => {
         if (!amount || !isFinite(amount) || amount <= 0) return;
         set((state) => ({
