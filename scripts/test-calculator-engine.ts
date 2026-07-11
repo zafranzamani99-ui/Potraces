@@ -6,7 +6,7 @@ import {
   initialCalc, inputDigit, inputDoubleZero, inputDot, inputOp, inputBracket,
   inputPercent, backspace, clearAll, equals, evaluate, result, liveResult,
   isError, hasOperation, formatNumber, numberToPlainString, formatExpressionString,
-  insertValue,
+  insertValue, currencyAmount, currencyAmountString,
 } from '../src/utils/calculatorEngine';
 
 const failures: string[] = [];
@@ -108,6 +108,19 @@ check('insert after operator appends', insertValue({ expr: '5+', justEvaluated: 
 check('insert after value → implicit ×', insertValue({ expr: '5', justEvaluated: false }, '3').expr === '5×3');
 check('insert after = starts fresh', insertValue({ expr: '8', justEvaluated: true }, '3').expr === '3');
 check('insert after ( appends', insertValue({ expr: '(', justEvaluated: false }, '3').expr === '(3');
+
+// currency-safe hand-off amount — what money fields must receive (NOT the raw evaluator result)
+check('currencyAmount strips float noise', currencyAmount(200 * (1 + 0.1)) === 220); // 220.00000000000003 → 220
+check('currencyAmountString strips float noise', currencyAmountString(200 * (1 + 0.1)) === '220');
+check('currencyAmount rounds to 2dp', currencyAmount(3.33333333) === 3.33);
+check('currencyAmountString keeps needed decimals', currencyAmountString(1234.5) === '1234.5');
+check('currencyAmountString trims trailing zeros', currencyAmountString(50.1) === '50.1');
+check('currencyAmountString no thousands separators', currencyAmountString(1234567.89) === '1234567.89');
+check('currencyAmount sub-cent → 0', currencyAmount(0.001) === 0);
+check('currencyAmountString sub-cent → 0', currencyAmountString(0.001) === '0');
+check('currencyAmount negative → 0', currencyAmount(-5) === 0);
+check('currencyAmount non-finite → 0', currencyAmount(Infinity) === 0);
+check('currencyAmountString never scientific notation', !/e/i.test(currencyAmountString(1e21)));
 
 if (failures.length) { console.error('FAIL:\n' + failures.join('\n')); process.exit(1); }
 console.log(`calculator-engine OK (${passed} checks)`);

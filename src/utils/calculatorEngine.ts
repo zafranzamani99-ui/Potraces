@@ -267,6 +267,24 @@ export function result(s: CalcState): number {
   return r != null && isFinite(r) ? r : 0;
 }
 
+/**
+ * Currency-safe amount for money hand-off: rounds to 2 decimals (sen), strips
+ * binary-float noise, and never returns NaN/Infinity/negative. Transaction amount
+ * fields MUST use this, not the raw `result()` — which can carry float noise
+ * (200×(1+10%) → 220.00000000000003) or serialize to scientific notation.
+ */
+export function currencyAmount(n: number): number {
+  if (!isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+/** Plain fixed-decimal string of a currency amount — never scientific notation, no separators. */
+export function currencyAmountString(n: number): string {
+  const a = currencyAmount(n);
+  if (a === 0) return '0';
+  return a.toFixed(2).replace(/\.?0+$/, '');
+}
+
 /** True when the expression contains an actual operation (worth logging to history). */
 export function hasOperation(expr: string): boolean {
   return /[+\-×÷%()]/.test(expr);

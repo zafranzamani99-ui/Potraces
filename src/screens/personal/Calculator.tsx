@@ -17,8 +17,8 @@ import { useCalculatorStore } from '../../store/calculatorStore';
 import {
   initialCalc, inputDigit, inputDoubleZero, inputDot, inputOp, inputBracket,
   inputPercent, backspace, clearAll, equals, evaluate, liveResult, result,
-  insertValue, isError, hasOperation, formatNumber, formatExpressionString,
-  displaySegments, CalcState, CalcOp,
+  insertValue, isError, hasOperation, formatNumber, numberToPlainString, formatExpressionString,
+  displaySegments, currencyAmount, currencyAmountString, CalcState, CalcOp,
 } from '../../utils/calculatorEngine';
 import type { CALM } from '../../constants';
 
@@ -85,7 +85,8 @@ const Calculator: React.FC = () => {
   const [copied, setCopied] = useState(false);
 
   const value = result(state);
-  const canUse = !isError(state) && value > 0;
+  const amount = currencyAmount(value); // currency-safe (2dp, no float noise / e-notation) for money hand-off
+  const canUse = !isError(state) && amount > 0;
 
   const err = isError(state);
   const segments = displaySegments(state.expr);
@@ -130,7 +131,7 @@ const Calculator: React.FC = () => {
   const copyResult = async () => {
     if (!canUse) return;
     lightTap();
-    await Clipboard.setStringAsync(String(value));
+    await Clipboard.setStringAsync(numberToPlainString(value));
     setCopied(true);
     setTimeout(() => setCopied(false), 1400);
   };
@@ -206,7 +207,7 @@ const Calculator: React.FC = () => {
         {canUse ? (
           <NeuButton
             icon="arrow-right"
-            label={`${t.calc.useAmount}  ·  RM ${formatNumber(value)}`}
+            label={`${t.calc.useAmount}  ·  RM ${formatNumber(amount)}`}
             onPress={openHub}
             accessibilityLabel={t.calc.useAmount}
           />
@@ -270,7 +271,7 @@ const Calculator: React.FC = () => {
             </Pressable>
           ) : null}
           <View style={{ flex: 1 }}>
-            <Text style={styles.hubAmount}>RM {formatNumber(value)}</Text>
+            <Text style={styles.hubAmount}>RM {formatNumber(amount)}</Text>
             <Text style={styles.hubPrompt}>
               {hubView === 'split' ? t.calc.split : hubView === 'goal' ? t.calc.pickGoal : t.calc.hubPrompt}
             </Text>
@@ -280,9 +281,9 @@ const Calculator: React.FC = () => {
           {hubView === 'main' && (
             <>
               <ActionRow C={C} icon="arrow-down-circle" tint={C.accent} title={t.calc.logExpense} subtitle={t.calc.logExpenseSub}
-                onPress={() => { lightTap(); setShowHub(false); openQuickAdd('expense', String(value)); }} />
+                onPress={() => { lightTap(); setShowHub(false); openQuickAdd('expense', currencyAmountString(value)); }} />
               <ActionRow C={C} icon="arrow-up-circle" tint={C.positive} title={t.calc.logIncome} subtitle={t.calc.logIncomeSub}
-                onPress={() => { lightTap(); setShowHub(false); openQuickAdd('income', String(value)); }} />
+                onPress={() => { lightTap(); setShowHub(false); openQuickAdd('income', currencyAmountString(value)); }} />
               <ActionRow C={C} icon="people" tint={C.bronze} title={t.calc.split} subtitle={t.calc.splitSub}
                 onPress={() => { lightTap(); setHubView('split'); }} />
               {activeGoals.length > 0 && (
@@ -297,7 +298,7 @@ const Calculator: React.FC = () => {
               <ActionRow C={C} icon="flash" tint={C.accent} title={t.calc.quickSplit} subtitle={t.calc.quickSplitSub}
                 onPress={() => { lightTap(); setShowHub(false); setShowQuick(true); }} />
               <ActionRow C={C} icon="list" tint={C.bronze} title={t.calc.detailedSplit} subtitle={t.calc.detailedSplitSub}
-                onPress={() => { lightTap(); setShowHub(false); navigation.navigate('DebtTracking', { prefillSplitAmount: value }); }} />
+                onPress={() => { lightTap(); setShowHub(false); navigation.navigate('DebtTracking', { prefillSplitAmount: amount }); }} />
             </>
           )}
 
@@ -314,7 +315,7 @@ const Calculator: React.FC = () => {
                   tint={C.gold}
                   title={g.name}
                   subtitle={`RM ${formatNumber(g.currentAmount)} / RM ${formatNumber(g.targetAmount)} · ${pct}%`}
-                  onPress={() => { lightTap(); setShowHub(false); navigation.navigate('Goals', { contributeGoalId: g.id, contributeAmount: value }); }}
+                  onPress={() => { lightTap(); setShowHub(false); navigation.navigate('Goals', { contributeGoalId: g.id, contributeAmount: amount }); }}
                 />
               );
             })
@@ -323,7 +324,7 @@ const Calculator: React.FC = () => {
       </BottomSheet>
 
       {/* Quick split */}
-      <QuickSplitSheet visible={showQuick} total={value} onClose={() => setShowQuick(false)} />
+      <QuickSplitSheet visible={showQuick} total={amount} onClose={() => setShowQuick(false)} />
     </View>
   );
 };
