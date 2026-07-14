@@ -123,6 +123,10 @@ interface SettingsState {
   hasCompletedOnboarding: boolean;
   gettingStartedDismissed: boolean;
   dismissedHints: string[];
+  /** User picked "don't ask again" on the cross-mode account-reuse prompt.
+   *  Deliberately NOT in dismissedHints — that array is wiped by clearPersonalData
+   *  and the demo→real transition to replay tutorials, which would resurrect the nag. */
+  reuseNeverAsk: boolean;
   /** True while the sample/demo dataset is loaded (from onboarding or Settings).
    *  Drives the "exploring with sample data" dashboard banner and the sign-in
    *  guard that clears demo data before it can push to a real cloud account. */
@@ -191,6 +195,7 @@ interface SettingsState {
   setHasCompletedOnboarding: (value: boolean) => void;
   setGettingStartedDismissed: (value: boolean) => void;
   dismissHint: (id: string) => void;
+  setReuseNeverAsk: (value: boolean) => void;
   setBiometricLockEnabled: (value: boolean) => void;
   setBiometricLockTimeoutMin: (value: number) => void;
   /** Wipe ALL personal data (local + cloud). Never touches business data. */
@@ -383,6 +388,7 @@ export const useSettingsStore = create<SettingsState>()(
       hasCompletedOnboarding: false,
       gettingStartedDismissed: false,
       dismissedHints: [],
+      reuseNeverAsk: false,
       sampleDataLoaded: false,
       biometricLockEnabled: false,
       biometricLockTimeoutMin: 5,
@@ -476,6 +482,7 @@ export const useSettingsStore = create<SettingsState>()(
       dismissHint: (id) => set((s) => ({
         dismissedHints: s.dismissedHints.includes(id) ? s.dismissedHints : [...s.dismissedHints, id],
       })),
+      setReuseNeverAsk: (reuseNeverAsk) => set({ reuseNeverAsk }),
 
       clearPersonalData: async () => {
         // Wipes ALL personal data (local + cloud) and NOTHING business. Business

@@ -166,6 +166,8 @@ export const ms: Translations = {
     acctReusePersonalTitle: 'Guna akaun ini untuk peribadi juga?',
     acctReuseMsg: 'Anda akan log masuk kedua-dua mod dengan akaun sama, jadi data anda dikongsi. Anda masih boleh log keluar mana-mana satu secara berasingan.',
     acctReuseConfirm: 'Guna akaun sama',
+    acctReuseNotNow: 'Nanti dulu',
+    acctReuseNever: 'Jangan tanya lagi',
     acctReuseFailed: 'Tak dapat guna akaun ini untuk mod lain. Anda boleh log masuk manual bila-bila.',
     acctDeleteSharedTitle: 'Akaun ini dikongsi',
     acctDeleteSharedMsg: 'Akaun ini juga log masuk pada mod satu lagi. Kami akan buang data mod ini sahaja dan kekalkan akaun untuk mod satu lagi.',

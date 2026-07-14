@@ -15,7 +15,8 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import Svg, { Path } from 'react-native-svg';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
@@ -33,6 +34,17 @@ import { lightTap } from '../../services/haptics';
 import { useT } from '../../i18n';
 
 const PRIVACY_URL = 'https://jejakbaki.my/privacy.html';
+
+// Official 4-color Google "G". ponytail: brand hex is spec-mandated, not theme tokens;
+// mirrors AuthScreen's logo — extract to a shared component if a third caller appears.
+const GoogleGLogo = ({ size = 18 }: { size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 48 48">
+    <Path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+    <Path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+    <Path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+    <Path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+  </Svg>
+);
 
 /**
  * AccountScreen — the personal-mode account + cloud-backup hub.
@@ -312,20 +324,11 @@ export default function AccountScreen() {
   ];
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <Pressable
-        onPress={() => navigation.goBack()}
-        style={styles.backBtn}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        accessibilityRole="button"
-        accessibilityLabel={tr.common.cancel}
-      >
-        <Feather name="arrow-left" size={22} color={C.textPrimary} />
-      </Pressable>
-
+    <View style={styles.container}>
       <KeyboardAwareScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(80, insets.bottom + 40) }]}
         keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="on-drag"
         bottomOffset={32}
@@ -357,31 +360,6 @@ export default function AccountScreen() {
                 ))}
               </View>
 
-              {/* Apple first on iOS — App Store convention, and the most
-                  reliable provider here. */}
-              {Platform.OS === 'ios' && (
-                <Pressable
-                  style={[styles.socialBtn, styles.appleSocialBtn, socialLoading === 'apple' && { opacity: 0.6 }]}
-                  onPress={handleApple}
-                  disabled={busy}
-                  accessibilityRole="button"
-                  accessibilityLabel={tr.auth.continueWithApple}
-                >
-                  {({ pressed }) => (
-                    <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
-                      {socialLoading === 'apple' ? (
-                        <ActivityIndicator color={isDark ? C.background : '#FFFFFF'} size="small" />
-                      ) : (
-                        <>
-                          <Feather name="command" size={18} color={isDark ? '#000000' : '#FFFFFF'} />
-                          <Text style={[styles.socialBtnText, styles.appleBtnText]}>{tr.auth.continueWithApple}</Text>
-                        </>
-                      )}
-                    </View>
-                  )}
-                </Pressable>
-              )}
-
               {/* Google */}
               <Pressable
                 style={[styles.socialBtn, socialLoading === 'google' && { opacity: 0.6 }]}
@@ -396,13 +374,38 @@ export default function AccountScreen() {
                       <ActivityIndicator color={C.textPrimary} size="small" />
                     ) : (
                       <>
-                        <Text style={styles.googleG}>G</Text>
+                        <GoogleGLogo size={18} />
                         <Text style={styles.socialBtnText}>{tr.auth.continueWithGoogle}</Text>
                       </>
                     )}
                   </View>
                 )}
               </Pressable>
+
+              {/* Apple (iOS only) — matching white pill + real Apple mark.
+                  Equal-size pills keep Apple as prominent as Google. */}
+              {Platform.OS === 'ios' && (
+                <Pressable
+                  style={[styles.socialBtn, socialLoading === 'apple' && { opacity: 0.6 }]}
+                  onPress={handleApple}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityLabel={tr.auth.continueWithApple}
+                >
+                  {({ pressed }) => (
+                    <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
+                      {socialLoading === 'apple' ? (
+                        <ActivityIndicator color={C.textPrimary} size="small" />
+                      ) : (
+                        <>
+                          <Ionicons name="logo-apple" size={19} color={C.textPrimary} />
+                          <Text style={styles.socialBtnText}>{tr.auth.continueWithApple}</Text>
+                        </>
+                      )}
+                    </View>
+                  )}
+                </Pressable>
+              )}
 
               {/* Divider */}
               <View style={styles.dividerRow}>
@@ -661,14 +664,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     backgroundColor: C.background,
   },
-  backBtn: {
-    marginTop: SPACING.sm,
-    marginLeft: SPACING.lg,
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   scroll: {
     flexGrow: 1,
     paddingHorizontal: SPACING.xl,
@@ -760,28 +755,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     minHeight: 52,
     marginBottom: SPACING.sm + 2,
   },
-  appleSocialBtn: {
-    backgroundColor: C === CALM_DARK ? '#FFFFFF' : '#000000',
-    borderColor: C === CALM_DARK ? '#FFFFFF' : '#000000',
-  },
   socialBtnInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm + 2,
-  },
-  googleG: {
-    fontSize: 20,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#4285F4',
   },
   socialBtnText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     letterSpacing: 0.2,
-  },
-  appleBtnText: {
-    color: C === CALM_DARK ? '#000000' : '#FFFFFF',
   },
 
   // ── Divider ───────────────────────────────────────────────

@@ -167,6 +167,8 @@ export const en = {
     acctReusePersonalTitle: 'Use this account for personal too?',
     acctReuseMsg: 'You’ll be signed into both modes with the same account, so your data is shared. You can still sign out of either one separately.',
     acctReuseConfirm: 'Use same account',
+    acctReuseNotNow: 'Not now',
+    acctReuseNever: 'Don’t ask again',
     acctReuseFailed: 'Could not use this account for the other mode. You can sign in manually anytime.',
     acctDeleteSharedTitle: 'This account is shared',
     acctDeleteSharedMsg: 'This account is also signed in on the other mode. We’ll remove this mode’s data only and keep the account for the other mode.',

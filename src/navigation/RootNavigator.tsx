@@ -101,6 +101,8 @@ function makeBackHeader(
     headerShown: true,
     headerTitle: title,
     headerStyle: { backgroundColor: C.background },
+    // Empty-title headers (hero screens like Account) render seamless — no hairline over the body.
+    headerShadowVisible: title !== '',
     headerTintColor: C.textPrimary,
     headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
     headerLeft: () => (
@@ -372,7 +374,7 @@ const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="Account"
           component={AccountScreen}
-          options={{ headerShown: false }}
+          options={makeBackHeader(C, mode, '')}
         />
         <Stack.Screen
           name="AccountOverview"

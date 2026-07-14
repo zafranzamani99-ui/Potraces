@@ -3,6 +3,7 @@ import { clientForMode, signInWithPhone, type Mode } from './supabase';
 import { signInWithGoogle } from './googleAuth';
 import { signInWithApple } from './appleAuth';
 import { useAuthStore } from '../store/authStore';
+import { useSettingsStore } from '../store/settingsStore';
 
 export type ReuseCreds =
   | { provider: 'phone'; phone: string; password: string }
@@ -52,8 +53,13 @@ export async function reuseAccountForMode(target: Mode, creds: ReuseCreds): Prom
 }
 
 /**
- * Offer to reuse the just-signed-in account for the OTHER mode. No-op if that
- * mode is already signed in. `tr` is the active i18n bundle.
+ * Offer to reuse the just-signed-in account for the OTHER mode. No-op if that mode
+ * is already signed in, or if the user chose "don't ask again". `tr` is the active
+ * i18n bundle.
+ *
+ * "Not now" is deliberately NOT remembered — it means ask me again next sign-in.
+ * Only "don't ask again" persists, otherwise a user who never wants the two modes
+ * linked gets nagged on every single sign-in.
  */
 export function confirmReuse(target: Mode, creds: ReuseCreds, tr: any): void {
   const already =
@@ -61,10 +67,15 @@ export function confirmReuse(target: Mode, creds: ReuseCreds, tr: any): void {
       ? useAuthStore.getState().business.isAuthenticated
       : useAuthStore.getState().personal.isAuthenticated;
   if (already) return;
+  if (useSettingsStore.getState().reuseNeverAsk) return;
 
   const title = target === 'business' ? tr.auth.acctReuseBizTitle : tr.auth.acctReusePersonalTitle;
   Alert.alert(title, tr.auth.acctReuseMsg, [
-    { text: tr.common.cancel, style: 'cancel' },
+    { text: tr.auth.acctReuseNotNow, style: 'cancel' },
+    {
+      text: tr.auth.acctReuseNever,
+      onPress: () => useSettingsStore.getState().setReuseNeverAsk(true),
+    },
     {
       text: tr.auth.acctReuseConfirm,
       onPress: () => { reuseAccountForMode(target, creds).catch(() => {}); },

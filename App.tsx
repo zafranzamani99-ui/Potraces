@@ -10,6 +10,7 @@ import { COLORS, SPACING, TYPOGRAPHY } from './src/constants';
 import { useIsDark } from './src/hooks/useCalm';
 import { ToastProvider } from './src/context/ToastContext';
 import { supabaseBusiness, supabasePersonal, getAuthSession } from './src/services/supabase';
+import { isAuthFlowInFlight } from './src/services/authFlow';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId, clearProfileCache } from './src/services/sellerSync';
 import { useAuthStore } from './src/store/authStore';
 import { registerPushNotifications, registerPersonalDeviceToken, registerAndroidNotificationChannels } from './src/services/pushNotifications';
@@ -291,7 +292,14 @@ function App() {
     const { data: { subscription } } = supabaseBusiness.auth.onAuthStateChange((event, session) => {
       const auth = useAuthStore.getState();
       if (event === 'SIGNED_IN' && session) {
-        auth.setBusinessAuth({ isAuthenticated: true, userId: session.user.id });
+        // Stand down while AuthScreen is mid sign-in/sign-up: it writes the auth state
+        // itself (incl. provider/phone/isVerified) and, on sign-up, seeds the OTP verify
+        // screen FIRST. Flipping isAuthenticated here fires the instant the session is
+        // created — seconds before requestOtp() returns — which strands the user on
+        // BusinessSetup until the verify screen finally appears.
+        if (!isAuthFlowInFlight()) {
+          auth.setBusinessAuth({ isAuthenticated: true, userId: session.user.id });
+        }
         // Trigger sync so data loads immediately after re-login.
         const store = useSellerStore.getState();
         store.setSyncing(true);

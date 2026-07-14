@@ -16,6 +16,7 @@ import Svg, { Path } from 'react-native-svg';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { signUpWithPhone, signInWithPhone, requestOtp, supabaseBusiness } from '../../services/supabase';
+import { beginAuthFlow, endAuthFlow } from '../../services/authFlow';
 import { ensureProfile } from '../../services/sellerSync';
 import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
 import { signInWithApple } from '../../services/appleAuth';
@@ -84,6 +85,9 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
     }
 
     setLoading(true);
+    // This screen owns the auth-store write for this flow — keep App.tsx's SIGNED_IN
+    // listener from racing it (see services/authFlow).
+    beginAuthFlow();
     // Keep the wau loader up for a beat so it reads as motion, not a flicker.
     const startedAt = Date.now();
     const holdLoader = async () => {
@@ -111,10 +115,14 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
         if (data.session) {
           await ensureProfile();
           const otp = await requestOtp(cleaned, supabaseBusiness);
-          await holdLoader();
-          // Set the OTP code BEFORE flipping isAuthenticated so the gate lands
-          // straight on the verify screen (no setup-screen flash in between).
+          // No artificial hold on sign-up: the verify screen IS the destination, so
+          // there's nothing to mask — the loader already covered the real network work
+          // above. Still yield ONE tick so React commits otpCode before the store flip:
+          // the gate's otpCode is React state while isAuthenticated is a Zustand
+          // external store, and a store write forces a sync re-render that would
+          // otherwise read otpCode as still null and flash BusinessSetup on the way in.
           onVerificationNeeded(otp.code, cleaned);
+          await new Promise((r) => setTimeout(r, 0));
           useAuthStore.getState().setBusinessAuth({
             isAuthenticated: true, userId: data.session.user.id, phone: cleaned, provider: 'phone',
           });
@@ -127,6 +135,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
         setError(tr.auth.errAlreadyRegistered);
       else setError(msg.toLowerCase());
     } finally {
+      endAuthFlow();
       setLoading(false);
     }
   }, [phone, password, confirmPassword, isLogin, cleanPhone, onVerificationNeeded, onAuthenticated, tr]);
@@ -188,6 +197,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
       <KeyboardAwareScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(80, insets.bottom + 40) }]}
         keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="on-drag"
         bottomOffset={120}
