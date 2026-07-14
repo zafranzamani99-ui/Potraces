@@ -1,1374 +1,362 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Pressable,
-  Modal,
-  TextInput,
-  Alert,
-  Keyboard,
-  Dimensions,
-  InteractionManager,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Pressable, InteractionManager, Linking } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import {
-  format, formatDistanceToNow, isValid, startOfMonth, isWithinInterval,
-  endOfMonth, differenceInDays, subMonths, subYears, addMonths,
-} from 'date-fns';
+import { subMonths, parseISO, differenceInDays } from 'date-fns';
 import { useSavingsStore } from '../../store/savingsStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import {
-  CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha,
-} from '../../constants';
+import { usePersonalStore } from '../../store/personalStore';
+import { usePremiumStore } from '../../store/premiumStore';
+import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
-import Button from '../../components/common/Button';
-import Card from '../../components/common/Card';
+import { useNeu } from '../../components/common/neu';
 import EmptyState from '../../components/common/EmptyState';
-import CategoryIcon from '../../components/common/CategoryIcon';
-import ProgressBar from '../../components/common/ProgressBar';
 import Sparkline from '../../components/common/Sparkline';
-import { useToast } from '../../context/ToastContext';
-import { useCategories } from '../../hooks/useCategories';
-import { SavingsAccount, SavingsSortBy, SnapshotType } from '../../types';
-import { CategoryOption } from '../../types';
-import { lightTap, selectionChanged } from '../../services/haptics';
-import { useT } from '../../i18n';
+import FAB from '../../components/common/FAB';
+import DebtSegmentedControl from '../../components/debt/DebtSegmentedControl';
+import EchoInlineChat, { EchoChip } from '../../components/common/EchoInlineChat';
+import PaywallModal from '../../components/common/PaywallModal';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import ScreenGuide from '../../components/common/ScreenGuide';
+import { useToast } from '../../context/ToastContext';
+import { useCategories } from '../../hooks/useCategories';
+import { useT } from '../../i18n';
+import { lightTap, selectionChanged } from '../../services/haptics';
+import { SavingsAccount, SavingsSortBy } from '../../types';
+import AccountCard from './savings/AccountCard';
+import { AddEditAccountSheet, UpdateValueSheet, HistorySheet } from './savings/SavingsSheets';
+import {
+  computePortfolio, classifyAccounts, computeBreakdown, computeAccountDerived, sortDerived, Portfolio,
+} from './savings/savingsMath';
+import { selectNudge, Nudge } from './savings/coachingEngine';
+import { buildSavingsSnapshot } from './savings/savingsSnapshot';
+import { CustomResolver } from './savings/investmentTypes';
 
 const MAX_ACCOUNTS = 5;
-const SCREEN_W = Dimensions.get('window').width;
-const CARD_PAD = SPACING.lg;
-const CHART_W = SCREEN_W - CARD_PAD * 4;
-
-const FALLBACK_TYPE: CategoryOption = { id: 'other', name: 'Other', icon: 'briefcase', color: '#9CA3B4' };
-
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | 'ALL';
+type Tab = 'savings' | 'investment';
 
-// ALL label is rendered via t.savings.timeRangeAll at render time.
-const TIME_RANGES: { key: TimeRange; label: string }[] = [
-  { key: '1M', label: '1M' },
-  { key: '3M', label: '3M' },
-  { key: '6M', label: '6M' },
-  { key: '1Y', label: '1Y' },
-  { key: 'ALL', label: 'All' },
-];
-
-// These labels are resolved at render time via t.savings to support i18n.
-const SORT_OPTIONS: { key: SavingsSortBy; labelKey: 'manual' | 'valueLabel' | 'growthLabel' | 'updatedLabel' }[] = [
-  { key: 'manual', labelKey: 'manual' },
+const TIME_RANGES: TimeRange[] = ['1M', '3M', '6M', '1Y', 'ALL'];
+const SORT_OPTS: { key: SavingsSortBy; labelKey: 'valueLabel' | 'growthLabel' | 'updatedLabel' }[] = [
   { key: 'value', labelKey: 'valueLabel' },
   { key: 'return', labelKey: 'growthLabel' },
   { key: 'updated', labelKey: 'updatedLabel' },
 ];
 
-const SNAPSHOT_TYPES: { key: SnapshotType; labelKey: 'updateType' | 'dividend' | 'withdrawalType'; icon: keyof typeof Feather.glyphMap }[] = [
-  { key: 'manual', labelKey: 'updateType', icon: 'refresh-cw' },
-  { key: 'dividend', labelKey: 'dividend', icon: 'gift' },
-  { key: 'withdrawal', labelKey: 'withdrawalType', icon: 'arrow-down-left' },
-];
-
-// Milestones that trigger celebration / nudge
-const MILESTONES = [
-  1000, 2500, 5000, 10000, 15000, 20000, 25000, 50000,
-  75000, 100000, 150000, 200000, 250000, 500000, 1000000,
-];
-
 const SavingsTracker: React.FC = () => {
   const C = useCalm();
   const t = useT();
+  const neu = useNeu();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
-  const {
-    accounts, addAccount, updateAccount, deleteAccount, addSnapshot,
-    sortBy, setSortBy, setTarget, accountOrder, lastOpenedValue, recordOpen,
-  } = useSavingsStore();
+
+  const { accounts, addAccount, updateAccount, deleteAccount, addSnapshot, sortBy, setSortBy, lastOpenedValue, recordOpen } = useSavingsStore();
   const currency = useSettingsStore((s) => s.currency);
-  const investmentTypes = useCategories('investment');
-  const getTypeInfo = useCallback((typeId: string): CategoryOption =>
-    investmentTypes.find((t) => t.id === typeId) || FALLBACK_TYPE,
-  [investmentTypes]);
+  const tier = usePremiumStore((s) => s.tier);
+  const transactions = usePersonalStore((s) => s.transactions);
+  const investmentCats = useCategories('investment');
 
-  // ── State ──
+  const resolveCustom = useCallback<CustomResolver>((id) => {
+    const c = investmentCats.find((x) => x.id === id);
+    return c ? { name: c.name, icon: c.icon, color: c.color } : undefined;
+  }, [investmentCats]);
+
+  // ── UI state ──
   const [timeRange, setTimeRange] = useState<TimeRange>('ALL');
-
-  // Add / Edit modal
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<SavingsAccount | null>(null);
-  const [name, setName] = useState('');
-  const [selectedType, setSelectedType] = useState(investmentTypes[0]?.id || 'tng_plus');
-  const [description, setDescription] = useState('');
-  const [initialInvestment, setInitialInvestment] = useState('');
-  const [currentValue, setCurrentValue] = useState('');
-  const [targetValue, setTargetValue] = useState('');
-  const [goalNameValue, setGoalNameValue] = useState('');
-  const [annualRateValue, setAnnualRateValue] = useState('');
-  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
-
-  // Update value modal
-  const [updateModalVisible, setUpdateModalVisible] = useState(false);
-  const [updatingAccount, setUpdatingAccount] = useState<SavingsAccount | null>(null);
-  const [newValue, setNewValue] = useState('');
-  const [updateNote, setUpdateNote] = useState('');
-  const [snapshotType, setSnapshotType] = useState<SnapshotType>('manual');
-
-  // History modal
-  const [historyModalVisible, setHistoryModalVisible] = useState(false);
-  const [historyAccount, setHistoryAccount] = useState<SavingsAccount | null>(null);
-
-  // Stale reminder
-  const [reminderDismissed, setReminderDismissed] = useState(false);
-
-  // ── Defer heavy content until nav transition completes ──
+  const [tab, setTab] = useState<Tab>('savings');
   const [ready, setReady] = useState(false);
+
+  // sheets
+  const [addEditOpen, setAddEditOpen] = useState(false);
+  const [editing, setEditing] = useState<SavingsAccount | null>(null);
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const [updating, setUpdating] = useState<SavingsAccount | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyAcc, setHistoryAcc] = useState<SavingsAccount | null>(null);
+
+  // echo + paywall
+  const [echoOpen, setEchoOpen] = useState(false);
+  const [echoAutoPrompt, setEchoAutoPrompt] = useState<string | undefined>(undefined);
+  const [paywallOpen, setPaywallOpen] = useState(false);
+
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => setReady(true));
     return () => task.cancel();
   }, []);
 
-  // ── Record open on screen blur (for "since last check") ──
-  useFocusEffect(
-    useCallback(() => {
-      return () => {
-        if (accounts.length > 0) recordOpen();
-      };
-    }, [accounts.length, recordOpen])
-  );
+  // Record the "since last check" baseline only on real blur/unmount. Read the
+  // count fresh from the store so the callback identity stays stable while
+  // focused (using accounts.length as a dep would re-fire recordOpen on every
+  // add/delete, silently wiping the "since last check" pill mid-session).
+  useFocusEffect(useCallback(() => () => { if (useSavingsStore.getState().accounts.length > 0) recordOpen(); }, [recordOpen]));
 
-  // ── Portfolio data — full sparkline with dates ──
-  const portfolio = useMemo(() => {
-    const totalCurrent = accounts.reduce((s, a) => s + a.currentValue, 0);
-    const totalInvested = accounts.reduce((s, a) => s + a.initialInvestment, 0);
-    const totalGain = totalCurrent - totalInvested;
-    const totalReturn = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
+  const now = useMemo(() => new Date(), []); // fixed at mount — fine for a pushed screen
 
-    const now = new Date();
-    const mStart = startOfMonth(now);
-    const mEnd = endOfMonth(now);
-    let monthContributed = 0;
-    let monthUpdates = 0;
-    for (const a of accounts) {
-      for (let i = 1; i < a.history.length; i++) {
-        const d = a.history[i].date instanceof Date ? a.history[i].date : new Date(a.history[i].date as any);
-        if (isWithinInterval(d, { start: mStart, end: mEnd })) {
-          const diff = a.history[i].value - a.history[i - 1].value;
-          if (diff > 0) monthContributed += diff;
-          monthUpdates++;
-        }
-      }
-    }
-
-    // Value change this month
-    let totalAtMonthStart = 0;
-    for (const a of accounts) {
-      const beforeMonth = a.history.filter((h) => {
-        const d = h.date instanceof Date ? h.date : new Date(h.date as any);
-        return d < mStart;
-      });
-      totalAtMonthStart += beforeMonth.length > 0
-        ? beforeMonth[beforeMonth.length - 1].value
-        : a.initialInvestment;
-    }
-    const monthValueChange = totalCurrent - totalAtMonthStart;
-
-    // Full sparkline with dates (for time range filtering)
-    const dateMap = new Map<string, Map<string, number>>();
-    for (const a of accounts) {
-      for (const h of a.history) {
-        const d = h.date instanceof Date ? h.date : new Date(h.date as any);
-        const key = format(d, 'yyyy-MM-dd');
-        if (!dateMap.has(key)) dateMap.set(key, new Map());
-        dateMap.get(key)!.set(a.id, h.value);
-      }
-    }
-    const sortedDates = Array.from(dateMap.keys()).sort();
-    const latestValues = new Map<string, number>();
-    const fullSparkline: { date: string; value: number }[] = [];
-    for (const dateKey of sortedDates) {
-      const snapshot = dateMap.get(dateKey)!;
-      for (const [aid, val] of snapshot) latestValues.set(aid, val);
-      let total = 0;
-      for (const val of latestValues.values()) total += val;
-      fullSparkline.push({ date: dateKey, value: total });
-    }
-
-    return {
-      totalCurrent, totalInvested, totalGain, totalReturn,
-      monthContributed, monthUpdates, monthValueChange, fullSparkline,
-    };
-  }, [accounts]);
-
-  // ── Filtered sparkline by time range ──
-  const chartData = useMemo(() => {
-    const { fullSparkline } = portfolio;
-    if (fullSparkline.length < 2) return [];
-
-    if (timeRange === 'ALL') return fullSparkline.map((p) => p.value);
-
-    const now = new Date();
-    const cutoff = {
-      '1M': subMonths(now, 1),
-      '3M': subMonths(now, 3),
-      '6M': subMonths(now, 6),
-      '1Y': subYears(now, 1),
-    }[timeRange];
-
-    const filtered = fullSparkline.filter((p) => new Date(p.date) >= cutoff);
-    return filtered.length >= 2 ? filtered.map((p) => p.value) : fullSparkline.map((p) => p.value);
-  }, [portfolio, timeRange]);
-
-  // ── Period change (for display under chart) ──
-  const periodChange = useMemo(() => {
-    if (chartData.length < 2) return null;
-    const first = chartData[0];
-    const last = chartData[chartData.length - 1];
-    const diff = last - first;
-    const pct = first > 0 ? (diff / first) * 100 : 0;
-    return { diff, pct };
-  }, [chartData]);
-
-  // ── "Since last check" delta ──
+  // ── Whole-portfolio (hero) ──
+  const portfolio = useMemo(() => computePortfolio(accounts, now), [accounts, now]);
   const sinceLastCheck = useMemo(() => {
     if (lastOpenedValue === null || accounts.length === 0) return null;
     const diff = portfolio.totalCurrent - lastOpenedValue;
-    if (Math.abs(diff) < 0.01) return null;
-    return diff;
+    return Math.abs(diff) < 0.01 ? null : diff;
   }, [portfolio.totalCurrent, lastOpenedValue, accounts.length]);
 
-  // ── Insights: best performer, next milestone, projected earnings ──
-  const insights = useMemo(() => {
-    if (accounts.length === 0) return null;
-    const now = new Date();
-    const mStart = startOfMonth(now);
+  const chartData = useMemo(() => timeRangeFilter(portfolio, timeRange, now), [portfolio, timeRange, now]);
+  const periodChange = useMemo(() => {
+    if (chartData.length < 2) return null;
+    const first = chartData[0]; const last = chartData[chartData.length - 1];
+    return { diff: last - first, pct: first > 0 ? ((last - first) / first) * 100 : 0 };
+  }, [chartData]);
 
-    // Best performer this month
-    let bestPerformer: SavingsAccount | null = null;
-    let bestPct = 0;
-    for (const a of accounts) {
-      const beforeMonth = a.history.filter((h) => {
-        const d = h.date instanceof Date ? h.date : new Date(h.date as any);
-        return d < mStart;
-      });
-      const startVal = beforeMonth.length > 0 ? beforeMonth[beforeMonth.length - 1].value : a.initialInvestment;
-      if (startVal <= 0) continue;
-      const pct = ((a.currentValue - startVal) / startVal) * 100;
-      if (pct > bestPct) { bestPerformer = a; bestPct = pct; }
+  // ── Split ──
+  const split = useMemo(() => classifyAccounts(accounts, resolveCustom), [accounts, resolveCustom]);
+  const tabAccounts = tab === 'savings' ? split.savings : split.investments;
+  const tabPortfolio = useMemo(() => computePortfolio(tabAccounts, now), [tabAccounts, now]);
+  const tabBreakdown = useMemo(() => computeBreakdown(tabAccounts, resolveCustom), [tabAccounts, resolveCustom]);
+  const derived = useMemo(() => tabAccounts.map((a) => computeAccountDerived(a, now, resolveCustom)), [tabAccounts, now, resolveCustom]);
+  const sorted = useMemo(() => sortDerived(derived, sortBy, []), [derived, sortBy]);
+
+  // ── avg monthly spend for runway (last 90 days of personal expenses) ──
+  const avgMonthlySpend = useMemo(() => {
+    const cutoff = subMonths(now, 3);
+    let total = 0;
+    let earliest: Date | null = null;
+    for (const tx of transactions) {
+      if ((tx as any).type !== 'expense') continue;
+      const d = (tx as any).date instanceof Date ? (tx as any).date : new Date((tx as any).date);
+      if (d >= cutoff) { total += (tx as any).amount || 0; if (!earliest || d < earliest) earliest = d; }
     }
+    if (!earliest) return 0;
+    // Divide by the ACTUAL months of data present (clamped to [1,3]) so new users
+    // with < 3 months of history don't get an understated spend (which would
+    // inflate the runway and suppress the emergency-fund nudge).
+    const monthsSpan = Math.min(3, Math.max(differenceInDays(now, earliest) / 30, 1));
+    return total / monthsSpan;
+  }, [transactions, now]);
 
-    // Next milestone
-    const nextMilestone = MILESTONES.find((m) => m > portfolio.totalCurrent) || null;
-    const toMilestone = nextMilestone ? nextMilestone - portfolio.totalCurrent : null;
-    const milestonePct = nextMilestone ? (portfolio.totalCurrent / nextMilestone) * 100 : 0;
+  const nudge = useMemo<Nudge | null>(() => selectNudge({
+    tab, accounts: tabAccounts, portfolio: tabPortfolio, breakdown: tabBreakdown, avgMonthlySpend, now,
+  }), [tab, tabAccounts, tabPortfolio, tabBreakdown, avgMonthlySpend, now]);
 
-    // Projected annual earnings (from annualRate)
-    let projectedEarnings = 0;
-    let accountsWithRate = 0;
-    for (const a of accounts) {
-      if (a.annualRate && a.annualRate > 0) {
-        projectedEarnings += a.currentValue * a.annualRate / 100;
-        accountsWithRate++;
-      }
-    }
+  const fmt = useCallback((v: number) => `${currency} ${v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, [currency]);
+  const fmtShort = useCallback((v: number) => (Math.abs(v) >= 1000 ? `${currency} ${(v / 1000).toFixed(1)}k` : `${currency} ${Math.round(v)}`), [currency]);
 
-    return {
-      bestPerformer, bestPct, nextMilestone, toMilestone,
-      milestonePct, projectedEarnings, accountsWithRate,
-    };
-  }, [accounts, portfolio.totalCurrent]);
+  // ── Echo ──
+  const savingsChips: EchoChip[] = useMemo(() => [
+    { label: t.savings.chipOnTrack, question: t.savings.chipOnTrackQ },
+    { label: t.savings.chipConcentrated, question: t.savings.chipConcentratedQ },
+    { label: t.savings.chipBest, question: t.savings.chipBestQ },
+    { label: t.savings.chipSaveMore, question: t.savings.chipSaveMoreQ },
+  ], [t]);
+  const snapshot = useMemo(() => buildSavingsSnapshot({ accounts, portfolio, breakdown: computeBreakdown(accounts, resolveCustom), currency, now, resolveCustom }), [accounts, portfolio, currency, now, resolveCustom]);
 
-  // ── Stale account reminder ──
-  const staleAccount = useMemo(() => {
-    if (reminderDismissed || accounts.length === 0) return null;
-    const now = new Date();
-    let mostStale: SavingsAccount | null = null;
-    let maxDays = 0;
-    for (const a of accounts) {
-      const lastUpdate = a.history.length > 0
-        ? (a.history[a.history.length - 1].date instanceof Date
-            ? a.history[a.history.length - 1].date
-            : new Date(a.history[a.history.length - 1].date as any))
-        : a.createdAt;
-      const days = differenceInDays(now, lastUpdate);
-      if (days >= 7 && days > maxDays) {
-        mostStale = a;
-        maxDays = days;
-      }
-    }
-    return mostStale ? { account: mostStale, days: maxDays } : null;
-  }, [accounts, reminderDismissed]);
+  const openEcho = useCallback((prompt?: string) => {
+    if (tier !== 'premium') { setPaywallOpen(true); return; }
+    lightTap();
+    setEchoAutoPrompt(prompt);
+    setEchoOpen(true);
+  }, [tier]);
 
-  // ── Breakdown ──
-  const breakdown = useMemo(() => {
-    if (accounts.length < 2) return null;
-    const typeMap: Record<string, { name: string; value: number; color: string }> = {};
-    for (const a of accounts) {
-      const info = getTypeInfo(a.type);
-      const key = a.type;
-      if (!typeMap[key]) typeMap[key] = { name: info.name, value: 0, color: info.color };
-      typeMap[key].value += a.currentValue;
-    }
-    const total = Object.values(typeMap).reduce((s, v) => s + v.value, 0);
-    return Object.values(typeMap)
-      .map((v) => ({ ...v, pct: total > 0 ? (v.value / total) * 100 : 0 }))
-      .sort((a, b) => b.value - a.value);
-  }, [accounts, getTypeInfo]);
-
-  // ── Sorted accounts ──
-  const sortedAccounts = useMemo(() => {
-    const now = new Date();
-    const mStart = startOfMonth(now);
-
-    const list = accounts.map((account) => {
-      const typeInfo = getTypeInfo(account.type);
-      const gain = account.currentValue - account.initialInvestment;
-      const returnPct = account.initialInvestment > 0 ? (gain / account.initialInvestment) * 100 : 0;
-
-      // Monthly gain for this account
-      const beforeMonth = account.history.filter((h) => {
-        const d = h.date instanceof Date ? h.date : new Date(h.date as any);
-        return d < mStart;
-      });
-      const monthStartVal = beforeMonth.length > 0 ? beforeMonth[beforeMonth.length - 1].value : account.initialInvestment;
-      const monthGain = account.currentValue - monthStartVal;
-
-      // Goal pace projection
-      let goalEta: string | null = null;
-      if (account.target && account.target > account.currentValue) {
-        const remaining = account.target - account.currentValue;
-        // Average monthly growth from last 3 months of snapshots
-        const threeMonthsAgo = subMonths(now, 3);
-        const recentHistory = account.history.filter((h) => {
-          const d = h.date instanceof Date ? h.date : new Date(h.date as any);
-          return d >= threeMonthsAgo;
-        });
-        if (recentHistory.length >= 2) {
-          const oldVal = recentHistory[0].value;
-          const newVal = recentHistory[recentHistory.length - 1].value;
-          const firstDate = recentHistory[0].date instanceof Date ? recentHistory[0].date : new Date(recentHistory[0].date as any);
-          const lastDate = recentHistory[recentHistory.length - 1].date instanceof Date
-            ? recentHistory[recentHistory.length - 1].date : new Date(recentHistory[recentHistory.length - 1].date as any);
-          const monthsElapsed = Math.max(differenceInDays(lastDate, firstDate) / 30.44, 0.5);
-          const monthlyRate = (newVal - oldVal) / monthsElapsed;
-          if (monthlyRate > 0) {
-            const monthsToGoal = Math.ceil(remaining / monthlyRate);
-            if (monthsToGoal <= 120) { // Only show if within 10 years
-              goalEta = format(addMonths(now, monthsToGoal), 'MMM yyyy');
-            }
-          }
-        }
-      }
-
-      // Projected annual earnings for this account
-      const projectedAnnual = account.annualRate && account.annualRate > 0
-        ? account.currentValue * account.annualRate / 100 : null;
-
-      return { ...account, typeInfo, gain, returnPct, monthGain, goalEta, projectedAnnual };
-    });
-
-    switch (sortBy) {
-      case 'value':
-        return list.sort((a, b) => b.currentValue - a.currentValue);
-      case 'return':
-        return list.sort((a, b) => b.returnPct - a.returnPct);
-      case 'updated':
-        return list.sort((a, b) => {
-          const da = a.updatedAt instanceof Date ? a.updatedAt : new Date(a.updatedAt as any);
-          const db = b.updatedAt instanceof Date ? b.updatedAt : new Date(b.updatedAt as any);
-          return db.getTime() - da.getTime();
-        });
-      case 'manual':
-      default:
-        if (accountOrder.length > 0) {
-          return list.sort((a, b) => {
-            const ai = accountOrder.indexOf(a.id);
-            const bi = accountOrder.indexOf(b.id);
-            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-          });
-        }
-        return list;
-    }
-  }, [accounts, sortBy, accountOrder, getTypeInfo]);
-
-  // ── Handlers ──
-  const resetForm = useCallback(() => {
-    setEditingAccount(null);
-    setName('');
-    setSelectedType('tng_plus');
-    setDescription('');
-    setInitialInvestment('');
-    setCurrentValue('');
-    setTargetValue('');
-    setGoalNameValue('');
-    setAnnualRateValue('');
-    setTypeDropdownOpen(false);
-  }, []);
-
+  // ── Add/edit/update/history/delete ──
   const openAdd = useCallback(() => {
-    if (accounts.length >= MAX_ACCOUNTS) {
-      showToast(t.savings.maxAccounts.replace('{n}', String(MAX_ACCOUNTS)), 'error');
-      return;
-    }
-    resetForm();
-    setModalVisible(true);
-  }, [accounts.length, resetForm, showToast, t]);
+    if (accounts.length >= MAX_ACCOUNTS) { setPaywallOpen(true); return; }
+    setEditing(null); setAddEditOpen(true);
+  }, [accounts.length]);
+  const openEdit = useCallback((a: SavingsAccount) => { setEditing(a); setAddEditOpen(true); }, []);
+  const openUpdate = useCallback((a: SavingsAccount) => { setUpdating(a); setUpdateOpen(true); }, []);
+  const openHistory = useCallback((a: SavingsAccount) => { setHistoryAcc(a); setHistoryOpen(true); }, []);
 
-  const openEdit = useCallback((account: SavingsAccount) => {
-    setEditingAccount(account);
-    setName(account.name);
-    setSelectedType(account.type);
-    setDescription(account.description || '');
-    setInitialInvestment(account.initialInvestment.toString());
-    setCurrentValue(account.currentValue.toString());
-    setTargetValue(account.target ? account.target.toString() : '');
-    setGoalNameValue(account.goalName || '');
-    setAnnualRateValue(account.annualRate ? account.annualRate.toString() : '');
-    setTypeDropdownOpen(false);
-    setModalVisible(true);
-  }, []);
+  const nudgeCopy = useMemo(() => (nudge ? renderNudge(nudge, t, fmtShort) : null), [nudge, t, fmtShort]);
+  const onNudgeAction = useCallback(() => {
+    if (!nudge) return;
+    if (nudge.kind === 'stale') { const a = tabAccounts.find((x) => x.id === nudge.data.id); if (a) openUpdate(a); }
+    else if (nudge.kind === 'runway' || nudge.kind === 'addedThisMonth') openAdd();
+    else if (nudge.kind === 'concentration') openEcho(savingsChips[1].question);
+  }, [nudge, tabAccounts, openUpdate, openAdd, openEcho, savingsChips]);
 
-  const handleSave = useCallback(() => {
-    if (!name.trim()) {
-      showToast(t.savings.enterAccountName, 'error');
-      return;
-    }
-    const inv = parseFloat(initialInvestment);
-    const cur = parseFloat(currentValue);
-    if (!inv || inv <= 0) {
-      showToast(t.savings.enterValidInitial, 'error');
-      return;
-    }
-    if (!cur || cur < 0) {
-      showToast(t.savings.enterValidCurrent, 'error');
-      return;
-    }
+  const segTabs = useMemo(() => [
+    { key: 'savings' as Tab, label: t.savings.savingsTab, count: split.savings.length, color: C.accent },
+    { key: 'investment' as Tab, label: t.savings.investmentsTab, count: split.investments.length, color: C.bronze },
+  ], [t, split, C]);
 
-    const parsedTarget = parseFloat(targetValue);
-    const target = parsedTarget > 0 ? parsedTarget : undefined;
-    const parsedRate = parseFloat(annualRateValue);
-    const annualRate = parsedRate > 0 ? parsedRate : undefined;
-    const goalName = goalNameValue.trim() || undefined;
-
-    if (editingAccount) {
-      const valueChanged = cur !== editingAccount.currentValue;
-      updateAccount(editingAccount.id, {
-        name: name.trim(),
-        type: selectedType,
-        description: (selectedType === 'other' || selectedType.startsWith('custom_')) ? description.trim() : undefined,
-        initialInvestment: inv,
-        currentValue: cur,
-        target, goalName, annualRate,
-      });
-      // Add history snapshot if value changed so sparkline stays in sync
-      if (valueChanged) {
-        addSnapshot(editingAccount.id, cur, 'Edit');
-      }
-      showToast(t.savings.accountUpdated, 'success');
-    } else {
-      addAccount({
-        name: name.trim(),
-        type: selectedType,
-        description: (selectedType === 'other' || selectedType.startsWith('custom_')) ? description.trim() : undefined,
-        initialInvestment: inv,
-        currentValue: cur,
-        target, goalName, annualRate,
-      });
-      showToast(t.savings.accountAdded, 'success');
-    }
-    lightTap();
-    setModalVisible(false);
-    resetForm();
-  }, [name, selectedType, description, initialInvestment, currentValue, targetValue, goalNameValue, annualRateValue, editingAccount, addAccount, updateAccount, resetForm, showToast, t]);
-
-  const handleDelete = useCallback((account: SavingsAccount) => {
-    Alert.alert(
-      t.savings.deleteAccountTitle,
-      t.savings.deleteAccountMsg.replace('{name}', account.name),
-      [
-        { text: t.savings.deleteCancel, style: 'cancel' },
-        {
-          text: t.savings.deleteConfirm,
-          style: 'destructive',
-          onPress: () => {
-            deleteAccount(account.id);
-            showToast(t.savings.accountDeleted, 'success');
-            lightTap();
-          },
-        },
-      ]
-    );
-  }, [deleteAccount, showToast, t]);
-
-  const openUpdateValue = useCallback((account: SavingsAccount) => {
-    setUpdatingAccount(account);
-    setNewValue(account.currentValue.toString());
-    setUpdateNote('');
-    setSnapshotType('manual');
-    setUpdateModalVisible(true);
-  }, []);
-
-  const handleUpdateValue = useCallback(() => {
-    if (!updatingAccount) return;
-    const val = parseFloat(newValue);
-    if (!val || val < 0) {
-      showToast(t.savings.enterValidValue, 'error');
-      return;
-    }
-    addSnapshot(updatingAccount.id, val, updateNote.trim() || undefined, snapshotType);
-    showToast(t.savings.valueUpdated, 'success');
-    lightTap();
-    setUpdateModalVisible(false);
-    setUpdatingAccount(null);
-  }, [updatingAccount, newValue, updateNote, snapshotType, addSnapshot, showToast, t]);
-
-  const openHistory = useCallback((account: SavingsAccount) => {
-    setHistoryAccount(account);
-    setHistoryModalVisible(true);
-  }, []);
-
-  // ── History modal data ──
-  const historyData = useMemo(() => {
-    if (!historyAccount) return { grouped: [], sparkline: [], bestMonth: '', worstMonth: '' };
-
-    const entries = historyAccount.history.slice().reverse();
-    const sparkline = historyAccount.history.map((h) => h.value);
-
-    const groups: Record<string, typeof entries> = {};
-    for (const snap of entries) {
-      const d = snap.date instanceof Date ? snap.date : new Date(snap.date as any);
-      const key = isValid(d) ? format(d, 'MMMM yyyy') : 'Unknown';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(snap);
-    }
-    const grouped = Object.entries(groups).map(([month, items]) => ({ month, items }));
-
-    const monthChanges: Record<string, number> = {};
-    const fwd = historyAccount.history;
-    for (let i = 1; i < fwd.length; i++) {
-      const d = fwd[i].date instanceof Date ? fwd[i].date : new Date(fwd[i].date as any);
-      const key = isValid(d) ? format(d, 'MMM yyyy') : 'Unknown';
-      const diff = fwd[i].value - fwd[i - 1].value;
-      monthChanges[key] = (monthChanges[key] || 0) + diff;
-    }
-    const sorted = Object.entries(monthChanges).sort((a, b) => b[1] - a[1]);
-    const bestMonth = sorted.length > 0 && sorted[0][1] > 0 ? `${sorted[0][0]}: +${currency} ${sorted[0][1].toFixed(2)}` : '';
-    const worstMonth = sorted.length > 0 && sorted[sorted.length - 1][1] < 0
-      ? `${sorted[sorted.length - 1][0]}: ${currency} ${sorted[sorted.length - 1][1].toFixed(2)}`
-      : '';
-
-    return { grouped, sparkline, bestMonth, worstMonth };
-  }, [historyAccount, currency]);
-
-  // ── Helpers (stable refs) ──
-  const fmtAmount = useCallback((v: number) => `${currency} ${v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, [currency]);
-  const fmtShort = useCallback((v: number) => {
-    if (Math.abs(v) >= 1000) return `${currency} ${(v / 1000).toFixed(1)}k`;
-    return `${currency} ${v.toFixed(0)}`;
-  }, [currency]);
+  const showBar = ready && accounts.length > 0;
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-      >
-        {!ready ? (
-          <View style={{ alignItems: 'center', paddingTop: 80 }}>
-            <Text style={styles.heroLabel}>{t.savings.loading}</Text>
-          </View>
-        ) : null}
-        {/* ═══ HERO SECTION ═══ */}
-        {ready && accounts.length > 0 && (
-          <View style={styles.heroCard}>
-            <Text style={styles.heroLabel}>{t.savings.totalSaved.toLowerCase()}</Text>
-            <Text style={styles.heroAmount}>
-              {fmtAmount(portfolio.totalCurrent)}
-            </Text>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {!ready && <View style={styles.loading}><Text style={styles.muted}>{t.savings.loading}</Text></View>}
 
-            {/* "Since last check" badge — THE daily pull hook */}
-            {sinceLastCheck !== null && (
-              <View style={[
-                styles.sinceLastBadge,
-                { backgroundColor: withAlpha(sinceLastCheck >= 0 ? C.positive : C.neutral, 0.08) },
-              ]}>
-                <Feather
-                  name={sinceLastCheck >= 0 ? 'trending-up' : 'trending-down'}
-                  size={12}
-                  color={sinceLastCheck >= 0 ? C.positive : C.neutral}
-                />
-                <Text style={[
-                  styles.sinceLastText,
-                  { color: sinceLastCheck >= 0 ? C.positive : C.neutral },
-                ]}>
-                  {sinceLastCheck >= 0 ? '+' : ''}{fmtAmount(sinceLastCheck)} {t.savings.sinceLastCheck}
-                </Text>
-              </View>
-            )}
-
-            {/* Area chart with gradient fill */}
-            {chartData.length >= 2 && (
-              <View style={styles.heroChart}>
-                <Sparkline
-                  data={chartData}
-                  width={CHART_W}
-                  height={80}
-                  showDot
-                  filled
-                  strokeWidth={2.5}
-                />
-              </View>
-            )}
-
-            {/* Time range pills */}
-            <View style={styles.timeRangeRow}>
-              {TIME_RANGES.map((range) => (
-                <TouchableOpacity
-                  key={range.key}
-                  style={[styles.timeRangePill, timeRange === range.key && styles.timeRangePillActive]}
-                  onPress={() => { setTimeRange(range.key); selectionChanged(); }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.timeRangeText, timeRange === range.key && styles.timeRangeTextActive]}>
-                    {range.key === 'ALL' ? t.savings.timeRangeAll : range.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              {periodChange && (
-                <Text style={[
-                  styles.periodChangeText,
-                  { color: periodChange.diff >= 0 ? C.positive : C.neutral },
-                ]}>
-                  {periodChange.diff >= 0 ? '+' : ''}{periodChange.pct.toFixed(1)}%
-                </Text>
-              )}
-            </View>
-
-            {/* Stats row: invested · growth · return */}
-            <View style={styles.heroStatsRow}>
-              <View style={styles.heroStatItem}>
-                <Text style={styles.heroStatLabel}>{t.savings.invested}</Text>
-                <Text style={styles.heroStatValue}>{fmtAmount(portfolio.totalInvested)}</Text>
-              </View>
-              <View style={styles.heroStatDivider} />
-              <View style={styles.heroStatItem}>
-                <Text style={styles.heroStatLabel}>{t.savings.growth}</Text>
-                <Text style={[styles.heroStatValue, { color: portfolio.totalGain >= 0 ? C.positive : C.neutral }]}>
-                  {portfolio.totalGain >= 0 ? '+' : ''}{fmtAmount(portfolio.totalGain)}
-                </Text>
-              </View>
-              <View style={styles.heroStatDivider} />
-              <View style={styles.heroStatItem}>
-                <Text style={styles.heroStatLabel}>{t.savings.growth}</Text>
-                <Text style={[styles.heroStatValue, { color: portfolio.totalReturn >= 0 ? C.positive : C.neutral }]}>
-                  {portfolio.totalReturn >= 0 ? '+' : ''}{portfolio.totalReturn.toFixed(1)}%
-                </Text>
-              </View>
-            </View>
-          </View>
+        {ready && accounts.length === 0 && (
+          <EmptyState icon="m/piggy-bank-outline" title={t.savings.startBuilding} message={t.savings.setAside} actionLabel={t.savings.addSavings} onAction={openAdd} />
         )}
 
-        {/* ═══ INSIGHTS CARDS ═══ */}
-        {ready && insights && accounts.length > 0 && (
-          <View style={styles.insightsRow}>
-            {/* Projected annual earnings */}
-            {insights.projectedEarnings > 0 && (
-              <View style={styles.insightCard}>
-                <Feather name="sun" size={16} color={C.gold} />
-                <Text style={styles.insightValue}>{fmtShort(insights.projectedEarnings)}</Text>
-                <Text style={styles.insightLabel}>{t.savings.estEarningsThisYear}</Text>
-              </View>
-            )}
-
-            {/* Next milestone */}
-            {insights.nextMilestone && insights.toMilestone !== null && (
-              <View style={styles.insightCard}>
-                <Feather name="flag" size={16} color={C.accent} />
-                <Text style={styles.insightValue}>{fmtShort(insights.toMilestone)}</Text>
-                <Text style={styles.insightLabel}>{t.savings.toMilestone.replace('{amount}', fmtShort(insights.nextMilestone))}</Text>
-              </View>
-            )}
-
-            {/* Best performer this month */}
-            {insights.bestPerformer && insights.bestPct > 0 && (
-              <View style={styles.insightCard}>
-                <Feather name="award" size={16} color={C.bronze} />
-                <Text style={styles.insightValue} numberOfLines={1}>{insights.bestPerformer.name}</Text>
-                <Text style={styles.insightLabel}>{t.savings.thisMonthPerf.replace('{pct}', insights.bestPct.toFixed(1))}</Text>
-              </View>
-            )}
-
-            {/* This month activity (fallback if no other insights) */}
-            {portfolio.monthContributed > 0 && !insights.projectedEarnings && (
-              <View style={styles.insightCard}>
-                <Feather name="plus-circle" size={16} color={C.positive} />
-                <Text style={styles.insightValue}>{fmtShort(portfolio.monthContributed)}</Text>
-                <Text style={styles.insightLabel}>{t.savings.addedThisMonth}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* ═══ STALE REMINDER ═══ */}
-        {ready && staleAccount && (
-          <View style={styles.reminderCard}>
-            <View style={styles.reminderContent}>
-              <Feather name="clock" size={16} color={C.gold} />
-              <Text style={styles.reminderText}>
-                {t.savings.notUpdatedDays.replace('{name}', staleAccount.account.name).replace('{days}', String(staleAccount.days))}
-              </Text>
-            </View>
-            <View style={styles.reminderActions}>
-              <TouchableOpacity
-                onPress={() => openUpdateValue(staleAccount.account)}
-                style={styles.reminderBtn}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.reminderBtnText}>{t.savings.updateNow}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setReminderDismissed(true)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Feather name="x" size={16} color={C.textMuted} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* ═══ BREAKDOWN ═══ */}
-        {ready && breakdown && (
-          <View style={styles.breakdownCard}>
-            <Text style={styles.sectionLabel}>{t.savings.whereMoneyLives}</Text>
-            {breakdown.map((item) => (
-              <View key={item.name} style={styles.breakdownRow}>
-                <Text style={styles.breakdownName} numberOfLines={1}>{item.name}</Text>
-                <View style={styles.breakdownBarContainer}>
-                  <View
-                    style={[styles.breakdownBar, { width: `${Math.max(item.pct, 3)}%`, backgroundColor: item.color }]}
-                  />
-                </View>
-                <Text style={styles.breakdownPct}>{item.pct.toFixed(0)}%</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* ═══ SORT + ACCOUNT COUNT ═══ */}
-        {ready && accounts.length > 1 && (
-          <View style={styles.sortRow}>
-            <View style={styles.sortPills}>
-              {SORT_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.sortPill, sortBy === opt.key && styles.sortPillActive]}
-                  onPress={() => { setSortBy(opt.key); selectionChanged(); }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.sortPillText, sortBy === opt.key && styles.sortPillTextActive]}>
-                    {t.savings[opt.labelKey]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.accountCount}>{t.savings.accountsCount.replace('{n}', String(accounts.length))}</Text>
-          </View>
-        )}
-
-        {/* ═══ ACCOUNT CARDS ═══ */}
-        {ready && (sortedAccounts.length > 0 ? (
-          sortedAccounts.map((account, idx) => {
-            const info = account.typeInfo;
-            const { gain, returnPct, monthGain, goalEta, projectedAnnual } = account;
-            const lastSnapshot = account.history.length > 0
-              ? account.history[account.history.length - 1] : null;
-            const prevSnapshot = account.history.length > 1
-              ? account.history[account.history.length - 2] : null;
-            const lastChange = prevSnapshot ? account.currentValue - prevSnapshot.value : null;
-            const sparklineValues = account.history.slice(-12).map((h) => h.value);
-
-            const lastDate = lastSnapshot
-              ? (lastSnapshot.date instanceof Date ? lastSnapshot.date : new Date(lastSnapshot.date as any))
-              : account.createdAt;
-            const staleDays = differenceInDays(new Date(), lastDate);
-            const isStale = staleDays >= 7;
-
-            const targetPct = account.target && account.target > 0
-              ? Math.min(100, Math.round((account.currentValue / account.target) * 100)) : null;
-
-            return (
-              <Card key={`${account.id}_${idx}`} style={styles.accountCard}>
-                {/* Header row: icon + name + edit */}
-                <View style={styles.accountHeader}>
-                  <View style={[styles.accountTypeIcon, { backgroundColor: withAlpha(info.color, 0.1) }]}>
-                    <CategoryIcon icon={info.icon} size={18} color={info.color} />
-                  </View>
-                  <View style={styles.accountInfo}>
-                    <Text style={styles.accountName} numberOfLines={1}>{account.name}</Text>
-                    <Text style={[styles.accountTypeName, { color: info.color }]}>
-                      {account.type === 'other' && account.description ? account.description : info.name}
-                      {account.annualRate ? ` · ${account.annualRate}% p.a.` : ''}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => openEdit(account)}
-                    style={styles.iconBtn}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityLabel={`Edit ${account.name}`}
-                  >
-                    <Feather name="more-horizontal" size={18} color={C.textMuted} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Value + return badge */}
-                <View style={styles.valueRow}>
-                  <Text style={styles.valueCurrent}>{fmtAmount(account.currentValue)}</Text>
-                  <View style={[styles.returnBadge, {
-                    backgroundColor: withAlpha(gain >= 0 ? C.positive : C.neutral, 0.08),
-                  }]}>
-                    <Text style={[styles.returnBadgeText, { color: gain >= 0 ? C.positive : C.neutral }]}>
-                      {gain >= 0 ? '+' : ''}{returnPct.toFixed(1)}%
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Sub stats: invested + gain */}
-                <View style={styles.subStatsRow}>
-                  <Text style={styles.subStatText}>{t.savings.putIn.replace('{amount}', fmtAmount(account.initialInvestment))}</Text>
-                  <Text style={[styles.subStatText, { color: gain >= 0 ? C.positive : C.neutral }]}>
-                    {gain >= 0 ? '+' : ''}{fmtAmount(gain)}
+        {showBar && (
+          <>
+            {/* HERO */}
+            <View style={[styles.hero, neu.raisedSoft]}>
+              <Text style={styles.heroLabel}>{t.savings.totalValue}</Text>
+              <Text style={styles.heroAmount}>{fmt(portfolio.totalCurrent)}</Text>
+              {sinceLastCheck !== null && (
+                <View style={[styles.since, { backgroundColor: withAlpha(sinceLastCheck >= 0 ? C.positive : C.neutral, 0.12) }]}>
+                  <Feather name={sinceLastCheck >= 0 ? 'trending-up' : 'trending-down'} size={12} color={sinceLastCheck >= 0 ? C.positive : C.neutral} />
+                  <Text style={[styles.sinceText, { color: sinceLastCheck >= 0 ? C.positive : C.neutral }]}>
+                    {sinceLastCheck >= 0 ? '+' : ''}{fmt(sinceLastCheck)} {t.savings.sinceLastCheck}
                   </Text>
                 </View>
-
-                {/* Sparkline (wider, area fill) */}
-                {sparklineValues.length >= 2 && (
-                  <View style={styles.accountSparkline}>
-                    <Sparkline
-                      data={sparklineValues}
-                      width={CHART_W}
-                      height={40}
-                      showDot
-                      filled
-                    />
-                  </View>
-                )}
-
-                {/* Projected annual earnings */}
-                {projectedAnnual !== null && projectedAnnual > 0 && (
-                  <View style={styles.projectedRow}>
-                    <Feather name="sun" size={12} color={C.gold} />
-                    <Text style={styles.projectedText}>
-                      {t.savings.estEarningsLine.replace('{amount}', fmtAmount(projectedAnnual))}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Target / goal progress */}
-                {account.target && account.target > 0 && (
-                  <View style={styles.targetSection}>
-                    <View style={styles.targetHeader}>
-                      <Text style={styles.targetLabel}>
-                        {account.goalName || t.savings.targetLabel}: {fmtAmount(account.target)}
-                      </Text>
-                      <Text style={styles.targetPct}>{targetPct}%</Text>
-                    </View>
-                    <ProgressBar
-                      current={account.currentValue}
-                      total={account.target}
-                      color={C.accent}
-                      height={6}
-                    />
-                    {goalEta && (
-                      <Text style={styles.goalEtaText}>
-                        {t.savings.atThisPace.replace('{when}', goalEta)}
-                      </Text>
-                    )}
-                  </View>
-                )}
-
-                {/* Footer: last updated + actions */}
-                <View style={styles.accountFooter}>
-                  <View style={styles.lastUpdatedRow}>
-                    {isStale && <View style={[styles.staleDot, { backgroundColor: C.gold }]} />}
-                    <Feather name="clock" size={11} color={isStale ? C.gold : C.textMuted} />
-                    <Text style={[styles.lastUpdatedText, isStale && { color: C.gold }]}>
-                      {lastSnapshot ? formatDistanceToNow(lastDate, { addSuffix: true }) : t.savings.noUpdates}
-                    </Text>
-                    {lastChange !== null && (
-                      <Text style={[styles.lastChangeText, { color: lastChange >= 0 ? C.positive : C.neutral }]}>
-                        {lastChange >= 0 ? '+' : ''}{fmtAmount(lastChange)}
-                      </Text>
-                    )}
-                  </View>
-                  <View style={styles.accountActions}>
-                    <TouchableOpacity
-                      style={styles.actionBtn}
-                      onPress={() => openUpdateValue(account)}
-                      activeOpacity={0.7}
-                      accessibilityLabel={`Update value for ${account.name}`}
-                    >
-                      <Feather name="refresh-cw" size={14} color={C.accent} />
-                      <Text style={styles.actionBtnText}>{t.savings.update}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.actionBtnSecondary}
-                      onPress={() => openHistory(account)}
-                      activeOpacity={0.7}
-                      accessibilityLabel={`View history for ${account.name}`}
-                    >
-                      <Feather name="bar-chart-2" size={14} color={C.textSecondary} />
-                      <Text style={styles.actionBtnSecondaryText}>{t.savings.history}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </Card>
-            );
-          })
-        ) : (
-          <EmptyState
-            icon="m/piggy-bank-outline"
-            title={t.savings.startBuilding}
-            message={t.savings.setAside}
-            actionLabel={t.savings.addSavings}
-            onAction={openAdd}
-          />
-        ))}
-      </ScrollView>
-
-      {/* ═══ FAB ═══ */}
-      {accounts.length < MAX_ACCOUNTS && accounts.length > 0 && (
-        <Button
-          title={`${t.savings.addAccount} (${accounts.length}/${MAX_ACCOUNTS})`}
-          onPress={openAdd}
-          icon="plus"
-          size="large"
-          style={{ ...styles.fab, bottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }}
-        />
-      )}
-
-      {/* ═══ ADD / EDIT MODAL ═══ */}
-      {modalVisible && <Modal
-        visible
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={() => { setModalVisible(false); resetForm(); }}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => { setModalVisible(false); resetForm(); }}>
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingAccount ? t.savings.editAccount : t.savings.addAccount}
-              </Text>
-              <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
-                <Feather name="x" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <KeyboardAwareScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-              contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
-            >
-              <Text style={styles.label}>{t.savings.accountName.toLowerCase()}</Text>
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder={t.savings.accountNamePlaceholder}
-                placeholderTextColor={C.textMuted}
-                returnKeyType="next"
-              />
-
-              <Text style={styles.label}>{t.savings.typeLabel}</Text>
-              <TouchableOpacity
-                style={styles.dropdownTrigger}
-                onPress={() => setTypeDropdownOpen(!typeDropdownOpen)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.dropdownTriggerLeft}>
-                  <View style={[styles.dropdownIcon, { backgroundColor: withAlpha(getTypeInfo(selectedType).color, 0.12) }]}>
-                    <CategoryIcon icon={getTypeInfo(selectedType).icon} size={16} color={getTypeInfo(selectedType).color} />
-                  </View>
-                  <Text style={styles.dropdownTriggerText}>{getTypeInfo(selectedType).name}</Text>
-                </View>
-                <Feather name={typeDropdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color={C.textSecondary} />
-              </TouchableOpacity>
-
-              {typeDropdownOpen && (
-                <View style={styles.dropdownList}>
-                  {investmentTypes.map((type) => {
-                    const isSelected = selectedType === type.id;
-                    return (
-                      <TouchableOpacity
-                        key={type.id}
-                        style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
-                        onPress={() => { setSelectedType(type.id); setTypeDropdownOpen(false); }}
-                        activeOpacity={0.7}
-                      >
-                        <View style={[styles.dropdownItemIcon, { backgroundColor: withAlpha(type.color, 0.12) }]}>
-                          <CategoryIcon icon={type.icon} size={16} color={type.color} />
-                        </View>
-                        <Text style={[styles.dropdownItemText, isSelected && { color: C.accent, fontWeight: TYPOGRAPHY.weight.bold }]}>
-                          {type.name}
-                        </Text>
-                        {isSelected && <Feather name="check" size={16} color={C.accent} />}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
               )}
-
-              {(selectedType === 'other' || selectedType.startsWith('custom_')) && (
-                <>
-                  <Text style={styles.label}>{t.savings.descriptionLabel}</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={description}
-                    onChangeText={setDescription}
-                    placeholder={t.savings.descriptionPlaceholder}
-                    placeholderTextColor={C.textMuted}
-                    returnKeyType="next"
-                  />
-                </>
+              {chartData.length >= 2 && (
+                <View style={styles.heroChart}><Sparkline data={chartData} height={72} color={C.accent} showDot filled strokeWidth={2.5} /></View>
               )}
-
-              <Text style={styles.label}>{t.savings.putInLabel}</Text>
-              <TextInput
-                style={styles.input}
-                value={initialInvestment}
-                onChangeText={setInitialInvestment}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                placeholderTextColor={C.textMuted}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <Text style={styles.label}>{t.savings.nowLabel}</Text>
-              <TextInput
-                style={styles.input}
-                value={currentValue}
-                onChangeText={setCurrentValue}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                placeholderTextColor={C.textMuted}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              {/* Annual rate — for projected earnings */}
-              <Text style={styles.label}>{t.savings.annualRateLabel}</Text>
-              <TextInput
-                style={styles.input}
-                value={annualRateValue}
-                onChangeText={setAnnualRateValue}
-                placeholder={t.savings.annualRatePlaceholder}
-                keyboardType="decimal-pad"
-                placeholderTextColor={C.textMuted}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              {/* Target + goal name */}
-              <Text style={styles.label}>{t.savings.target.toLowerCase()} ({t.common.optional.toLowerCase()})</Text>
-              <TextInput
-                style={styles.input}
-                value={targetValue}
-                onChangeText={setTargetValue}
-                placeholder={t.savings.targetPlaceholder}
-                keyboardType="decimal-pad"
-                placeholderTextColor={C.textMuted}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              {targetValue && parseFloat(targetValue) > 0 && (
-                <>
-                  <Text style={styles.label}>{t.savings.goalNameLabel}</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={goalNameValue}
-                    onChangeText={setGoalNameValue}
-                    placeholder={t.savings.goalNamePlaceholder}
-                    placeholderTextColor={C.textMuted}
-                    returnKeyType="done"
-                  />
-                </>
-              )}
-
-              <View style={styles.modalActions}>
-                <Button
-                  title={t.savings.cancel}
-                  onPress={() => { setModalVisible(false); resetForm(); }}
-                  variant="outline"
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  title={editingAccount ? t.savings.save : t.savings.addAction}
-                  onPress={handleSave}
-                  icon="check"
-                  style={{ flex: 1 }}
-                />
-              </View>
-
-              {editingAccount && (
-                <TouchableOpacity
-                  style={styles.deleteBtn}
-                  onPress={() => {
-                    setModalVisible(false);
-                    resetForm();
-                    handleDelete(editingAccount);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Feather name="trash-2" size={14} color={C.neutral} />
-                  <Text style={styles.deleteBtnText}>{t.savings.deleteThisAccount}</Text>
-                </TouchableOpacity>
-              )}
-            </KeyboardAwareScrollView>
-          </View>
-        </Pressable>
-        <ModalToastHost />
-      </Modal>}
-
-      {/* ═══ UPDATE VALUE MODAL ═══ */}
-      {updateModalVisible && <Modal
-        visible
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={() => setUpdateModalVisible(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setUpdateModalVisible(false)}>
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t.savings.updateValue}</Text>
-              <TouchableOpacity onPress={() => setUpdateModalVisible(false)}>
-                <Feather name="x" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            {updatingAccount && (
-              <View style={styles.updateContext}>
-                <Text style={styles.updateContextName}>{updatingAccount.name}</Text>
-                <Text style={styles.updateContextPrev}>
-                  {t.savings.currentLabel.replace('{amount}', fmtAmount(updatingAccount.currentValue))}
-                </Text>
-              </View>
-            )}
-
-            <KeyboardAwareScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-              contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
-            >
-              {/* Snapshot type selector */}
-              <Text style={styles.label}>{t.savings.typeOfUpdate}</Text>
-              <View style={styles.snapshotTypeRow}>
-                {SNAPSHOT_TYPES.map((st) => (
-                  <TouchableOpacity
-                    key={st.key}
-                    style={[styles.snapshotTypePill, snapshotType === st.key && styles.snapshotTypePillActive]}
-                    onPress={() => { setSnapshotType(st.key); selectionChanged(); }}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name={st.icon} size={14} color={snapshotType === st.key ? '#FFF' : C.textSecondary} />
-                    <Text style={[styles.snapshotTypeText, snapshotType === st.key && styles.snapshotTypeTextActive]}>
-                      {t.savings[st.labelKey]}
-                    </Text>
+              <View style={styles.ranges}>
+                {TIME_RANGES.map((r) => (
+                  <TouchableOpacity key={r} onPress={() => { setTimeRange(r); selectionChanged(); }} style={[styles.range, timeRange === r && styles.rangeOn]} activeOpacity={0.7} accessibilityRole="button" accessibilityState={{ selected: timeRange === r }} accessibilityLabel={r === 'ALL' ? t.savings.timeRangeAll : r}>
+                    <Text style={[styles.rangeText, timeRange === r && styles.rangeTextOn]}>{r === 'ALL' ? t.savings.timeRangeAll : r}</Text>
                   </TouchableOpacity>
                 ))}
+                {periodChange && (
+                  <Text style={[styles.rangeChange, { color: periodChange.diff >= 0 ? C.positive : C.neutral }]}>
+                    {periodChange.diff >= 0 ? '+' : ''}{periodChange.pct.toFixed(1)}%
+                  </Text>
+                )}
               </View>
-
-              <Text style={styles.label}>{t.savings.newValueLabel}</Text>
-              <TextInput
-                style={styles.input}
-                value={newValue}
-                onChangeText={setNewValue}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                placeholderTextColor={C.textMuted}
-                returnKeyType="next"
-                autoFocus
-              />
-
-              <Text style={styles.label}>{t.savings.noteOptional}</Text>
-              <TextInput
-                style={styles.input}
-                value={updateNote}
-                onChangeText={setUpdateNote}
-                placeholder={snapshotType === 'dividend' ? t.savings.dividendPlaceholder : snapshotType === 'withdrawal' ? t.savings.withdrawalPlaceholder : t.savings.monthlyCheckPlaceholder}
-                placeholderTextColor={C.textMuted}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              {updatingAccount && newValue && parseFloat(newValue) > 0 && (
-                <View style={styles.updatePreview}>
-                  {(() => {
-                    const nv = parseFloat(newValue);
-                    const diff = nv - updatingAccount.currentValue;
-                    const pct = updatingAccount.currentValue > 0
-                      ? (diff / updatingAccount.currentValue) * 100 : 0;
-                    return (
-                      <>
-                        <Text style={styles.updatePreviewLabel}>
-                          {snapshotType === 'dividend' ? t.savings.dividendEarned : snapshotType === 'withdrawal' ? t.savings.withdrawnLabel : t.savings.changeLabel}
-                        </Text>
-                        <Text style={[styles.updatePreviewValue, { color: diff >= 0 ? C.positive : C.neutral }]}>
-                          {diff >= 0 ? '+' : ''}{fmtAmount(diff)} ({pct >= 0 ? '+' : ''}{pct.toFixed(1)}%)
-                        </Text>
-                      </>
-                    );
-                  })()}
-                </View>
-              )}
-
-              <View style={styles.modalActions}>
-                <Button
-                  title={t.savings.cancel}
-                  onPress={() => setUpdateModalVisible(false)}
-                  variant="outline"
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  title={t.savings.save}
-                  onPress={handleUpdateValue}
-                  icon="check"
-                  style={{ flex: 1 }}
-                />
+              <View style={styles.heroStats}>
+                <View style={styles.hs}><Text style={styles.hsK}>{t.savings.invested}</Text><Text style={styles.hsV}>{fmtShort(portfolio.totalInvested)}</Text></View>
+                <View style={[styles.hs, styles.hsBorder]}><Text style={styles.hsK}>{t.savings.growth}</Text><Text style={[styles.hsV, { color: portfolio.totalGain >= 0 ? C.positive : C.neutral }]}>{portfolio.totalGain >= 0 ? '+' : ''}{fmtShort(portfolio.totalGain)}</Text></View>
+                <View style={[styles.hs, styles.hsBorder]}><Text style={styles.hsK}>{t.savings.returnLabel}</Text><Text style={[styles.hsV, { color: portfolio.totalReturn >= 0 ? C.positive : C.neutral }]}>{portfolio.totalReturn >= 0 ? '+' : ''}{portfolio.totalReturn.toFixed(1)}%</Text></View>
               </View>
-            </KeyboardAwareScrollView>
-          </View>
-        </Pressable>
-        <ModalToastHost />
-      </Modal>}
-
-      {/* ═══ HISTORY MODAL ═══ */}
-      {historyModalVisible && <Modal
-        visible
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={() => setHistoryModalVisible(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setHistoryModalVisible(false)}>
-          <View style={[styles.modalContent, { maxHeight: '85%' }]} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{historyAccount?.name || t.savings.historyTitle}</Text>
-              <TouchableOpacity onPress={() => setHistoryModalVisible(false)}>
-                <Feather name="x" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
             </View>
 
-            {historyAccount && (
-              <>
-                {/* Summary */}
-                <View style={styles.historySummary}>
-                  <View style={styles.historySummaryCol}>
-                    <Text style={styles.historySummaryLabel}>{t.savings.historyInvested}</Text>
-                    <Text style={styles.historySummaryValue}>{fmtAmount(historyAccount.initialInvestment)}</Text>
-                  </View>
-                  <View style={styles.historySummaryCol}>
-                    <Text style={styles.historySummaryLabel}>{t.savings.historyCurrent}</Text>
-                    <Text style={styles.historySummaryValue}>{fmtAmount(historyAccount.currentValue)}</Text>
-                  </View>
-                  <View style={styles.historySummaryCol}>
-                    <Text style={styles.historySummaryLabel}>{t.savings.historyReturn}</Text>
-                    <Text style={[styles.historySummaryValue, {
-                      color: historyAccount.currentValue >= historyAccount.initialInvestment ? C.positive : C.neutral,
-                    }]}>
-                      {historyAccount.initialInvestment > 0
-                        ? `${(((historyAccount.currentValue - historyAccount.initialInvestment) / historyAccount.initialInvestment) * 100).toFixed(1)}%`
-                        : '—'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Chart */}
-                {historyData.sparkline.length >= 2 && (
-                  <View style={styles.historyChart}>
-                    <Sparkline
-                      data={historyData.sparkline}
-                      width={CHART_W}
-                      height={64}
-                      showDot
-                      filled
-                      strokeWidth={2.5}
-                    />
-                  </View>
-                )}
-
-                {(historyData.bestMonth || historyData.worstMonth) && (
-                  <View style={styles.historyHighlights}>
-                    {historyData.bestMonth ? (
-                      <Text style={[styles.historyHighlightText, { color: C.positive }]}>
-                        {t.savings.bestMonth.replace('{label}', historyData.bestMonth)}
-                      </Text>
-                    ) : null}
-                    {historyData.worstMonth ? (
-                      <Text style={[styles.historyHighlightText, { color: C.neutral }]}>
-                        {t.savings.worstMonth.replace('{label}', historyData.worstMonth)}
-                      </Text>
-                    ) : null}
-                  </View>
-                )}
-              </>
-            )}
-
-            <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
-              {historyData.grouped.map(({ month, items }) => (
-                <View key={month}>
-                  <Text style={styles.historyMonthHeader}>{month}</Text>
-                  {items.map((snap, idx) => {
-                    const next = idx < items.length - 1 ? items[idx + 1] : null;
-                    const diff = next ? snap.value - next.value : null;
-                    const typeIcon = snap.snapshotType === 'dividend' ? 'gift'
-                      : snap.snapshotType === 'withdrawal' ? 'arrow-down-left'
-                      : 'refresh-cw';
-                    return (
-                      <View key={`${snap.id}_${idx}`} style={styles.historyItem}>
-                        <View style={styles.historyItemIcon}>
-                          <Feather name={typeIcon as keyof typeof Feather.glyphMap} size={12} color={C.textMuted} />
-                        </View>
-                        <View style={styles.historyItemLeft}>
-                          <Text style={styles.historyItemDate}>
-                            {isValid(snap.date) ? format(snap.date, 'MMM dd, yyyy') : '—'}
-                          </Text>
-                          <Text style={styles.historyItemNote}>
-                            {isValid(snap.date) ? format(snap.date, 'hh:mm a') : ''}
-                            {snap.note ? ` · ${snap.note}` : ''}
-                          </Text>
-                        </View>
-                        <View style={styles.historyItemRight}>
-                          <Text style={styles.historyItemValue}>{fmtAmount(snap.value)}</Text>
-                          {diff !== null && (
-                            <Text style={[styles.historyItemDiff, { color: diff >= 0 ? C.positive : C.neutral }]}>
-                              {diff >= 0 ? '+' : ''}{diff.toFixed(2)}
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
+            {/* ASK ECHO */}
+            <TouchableOpacity activeOpacity={0.85} onPress={() => openEcho()} style={[styles.askEcho, neu.insetSoft]} accessibilityRole="button" accessibilityLabel={t.savings.askEchoBar}>
+              <View style={[styles.askSpark, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
+                <Feather name="zap" size={14} color={C.accent} />
+              </View>
+              <Text style={styles.askPh} numberOfLines={1}>{t.savings.askEchoBar}</Text>
+              <View style={styles.plusBadge}><Text style={styles.plusBadgeText}>PLUS</Text></View>
+            </TouchableOpacity>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              {savingsChips.map((c) => (
+                <TouchableOpacity key={c.label} onPress={() => openEcho(c.question)} style={[styles.chip, neu.raised]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={c.label}>
+                  <Text style={styles.chipText}>{c.label}</Text>
+                </TouchableOpacity>
               ))}
             </ScrollView>
-          </View>
-        </Pressable>
-        <ModalToastHost />
-      </Modal>}
 
+            {/* SEGMENTED */}
+            <View style={styles.seg}>
+              <DebtSegmentedControl tabs={segTabs} active={tab} onSelect={(k) => { setTab(k); selectionChanged(); }} itemNoun={t.savings.accounts} />
+            </View>
+
+            {/* COACHING BAND */}
+            {nudgeCopy && (
+              <View style={[styles.coach, neu.raisedSoft]}>
+                <View style={[styles.coachIcon, neu.well, { backgroundColor: withAlpha(nudgeCopy.tone === 'investment' ? C.bronze : C.accent, 0.14) }]}>
+                  <Feather name={nudgeCopy.icon as any} size={22} color={nudgeCopy.tone === 'investment' ? C.bronze : C.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.coachTitle}>{nudgeCopy.title}</Text>
+                  <Text style={styles.coachBody}>{nudgeCopy.body}</Text>
+                  <View style={styles.coachActions}>
+                    {nudgeCopy.action && (
+                      <Pressable onPress={onNudgeAction} style={[styles.coachCta, { backgroundColor: nudgeCopy.tone === 'investment' ? C.bronze : C.accent }]} accessibilityRole="button" accessibilityLabel={nudgeCopy.action}>
+                        <Text style={styles.coachCtaText}>{nudgeCopy.action}</Text>
+                        <Feather name="arrow-right" size={13} color="#fff" />
+                      </Pressable>
+                    )}
+                    <Pressable onPress={() => openEcho(nudgeCopy.echoPrompt)} style={[styles.coachAsk, neu.raised]} accessibilityRole="button" accessibilityLabel={t.savings.askEcho}>
+                      <Feather name="zap" size={12} color={C.accent} />
+                      <Text style={styles.coachAskText}>{t.savings.askEcho}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* ALLOCATION */}
+            {tabBreakdown.length >= 2 && (
+              <View style={[styles.card, neu.raisedSoft]}>
+                <Text style={styles.sectionLabel}>{tab === 'savings' ? t.savings.whereSavingsLive : t.savings.whereInvestmentsLive}</Text>
+                {tabBreakdown.map((b) => (
+                  <View key={b.id} style={styles.allocRow}>
+                    <View style={[styles.allocDot, { backgroundColor: b.color }]} />
+                    <Text style={styles.allocName} numberOfLines={1}>{b.name}</Text>
+                    <View style={styles.allocBar}><View style={[styles.allocFill, { width: `${Math.max(b.pct, 3)}%`, backgroundColor: b.color }]} /></View>
+                    <Text style={styles.allocPct}>{b.pct.toFixed(0)}%</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* SORT */}
+            {tabAccounts.length > 1 && (
+              <View style={styles.sortRow}>
+                {SORT_OPTS.map((o) => (
+                  <TouchableOpacity key={o.key} onPress={() => { setSortBy(o.key); selectionChanged(); }} style={[styles.sortChip, neu.raised, sortBy === o.key && { backgroundColor: C.accent }]} activeOpacity={0.8} accessibilityRole="button" accessibilityState={{ selected: sortBy === o.key }} accessibilityLabel={t.savings[o.labelKey]}>
+                    <Text style={[styles.sortChipText, sortBy === o.key && { color: '#fff' }]}>{t.savings[o.labelKey]}</Text>
+                  </TouchableOpacity>
+                ))}
+                <Text style={styles.count}>{t.savings.accountsCount.replace('{n}', String(tabAccounts.length))}</Text>
+              </View>
+            )}
+
+            {/* ACCOUNT CARDS */}
+            {sorted.length > 0 ? (
+              sorted.map((d) => (
+                <AccountCard key={d.account.id} account={d.account} derived={d} currency={currency} onEdit={openEdit} onUpdate={openUpdate} onHistory={openHistory} />
+              ))
+            ) : (
+              <View style={styles.tabEmpty}>
+                <Feather name={tab === 'savings' ? 'shield' : 'trending-up'} size={26} color={C.textMuted} />
+                <Text style={styles.tabEmptyText}>{tab === 'savings' ? t.savings.emptySavingsTab : t.savings.emptyInvestTab}</Text>
+              </View>
+            )}
+
+            {/* WAYS TO GROW (investments) */}
+            {tab === 'investment' && (
+              <View style={[styles.grow, { borderColor: withAlpha(C.accent, 0.4) }]}>
+                <Text style={styles.growTag}>{t.savings.growTitle} · {t.savings.growOptional}</Text>
+                <Text style={styles.growTitle}>{t.savings.growCashTitle}</Text>
+                <Text style={styles.growBody}>{t.savings.growCashBody}</Text>
+                <TouchableOpacity onPress={() => { lightTap(); Linking.openURL('https://versa.com.my').catch(() => showToast(t.savings.couldNotOpenLink, 'error')); }} style={styles.growGo} accessibilityRole="button" accessibilityLabel={t.savings.growExplore}>
+                  <Text style={styles.growGoText}>{t.savings.growExplore}</Text>
+                  <Feather name="arrow-up-right" size={13} color={C.accent} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+
+      {showBar && accounts.length < MAX_ACCOUNTS && <FAB icon="plus" onPress={openAdd} />}
+      {showBar && accounts.length >= MAX_ACCOUNTS && <FAB icon="lock" onPress={() => setPaywallOpen(true)} />}
+
+      {/* Sheets */}
+      <AddEditAccountSheet
+        visible={addEditOpen} editing={editing} currency={currency}
+        onClose={() => { setAddEditOpen(false); setEditing(null); }}
+        onAdd={addAccount} onUpdate={updateAccount} onSnapshot={addSnapshot} onDelete={deleteAccount}
+      />
+      <UpdateValueSheet
+        visible={updateOpen} account={updating} currency={currency}
+        onClose={() => { setUpdateOpen(false); setUpdating(null); }} onSnapshot={addSnapshot}
+      />
+      <HistorySheet
+        visible={historyOpen} account={historyAcc} currency={currency}
+        onClose={() => { setHistoryOpen(false); setHistoryAcc(null); }}
+      />
+
+      {/* Echo + paywall */}
+      <EchoInlineChat
+        visible={echoOpen} onClose={() => setEchoOpen(false)}
+        insightTitle={fmt(portfolio.totalCurrent)}
+        insightSubtitle={t.savings.askEchoSub.replace('{return}', `${portfolio.totalReturn >= 0 ? '+' : ''}${portfolio.totalReturn.toFixed(1)}%`)}
+        chips={savingsChips} contextSnapshot={snapshot} autoPrompt={echoAutoPrompt}
+        topInset={insets.top} bottomInset={insets.bottom}
+      />
+      <PaywallModal visible={paywallOpen} onClose={() => setPaywallOpen(false)} feature="ai" />
+      <ModalToastHost />
       <ScreenGuide
         id="guide_savings"
         title={t.guide.yourSavings}
@@ -1383,695 +371,113 @@ const SavingsTracker: React.FC = () => {
   );
 };
 
-// ── STYLES ──────────────────────────────────────────────────
+// ── helpers ──
+function timeRangeFilter(portfolio: Portfolio, range: TimeRange, now: Date): number[] {
+  const spark = portfolio.fullSparkline;
+  if (spark.length < 2) return [];
+  if (range === 'ALL') return spark.map((p) => p.value);
+  const cutoff = { '1M': subMonths(now, 1), '3M': subMonths(now, 3), '6M': subMonths(now, 6), '1Y': subMonths(now, 12) }[range];
+  const filtered = spark.filter((p) => parseISO(p.date) >= cutoff); // parseISO reads the yyyy-MM-dd key as local, matching the local `cutoff`
+  return filtered.length >= 2 ? filtered.map((p) => p.value) : spark.map((p) => p.value);
+}
+
+function renderNudge(n: Nudge, t: any, fmtShort: (v: number) => string) {
+  const s = t.savings;
+  const d = n.data;
+  let title = ''; let body = ''; let action: string | undefined; let echoPrompt = '';
+  switch (n.kind) {
+    case 'stale':
+      title = s.coachStaleTitle; body = s.coachStaleBody.replace('{name}', String(d.name)).replace('{days}', String(d.days));
+      action = s.coachStaleAction; echoPrompt = `how should I keep ${d.name} up to date?`; break;
+    case 'runway':
+      title = s.coachRunwayTitle.replace('{months}', String(d.months));
+      body = s.coachRunwayBody.replace('{saved}', fmtShort(Number(d.saved))).replace('{months}', String(d.months)).replace('{gap}', fmtShort(Number(d.gap))).replace('{target}', String(d.targetMonths));
+      action = s.coachRunwayAction; echoPrompt = 'how much more should I save for a 6-month emergency fund?'; break;
+    case 'concentration':
+      title = s.coachConcTitle; body = s.coachConcBody.replace('{pct}', String(d.pct)).replace('{name}', String(d.name));
+      action = s.coachConcAction; echoPrompt = 'is my portfolio too concentrated? how should I diversify?'; break;
+    case 'milestone':
+      title = s.coachMilestoneTitle.replace('{remaining}', fmtShort(Number(d.remaining)));
+      body = s.coachMilestoneBody.replace('{pct}', String(d.pct)).replace('{value}', fmtShort(Number(d.value)));
+      echoPrompt = `how can I reach ${fmtShort(Number(d.value))} faster?`; break;
+    case 'bestPerformer':
+      title = s.coachBestTitle.replace('{name}', String(d.name)); body = s.coachBestBody.replace('{pct}', String(d.pct));
+      echoPrompt = `why is ${d.name} performing well this month?`; break;
+    case 'addedThisMonth':
+      title = s.coachAddedTitle.replace('{amount}', fmtShort(Number(d.amount))); body = s.coachAddedBody;
+      action = s.coachRunwayAction; echoPrompt = 'am I saving enough each month?'; break;
+  }
+  return { title, body, action, echoPrompt, icon: n.icon, tone: n.tone };
+}
+
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },
-  scrollView: { flex: 1 },
-  scrollContent: { padding: CARD_PAD, paddingBottom: 80 },
+  content: { padding: SPACING.lg, paddingBottom: 120 },
+  loading: { alignItems: 'center', paddingTop: 80 },
+  muted: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted },
 
-  // ─── Hero ───
-  heroCard: {
-    padding: CARD_PAD,
-    borderRadius: RADIUS.xl,
-    marginBottom: SPACING.lg,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  heroLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: SPACING.xs,
-  },
-  heroAmount: {
-    fontSize: TYPE.amount.fontSize,
-    fontWeight: TYPE.amount.fontWeight,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  sinceLastBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-    marginTop: SPACING.xs,
-  },
-  sinceLastText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    fontVariant: ['tabular-nums'],
-  },
-  heroChart: {
-    marginTop: SPACING.md,
-    marginBottom: SPACING.xs,
-  },
-  timeRangeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    marginBottom: SPACING.md,
-  },
-  timeRangePill: {
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-  },
-  timeRangePillActive: {
-    backgroundColor: withAlpha(C.accent, 0.1),
-  },
-  timeRangeText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textMuted,
-  },
-  timeRangeTextActive: {
-    color: C.accent,
-  },
-  periodChangeText: {
-    marginLeft: 'auto',
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'],
-  },
-  heroStatsRow: {
-    flexDirection: 'row',
-    backgroundColor: C.background,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-  },
-  heroStatItem: { flex: 1, alignItems: 'center', gap: 2 },
-  heroStatDivider: { width: 1, backgroundColor: C.border },
-  heroStatLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  heroStatValue: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
+  hero: { backgroundColor: C.background, borderRadius: RADIUS.xl, padding: SPACING.lg, marginBottom: SPACING.md },
+  heroLabel: { fontSize: TYPOGRAPHY.size.xs, letterSpacing: 1, textTransform: 'uppercase', color: C.textMuted, fontWeight: '600' },
+  heroAmount: { fontSize: 38, fontWeight: '300', color: C.textPrimary, letterSpacing: -0.5, marginTop: 4, fontVariant: ['tabular-nums'] },
+  since: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 9, paddingVertical: 4, borderRadius: RADIUS.full },
+  sinceText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  heroChart: { marginTop: 14, marginHorizontal: -4 },
+  ranges: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  range: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.full },
+  rangeOn: { backgroundColor: C.accent },
+  rangeText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '600', color: C.textSecondary },
+  rangeTextOn: { color: '#fff' },
+  rangeChange: { marginLeft: 'auto', fontSize: TYPOGRAPHY.size.xs, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  heroStats: { flexDirection: 'row', marginTop: 14, paddingTop: 13, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border },
+  hs: { flex: 1 },
+  hsBorder: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: C.border, paddingLeft: 12 },
+  hsK: { fontSize: 10.5, letterSpacing: 0.4, textTransform: 'uppercase', color: C.textMuted, fontWeight: '600' },
+  hsV: { fontSize: TYPOGRAPHY.size.base, fontWeight: '700', color: C.textPrimary, marginTop: 3, fontVariant: ['tabular-nums'] },
 
-  // ─── Insights ───
-  insightsRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.lg,
-  },
-  insightCard: {
-    flex: 1,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
-    gap: SPACING.xs,
-  },
-  insightValue: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  insightLabel: {
-    fontSize: 10,
-    color: C.textMuted,
-    lineHeight: 13,
-  },
+  askEcho: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.background, borderRadius: 18, paddingHorizontal: 13, paddingVertical: 12, marginBottom: 10 },
+  askSpark: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  askPh: { flex: 1, fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, fontWeight: '500' },
+  plusBadge: { borderWidth: 1, borderColor: withAlpha(C.gold, 0.55), borderRadius: RADIUS.full, paddingHorizontal: 7, paddingVertical: 2 },
+  plusBadgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, color: C.gold },
+  chipRow: { gap: 8, paddingBottom: 4, marginBottom: 6 },
+  chip: { backgroundColor: C.background, paddingHorizontal: 13, paddingVertical: 8, borderRadius: RADIUS.full },
+  chipText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '600', color: C.textPrimary },
 
-  // ─── Reminder ───
-  reminderCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    marginBottom: SPACING.lg,
-    backgroundColor: C.highlight,
-  },
-  reminderContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  reminderText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textPrimary,
-  },
-  reminderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  reminderBtn: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    backgroundColor: withAlpha(C.gold, 0.15),
-    borderRadius: RADIUS.full,
-  },
-  reminderBtnText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-  },
+  seg: { marginTop: 6, marginBottom: SPACING.md },
 
-  // ─── Breakdown ───
-  sectionLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-    marginBottom: SPACING.md,
-  },
-  breakdownCard: {
-    padding: CARD_PAD,
-    borderRadius: RADIUS.xl,
-    marginBottom: SPACING.lg,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  breakdownRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  breakdownName: {
-    width: 72,
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textPrimary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  breakdownBarContainer: {
-    flex: 1,
-    height: 8,
-    backgroundColor: C.background,
-    borderRadius: RADIUS.full,
-    overflow: 'hidden',
-  },
-  breakdownBar: { height: 8, borderRadius: RADIUS.full },
-  breakdownPct: {
-    width: 36,
-    textAlign: 'right',
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    fontVariant: ['tabular-nums'],
-  },
+  coach: { flexDirection: 'row', gap: 13, alignItems: 'flex-start', backgroundColor: C.background, borderRadius: RADIUS.xl, padding: SPACING.lg, marginBottom: SPACING.md },
+  coachIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  coachTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: '700', color: C.textPrimary, letterSpacing: -0.2, marginBottom: 3 },
+  coachBody: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, lineHeight: 18 },
+  coachActions: { flexDirection: 'row', gap: 9, marginTop: 11, flexWrap: 'wrap' },
+  coachCta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.full },
+  coachCtaText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '700', color: '#fff' },
+  coachAsk: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, paddingVertical: 8, borderRadius: RADIUS.full, backgroundColor: C.background },
+  coachAskText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '700', color: C.accent },
 
-  // ─── Sort ───
-  sortRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.md,
-  },
-  sortPills: {
-    flexDirection: 'row',
-    gap: SPACING.xs,
-  },
-  sortPill: {
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: SPACING.xs + 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.pillBg,
-  },
-  sortPillActive: {
-    backgroundColor: C.accent,
-  },
-  sortPillText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-  },
-  sortPillTextActive: {
-    color: '#FFFFFF',
-  },
-  accountCount: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-  },
+  card: { backgroundColor: C.background, borderRadius: RADIUS.xl, padding: SPACING.lg, marginBottom: SPACING.md },
+  sectionLabel: { fontSize: TYPOGRAPHY.size.xs, letterSpacing: 1, textTransform: 'uppercase', color: C.textMuted, fontWeight: '600', marginBottom: 6 },
+  allocRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 11 },
+  allocDot: { width: 9, height: 9, borderRadius: 3 },
+  allocName: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '600', color: C.textPrimary, width: 96 },
+  allocBar: { flex: 1, height: 8, borderRadius: RADIUS.full, backgroundColor: C.pillBg, overflow: 'hidden' },
+  allocFill: { height: '100%', borderRadius: RADIUS.full },
+  allocPct: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '700', color: C.textSecondary, width: 36, textAlign: 'right', fontVariant: ['tabular-nums'] },
 
-  // ─── Account Card ───
-  accountCard: { marginBottom: SPACING.md },
-  accountHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  accountTypeIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.sm,
-  },
-  accountInfo: { flex: 1 },
-  accountName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  accountTypeName: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    marginTop: 1,
-  },
-  iconBtn: {
-    padding: SPACING.sm,
-    marginLeft: SPACING.xs,
-  },
+  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
+  sortChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: C.background },
+  sortChipText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '600', color: C.textSecondary },
+  count: { marginLeft: 'auto', fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, fontWeight: '600' },
 
-  // Value
-  valueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  valueCurrent: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  returnBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-  },
-  returnBadgeText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'],
-  },
-  subStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
-  },
-  subStatText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-  accountSparkline: {
-    marginBottom: SPACING.sm,
-  },
-  projectedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    backgroundColor: withAlpha(C.gold, 0.06),
-    borderRadius: RADIUS.md,
-    marginBottom: SPACING.sm,
-  },
-  projectedText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
+  tabEmpty: { alignItems: 'center', gap: 8, paddingVertical: 36 },
+  tabEmptyText: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, fontWeight: '600' },
 
-  // Target
-  targetSection: {
-    marginBottom: SPACING.sm,
-    gap: SPACING.xs,
-  },
-  targetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  targetLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-  },
-  targetPct: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.accent,
-    fontVariant: ['tabular-nums'],
-  },
-  goalEtaText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
-
-  // Footer
-  accountFooter: {
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    paddingTop: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  lastUpdatedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  staleDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  lastUpdatedText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-  },
-  lastChangeText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    fontVariant: ['tabular-nums'],
-  },
-  accountActions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.sm,
-    backgroundColor: withAlpha(C.accent, 0.08),
-    borderRadius: RADIUS.md,
-  },
-  actionBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-  },
-  actionBtnSecondary: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.sm,
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  actionBtnSecondaryText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-  },
-
-  // ─── FAB ───
-  fab: {
-    position: 'absolute',
-    bottom: SPACING.lg,
-    left: SPACING.lg,
-    right: SPACING.lg,
-  },
-
-  // ─── Modal shared ───
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: C.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
-    padding: CARD_PAD,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  modalTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-  },
-  label: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-    marginBottom: SPACING.xs,
-    marginTop: SPACING.md,
-  },
-  input: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.xl,
-  },
-  deleteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    marginTop: SPACING.lg,
-    paddingVertical: SPACING.sm,
-  },
-  deleteBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.neutral,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-
-  // Dropdown
-  dropdownTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  dropdownTriggerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  dropdownIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dropdownTriggerText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  dropdownList: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    marginTop: SPACING.xs,
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  dropdownItemSelected: {
-    backgroundColor: withAlpha(C.accent, 0.06),
-  },
-  dropdownItemIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dropdownItemText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-  },
-
-  // ─── Snapshot type pills ───
-  snapshotTypeRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  snapshotTypePill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.sm,
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  snapshotTypePillActive: {
-    backgroundColor: C.accent,
-    borderColor: C.accent,
-  },
-  snapshotTypeText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-  },
-  snapshotTypeTextActive: {
-    color: '#FFF',
-  },
-
-  // ─── Update modal ───
-  updateContext: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.xs,
-  },
-  updateContextName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    marginBottom: 2,
-  },
-  updateContextPrev: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-  },
-  updatePreview: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginTop: SPACING.md,
-    alignItems: 'center',
-  },
-  updatePreviewLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    marginBottom: 4,
-  },
-  updatePreviewValue: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'],
-  },
-
-  // ─── History modal ───
-  historySummary: {
-    flexDirection: 'row',
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  historySummaryCol: { flex: 1, alignItems: 'center', gap: 2 },
-  historySummaryLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  historySummaryValue: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  historyChart: {
-    marginBottom: SPACING.md,
-    alignItems: 'center',
-  },
-  historyHighlights: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: SPACING.md,
-  },
-  historyHighlightText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  historyMonthHeader: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textSecondary,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-    textTransform: 'lowercase',
-  },
-  historyItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    gap: SPACING.sm,
-  },
-  historyItemIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: C.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  historyItemLeft: { flex: 1 },
-  historyItemDate: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-  },
-  historyItemNote: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    marginTop: 1,
-  },
-  historyItemRight: { alignItems: 'flex-end' },
-  historyItemValue: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  historyItemDiff: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    fontVariant: ['tabular-nums'],
-    marginTop: 1,
-  },
+  grow: { borderRadius: RADIUS.xl, padding: SPACING.lg, marginTop: 4, borderWidth: 1, borderStyle: 'dashed', backgroundColor: withAlpha(C.accent, 0.05) },
+  growTag: { fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: C.accent, fontWeight: '700' },
+  growTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: '700', color: C.textPrimary, marginTop: 6, marginBottom: 3 },
+  growBody: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary },
+  growGo: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 11 },
+  growGoText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '700', color: C.accent },
 });
 
 export default SavingsTracker;

@@ -13,7 +13,7 @@
     "format": "prettier --write .",
     "lint:i18n": "bash scripts/check-hardcoded-strings.sh",
     "lint:i18n:staged": "bash scripts/check-hardcoded-strings.sh --staged",
-    "test": "npm run typecheck && npm run test:sync && npm run test:wallet && npm run test:txinvariant && npm run test:accountlink && npm run test:authmigrate && npm run test:deleteflow && npm run test:calcengine && npm run test:importdedup && npm run test:splitshares && npm run test:sampledata && npm run test:undo && npm run test:quicklog && npm run test:quicklogkey && npm run test:emvqr",
+    "test": "npm run typecheck && npm run test:sync && npm run test:wallet && npm run test:txinvariant && npm run test:accountlink && npm run test:authmigrate && npm run test:deleteflow && npm run test:calcengine && npm run test:importdedup && npm run test:splitshares && npm run test:sampledata && npm run test:undo && npm run test:quicklog && npm run test:quicklogkey && npm run test:emvqr && npm run test:savingstypes && npm run test:savingsmath && npm run test:savingscoach && npm run test:savingssnapshot",
     "test:sync": "tsx scripts/test-personal-sync-roundtrip.ts",
     "test:wallet": "tsx scripts/test-wallet-reconcile.ts",
     "test:txinvariant": "tsx scripts/test-transaction-wallet-invariant.ts",
@@ -27,7 +27,11 @@
     "test:undo": "tsx scripts/test-undo-payment.ts",
     "test:quicklog": "tsx scripts/test-quick-log-inbox.ts",
     "test:quicklogkey": "tsx scripts/test-quick-log-key.ts",
-    "test:emvqr": "tsx src/services/__tests__/emvQr.test.ts"
+    "test:emvqr": "tsx src/services/__tests__/emvQr.test.ts",
+    "test:savingstypes": "tsx scripts/test-savings-types.ts",
+    "test:savingsmath": "tsx scripts/test-savings-math.ts",
+    "test:savingscoach": "tsx scripts/test-savings-coach.ts",
+    "test:savingssnapshot": "tsx scripts/test-savings-snapshot.ts"
   },
   "dependencies": {
     "@bottom-tabs/react-navigation": "^1.3.1",

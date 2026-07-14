@@ -231,7 +231,7 @@ export const professional: Persona = {
 
     // ─── 8. Savings + Investments ──────────────────────────────────
     c.savings(
-      { name: 'ASB', type: 'investment', initialInvestment: 5000, currentValue: 6500, annualRate: 4.25, description: 'Amanah Saham Bumiputera — RM 200/bulan' },
+      { name: 'ASB', type: 'asb', initialInvestment: 5000, currentValue: 6500, annualRate: 4.25, description: 'Amanah Saham Bumiputera — RM 200/bulan' },
       [
         { value: 5000, note: 'pembukaan', source: 'manual' },
         { value: 5400, note: 'after RM 400 contribute', source: 'manual' },
@@ -240,7 +240,7 @@ export const professional: Persona = {
       ],
     );
     c.savings(
-      { name: 'Tabung Haji', type: 'savings', initialInvestment: 2000, currentValue: 2400, annualRate: 3.1, description: 'Simpanan haji + dividen' },
+      { name: 'Tabung Haji', type: 'tabung_haji', initialInvestment: 2000, currentValue: 2400, annualRate: 3.1, description: 'Simpanan haji + dividen' },
       [
         { value: 2000, note: 'opening', source: 'manual' },
         { value: 2200, note: 'top up raya', source: 'manual' },
@@ -248,7 +248,7 @@ export const professional: Persona = {
       ],
     );
     c.savings(
-      { name: 'Versa Save', type: 'investment', initialInvestment: 1000, currentValue: 1180, annualRate: 3.8, description: 'Money market robo (Affin Hwang)' },
+      { name: 'Versa Save', type: 'robo', initialInvestment: 1000, currentValue: 1180, annualRate: 3.8, description: 'Money market robo (Affin Hwang)' },
       [
         { value: 1000, note: 'starter', source: 'manual' },
         { value: 1100, note: 'monthly RM 100', source: 'manual' },
@@ -256,7 +256,7 @@ export const professional: Persona = {
       ],
     );
     c.savings(
-      { name: 'Luno BTC', type: 'investment', initialInvestment: 500, currentValue: 720, description: 'DCA bitcoin sikit-sikit' },
+      { name: 'Luno BTC', type: 'crypto', initialInvestment: 500, currentValue: 720, description: 'DCA bitcoin sikit-sikit' },
       [
         { value: 500, note: 'try crypto sikit', source: 'manual' },
         { value: 720, note: 'BTC pump', source: 'manual' },

@@ -145,7 +145,7 @@ export const teen: Persona = {
 
     // ─── 8. Savings — tabung celengan + ASB Junior ──────────────────
     c.savings(
-      { name: 'Tabung celengan', type: 'savings', initialInvestment: 100, currentValue: 200, description: 'Simpan dalam tabung kat bilik' },
+      { name: 'Tabung celengan', type: 'save_generic', initialInvestment: 100, currentValue: 200, description: 'Simpan dalam tabung kat bilik' },
       [
         { value: 100, note: 'opening', source: 'manual' },
         { value: 150, note: 'masuk duit poket lebihan', source: 'manual' },
@@ -153,7 +153,7 @@ export const teen: Persona = {
       ],
     );
     c.savings(
-      { name: 'ASB Junior', type: 'investment', initialInvestment: 400, currentValue: 500, annualRate: 4.0, description: 'Dibuka oleh mak ayah, dividen masuk tiap tahun' },
+      { name: 'ASB Junior', type: 'asb', initialInvestment: 400, currentValue: 500, annualRate: 4.0, description: 'Dibuka oleh mak ayah, dividen masuk tiap tahun' },
       [
         { value: 400, note: 'opening oleh mak', source: 'manual' },
         { value: 460, note: 'dividen tahun lepas', source: 'manual' },

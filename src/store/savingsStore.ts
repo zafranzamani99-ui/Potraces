@@ -5,6 +5,7 @@ import { SavingsState, SavingsSortBy, SnapshotType } from '../types';
 import { useTombstoneStore } from './tombstoneStore';
 import { newId } from '../utils/id';
 import { roundMoney } from '../utils/money';
+import { VALID_TYPE_IDS } from '../screens/personal/savings/investmentTypes';
 
 export const useSavingsStore = create<SavingsState>()(
   persist(
@@ -20,15 +21,19 @@ export const useSavingsStore = create<SavingsState>()(
       addAccount: (account) =>
         set((state) => {
           const id = newId();
+          const cur = roundMoney(account.currentValue);
+          const init = roundMoney(account.initialInvestment);
           return {
             accounts: [
               {
                 ...account,
                 id,
+                currentValue: cur,
+                initialInvestment: init,
                 history: [
                   {
                     id: newId(),
-                    value: account.currentValue,
+                    value: cur,
                     note: 'Initial value',
                     date: new Date(),
                   },
@@ -43,11 +48,19 @@ export const useSavingsStore = create<SavingsState>()(
         }),
 
       updateAccount: (id, updates) =>
-        set((state) => ({
-          accounts: state.accounts.map((a) =>
-            a.id === id ? { ...a, ...updates, updatedAt: new Date() } : a
-          ),
-        })),
+        set((state) => {
+          // Round money fields so the edit path matches addAccount/addSnapshot
+          // and the app-wide roundMoney write-site convention (utils/money.ts).
+          const u: Partial<typeof updates> = { ...updates };
+          if (typeof u.currentValue === 'number') u.currentValue = roundMoney(u.currentValue);
+          if (typeof u.initialInvestment === 'number') u.initialInvestment = roundMoney(u.initialInvestment);
+          if (typeof u.target === 'number') u.target = roundMoney(u.target);
+          return {
+            accounts: state.accounts.map((a) =>
+              a.id === id ? { ...a, ...u, updatedAt: new Date() } : a
+            ),
+          };
+        }),
 
       deleteAccount: (id) => {
         set((state) => ({
@@ -58,18 +71,19 @@ export const useSavingsStore = create<SavingsState>()(
         useTombstoneStore.getState().addTombstones([id]);
       },
 
-      addSnapshot: (accountId, value, note, snapshotType) =>
+      addSnapshot: (accountId, value, note, snapshotType) => {
+        const v = roundMoney(value);
         set((state) => ({
           accounts: state.accounts.map((a) =>
             a.id === accountId
               ? {
                   ...a,
-                  currentValue: value,
+                  currentValue: v,
                   history: [
                     ...a.history,
                     {
                       id: newId(),
-                      value,
+                      value: v,
                       note,
                       date: new Date(),
                       snapshotType: snapshotType || 'manual',
@@ -79,7 +93,8 @@ export const useSavingsStore = create<SavingsState>()(
                 }
               : a
           ),
-        })),
+        }));
+      },
 
       setSortBy: (sort) => set({ sortBy: sort }),
 
@@ -120,7 +135,7 @@ export const useSavingsStore = create<SavingsState>()(
       onRehydrateStorage: () => (state) => {
         if (state) {
           const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
-          const validTypes = ['tng_plus', 'robo_crypto', 'esa', 'bank', 'asb', 'tabung_haji', 'stocks', 'gold', 'other'];
+          const validTypes = VALID_TYPE_IDS;
           state.accounts = state.accounts.map((a: any) => ({
             ...a,
             type: validTypes.includes(a.type) || a.type?.startsWith('custom_') ? a.type : 'other',

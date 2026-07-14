@@ -190,7 +190,7 @@ export const student: Persona = {
 
     // ─── 8. Savings + Investments ────────────────────────────────────
     c.savings(
-      { name: 'ASB', type: 'investment', initialInvestment: 300, currentValue: 500, annualRate: 4.25, description: 'Amanah Saham Bumiputera — simpan bila ada lebihan' },
+      { name: 'ASB', type: 'asb', initialInvestment: 300, currentValue: 500, annualRate: 4.25, description: 'Amanah Saham Bumiputera — simpan bila ada lebihan' },
       [
         { value: 300, note: 'pembukaan guna duit raya', source: 'manual' },
         { value: 420, note: 'top up dari freelance job', source: 'manual' },
@@ -198,7 +198,7 @@ export const student: Persona = {
       ],
     );
     c.savings(
-      { name: 'Tabung Haji', type: 'savings', initialInvestment: 200, currentValue: 300, annualRate: 3.1, description: 'Simpanan haji, isi bila ada rezeki' },
+      { name: 'Tabung Haji', type: 'tabung_haji', initialInvestment: 200, currentValue: 300, annualRate: 3.1, description: 'Simpanan haji, isi bila ada rezeki' },
       [
         { value: 200, note: 'opening', source: 'manual' },
         { value: 300, note: 'top up dari gaji part-time', source: 'manual' },
