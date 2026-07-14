@@ -197,3 +197,68 @@ Done (personal-delete hardening): `wipePersonalStores` now also clears `budgetPr
 1. **`bak:category-storage:*` snapshots retain deleted personal categories.** `category-storage` is in `PROTECTED_KEYS` (snapshotted daily) but excluded from `PERSONAL_BACKUP_KEYS`, because the same key ALSO holds business categories — purging it would nuke business backups. So a deleted personal custom category can reappear via Backups & Restore. **Right fix: split `category-storage` into `category-storage` (personal) + `business-category-storage`.** That would also let the wipe drop the personal key outright, removing today's workaround (we now skip removing the shared key and rely on the persist write-back, since deleting it destroyed business categories).
 
 2. **Demo data appended onto a real account has no targeted undo.** Settings → Load Demo Data appends (and says so). The banner's one-tap "clear & start fresh" is deliberately NOT armed for non-empty accounts (it would wipe real data). The worst part is fixed — seeded wallets no longer steal the user's default wallet — but removing ~10 demo wallets / ~40 demo txns still means deleting rows by hand. **Right fix: tag seeded rows (e.g. `source: 'sample'`) so a targeted "remove demo data" can delete exactly those.**
+
+---
+
+# Supabase Tokyo → Singapore migration — Back-Tap shortcut re-sign (Mac-only, DEFERRED 2026-07-14)
+
+Part of moving the Supabase backend from **Tokyo (`iydqeeonaljqapulboaz`)** → **Singapore (`jngmanwvhbpkpkeklfiv`)** for PDPA. App, schema (43 migrations), 14 edge functions, secrets, Google+Apple auth, and `.env` are all migrated and **sign-in is device-verified**. This is the one migration item that needs a Mac.
+
+**Why it's stuck on Windows:** the two Back-Tap shortcuts hosted in the `web` storage bucket bake the Supabase `quick-log` endpoint *inside* the shortcut. That endpoint changed Tokyo → Singapore, so the shortcuts must be rebuilt + **re-signed**, and `shortcuts sign` is macOS-only.
+
+**State (2026-07-14):**
+- New Singapore `web` bucket is **empty** (verified via `supabase storage ls ss:///web/` → `{"paths":[]}`).
+- `scripts/build-quick-log-shortcut.py` + `scripts/build-autolog-shortcut.py` endpoint → already swept to Singapore.
+- `shortcut/*-unsigned.shortcut` → already swept to the Singapore URL.
+- `shortcut/Potraces Quick Log.shortcut` + `Potraces Auto Log.shortcut` (the **signed** files, dated Jul 10) → still carry the **old Tokyo** URL. They're AEA-encrypted, so a text find/replace can't touch them — **do NOT upload these as-is.**
+
+**Do this on a Mac (in the repo):**
+```bash
+python3 scripts/build-quick-log-shortcut.py
+shortcuts sign --mode anyone -i shortcut/PotracesQuickLog-unsigned.shortcut -o "shortcut/Potraces Quick Log.shortcut"
+python3 scripts/build-autolog-shortcut.py
+shortcuts sign --mode anyone -i shortcut/PotracesAutoLog-unsigned.shortcut  -o "shortcut/Potraces Auto Log.shortcut"
+
+npx supabase link --project-ref jngmanwvhbpkpkeklfiv
+npx supabase storage cp "shortcut/Potraces Quick Log.shortcut" ss:///web/PotracesQuickLog.shortcut --experimental
+npx supabase storage cp "shortcut/Potraces Auto Log.shortcut"  ss:///web/PotracesAutoLog.shortcut  --experimental
+```
+
+**Verify** (should download a shortcut, not an error JSON):
+`https://jngmanwvhbpkpkeklfiv.supabase.co/storage/v1/object/public/web/PotracesQuickLog.shortcut`
+
+**Blocker:** do NOT delete the old Tokyo project until this is done — the shortcut download links (`jejakbaki.my/shortcut`, `/autolog`) and any already-installed shortcuts still hit Tokyo until re-signed + re-uploaded.
+
+**Rest of the migration still pending (NOT Mac-gated):**
+1. Redeploy `site/` to Vercel — the 7 `site/*.html` pages are already swept to Singapore (URL + anon key + CSP), but the live site still serves the old build.
+2. Repoint any Telegram / DuitNow-QR provider webhooks from the old Tokyo function URLs to Singapore (only if used).
+3. **Delete the Tokyo project** — LAST, after the above + this shortcut re-sign.
+4. **Commit** this session's changes: 3 new migrations (`20260616120000_beta_feedback`, `130000_beta_installers`, `140000_waitlist`) + 14 files swept off `iydqeeonaljqapulboaz` + AccountScreen redesign/back-fix/scroll-fix + AuthScreen scroll-fix.
+
+---
+
+# Onboarding — Skip should land on the start-choice page (TODO, 2026-07-14)
+
+**Idea:** The onboarding pager's **last page IS the "start fresh vs demo data" choice** (`StartChoicePage`; `StartChoice = 'fresh' | 'demo'`, `Onboarding.tsx:67-72`). Today **Skip** (`Onboarding.tsx:925-928`) calls `handleComplete(null, sampleBracket)` — it **commits immediately as "start fresh"** and drops the user into an empty app, bypassing the choice. Change Skip to **jump to the last page** instead, so every user makes the explicit fresh-vs-demo decision. Demo data is the main first-run engagement lever — Skip shouldn't hide it.
+
+**Change (one handler).** Skip's `onPress` scrolls the pager to the final page rather than completing — reuse the pager's own advance pattern (`Onboarding.tsx:889-890`):
+```js
+// was: onPress={() => handleComplete(null, sampleBracket)}
+onPress={() => {
+  const last = PAGE_COUNT - 1;
+  settleIndex(last);
+  scrollRef.current?.scrollTo({ x: last * listW, animated: true });
+}}
+```
+
+**Why it's safe / already consistent:**
+- `canSkip = !isLastPage` (`:905`) → landing on the last page hides the Skip button; only the fresh/demo CTA remains. **No dead-end.**
+- Skip no longer commits, so the "Skip must mean fresh even if user picked demo then swiped back" note (`:867-869`) no longer applies to Skip — the **StartChoicePage CTA is the only commit** and it already passes the explicit choice.
+- Welcome name/language persist on change (FIRSTRUN-H6), so jumping past them loses nothing.
+- `settleIndex` / `PAGE_COUNT` / `scrollRef` / `listW` are all already in scope at the Skip handler.
+
+**Watch:**
+- **Copy:** "Skip" now means "skip the tour," not "skip onboarding." Consider relabel (e.g. "Skip tour") — en **and** ms.
+- One extra tap for pure fresh-start users (Skip → "start fresh") — accepted trade for surfacing demo data to everyone.
+
+**Verify (device):** first-run → tap Skip on any slide → lands on the start-choice page → "start fresh" = empty app, "demo" + persona = seeded sample dataset (same as Settings → Load Demo Data). Light + dark.

@@ -29,7 +29,7 @@ import plistlib
 import uuid
 import pathlib
 
-ENDPOINT = "https://iydqeeonaljqapulboaz.supabase.co/functions/v1/quick-log"
+ENDPOINT = "https://jngmanwvhbpkpkeklfiv.supabase.co/functions/v1/quick-log"
 KEY_FILE = "potraces-key.txt"
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "shortcut"
 OBJ = "￼"  # object-replacement char for WFTextTokenString attachments
