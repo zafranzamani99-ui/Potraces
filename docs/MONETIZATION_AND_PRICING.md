@@ -51,6 +51,21 @@ Four levels. Prices in RM/month. **Business mode (basic) is FREE at every level.
 - **Premium (RM25)** — everything unlimited + the expensive/pro extras (Tap-to-Pay,
   analytics, priority). Aspirational; for heavy sellers.
 
+**Annual pricing** (billed yearly — the "save more" nudge):
+
+| Plan | Pay monthly ×12 | **Annual** | You save | Works out to |
+|---|---|---|---|---|
+| **Pro** (RM15/mo) | RM180 | **RM130** | **RM50 — 28% off** | ~3 months free · RM10.83/mo |
+| **Premium** (RM25/mo) | RM300 | **RM200** | **RM100 — 33% off** | **4 months free** · RM16.67/mo |
+
+- **Basic (RM7.99) stays monthly-only for now** — which also nudges annual-minded users
+  up to Pro/Premium (only those tiers reward committing yearly). A Basic annual (e.g.
+  ~RM70/yr) can be added later.
+- Note: Premium's annual discount (33%) is deeper than Pro's (28%), so it pulls committed
+  annual buyers slightly *up* toward Premium — good for ARPU, but softens "Pro is the
+  hero" on annual specifically. Fine as a deliberate upsell; equalise the discounts if
+  you'd rather keep Pro the hero on annual too.
+
 ---
 
 ## 3. Pricing Psychology (deliberate)
@@ -71,7 +86,9 @@ Goal: make **Pro the obviously-right choice.**
 - "Most Popular" ribbon on **Pro**, shown centre, Premium to its right (anchor effect).
 - At Basic's paywalls (hitting a business-insight or store-customise wall), the CTA
   says **"Unlock with Pro"** — never "Basic" — so marquee features pull toward Pro.
-- Add **annual pricing** (e.g. 2 months free) once live, to lift lifetime value.
+- **Annual pricing** (see §2): Pro RM130/yr (save RM50, ~3 mo free), Premium RM200/yr
+  (save RM100, 4 mo free). Show the "you save RMxx / N months free" line prominently on
+  the toggle — it lifts lifetime value and reduces churn.
 
 ---
 
@@ -171,7 +188,8 @@ Gate only what works. Unfinished features are "coming soon" upside of the higher
 
 - Final limit numbers per tier (section 2 numbers are placeholders).
 - Whether the business/Pro tier launches at RM15 or RM19 (SME WTP suggests room).
-- Annual pricing discount (e.g. 2 months free?).
+- Annual set for Pro (RM130) & Premium (RM200); decide whether to add a Basic annual,
+  and whether to equalise Pro/Premium annual discounts (28% vs 33%).
 - Exact scope of "AI business insights" (what does it actually tell a seller?).
 - Storefront MVP scope (what's in the free v1 vs the paid customisation).
 
