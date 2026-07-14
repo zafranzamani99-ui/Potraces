@@ -22,7 +22,7 @@
   font-src 'self' https://fonts.gstatic.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   script-src 'self' 'unsafe-inline' https://esm.sh;
-  connect-src 'self' https://iydqeeonaljqapulboaz.supabase.co https://esm.sh https://accounts.google.com;
+  connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co https://esm.sh https://accounts.google.com;
 ">
 
 <title>Potraces — Beta admin</title>
@@ -285,8 +285,8 @@ main{flex:1;padding:32px 0 64px}
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 /* Public anon key — RLS + is_admin() protect everything. NEVER the service_role key. */
-const SB_URL = 'https://iydqeeonaljqapulboaz.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5ZHFlZW9uYWxqcWFwdWxib2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjQ1MDcsImV4cCI6MjA4ODQ0MDUwN30.IP0oJOs4DwwIM--ym2rPls51qpCHMVD-oB1UDjgS2Ec';
+const SB_URL = 'https://jngmanwvhbpkpkeklfiv.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZ21hbnd2aGJwa3BrZWtsZml2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMDQxODYsImV4cCI6MjA5OTU4MDE4Nn0.T36knLFwrWBtd-h-37Q-dQrlMNdfk0jeSJOQP_ch5bE';
 const REDIRECT_TO = location.origin + '/admin.html';
 const BUCKET = 'beta-screenshots';
 
