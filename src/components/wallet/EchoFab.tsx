@@ -26,6 +26,10 @@ interface EchoFabProps {
   greetingHiddenDuringDrag: boolean;
   onSetGreetingHiddenDuringDrag: (hidden: boolean) => void;
   greetingChips: GreetingChip[];
+  /** Optional prompt the greeting bubble sends when tapped. Falls back to the
+   *  first chip's question, then the greeting text. Use when the greeting is a
+   *  live insight whose matching question isn't chips[0] (e.g. Savings nudges). */
+  greetingPrompt?: string;
   onOpenSheet: (autoPrompt?: string) => void;
   onHideEcho?: () => void;
   tier: string;
@@ -129,6 +133,7 @@ const EchoFab: React.FC<EchoFabProps> = ({
   onSetGreetingDismissed,
   greetingHiddenDuringDrag,
   greetingChips,
+  greetingPrompt,
   onOpenSheet,
   tier,
   onShowPaywall,
@@ -177,7 +182,7 @@ const EchoFab: React.FC<EchoFabProps> = ({
       {greetingText && !greetingDismissed && !greetingHiddenDuringDrag && (
         <TouchableOpacity
           style={styles.walletEchoGreetingBubble}
-          onPress={() => { lightTap(); if (tier !== 'premium') { onShowPaywall(); return; } onOpenSheet(greetingChips[0]?.question || greetingText); }}
+          onPress={() => { lightTap(); if (tier !== 'premium') { onShowPaywall(); return; } onOpenSheet(greetingPrompt ?? greetingChips[0]?.question ?? greetingText); }}
           activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel={`Echo: ${greetingText}`}

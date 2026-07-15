@@ -10,11 +10,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import {
   CALM,
-  CALM_DARK,
   SPACING,
   TYPOGRAPHY,
   RADIUS,
-  SHADOWS,
   withAlpha,
 } from '../../constants';
 import { HITSLOP_10 } from '../../utils/hitSlop';
@@ -42,17 +40,28 @@ const makeStyles = (C: typeof CALM) =>
   StyleSheet.create({
     modalOverlay: {
       flex: 1,
-      backgroundColor: withAlpha(C.dimBg, 0.4),
+      backgroundColor: 'rgba(0,0,0,0.4)',
       justifyContent: 'flex-end',
     },
     sheetContent: {
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       borderTopLeftRadius: RADIUS['2xl'],
       borderTopRightRadius: RADIUS['2xl'],
-      paddingTop: SPACING.lg,
+      paddingTop: SPACING.sm,
       paddingHorizontal: SPACING.lg,
       paddingBottom: SPACING['2xl'],
-      ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+    },
+    sheetHandleRow: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: SPACING.xs,
+      paddingBottom: SPACING.md,
+    },
+    sheetHandle: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: withAlpha(C.textPrimary, 0.15),
     },
     sheetHeader: {
       flexDirection: 'row',
@@ -142,11 +151,14 @@ export default function WalletActionSheet({
     >
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <View style={styles.sheetContent} onStartShouldSetResponder={() => true}>
+          <View style={styles.sheetHandleRow}>
+            <View style={styles.sheetHandle} />
+          </View>
           <View style={styles.sheetHeader}>
             <View
               style={[
                 styles.sheetWalletIcon,
-                { backgroundColor: aw.presetId ? C.background : withAlpha(aw.color, 0.15) },
+                { backgroundColor: aw.presetId ? withAlpha(C.textPrimary, 0.06) : withAlpha(aw.color, 0.15) },
               ]}
             >
               <WalletLogo wallet={aw} size={44} />

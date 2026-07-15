@@ -26,6 +26,9 @@ interface WalletPickerProps {
   noneLabel?: string;
   label?: string;
   typeFilter?: WalletType;
+  /** Use the "soft neu dark" tier (raisedSoft + faintDark) for the trigger, to
+   *  match sheets that opt into faintDark cards (e.g. Quick split). Default off. */
+  faintNeu?: boolean;
 }
 
 const TYPE_ORDER: WalletType[] = ['bank', 'ewallet', 'credit', 'cash'];
@@ -39,11 +42,16 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
   noneLabel = 'None',
   label,
   typeFilter,
+  faintNeu = true,
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
-  // Rows sit on the modal sheet (C.surface), not the screen — base the neu on it.
-  const neu = useNeu(C.surface);
+  // Trigger sits on the HOST container: converted (faintNeu) hosts are C.background
+  // sheets; legacy hosts are still C.surface sheets.
+  const neu = useNeu(faintNeu ? undefined : C.surface, { faintDark: faintNeu });
+  // The picker's own dropdown modal card is C.background (all modals use the
+  // edit-commitment tone), so rows inside it re-base to the default tone.
+  const neuModal = useNeu(undefined, { faintDark: faintNeu });
   const currency = useSettingsStore((s) => s.currency);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -95,7 +103,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             key={item.id}
             style={[
               styles.item,
-              neu.raisedSoft,
+              neuModal.raisedSoft,
               isSelected && {
                 backgroundColor: withAlpha(item.color, 0.1),
               },
@@ -163,7 +171,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
       {label && <Text style={styles.label}>{label}</Text>}
 
       <TouchableOpacity
-        style={[styles.trigger, neu.raised]}
+        style={[styles.trigger, faintNeu ? neu.raisedSoft : neu.raised]}
         onPress={() => {
           lightTap();
           setDropdownOpen(true);
@@ -231,7 +239,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
               renderItem={renderGroupItem}
               ListHeaderComponent={allowNone ? (
                 <TouchableOpacity
-                  style={[styles.item, neu.raisedSoft, !selectedId && { backgroundColor: withAlpha(C.accent, 0.07) }]}
+                  style={[styles.item, neuModal.raisedSoft, !selectedId && { backgroundColor: withAlpha(C.accent, 0.07) }]}
                   onPress={() => { lightTap(); onClear?.(); setDropdownOpen(false); }}
                   activeOpacity={0.7}
                 >
@@ -320,12 +328,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
   modal: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
   },

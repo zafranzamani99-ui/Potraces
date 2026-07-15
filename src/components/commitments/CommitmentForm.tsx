@@ -248,10 +248,10 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
-  const neu = useNeu();
-  // Sheet + nested overlay cards are C.surface-toned, so their inner neu surfaces
-  // must blend to C.surface, not the screen's C.background.
-  const neuS = useNeu(C.surface);
+  const neu = useNeu(undefined, { faintDark: true });
+  // Sheet + nested overlay cards are C.background-toned, so their inner neu
+  // surfaces blend to the default base (C.background) too.
+  const neuS = useNeu(undefined, { faintDark: true });
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const expenseCategories = useCategories('expense');
@@ -672,6 +672,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
               onSelect={setCategory}
               label="category"
               layout="dropdown"
+              faintDark
               onNavigateToSettings={() => {
                 // Close the commitment sheet first (otherwise Settings opens behind this
                 // modal), and navigate the moment the close animation actually finishes
@@ -906,7 +907,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
   const renderCalendarView = () => (
     <>
       <Pressable style={StyleSheet.absoluteFill} onPress={() => setSubView('form')}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.4) }]} />
       </Pressable>
       <View style={styles.pickerOverlayWrap} pointerEvents="box-none">
         <View style={[styles.pickerOverlayCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
@@ -934,7 +935,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
   const renderWalletPickerView = () => (
     <>
       <Pressable style={StyleSheet.absoluteFill} onPress={() => setSubView('form')}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.4) }]} />
       </Pressable>
       <View style={styles.pickerOverlayWrap} pointerEvents="box-none">
         <View style={[styles.pickerOverlayCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
@@ -1068,7 +1069,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
             style={StyleSheet.absoluteFill}
             onPress={() => setIconPickerVisible(false)}
           >
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.4) }]} />
           </Pressable>
           <View style={styles.iconPickerWrap} pointerEvents="box-none">
             <View style={[styles.iconPickerCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
@@ -1165,7 +1166,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
             style={StyleSheet.absoluteFill}
             onPress={() => setInstallModalVisible(false)}
           >
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.4) }]} />
           </Pressable>
           <View style={styles.instModalWrap} pointerEvents="box-none">
             <View style={[styles.instModalCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
@@ -1307,7 +1308,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: withAlpha(C.dimBg, 0.5),
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   sheet: {
     position: 'absolute',
@@ -1318,10 +1319,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopLeftRadius: RADIUS['2xl'] + 2,
     borderTopRightRadius: RADIUS['2xl'] + 2,
     maxHeight: '92%',
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.06),
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   handleRow: {
     alignItems: 'center',
@@ -1471,7 +1468,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Card ─────────────────────────────────────────────
   card: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     marginBottom: SPACING.sm + 2,
   },
@@ -1731,7 +1728,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   instModalCard: {
     width: '88%' as any,
     maxHeight: '80%' as any,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
   },
@@ -1885,7 +1882,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   pickerOverlayCard: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.lg,
@@ -1921,7 +1918,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   iconPickerCard: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,

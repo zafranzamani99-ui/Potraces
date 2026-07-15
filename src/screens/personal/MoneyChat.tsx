@@ -31,6 +31,7 @@ import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useLearningStore } from '../../store/learningStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useUILayoutStore } from '../../store/uiLayoutStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
@@ -917,21 +918,43 @@ const MoneyChat: React.FC = () => {
   // scrollable up above the keyboard. The tab mount uses KeyboardAvoidingView (shrinks) so it pads 0.
   const [kbHeight, setKbHeight] = useState(0);
   useEffect(() => {
-    const show = KeyboardEvents.addListener('keyboardDidShow', (e) => {
+    // Track the keyboard on the WILL events so navBarInset (the composer's tab-bar lift)
+    // drops on open / returns on close *in sync* with the KeyboardAvoidingView animation.
+    // Using only the DID events left the lift on during the open animation, so the composer
+    // settled ~one nav-bar-height too high, then snapped down once the keyboard finished —
+    // the visible "spring". The DID handlers stay as idempotent safety (platforms without
+    // will-events) and to scroll to the latest message once the padding has applied.
+    const willShow = KeyboardEvents.addListener('keyboardWillShow', (e) => setKbHeight(e.height));
+    const willHide = KeyboardEvents.addListener('keyboardWillHide', () => setKbHeight(0));
+    const didShow = KeyboardEvents.addListener('keyboardDidShow', (e) => {
       setKbHeight(e.height);
-      // Chatbox behaviour: opening the keyboard scrolls to the latest message (slight delay so the
-      // keyboard-height padding has applied first, landing the newest message just above the keyboard).
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
     });
-    const hide = KeyboardEvents.addListener('keyboardDidHide', () => setKbHeight(0));
-    return () => { show.remove(); hide.remove(); };
+    const didHide = KeyboardEvents.addListener('keyboardDidHide', () => setKbHeight(0));
+    return () => { willShow.remove(); willHide.remove(); didShow.remove(); didHide.remove(); };
   }, []);
   const contentPad = isRootStack ? kbHeight : 0;
   const insets = useSafeAreaInsets();
   // The floating glass tab bar overlaps the tab mount's bottom, so lift the composer above it.
   // Only in the bottom-tab mount (the root-stack quick-action mount has no tab bar) and only
   // when the keyboard is closed (KeyboardAvoidingView already pins the composer to the keyboard).
-  const navBarInset = !isRootStack && kbHeight === 0 ? insets.bottom + 88 : 0;
+  // Use the tab bar's *measured* height (it reports it via uiLayoutStore) so the composer sits
+  // exactly one small gap above it — no dead band. The measured height includes the bar's own
+  // bottom safe-area padding, and this scene is ALREADY bottom-inset by that same safe area, so
+  // subtract insets.bottom to avoid counting it twice (that double-count was the leftover gap).
+  const measuredNavBar = useUILayoutStore((s) => s.navBarHeight);
+  const barVisibleHeight = (measuredNavBar > 0 ? measuredNavBar : insets.bottom + 74) - insets.bottom;
+  // Where the composer floats when the keyboard is closed:
+  //  · tab mount → above the floating tab bar (its measured visible height + a gap; SPACING.md,
+  //    not sm, so the pill's soft shadow doesn't bleed onto the bar and read as a collision).
+  //  · quick-action (root-stack) mount → no tab bar there, so float above the home indicator
+  //    instead (else the pill sits flush against the bottom edge — "too low").
+  // Keyboard open → 0; the KeyboardAvoidingView / KeyboardStickyView pins it to the keyboard.
+  const navBarInset = kbHeight > 0
+    ? 0
+    : isRootStack
+      ? insets.bottom + SPACING.sm
+      : barVisibleHeight + SPACING.md;
   const initialContext = route.params?.noteContext as string | undefined;
   const extractionContext = route.params?.extractionContext as string | undefined;
   const budgetContext = route.params?.budgetContext as string | undefined;
@@ -1342,20 +1365,25 @@ const MoneyChat: React.FC = () => {
     navigation.setOptions({
       headerRight: () => (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginRight: SPACING.sm }}>
-          {hasConversations && (
-            <TouchableOpacity
-              onPress={() => setShowHistory(true)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Feather name="clock" size={22} color={C.textMuted} />
-            </TouchableOpacity>
-          )}
+          {/* Always shown (not gated on hasConversations) — otherwise the native iOS header
+              draws an empty glass circle here with no icon. White, not muted, so it reads.
+              32×32 centered box — the exact geometry of the header back button
+              (makeBackHeader), so the right circle matches the left one instead of
+              the fatter blob a 44×44 box made iOS draw. hitSlop keeps the tap target big. */}
+          <TouchableOpacity
+            onPress={() => setShowHistory(true)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Feather name="clock" size={22} color={C.textPrimary} />
+          </TouchableOpacity>
           {chatMessages.length > 0 && (
             <TouchableOpacity
               onPress={() => { archiveChat(); }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
             >
-              <Feather name="plus" size={24} color={C.textMuted} />
+              <Feather name="plus" size={22} color={C.textPrimary} />
             </TouchableOpacity>
           )}
         </View>
@@ -2332,6 +2360,7 @@ const MoneyChat: React.FC = () => {
             style={styles.inputIconButton}
             onPress={() => { lightTap(); setAttachVisible((v) => !v); }}
             disabled={isLoading || isRecording}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityLabel={t.moneyChat.attach}
           >
@@ -3083,16 +3112,22 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.accent,
   },
 
-  // Input bar
+  // Input bar — a floating rounded pill that matches the Liquid Glass tab bar's
+  // language (same 16px side inset, rounded corners, soft lift). A full-width
+  // square band above an inset pill made the four corners read as broken.
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+    gap: SPACING.xs,                // tight +-to-input / input-to-mic gap
+    marginHorizontal: SPACING.md,   // 16 — same side inset as the floating nav bar
+    paddingLeft: SPACING.xs,        // + hugs the left edge → maximum input width
+    paddingRight: SPACING.sm,       // mic keeps a touch more air on the right
     paddingVertical: SPACING.md,
     backgroundColor: C.surface,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
+    borderRadius: RADIUS['2xl'],    // 28 — echoes the capsule's 30
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.border,
+    ...SHADOWS.md,                  // soft lift, like the tab bar
   },
   attachBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -3130,9 +3165,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginHorizontal: SPACING.lg,
   },
   inputIconButton: {
-    width: 44,
+    width: 32,          // slim: just the glyph + breathing room, so the input gets the width
     height: 44,
-    borderRadius: 22,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },

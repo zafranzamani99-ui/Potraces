@@ -26,11 +26,18 @@ export const NEU_BG = { light: '#F1F0EA', dark: '#151515' };
  * Rows on the screen use the default (C.background); rows inside a lighter/darker
  * container (e.g. a modal sheet on C.surface) MUST pass that container's color as
  * `baseColor` so they blend instead of showing as a darker/lighter slab.
+ *
+ * `faintDark` — "soft neu dark": keeps the raise but swaps the DARK-mode
+ * raised/raisedSoft shadows for a single gentle drop (no highlight), a tier
+ * below the defaults. Light mode is unaffected. Opt in per screen when the
+ * standard dark neu reads too strong stacked across a list.
  */
-export function useNeu(baseColor?: string) {
+export function useNeu(baseColor?: string, opts?: { faintDark?: boolean }) {
   const C = useCalm();
   const isDark = useIsDark();
+  const faintDark = !!opts?.faintDark;
   return useMemo(() => {
+    const faint = faintDark && isDark;
     // Dark highlight stays close to the bg tone — at #2A2A2A the top-left
     // rim read as a white glow on device; #1C1C1C was still too obvious, so the
     // highlight is toned further down to #171717 (a faint sheen, not white).
@@ -47,14 +54,22 @@ export function useNeu(baseColor?: string) {
     const base = baseColor ?? C.background; // match the CONTAINER bg so the card blends
     return {
       base,
-      // raised card surface — small tiles / buttons
-      raised: {
-        backgroundColor: base,
-        boxShadow: [
-          { offsetX: -4, offsetY: -5, blurRadius: 11, color: shL },
-          { offsetX: 4, offsetY: 6, blurRadius: 13, color: shD },
-        ] as any,
-      } as ViewStyle,
+      // raised card surface — small tiles / buttons. faintDark: single soft
+      // drop, no highlight (a highlight glows into a frame on near-black).
+      raised: (faint
+        ? {
+            backgroundColor: base,
+            boxShadow: [
+              { offsetX: 0, offsetY: 1, blurRadius: 5, color: 'rgba(0,0,0,0.55)' },
+            ],
+          }
+        : {
+            backgroundColor: base,
+            boxShadow: [
+              { offsetX: -4, offsetY: -5, blurRadius: 11, color: shL },
+              { offsetX: 4, offsetY: 6, blurRadius: 13, color: shD },
+            ],
+          }) as any as ViewStyle,
       // pressed / pushed-in surface — small tiles / buttons
       inset: {
         backgroundColor: base,
@@ -72,7 +87,9 @@ export function useNeu(baseColor?: string) {
         ? {
             backgroundColor: base,
             boxShadow: [
-              { offsetX: 0, offsetY: 4, blurRadius: 12, color: '#000000' },
+              faint
+                ? { offsetX: 0, offsetY: 2, blurRadius: 8, color: 'rgba(0,0,0,0.6)' }
+                : { offsetX: 0, offsetY: 4, blurRadius: 12, color: '#000000' },
             ],
           }
         : {
@@ -104,7 +121,7 @@ export function useNeu(baseColor?: string) {
         ] as any,
       } as ViewStyle,
     };
-  }, [C.background, isDark, baseColor]);
+  }, [C.background, isDark, baseColor, faintDark]);
 }
 
 // ── Components (greenfield use) ──

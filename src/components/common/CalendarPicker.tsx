@@ -19,6 +19,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from './neu';
 
 interface CalendarPickerProps {
   value: Date;
@@ -40,6 +41,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
   const C = useCalm();
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const [viewMonth, setViewMonth] = useState(startOfMonth(value));
   const [showPicker, setShowPicker] = useState(false);
   const [pickerYear, setPickerYear] = useState(getYear(value));
@@ -119,7 +121,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
           <TouchableOpacity
             onPress={showYearGrid ? () => setYearPageStart(p => p - 16) : decrementYear}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            style={styles.navBtn}
+            style={[styles.navBtn, neuF.raised]}
           >
             <Feather name="chevron-left" size={18} color={C.accent} />
           </TouchableOpacity>
@@ -127,7 +129,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
           <TouchableOpacity
             onPress={toggleYearGrid}
             hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
-            style={styles.yearPill}
+            style={[styles.yearPill, neuF.raised]}
           >
             <Text style={styles.yearPillText}>
               {showYearGrid ? `${yearRange[0]}–${yearRange[yearRange.length - 1]}` : pickerYear}
@@ -138,7 +140,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
           <TouchableOpacity
             onPress={showYearGrid ? () => setYearPageStart(p => p + 16) : incrementYear}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            style={styles.navBtn}
+            style={[styles.navBtn, neuF.raised]}
           >
             <Feather name="chevron-right" size={18} color={C.accent} />
           </TouchableOpacity>
@@ -216,7 +218,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
         <TouchableOpacity
           onPress={goToPrevMonth}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          style={styles.navBtn}
+          style={[styles.navBtn, neuF.raised]}
         >
           <Feather name="chevron-left" size={18} color={C.accent} />
         </TouchableOpacity>
@@ -233,7 +235,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
         <TouchableOpacity
           onPress={goToNextMonth}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          style={styles.navBtn}
+          style={[styles.navBtn, neuF.raised]}
         >
           <Feather name="chevron-right" size={18} color={C.accent} />
         </TouchableOpacity>

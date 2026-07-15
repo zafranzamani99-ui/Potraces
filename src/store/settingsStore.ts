@@ -145,6 +145,8 @@ interface SettingsState {
   setBudgetEchoHidden: (value: boolean) => void;
   commitmentEchoHidden: boolean;
   setCommitmentEchoHidden: (value: boolean) => void;
+  savingsEchoHidden: boolean;
+  setSavingsEchoHidden: (value: boolean) => void;
   personalSyncEnabled: boolean;
   lastPersonalSyncAt: Date | null;
   lastSyncedUserId: string | null;
@@ -402,6 +404,8 @@ export const useSettingsStore = create<SettingsState>()(
       setBudgetEchoHidden: (budgetEchoHidden) => set({ budgetEchoHidden }),
       commitmentEchoHidden: false,
       setCommitmentEchoHidden: (commitmentEchoHidden) => set({ commitmentEchoHidden }),
+      savingsEchoHidden: false,
+      setSavingsEchoHidden: (savingsEchoHidden) => set({ savingsEchoHidden }),
       personalSyncEnabled: false,
       lastPersonalSyncAt: null,
       lastSyncedUserId: null,

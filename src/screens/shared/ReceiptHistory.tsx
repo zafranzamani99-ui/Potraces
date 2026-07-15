@@ -108,7 +108,7 @@ const ReceiptHistory: React.FC = () => {
               key={year}
               style={[
                 styles.tab,
-                selectedYear === year ? neu.inset : neu.raised,
+                neu.raised,
                 selectedYear === year && styles.tabActive,
               ]}
               onPress={() => { lightTap(); setSelectedYear(year); setFilterCategory(null); }}
@@ -181,7 +181,7 @@ const ReceiptHistory: React.FC = () => {
             <TouchableOpacity
               style={[
                 styles.tab,
-                !filterCategory ? neu.inset : neu.raised,
+                neu.raised,
                 !filterCategory && styles.tabActive,
               ]}
               onPress={() => { lightTap(); setFilterCategory(null); }}
@@ -199,7 +199,7 @@ const ReceiptHistory: React.FC = () => {
                   key={cat.id}
                   style={[
                     styles.tab,
-                    isActive ? neu.inset : neu.raised,
+                    neu.raised,
                     isActive && styles.tabActive,
                   ]}
                   onPress={() => { lightTap(); setFilterCategory(cat.id); }}
@@ -322,23 +322,27 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.lg,
     flexWrap: 'wrap',
   },
+  // Match the bill screen's status pills (all / upcoming / overdue): stays
+  // neu.raised, and the ACTIVE pill gets a solid accent fill with bold onAccent
+  // text — a filled raised pill, not an inset one.
   tab: {
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xs + 3,
+    paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: C.pillBg,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
   },
   tabActive: {
-    backgroundColor: withAlpha(C.accent, 0.08),
+    backgroundColor: C.accent,
   },
   tabText: {
     fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
   },
   tabTextActive: {
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
+    color: C.onAccent,
+    fontWeight: TYPOGRAPHY.weight.bold,
   },
 
   // ── Hero (tax summary) ──

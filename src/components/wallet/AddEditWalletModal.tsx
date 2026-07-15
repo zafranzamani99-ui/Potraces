@@ -163,8 +163,8 @@ const AddEditWalletModal: React.FC<Props> = ({
   const t = useT();
   const { height: SCREEN_H } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(C), [C]);
-  // Tiles sit on the modal sheet (C.surface), not the screen — base the neu on it.
-  const neu = useNeu(C.surface);
+  // Sheet is now C.background (Goals/Debt standard) — base the neu on it with the soft dark tier.
+  const neu = useNeu(undefined, { faintDark: true });
   const balanceInputRef = useRef<TextInput>(null);
 
   const isBottomSheet = addStep === 'details' || !!editingWallet;
@@ -478,7 +478,7 @@ const AddEditWalletModal: React.FC<Props> = ({
             </TouchableOpacity>
           )}
 
-          <View style={styles.fieldCard}>
+          <View style={[styles.fieldCard, neu.raisedSoft]}>
             <Text style={styles.fieldLabel}>{t.wallets.walletName.toLowerCase()}</Text>
             <TextInput
               style={styles.fieldInput}
@@ -492,7 +492,7 @@ const AddEditWalletModal: React.FC<Props> = ({
             />
           </View>
 
-          <View style={styles.heroCard}>
+          <View style={[styles.heroCard, neu.raisedSoft]}>
             <Text style={styles.fieldLabel}>
               {(selectedType === 'credit' ? t.wallets.creditLimit : editingWallet ? t.wallets.currentBalance : t.wallets.initialBalance2).toLowerCase()}
             </Text>
@@ -536,7 +536,7 @@ const AddEditWalletModal: React.FC<Props> = ({
           {selectedPresetId === 'credit_card' && selectedCreditBank && selectedNetwork ? (
             <View>
               <Text style={styles.formLabelCompact}>{t.wallets.cardLabel}</Text>
-              <View style={[styles.logoPreviewBox, { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm - 2 }]}>
+              <View style={[styles.logoPreviewBox, neu.raisedSoft, { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm - 2 }]}>
                 <View style={{ flexShrink: 1, maxWidth: '45%', alignItems: 'center' }}>
                   <Image source={BANK_LOGOS[selectedCreditBank]} style={{ width: 70, height: 36, maxWidth: '100%' }} resizeMode="contain" />
                 </View>
@@ -549,7 +549,7 @@ const AddEditWalletModal: React.FC<Props> = ({
           ) : selectedPresetId && BANK_LOGOS[selectedPresetId] ? (
             <View>
               <Text style={styles.formLabelCompact}>{t.wallets.iconLabel}</Text>
-              <View style={styles.logoPreviewBox}>
+              <View style={[styles.logoPreviewBox, neu.raisedSoft]}>
                 <Image source={BANK_LOGOS[selectedPresetId]} style={styles.logoPreview} resizeMode="contain" />
               </View>
             </View>
@@ -672,21 +672,21 @@ const AddEditWalletModal: React.FC<Props> = ({
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: withAlpha(C.dimBg, 0.4),
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   sheetContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '92%',
   },
   floatingOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.4),
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -694,7 +694,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.lg,
   },
   floatingContent: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS['2xl'],
     width: '100%',
     maxHeight: '85%',
@@ -808,10 +808,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.2,
   },
   fieldCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
     marginBottom: SPACING.sm + 2,
@@ -824,10 +822,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     minHeight: 22,
   },
   heroCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
@@ -857,10 +853,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 0,
   },
   logoPreviewBox: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     padding: SPACING.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -906,7 +900,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   closeLink: {
     marginTop: SPACING.lg,

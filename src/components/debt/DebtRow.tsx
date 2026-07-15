@@ -58,7 +58,7 @@ const DebtRow: React.FC<DebtRowProps> = ({
   highlightRef,
 }) => {
   const C = useCalm();
-  const neu = useNeu();
+  const neu = useNeu(undefined, { faintDark: true });
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   const isMulti = group.debts.length > 1;

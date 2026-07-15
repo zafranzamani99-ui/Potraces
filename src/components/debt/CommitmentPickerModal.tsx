@@ -17,14 +17,14 @@ interface CommitmentPickerModalProps {
 
 const CommitmentPickerModal: React.FC<CommitmentPickerModalProps> = ({ visible, subscriptions, currency, onPick, onClose }) => {
   const C = useCalm();
-  const neuS = useNeu(C.surface); // surfaces sit inside the centered modal card (bg C.surface)
+  const neuS = useNeu(undefined, { faintDark: true }); // surfaces sit inside the centered modal card (bg C.background)
   const styles = useMemo(() => makeStyles(C), [C]);
 
   if (!visible) return null;
 
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={onClose}>
+      <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }} onPress={onClose}>
         <Pressable onPress={() => {}} style={[styles.choiceCard, SHADOWS.lg, { maxHeight: '60%' }]}>
           <Text style={styles.choiceTitle}>link to commitment</Text>
           <Text style={styles.choiceSubtitle}>pick an existing commitment</Text>
@@ -56,7 +56,7 @@ const CommitmentPickerModal: React.FC<CommitmentPickerModalProps> = ({ visible, 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   choiceCard: {
     width: '82%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,

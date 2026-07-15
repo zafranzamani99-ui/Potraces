@@ -95,12 +95,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
   },
   repayPickerCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     width: '88%',
     maxHeight: '70%',
-    borderWidth: 1,
-    borderColor: C.border,
     overflow: 'hidden',
     paddingTop: SPACING.xl,
   },

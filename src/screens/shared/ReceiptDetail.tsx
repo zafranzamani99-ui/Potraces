@@ -20,11 +20,11 @@ import Svg, { Path as SvgPath, Rect as SvgRect } from 'react-native-svg';
 import { useReceiptStore } from '../../store/receiptStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useWalletStore } from '../../store/walletStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { exportSingleReceiptPdf } from '../../services/pdfExport';
 import { shareCapturedReceipt } from '../../services/receiptImageExport';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
 import { useT } from '../../i18n';
 import { useToast } from '../../context/ToastContext';
@@ -43,7 +43,19 @@ const ReceiptDetail: React.FC = () => {
   const C = useCalm();
   const neu = useNeu();            // on-screen surfaces sit on C.background
   const neuS = useNeu(C.surface);  // tax-picker modal rows sit on the C.surface card
+  const isDark = useIsDark();      // tax-picker neu is softened in dark (user: reads too strong)
   const t = useT();
+  // The picker keeps a neu lift in dark, just softer than the kit's raisedSoft/raised
+  // (which stack up too strong across the dark rows). The kit has no "softer-than-
+  // raisedSoft" raised tier, so these are a local, picker-only gentler drop shadow.
+  const softRowNeu = useMemo(
+    () => ({ backgroundColor: C.surface, boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 8, color: 'rgba(0,0,0,0.6)' }] } as any),
+    [C.surface],
+  );
+  const softIconNeu = useMemo(
+    () => ({ boxShadow: [{ offsetX: 0, offsetY: 1, blurRadius: 5, color: 'rgba(0,0,0,0.55)' }] } as any),
+    [],
+  );
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -406,8 +418,18 @@ const ReceiptDetail: React.FC = () => {
           activeOpacity={1}
           onPress={() => setTaxPickerVisible(false)}
         >
-          <View style={[styles.modalCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>{t.receiptDetail.taxReliefCategoryTitle}</Text>
+          <View style={[styles.modalCard, SHADOWS.lg]} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t.receiptDetail.taxReliefCategoryTitle}</Text>
+              <TouchableOpacity
+                onPress={() => setTaxPickerVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.common.close}
+              >
+                <Feather name="x" size={22} color={C.textPrimary} />
+              </TouchableOpacity>
+            </View>
             <FlatList
               data={MYTAX_CATEGORIES}
               keyExtractor={(item) => item.id}
@@ -421,7 +443,13 @@ const ReceiptDetail: React.FC = () => {
                 const isSelected = cat.id === receipt.myTaxCategory;
                 return (
                   <TouchableOpacity
-                    style={[styles.modalRow, neuS.raisedSoft, isSelected && { backgroundColor: withAlpha(C.accent, 0.06) }]}
+                    style={[
+                      styles.modalRow,
+                      // Dark: gentler neu lift than raisedSoft (softRowNeu); light keeps
+                      // the full card look.
+                      isDark ? softRowNeu : neuS.raisedSoft,
+                      isSelected && { backgroundColor: withAlpha(C.accent, 0.06) },
+                    ]}
                     onPress={() => {
                       updateReceipt(receipt.id, { myTaxCategory: cat.id });
                       setTaxPickerVisible(false);
@@ -429,7 +457,7 @@ const ReceiptDetail: React.FC = () => {
                     }}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.modalRowIcon, neuS.well, { backgroundColor: withAlpha(isSelected ? C.accent : C.textSecondary, 0.08) }]}>
+                    <View style={[styles.modalRowIcon, isDark ? softIconNeu : neuS.raised, { backgroundColor: withAlpha(isSelected ? C.accent : C.textSecondary, 0.08) }]}>
                       <Feather name={cat.icon as keyof typeof Feather.glyphMap} size={14} color={isSelected ? C.accent : C.textSecondary} />
                     </View>
                     <View style={{ flex: 1 }}>
@@ -948,23 +976,33 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalCard: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
+    // Flat elevated shell (SHADOWS.lg at the call site), matching CategoryPicker.
+    // Horizontal insets live on modalHeader (padding) + modalRow (margin) so the
+    // rows' soft shadow bleeds into the margin instead of being clipped into a
+    // hard vertical seam at the FlatList's edge.
+    paddingVertical: SPACING.xl,
     width: '100%',
     maxWidth: 360,
-    // neuS.raisedSoft (bg + shadow) spread at the call site
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.xl,
+    marginBottom: SPACING.md,
   },
   modalTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     letterSpacing: -0.3,
-    marginBottom: SPACING.md,
   },
   modalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
+    marginHorizontal: SPACING.md,
     marginBottom: SPACING.sm,
     borderRadius: RADIUS.md,
   },

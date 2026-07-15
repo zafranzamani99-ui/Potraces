@@ -1,16 +1,16 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Pressable, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useNeu } from '../common/neu';
 import NeuButton from '../common/NeuButton';
+import BottomSheet from '../common/BottomSheet';
 
 interface DebtViewSettingsModalProps {
   visible: boolean;
   onClose: () => void;
-  bottomInset: number;
   debtsShowArchive: boolean;
   setDebtsShowArchive: (v: boolean) => void;
   debtsShowReminder: boolean;
@@ -21,7 +21,6 @@ interface DebtViewSettingsModalProps {
 const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
   visible,
   onClose,
-  bottomInset,
   debtsShowArchive,
   setDebtsShowArchive,
   debtsShowReminder,
@@ -29,126 +28,95 @@ const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
   onHowItWorks,
 }) => {
   const C = useCalm();
-  const neuS = useNeu(C.surface);
+  const neuS = useNeu(undefined, { faintDark: true }); // rows sit directly on the sheet body (bg C.background)
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
-  if (!visible) return null;
-
   return (
-    <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <Pressable style={{ flex: 1 }} onPress={onClose} />
-        <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], bottomInset + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
-          <View style={styles.dDebtSheetTopRow}>
-            <View style={styles.dDebtSheetHandle} />
-          </View>
-          <View style={styles.dDebtTitleZone}>
-            <Text style={styles.dDebtTitle}>
-              view <Text style={styles.dDebtTitleAccent}>settings</Text>
-            </Text>
-            <Text style={styles.dDebtSubtitle}>tweak what shows up on this screen</Text>
-          </View>
-
-          <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.lg }}>
-            <TouchableOpacity
-              style={[styles.dSettingsRow, neuS.raisedSoft]}
-              onPress={() => setDebtsShowArchive(!debtsShowArchive)}
-              activeOpacity={0.7}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: debtsShowArchive }}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.dSettingsRowTitle}>show archive tab</Text>
-                <Text style={styles.dSettingsRowSub}>
-                  keeps an extra tab for debts and splits you've stashed away. tap any item's "archive" action to move it there.
-                </Text>
-              </View>
-              <View style={[
-                styles.dSettingsToggle,
-                debtsShowArchive && { backgroundColor: C.accent },
-              ]}>
-                <View style={[
-                  styles.dSettingsToggleThumb,
-                  debtsShowArchive && { transform: [{ translateX: 18 }] },
-                ]} />
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.dSettingsRow, neuS.raisedSoft, { marginTop: SPACING.md }]}
-              onPress={() => setDebtsShowReminder(!debtsShowReminder)}
-              activeOpacity={0.7}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: debtsShowReminder }}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.dSettingsRowTitle}>show reminder button</Text>
-                <Text style={styles.dSettingsRowSub}>
-                  adds a reminder button on "they owe" debts so you can nudge people with a friendly message.
-                </Text>
-              </View>
-              <View style={[
-                styles.dSettingsToggle,
-                debtsShowReminder && { backgroundColor: C.accent },
-              ]}>
-                <View style={[
-                  styles.dSettingsToggleThumb,
-                  debtsShowReminder && { transform: [{ translateX: 18 }] },
-                ]} />
-              </View>
-            </TouchableOpacity>
-
-            {/* ── How it works button ─────────────────────── */}
-            <TouchableOpacity
-              style={[styles.dHowButton, neuS.raisedSoft]}
-              onPress={onHowItWorks}
-              activeOpacity={0.7}
-            >
-              <Feather name="help-circle" size={16} color={C.accent} />
-              <Text style={styles.dHowButtonText}>how it works</Text>
-              <Feather name="chevron-right" size={14} color={C.textMuted} />
-            </TouchableOpacity>
-
-            <NeuButton
-              label={t.common.done}
-              onPress={onClose}
-              style={{ marginTop: SPACING.lg }}
-            />
-          </View>
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      maxHeightPct={0.9}
+      header={
+        <View style={styles.dDebtTitleZone}>
+          <Text style={styles.dDebtTitle}>
+            view <Text style={styles.dDebtTitleAccent}>settings</Text>
+          </Text>
+          <Text style={styles.dDebtSubtitle}>tweak what shows up on this screen</Text>
         </View>
+      }
+    >
+      <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.lg }}>
+        <TouchableOpacity
+          style={[styles.dSettingsRow, neuS.raisedSoft]}
+          onPress={() => setDebtsShowArchive(!debtsShowArchive)}
+          activeOpacity={0.7}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: debtsShowArchive }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.dSettingsRowTitle}>show archive tab</Text>
+            <Text style={styles.dSettingsRowSub}>
+              keeps an extra tab for debts and splits you've stashed away. tap any item's "archive" action to move it there.
+            </Text>
+          </View>
+          <View style={[
+            styles.dSettingsToggle,
+            debtsShowArchive && { backgroundColor: C.accent },
+          ]}>
+            <View style={[
+              styles.dSettingsToggleThumb,
+              debtsShowArchive && { transform: [{ translateX: 18 }] },
+            ]} />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.dSettingsRow, neuS.raisedSoft, { marginTop: SPACING.md }]}
+          onPress={() => setDebtsShowReminder(!debtsShowReminder)}
+          activeOpacity={0.7}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: debtsShowReminder }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.dSettingsRowTitle}>show reminder button</Text>
+            <Text style={styles.dSettingsRowSub}>
+              adds a reminder button on "they owe" debts so you can nudge people with a friendly message.
+            </Text>
+          </View>
+          <View style={[
+            styles.dSettingsToggle,
+            debtsShowReminder && { backgroundColor: C.accent },
+          ]}>
+            <View style={[
+              styles.dSettingsToggleThumb,
+              debtsShowReminder && { transform: [{ translateX: 18 }] },
+            ]} />
+          </View>
+        </TouchableOpacity>
+
+        {/* ── How it works button ─────────────────────── */}
+        <TouchableOpacity
+          style={[styles.dHowButton, neuS.raisedSoft]}
+          onPress={onHowItWorks}
+          activeOpacity={0.7}
+        >
+          <Feather name="help-circle" size={16} color={C.accent} />
+          <Text style={styles.dHowButtonText}>how it works</Text>
+          <Feather name="chevron-right" size={14} color={C.textMuted} />
+        </TouchableOpacity>
+
+        <NeuButton
+          label={t.common.done}
+          onPress={onClose}
+          style={{ marginTop: SPACING.lg }}
+        />
       </View>
-    </Modal>
+    </BottomSheet>
   );
 };
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: C.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
-    padding: SPACING['2xl'],
-    maxHeight: '90%',
-  },
-  dDebtSheetTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.sm,
-    position: 'relative',
-  },
-  dDebtSheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: withAlpha(C.textPrimary, 0.15),
-  },
   dDebtTitleZone: {
     alignItems: 'center',
     paddingHorizontal: SPACING.xl,

@@ -1,18 +1,20 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import BottomSheet from '../common/BottomSheet';
-import { NeuSurface } from '../common/neu';
+import ContactPicker from '../common/ContactPicker';
+import WalletPicker from '../common/WalletPicker';
+import { useNeu } from '../common/neu';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
 import { formatAmount } from '../../utils/formatters';
-import { newId } from '../../utils/id';
 import { roundMoney } from '../../utils/money';
 import { computeEqualShares } from '../../utils/splitShares';
 import { commitSplit } from '../../services/splitCommit';
 import { useWalletStore } from '../../store/walletStore';
 import { useAppStore } from '../../store/appStore';
+import { SPACING, RADIUS, TYPOGRAPHY, withAlpha, CALM_DARK } from '../../constants';
 import type { CALM } from '../../constants';
 import type { Contact } from '../../types';
 
@@ -27,149 +29,181 @@ const SELF_ID = '__self__';
 
 const QuickSplitSheet: React.FC<Props> = ({ visible, total, onClose, onCreated }) => {
   const C = useCalm();
+  const neuS = useNeu(undefined, { faintDark: true }); // cards sit on the sheet's C.background bg — blend, don't slab
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const wallets = useWalletStore((s) => s.wallets);
 
-  const self: Contact = useMemo(() => ({ id: SELF_ID, name: t.quickSplit.me, isFromPhone: false }), [t.quickSplit.me]);
-  const [others, setOthers] = useState<Contact[]>([]);
+  const selfName = t.quickSplit.me;
+  const self: Contact = useMemo(() => ({ id: SELF_ID, name: selfName, isFromPhone: false }), [selfName]);
+  // "who's in" is a multi picker that starts with me — add others by typing or from contacts.
+  const [participants, setParticipants] = useState<Contact[]>([self]);
   const [payerId, setPayerId] = useState<string>(SELF_ID);
   const [walletId, setWalletId] = useState<string | null>(null);
   const [description, setDescription] = useState('');
 
   const roundedTotal = roundMoney(total);
-  const contacts = useMemo(() => [self, ...others], [self, others]);
   const shares = useMemo(
-    () => computeEqualShares(roundedTotal, contacts, payerId),
-    [roundedTotal, contacts, payerId]
+    () => computeEqualShares(roundedTotal, participants, payerId),
+    [roundedTotal, participants, payerId]
   );
-  // Show a representative (non-payer) share so the remainder assigned to the
-  // payer doesn't make "each pays" look off.
+  // Representative (non-payer) share so the payer's rounding remainder doesn't
+  // make "each pays" look off.
   const each = shares.find((p) => p.contact.id !== payerId)?.amount ?? shares[0]?.amount ?? 0;
-  const canSave = roundedTotal > 0 && others.length >= 1;
+  const canSave = roundedTotal > 0 && participants.length >= 2;
 
-  const addPerson = () => {
-    lightTap();
-    setOthers((prev) => [
-      ...prev,
-      { id: newId(), name: `${t.quickSplit.person} ${prev.length + 1}`, isFromPhone: false },
-    ]);
+  const handleParticipantsChange = (list: Contact[]) => {
+    setParticipants(list);
+    // Keep the payer valid — fall back to me (or the first person) if they left.
+    if (!list.some((c) => c.id === payerId)) {
+      setPayerId(list.some((c) => c.id === SELF_ID) ? SELF_ID : (list[0]?.id ?? SELF_ID));
+    }
   };
-  const renamePerson = (id: string, name: string) =>
-    setOthers((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
-  const removePerson = (id: string) => {
-    setOthers((prev) => prev.filter((c) => c.id !== id));
-    if (payerId === id) setPayerId(SELF_ID);
+
+  const selectPayer = (id: string) => {
+    lightTap();
+    setPayerId(id);
+    // Wallet only applies when I fronted the money.
+    if (id !== SELF_ID) setWalletId(null);
   };
 
   const save = () => {
     if (!canSave) return;
     lightTap();
-    const payer = contacts.find((c) => c.id === payerId) ?? self;
-    const participants = computeEqualShares(roundedTotal, contacts, payer.id);
+    const payer = participants.find((c) => c.id === payerId) ?? self;
+    const parts = computeEqualShares(roundedTotal, participants, payer.id);
     const splitId = commitSplit({
       description: description.trim() || t.quickSplit.title,
       totalAmount: roundedTotal,
       splitMethod: 'equal',
-      participants,
+      participants: parts,
       items: [],
       paidBy: payer,
       walletId: payer.id === SELF_ID ? walletId || undefined : undefined,
       mode: useAppStore.getState().mode,
     });
     onCreated?.(splitId);
-    setOthers([]); setPayerId(SELF_ID); setWalletId(null); setDescription('');
+    setParticipants([self]); setPayerId(SELF_ID); setWalletId(null); setDescription('');
     onClose();
   };
 
+  // Title in the add-debt idiom: lead word plain, final word serif-italic accent.
+  const titleWords = t.quickSplit.title.trim().split(/\s+/);
+  const titleTail = (titleWords[titleWords.length - 1] || '').toLowerCase();
+  const titleLead = titleWords.slice(0, -1).join(' ').toLowerCase();
+
   return (
-    <BottomSheet visible={visible} onClose={onClose} header={<Text style={styles.title}>{t.quickSplit.title}</Text>}>
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      header={
+        <View style={styles.titleZone}>
+          <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+            {titleLead ? titleLead + ' ' : ''}
+            <Text style={styles.titleAccent}>{titleTail}</Text>
+          </Text>
+          <Text style={styles.subtitle}>split a bill evenly</Text>
+        </View>
+      }
+    >
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        {/* Total */}
-        <Text style={styles.label}>{t.quickSplit.total}</Text>
-        <Text style={styles.total}>{formatAmount(roundedTotal)}</Text>
-
-        {/* Description */}
-        <Text style={styles.label}>{t.quickSplit.description}</Text>
-        <TextInput
-          style={styles.input}
-          value={description}
-          onChangeText={setDescription}
-          placeholder={t.quickSplit.title}
-          placeholderTextColor={C.textMuted}
-        />
-
-        {/* Who's in */}
-        <Text style={styles.label}>{t.quickSplit.whosIn}</Text>
-        <View style={styles.chipsWrap}>
-          <View style={styles.meChip}><Text style={styles.meChipText}>{t.quickSplit.me}</Text></View>
-          {others.map((p) => (
-            <View key={p.id} style={styles.personChip}>
-              <TextInput
-                style={styles.personInput}
-                value={p.name}
-                onChangeText={(v) => renamePerson(p.id, v)}
-              />
-              <Pressable onPress={() => removePerson(p.id)} accessibilityLabel={`remove ${p.name}`} hitSlop={8}>
-                <Ionicons name="close-circle" size={18} color={C.textMuted} />
-              </Pressable>
-            </View>
-          ))}
-          <Pressable style={styles.addChip} onPress={addPerson} accessibilityLabel={t.quickSplit.addPerson}>
-            <Ionicons name="add" size={18} color={C.accent} />
-            <Text style={styles.addChipText}>{t.quickSplit.addPerson}</Text>
-          </Pressable>
+        {/* Hero total */}
+        <View style={[styles.heroCard, neuS.raisedSoft]}>
+          <Text style={styles.cardLabel}>{t.quickSplit.total.toLowerCase()}</Text>
+          <View style={styles.heroAmountRow}>
+            <Text style={styles.heroCurrency}>RM</Text>
+            <Text style={styles.heroAmount} numberOfLines={1} adjustsFontSizeToFit>
+              {formatAmount(roundedTotal, '').trim()}
+            </Text>
+          </View>
+          <Text style={styles.heroHint}>
+            {t.quickSplit.eachPays.toLowerCase()} · {formatAmount(each)}
+          </Text>
         </View>
 
-        {/* Who paid */}
-        <Text style={styles.label}>{t.quickSplit.whoPaid}</Text>
-        <View style={styles.chipsWrap}>
-          {contacts.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => { lightTap(); setPayerId(c.id); }}
-              accessibilityLabel={`${t.quickSplit.whoPaid} ${c.name}`}
-            >
-              <NeuSurface pressed={payerId === c.id} style={styles.payerChip}>
-                <Text style={[styles.payerText, payerId === c.id && { color: C.accent }]}>{c.name}</Text>
-              </NeuSurface>
-            </Pressable>
-          ))}
+        <View style={styles.divider} />
+
+        {/* What for */}
+        <View style={[styles.fieldCard, neuS.raisedSoft]}>
+          <Text style={styles.cardLabel}>{t.quickSplit.description.toLowerCase()}</Text>
+          <TextInput
+            style={[styles.fieldInput, styles.fieldMultiline]}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="e.g. dinner, groceries"
+            placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+            multiline
+            textAlignVertical="top"
+          />
         </View>
 
-        {/* Wallet (only when I paid) */}
-        {payerId === SELF_ID && wallets.length > 0 && (
-          <>
-            <Text style={styles.label}>{t.quickSplit.wallet}</Text>
-            <View style={styles.chipsWrap}>
-              <Pressable onPress={() => { lightTap(); setWalletId(null); }}>
-                <NeuSurface pressed={walletId === null} style={styles.payerChip}>
-                  <Text style={styles.payerText}>{t.quickSplit.noWallet}</Text>
-                </NeuSurface>
-              </Pressable>
-              {wallets.map((w) => (
-                <Pressable key={w.id} onPress={() => { lightTap(); setWalletId(w.id); }}>
-                  <NeuSurface pressed={walletId === w.id} style={styles.payerChip}>
-                    <Text style={[styles.payerText, walletId === w.id && { color: C.accent }]}>{w.name}</Text>
-                  </NeuSurface>
+        {/* Who's in — single input card (avatar + placeholder + contacts pill + recent chips) */}
+        <View style={styles.pickerWrap}>
+          <Text style={styles.pickerLabel}>{"who's in "}<Text style={styles.requiredStar}>*</Text></Text>
+          <ContactPicker
+            selectedContacts={participants}
+            onSelect={handleParticipantsChange}
+            mode="multi"
+            includeSelf
+            selfName={selfName}
+            variant="input"
+            hideLabel
+            placeholder="add a name"
+          />
+        </View>
+
+        {/* Who paid — pick one of the people in the split */}
+        <View style={styles.pickerWrap}>
+          <Text style={styles.pickerLabel}>who paid <Text style={styles.requiredStar}>*</Text></Text>
+          <View style={styles.payerChips}>
+            {participants.map((c) => {
+              const active = payerId === c.id;
+              return (
+                <Pressable
+                  key={c.id}
+                  onPress={() => selectPayer(c.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`paid by ${c.name}`}
+                  accessibilityState={{ selected: active }}
+                >
+                  <View style={[styles.payerChip, neuS.raised, active && styles.payerChipActive]}>
+                    <Text style={[styles.payerChipText, active && styles.payerChipTextActive]} numberOfLines={1}>{c.name}</Text>
+                  </View>
                 </Pressable>
-              ))}
-            </View>
-          </>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Pay from — real WalletPicker, only when I fronted the money */}
+        {payerId === SELF_ID && wallets.length > 0 && (
+          <View style={styles.pickerWrap}>
+            <WalletPicker
+              wallets={wallets}
+              selectedId={walletId}
+              onSelect={setWalletId}
+              onClear={() => setWalletId(null)}
+              allowNone
+              noneLabel="no wallet"
+              label="pay from"
+              faintNeu
+            />
+          </View>
         )}
 
-        {/* Preview + Save */}
-        <View style={styles.previewRow}>
-          <Text style={styles.previewLabel}>{t.quickSplit.eachPays}</Text>
-          <Text style={styles.previewValue}>{formatAmount(each)}</Text>
-        </View>
+        {/* Save */}
         <Pressable
           style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
           onPress={save}
           disabled={!canSave}
           accessibilityLabel={t.quickSplit.save}
         >
-          <Text style={styles.saveText}>{canSave ? t.quickSplit.save : t.quickSplit.needTwo}</Text>
+          <View style={styles.saveBtnInner}>
+            <Feather name="check" size={16} color={canSave ? C.surface : C.textMuted} />
+            <Text style={[styles.saveBtnText, !canSave && styles.saveBtnTextDisabled]}>
+              {(canSave ? t.quickSplit.save : t.quickSplit.needTwo).toLowerCase()}
+            </Text>
+          </View>
         </Pressable>
       </ScrollView>
     </BottomSheet>
@@ -177,38 +211,130 @@ const QuickSplitSheet: React.FC<Props> = ({ visible, total, onClose, onCreated }
 };
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  title: { fontSize: 18, fontWeight: '600', color: C.textPrimary, paddingHorizontal: 20, paddingTop: 8 },
-  body: { padding: 20, gap: 8 },
-  label: { fontSize: 12, fontWeight: '600', color: C.textMuted, marginTop: 12 },
-  total: { fontSize: 34, fontWeight: '200', color: C.textPrimary, fontVariant: ['tabular-nums'] },
-  input: {
-    borderWidth: 1, borderColor: C.inputBorder, borderRadius: 12, paddingHorizontal: 12,
-    paddingVertical: 10, color: C.textPrimary, fontSize: 15,
+  // Title zone (mirrors the add-debt modal)
+  titleZone: { alignItems: 'center', paddingHorizontal: SPACING.xl, paddingBottom: SPACING.lg },
+  title: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? -0.2 : -0.4,
+    textAlign: 'center',
   },
-  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  meChip: { backgroundColor: C.accent, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 },
-  meChipText: { color: C.onAccent, fontWeight: '600', fontSize: 13 },
-  personChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.pillBg,
-    borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6,
+  titleAccent: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.accent,
   },
-  personInput: { color: C.textPrimary, fontSize: 13, minWidth: 60, paddingVertical: 2 },
-  addChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: C.accent,
-    borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6,
+  subtitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    marginTop: SPACING.xs + 2,
+    letterSpacing: 0.1,
+    textAlign: 'center',
   },
-  addChipText: { color: C.accent, fontWeight: '600', fontSize: 13 },
-  payerChip: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8 },
-  payerText: { color: C.textPrimary, fontSize: 13, fontWeight: '500' },
-  previewRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
-  previewLabel: { fontSize: 14, color: C.textSecondary },
-  previewValue: { fontSize: 20, fontWeight: '600', color: C.textPrimary, fontVariant: ['tabular-nums'] },
+  body: { paddingHorizontal: SPACING.xl, paddingBottom: SPACING.lg },
+
+  // Hero total card
+  heroCard: {
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.lg,
+    marginBottom: SPACING.sm + 2,
+  },
+  cardLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  heroAmountRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: SPACING.xs },
+  heroCurrency: {
+    fontSize: 22,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+    marginRight: 4,
+    letterSpacing: -0.2,
+  },
+  heroAmount: {
+    flex: 1,
+    fontSize: 36,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.8,
+  },
+  heroHint: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: SPACING.xs, fontVariant: ['tabular-nums'] },
+
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.10 : 0.06),
+    marginVertical: SPACING.sm,
+  },
+
+  // What-for field card
+  fieldCard: {
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md + 2,
+    paddingVertical: SPACING.sm + 4,
+    marginBottom: SPACING.sm + 2,
+  },
+  fieldInput: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    paddingVertical: 2,
+    minHeight: 22,
+  },
+  fieldMultiline: { minHeight: 44, paddingTop: 4, paddingBottom: 4, lineHeight: 20 },
+
+  // Input-card picker sections (ContactPicker input variant renders its own card)
+  pickerWrap: { marginBottom: SPACING.sm + 2 },
+  pickerLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: C.textPrimary,
+    marginBottom: SPACING.sm,
+  },
+  // Terracotta mandatory star — matches the add-debt modal's required indicator.
+  requiredStar: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: '#C1694F',
+    fontWeight: TYPOGRAPHY.weight.bold,
+  },
+
+  // Who-paid selector — chips across the split's participants
+  payerChips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  payerChip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.background,
+  },
+  payerChipActive: { backgroundColor: withAlpha(C.accent, 0.12) },
+  payerChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textSecondary, maxWidth: 140 },
+  payerChipTextActive: { color: C.accent },
+
+  // Save button (add-debt pill)
   saveBtn: {
-    marginTop: 16, backgroundColor: C.accent, borderRadius: 16, paddingVertical: 15,
+    width: '100%',
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.accent,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+    marginTop: SPACING.lg,
   },
-  saveBtnDisabled: { opacity: 0.5 },
-  saveText: { color: C.onAccent, fontWeight: '700', fontSize: 15 },
+  saveBtnDisabled: { backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.08) },
+  saveBtnInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  saveBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.surface, letterSpacing: 0.3 },
+  saveBtnTextDisabled: { color: C.textMuted },
 });
 
 export default QuickSplitSheet;

@@ -58,8 +58,9 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
 }) => {
   const C = useCalm();
   const isDark = useIsDark();
-  // Sheet body sits on C.surface, so its neu surfaces must blend to C.surface.
-  const neuS = useNeu(C.surface);
+  // Sheet body sits on C.background, so its neu surfaces blend to C.background
+  // (the hook's default base).
+  const neu = useNeu(undefined, { faintDark: true });
   const t = useT();
   const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
   const currency = useSettingsStore((s) => s.currency);
@@ -210,7 +211,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
             </View>
             {/* Header */}
             <View style={styles.headerZone}>
-              <View style={[styles.headerIconWrap, neuS.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+              <View style={[styles.headerIconWrap, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                 {(liveSub?.imageUri ?? sub.imageUri) ? (
                   <Image source={{ uri: liveSub?.imageUri ?? sub.imageUri }} style={styles.headerIconImage} />
                 ) : (liveSub?.iconName ?? sub.iconName) ? (
@@ -250,7 +251,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
           contentContainerStyle={styles.scrollContent}
         >
           {/* Collection summary card */}
-          <View style={[styles.summaryCard, neuS.raisedSoft]}>
+          <View style={[styles.summaryCard, neu.raisedSoft]}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryCollected}>{currency}{collected.toFixed(2)}</Text>
               <Text style={styles.summaryOf}> of {currency}{totalAmount.toFixed(2)} {t.sharedSubs.collected}</Text>
@@ -383,7 +384,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
           {/* Action row */}
           <View style={styles.actionRow}>
             <TouchableOpacity
-              style={[styles.actionBtn, neuS.raised]}
+              style={[styles.actionBtn, neu.raised]}
               onPress={() => { lightTap(); onEdit(liveSub ?? sub); }}
               activeOpacity={0.7}
             >
@@ -392,7 +393,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
             </TouchableOpacity>
             {monthRecord?.debtsGenerated ? (
               <TouchableOpacity
-                style={[styles.actionBtn, neuS.raised]}
+                style={[styles.actionBtn, neu.raised]}
                 onPress={() => { lightTap(); onAdjustAmounts(liveSub ?? sub, viewMonth); }}
                 activeOpacity={0.7}
               >
@@ -401,7 +402,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={[styles.actionBtn, neuS.raised]}
+                style={[styles.actionBtn, neu.raised]}
                 onPress={() => { lightTap(); onPriceChange(liveSub ?? sub); }}
                 activeOpacity={0.7}
               >
@@ -415,12 +416,12 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
           {liveSub?.subscriptionId ? (
             <>
               <TouchableOpacity
-                style={[styles.commitmentCard, neuS.raisedSoft, { backgroundColor: withAlpha(C.accent, C === CALM_DARK ? 0.06 : 0.03) }]}
+                style={[styles.commitmentCard, neu.raisedSoft, { backgroundColor: withAlpha(C.accent, C === CALM_DARK ? 0.06 : 0.03) }]}
                 onPress={() => { lightTap(); onViewCommitment(liveSub.subscriptionId!); }}
                 activeOpacity={0.7}
               >
                 <View style={styles.commitmentCardLeft}>
-                  <View style={[styles.commitmentCardIcon, neuS.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                  <View style={[styles.commitmentCardIcon, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                     <Feather name="link" size={13} color={C.accent} />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -508,7 +509,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '88%',
@@ -826,7 +827,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     paddingTop: SPACING.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   closeLink: {
     alignSelf: 'center',

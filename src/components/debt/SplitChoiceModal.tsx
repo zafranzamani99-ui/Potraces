@@ -16,7 +16,7 @@ interface SplitChoiceModalProps {
 
 const SplitChoiceModal: React.FC<SplitChoiceModalProps> = ({ visible, onClose, onManual, onTakePhoto, onChooseGallery }) => {
   const C = useCalm();
-  const neuS = useNeu(C.surface); // rows sit inside the centered modal card (bg C.surface)
+  const neuS = useNeu(undefined, { faintDark: true }); // rows sit inside the centered modal card (bg C.background)
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
@@ -25,7 +25,7 @@ const SplitChoiceModal: React.FC<SplitChoiceModalProps> = ({ visible, onClose, o
   // animationType="none" — instant dismiss, safe for native pickers
   return (
     <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={onClose}>
+      <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }} onPress={onClose}>
         <Pressable onPress={() => {}} style={styles.choiceCard}>
           <Text style={styles.choiceTitle}>{t.debts.splitExpense}</Text>
           <Text style={styles.choiceSubtitle}>{t.debts.howWouldYouSplit}</Text>
@@ -52,7 +52,7 @@ const SplitChoiceModal: React.FC<SplitChoiceModalProps> = ({ visible, onClose, o
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   choiceCard: {
     width: '82%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,

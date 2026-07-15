@@ -1514,7 +1514,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
           <View style={styles.echoOverlay}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setPlanEditorVisible(false)} accessibilityLabel="close plan editor" accessibilityRole="button" />
             <KeyboardAvoidingView style={styles.echoKAV} behavior="padding" pointerEvents="box-none">
-              <View style={[styles.echoModal, { backgroundColor: C.surface, borderColor: C.border }]} onStartShouldSetResponder={() => true}>
+              <View style={[styles.echoModal, { backgroundColor: C.background, borderColor: C.border }]} onStartShouldSetResponder={() => true}>
                 {/* header — title + close */}
                 <View style={styles.echoHeaderRow}>
                   <View style={styles.echoTitleRow}>
@@ -1645,7 +1645,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
         <View style={styles.oblOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditModalItem(null)} />
           <KeyboardAvoidingView style={styles.floatEditKAV} behavior="padding" pointerEvents="box-none">
-            <View style={[styles.floatEditCard, { backgroundColor: C.surface }]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.floatEditCard, { backgroundColor: C.background }]} onStartShouldSetResponder={() => true}>
               <View style={styles.floatEditHeader}>
                 <Text style={[styles.modalTitle, { color: C.textPrimary }]}>edit item</Text>
                 <TouchableOpacity onPress={() => setEditModalItem(null)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -1692,7 +1692,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
           <View style={styles.echoOverlay}>
             <Pressable style={StyleSheet.absoluteFill} onPress={handleDismissEcho} accessibilityLabel="close echo" accessibilityRole="button" />
             <KeyboardAvoidingView style={styles.echoKAV} behavior="padding" pointerEvents="box-none">
-              <View style={[styles.echoModal, { backgroundColor: C.surface, borderColor: C.border }]} onStartShouldSetResponder={() => true}>
+              <View style={[styles.echoModal, { backgroundColor: C.background, borderColor: C.border }]} onStartShouldSetResponder={() => true}>
               {/* Header — title + close. "start over" only once we're mid-conversation. */}
               <View style={styles.echoHeaderRow}>
                 <View style={styles.echoTitleRow}>

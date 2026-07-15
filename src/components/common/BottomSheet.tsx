@@ -18,7 +18,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { CALM, CALM_DARK, SPACING, RADIUS, SHADOWS, TYPOGRAPHY, withAlpha } from '../../constants';
+import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 
 interface BottomSheetProps {
@@ -47,7 +47,7 @@ interface BottomSheetProps {
  *    views keep their own gestures.
  *  - Animated backdrop fades with sheet position; tap to close.
  *  - Finish-close animates back down to SCREEN_H, then flips `visible` false via onClose.
- *  - Dark-mode outline (1px border) + SHADOWS so the sheet floats; safe-area bottom pad.
+ *  - Flat sheet on C.background (no border, no shadow) — matches Goals' gfSheet; safe-area bottom pad.
  *  - Pinned bottom "✕ close" link footer (detailCloseLink) — the canonical close button.
  *
  * Layout: [handle + header] → [children (own scroll)] → [pinned ✕ close footer].
@@ -199,17 +199,14 @@ const makeStyles = (C: typeof CALM) =>
       bottom: 0,
       left: 0,
       right: 0,
-      backgroundColor: C.surface,
+      // All modals/sheets use the edit-commitment tone (C.background), not C.surface.
+      backgroundColor: C.background,
       borderTopLeftRadius: RADIUS['2xl'],
       borderTopRightRadius: RADIUS['2xl'],
     },
-    // Dark-mode outline so the sheet floats — mirrors Goals' gfSheet.
-    gfSheet: {
-      borderWidth: 1,
-      borderBottomWidth: 0,
-      borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.06),
-      ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
-    },
+    // Flat sheet — no border, no shadow — matching Goals' real gfSheet.
+    // bg + top radii live in sheetContainer above.
+    gfSheet: {},
     topRow: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -36,7 +36,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
   },
   scanningCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS['2xl'],
     padding: SPACING['3xl'],
     alignItems: 'center',

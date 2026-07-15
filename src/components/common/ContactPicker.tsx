@@ -20,6 +20,7 @@ import * as Contacts from 'expo-contacts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from './neu';
 import { Contact } from '../../types';
 import Button from './Button';
 
@@ -55,6 +56,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   const C = useCalm();
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
   const [phoneModalVisible, setPhoneModalVisible] = useState(false);
   const [manualModalVisible, setManualModalVisible] = useState(false);
@@ -64,6 +66,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   const [manualName, setManualName] = useState('');
   const [manualPhone, setManualPhone] = useState('');
   const phoneInputRef = useRef<TextInput>(null);
+  const [draftName, setDraftName] = useState('');
 
   const loadPhoneContacts = useCallback(async () => {
     // Open the picker instantly, then load contacts behind a spinner (the fetch can lag).
@@ -144,6 +147,14 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
     onSelect(selectedContacts.filter((c) => c.id !== contactId));
   }, [onSelect, selectedContacts]);
 
+  // Multi-input variant: commit the typed draft name as a new participant.
+  const addDraft = useCallback(() => {
+    const nm = draftName.trim();
+    if (!nm) return;
+    onSelect([...selectedContacts, { id: `manual-${Date.now()}`, name: nm, isFromPhone: false }]);
+    setDraftName('');
+  }, [draftName, selectedContacts, onSelect]);
+
   // ── Input variant: free-type name bound to a single contact ──
   const name = selectedContacts[0]?.name ?? '';
   const handleNameChange = useCallback((text: string) => {
@@ -191,7 +202,70 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
     <View style={styles.container}>
       {!hideLabel && <Text style={styles.label}>{label}</Text>}
 
-      {variant === 'input' ? (
+      {variant === 'input' && mode === 'multi' ? (
+        <>
+          {/* Participants as pills (includes "me") */}
+          {selectedContacts.length > 0 && (
+            <View style={styles.pillContainer}>
+              {selectedContacts.map((contact) => {
+                const isSelf = contact.id === '__self__';
+                return (
+                  <View key={contact.id} style={[styles.pill, neuF.raised, isSelf && styles.pillSelf]}>
+                    <Feather name="user" size={13} color={isSelf ? C.onAccent : C.accent} />
+                    <Text style={[styles.pillText, isSelf && { color: C.onAccent }]} numberOfLines={1}>{contact.name}</Text>
+                    <TouchableOpacity onPress={() => handleRemove(contact.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel={`remove ${contact.name}`}>
+                      <Feather name="x" size={13} color={isSelf ? C.onAccent : C.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+          {/* Input row: type a name then tap +, or pick from contacts (tick multiple) */}
+          <View style={styles.inputCard}>
+            <View style={styles.inputMainRow}>
+              <View style={styles.avatarCircle}>
+                <Feather name="user" size={14} color={C.textMuted} />
+              </View>
+              <TextInput
+                style={styles.nameInput}
+                value={draftName}
+                onChangeText={setDraftName}
+                placeholder={placeholder}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
+                onSubmitEditing={addDraft}
+                returnKeyType="done"
+                blurOnSubmit={false}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={withAlpha(C.accent, 0.25)}
+              />
+              {draftName.trim().length > 0 ? (
+                <TouchableOpacity style={styles.addNameBtn} onPress={addDraft} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="add person">
+                  <Feather name="plus" size={18} color={C.onAccent} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={[styles.contactsPill, neuF.raised]} onPress={loadPhoneContacts} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Import from contacts">
+                  <Feather name="book" size={12} color={C.accent} />
+                  <Text style={styles.contactsPillText}>contacts</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+          {/* Quick "add me" when self isn't already a participant */}
+          {includeSelf && !selectedContacts.some((c) => c.id === '__self__') && (
+            <TouchableOpacity
+              style={[styles.addMeChip, neuF.raised]}
+              onPress={() => onSelect([{ id: '__self__', name: selfName, isFromPhone: false }, ...selectedContacts])}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`add ${selfName}`}
+            >
+              <Feather name="plus" size={12} color={C.accent} />
+              <Text style={styles.addMeText}>add {selfName.toLowerCase()}</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      ) : variant === 'input' ? (
         <>
           <View style={styles.inputCard}>
             <View style={styles.inputMainRow}>
@@ -212,7 +286,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 selectionColor={withAlpha(C.accent, 0.25)}
               />
               {!name.trim() && (
-                <TouchableOpacity style={styles.contactsPill} onPress={loadPhoneContacts} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Import from contacts">
+                <TouchableOpacity style={[styles.contactsPill, neuF.raised]} onPress={loadPhoneContacts} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Import from contacts">
                   <Feather name="book" size={12} color={C.accent} />
                   <Text style={styles.contactsPillText}>contacts</Text>
                 </TouchableOpacity>
@@ -233,7 +307,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                   hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Select ${c.name}`}
-                  style={({ pressed }) => [styles.recentPill, pressed && styles.recentPillPressed]}
+                  style={({ pressed }) => [styles.recentPill, neuF.raised, pressed && styles.recentPillPressed]}
                 >
                   {({ pressed }) => (
                     <>
@@ -254,7 +328,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
       {selectedContacts.length > 0 && (
         <View style={styles.pillContainer}>
           {selectedContacts.map((contact) => (
-            <View key={contact.id} style={styles.pill}>
+            <View key={contact.id} style={[styles.pill, neuF.raised]}>
               <Feather name="user" size={14} color={C.accent} />
               <Text style={styles.pillText} numberOfLines={1}>{contact.name}</Text>
               <TouchableOpacity onPress={() => handleRemove(contact.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -524,8 +598,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginRight: SPACING.sm,
   },
   avatarCircleFilled: {
-    backgroundColor: C.bronze,
-    borderColor: C.bronze,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   avatarText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -562,6 +636,36 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     marginLeft: SPACING.sm,
   },
+  // Multi-input variant additions
+  pillSelf: {
+    backgroundColor: C.accent,
+  },
+  addNameBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: SPACING.sm,
+  },
+  addMeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    marginTop: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.4),
+  },
+  addMeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.accent,
+  },
   recentScroll: {
     gap: SPACING.xs,
     paddingVertical: SPACING.xs,
@@ -575,16 +679,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.bronze, 0.06),
+    backgroundColor: withAlpha(C.accent, 0.06),
   },
   recentPillPressed: {
-    backgroundColor: C.bronze,
+    backgroundColor: C.accent,
   },
   recentPillAvatar: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: withAlpha(C.bronze, 0.12),
+    backgroundColor: withAlpha(C.accent, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -594,7 +698,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   recentPillAvatarText: {
     fontSize: 10,
     fontWeight: '700',
-    color: C.bronze,
+    color: C.accent,
   },
   recentPillAvatarTextPressed: {
     color: C.onAccent,
@@ -602,7 +706,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   recentName: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.bronze,
+    color: C.accent,
     maxWidth: 100,
   },
   recentNamePressed: {
@@ -612,25 +716,21 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
     maxHeight: '85%',
-    borderWidth: 1,
-    borderColor: C.border,
   },
   manualModalSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    borderWidth: 1,
-    borderColor: C.border,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -651,6 +751,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: C.inputBorder,
   },
   contactRow: {
     flexDirection: 'row',
@@ -713,7 +815,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: C.inputBorder,
   },
   modalActions: {
     flexDirection: 'row',

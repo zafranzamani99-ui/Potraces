@@ -68,7 +68,7 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
 }) => {
   const C = useCalm();
   const isDark = useIsDark();
-  const neu = useNeu();
+  const neu = useNeu(undefined, { faintDark: true });
   const t = useT();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
@@ -276,7 +276,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
-    paddingVertical: 6,
+    paddingVertical: 10,
     marginBottom: SPACING.md,
     gap: SPACING.sm,
     // surface (bg + recessed inset shadow) comes from neu.insetSoft spread at the call site

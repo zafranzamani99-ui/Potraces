@@ -140,7 +140,7 @@ const WalletManagement: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
-  const neu = useNeu();
+  const neu = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
   // ScreenGuide spotlight target — the scrim cuts a hole around the real FAB.
   const guideTargetRef = useRef<any>(null);

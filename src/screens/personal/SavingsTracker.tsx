@@ -1,9 +1,9 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Pressable, InteractionManager, Linking } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { subMonths, parseISO, differenceInDays } from 'date-fns';
 import { useSavingsStore } from '../../store/savingsStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -17,6 +17,8 @@ import Sparkline from '../../components/common/Sparkline';
 import FAB from '../../components/common/FAB';
 import DebtSegmentedControl from '../../components/debt/DebtSegmentedControl';
 import EchoInlineChat, { EchoChip } from '../../components/common/EchoInlineChat';
+import EchoFab from '../../components/wallet/EchoFab';
+import { useEchoFabPan } from '../../hooks/useEchoFabPan';
 import PaywallModal from '../../components/common/PaywallModal';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import ScreenGuide from '../../components/common/ScreenGuide';
@@ -51,6 +53,7 @@ const SavingsTracker: React.FC = () => {
   const neu = useNeu();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const { showToast } = useToast();
 
   const { accounts, addAccount, updateAccount, deleteAccount, addSnapshot, sortBy, setSortBy, lastOpenedValue, recordOpen } = useSavingsStore();
@@ -81,6 +84,21 @@ const SavingsTracker: React.FC = () => {
   const [echoOpen, setEchoOpen] = useState(false);
   const [echoAutoPrompt, setEchoAutoPrompt] = useState<string | undefined>(undefined);
   const [paywallOpen, setPaywallOpen] = useState(false);
+
+  // ── Draggable Echo FAB — same mechanism as Wallet / Bills ──
+  const echoHidden = useSettingsStore((s) => s.savingsEchoHidden);
+  const setEchoHidden = useSettingsStore((s) => s.setSavingsEchoHidden);
+  const [greetingText, setGreetingText] = useState('');
+  const [greetingDismissed, setGreetingDismissed] = useState(false);
+  const [greetingHiddenDuringDrag, setGreetingHiddenDuringDrag] = useState(false);
+  const [fabSide, setFabSide] = useState<'left' | 'right'>('right');
+  const { echoFabPan, echoFabPanResponder, hideZoneAnim, hideZoneHoverAnim, fabScale, hideZoneRef } = useEchoFabPan({
+    fabSide,
+    setFabSide,
+    setGreetingHiddenDuringDrag,
+    onHide: () => setEchoHidden(true),
+    insets,
+  });
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => setReady(true));
@@ -181,6 +199,33 @@ const SavingsTracker: React.FC = () => {
     { key: 'investment' as Tab, label: t.savings.investmentsTab, count: split.investments.length, color: C.bronze },
   ], [t, split, C]);
 
+  // Snapshot the greeting bubble text into state on focus (and when the coaching
+  // insight changes), so it stays stable instead of re-typing on every render —
+  // mirrors the Wallet/Bills focus-effect pattern. Prefer the live nudge, else a default.
+  useFocusEffect(useCallback(() => {
+    setGreetingText(nudgeCopy?.title ?? t.savings.echoGreetingDefault);
+    setGreetingDismissed(false);
+  }, [nudgeCopy, t]));
+
+  // Header Echo button — appears only while the FAB is hidden AND there are accounts
+  // to show it over (matches Bills; avoids a dead button in the empty state).
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (accounts.length > 0 && echoHidden) ? (
+        <TouchableOpacity
+          // Restoring the FAB isn't a premium action — the FAB itself gates on tier
+          // and shows the paywall on tap — so always bring it back.
+          onPress={() => { lightTap(); setEchoHidden(false); }}
+          accessibilityRole="button"
+          accessibilityLabel={t.savings.askEcho}
+          style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Feather name="zap" size={20} color={tier !== 'premium' ? C.textMuted : C.textPrimary} />
+        </TouchableOpacity>
+      ) : null,
+    });
+  }, [echoHidden, tier, accounts.length, navigation, C, setEchoHidden, t]);
+
   const showBar = ready && accounts.length > 0;
 
   return (
@@ -227,22 +272,6 @@ const SavingsTracker: React.FC = () => {
                 <View style={[styles.hs, styles.hsBorder]}><Text style={styles.hsK}>{t.savings.returnLabel}</Text><Text style={[styles.hsV, { color: portfolio.totalReturn >= 0 ? C.positive : C.neutral }]}>{portfolio.totalReturn >= 0 ? '+' : ''}{portfolio.totalReturn.toFixed(1)}%</Text></View>
               </View>
             </View>
-
-            {/* ASK ECHO */}
-            <TouchableOpacity activeOpacity={0.85} onPress={() => openEcho()} style={[styles.askEcho, neu.insetSoft]} accessibilityRole="button" accessibilityLabel={t.savings.askEchoBar}>
-              <View style={[styles.askSpark, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
-                <Feather name="zap" size={14} color={C.accent} />
-              </View>
-              <Text style={styles.askPh} numberOfLines={1}>{t.savings.askEchoBar}</Text>
-              <View style={styles.plusBadge}><Text style={styles.plusBadgeText}>PLUS</Text></View>
-            </TouchableOpacity>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {savingsChips.map((c) => (
-                <TouchableOpacity key={c.label} onPress={() => openEcho(c.question)} style={[styles.chip, neu.raised]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={c.label}>
-                  <Text style={styles.chipText}>{c.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
 
             {/* SEGMENTED */}
             <View style={styles.seg}>
@@ -329,8 +358,8 @@ const SavingsTracker: React.FC = () => {
         )}
       </ScrollView>
 
-      {showBar && accounts.length < MAX_ACCOUNTS && <FAB icon="plus" onPress={openAdd} />}
-      {showBar && accounts.length >= MAX_ACCOUNTS && <FAB icon="lock" onPress={() => setPaywallOpen(true)} />}
+      {showBar && accounts.length < MAX_ACCOUNTS && <FAB icon="plus" onPress={openAdd} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
+      {showBar && accounts.length >= MAX_ACCOUNTS && <FAB icon="lock" onPress={() => setPaywallOpen(true)} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
 
       {/* Sheets */}
       <AddEditAccountSheet
@@ -347,7 +376,31 @@ const SavingsTracker: React.FC = () => {
         onClose={() => { setHistoryOpen(false); setHistoryAcc(null); }}
       />
 
-      {/* Echo + paywall */}
+      {/* ── Echo FAB — draggable, drag-to-hide, greeting bubble (like Wallet/Bills) ── */}
+      <EchoFab
+        visible={ready && accounts.length > 0 && !echoHidden && !addEditOpen && !updateOpen && !historyOpen && !echoOpen && !paywallOpen}
+        fabSide={fabSide}
+        onSetFabSide={setFabSide}
+        echoFabPan={echoFabPan}
+        echoFabPanResponder={echoFabPanResponder}
+        greetingText={greetingText}
+        greetingDismissed={greetingDismissed}
+        onSetGreetingDismissed={setGreetingDismissed}
+        greetingHiddenDuringDrag={greetingHiddenDuringDrag}
+        onSetGreetingHiddenDuringDrag={setGreetingHiddenDuringDrag}
+        greetingChips={savingsChips}
+        greetingPrompt={nudgeCopy?.echoPrompt}
+        onOpenSheet={(autoPrompt) => { setEchoAutoPrompt(autoPrompt); setEchoOpen(true); setGreetingDismissed(true); }}
+        tier={tier}
+        onShowPaywall={() => setPaywallOpen(true)}
+        insets={insets}
+        fabScale={fabScale}
+        hideZoneAnim={hideZoneAnim}
+        hideZoneHoverAnim={hideZoneHoverAnim}
+        hideZoneRef={hideZoneRef}
+      />
+
+      {/* Echo chat + paywall */}
       <EchoInlineChat
         visible={echoOpen} onClose={() => setEchoOpen(false)}
         insightTitle={fmt(portfolio.totalCurrent)}
@@ -433,15 +486,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   hsBorder: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: C.border, paddingLeft: 12 },
   hsK: { fontSize: 10.5, letterSpacing: 0.4, textTransform: 'uppercase', color: C.textMuted, fontWeight: '600' },
   hsV: { fontSize: TYPOGRAPHY.size.base, fontWeight: '700', color: C.textPrimary, marginTop: 3, fontVariant: ['tabular-nums'] },
-
-  askEcho: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.background, borderRadius: 18, paddingHorizontal: 13, paddingVertical: 12, marginBottom: 10 },
-  askSpark: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  askPh: { flex: 1, fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, fontWeight: '500' },
-  plusBadge: { borderWidth: 1, borderColor: withAlpha(C.gold, 0.55), borderRadius: RADIUS.full, paddingHorizontal: 7, paddingVertical: 2 },
-  plusBadgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, color: C.gold },
-  chipRow: { gap: 8, paddingBottom: 4, marginBottom: 6 },
-  chip: { backgroundColor: C.background, paddingHorizontal: 13, paddingVertical: 8, borderRadius: RADIUS.full },
-  chipText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '600', color: C.textPrimary },
 
   seg: { marginTop: 6, marginBottom: SPACING.md },
 

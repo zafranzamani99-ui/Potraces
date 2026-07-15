@@ -43,7 +43,7 @@ const SplitRow: React.FC<SplitRowProps> = ({
   overdueColor,
 }) => {
   const C = useCalm();
-  const neu = useNeu();
+  const neu = useNeu(undefined, { faintDark: true });
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   const isDraft = split.status === 'draft';

@@ -25,6 +25,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { Wallet } from '../../types';
 import WalletLogo from '../common/WalletLogo';
 import WalletPicker from '../common/WalletPicker';
@@ -65,6 +66,8 @@ const RepayModal: React.FC<RepayModalProps> = ({
   const insets = useSafeAreaInsets();
   const { height: SCREEN_H } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // Sheet is now C.background (Goals/Debt standard) — cards use the soft dark neu tier.
+  const neu = useNeu(undefined, { faintDark: true });
 
   // ── Drag-to-dismiss ──
   const sheetY = useSharedValue(SCREEN_H);
@@ -161,8 +164,8 @@ const RepayModal: React.FC<RepayModalProps> = ({
               const cw = wallets.find((w) => w.id === repayWalletId);
               if (!cw) return null;
               return (
-                <View style={styles.repayContextCard}>
-                  <View style={[styles.repayIconBg, { backgroundColor: cw.presetId ? C.background : withAlpha(cw.color, 0.15) }]}>
+                <View style={[styles.repayContextCard, neu.raisedSoft]}>
+                  <View style={[styles.repayIconBg, { backgroundColor: cw.presetId ? withAlpha(C.textPrimary, 0.06) : withAlpha(cw.color, 0.15) }]}>
                     <WalletLogo wallet={cw} size={40} />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -175,7 +178,7 @@ const RepayModal: React.FC<RepayModalProps> = ({
               );
             })()}
 
-            <View style={styles.heroCard}>
+            <View style={[styles.heroCard, neu.raisedSoft]}>
               <Text style={styles.fieldLabel}>{t.wallets.repaymentAmount}</Text>
               <View style={styles.heroAmountRow}>
                 <Text style={styles.heroCurrency}>{currency}</Text>
@@ -210,6 +213,7 @@ const RepayModal: React.FC<RepayModalProps> = ({
                 wallets={nonCreditWallets}
                 selectedId={repaySourceId}
                 onSelect={(id) => { lightTap(); setRepaySourceId(id); }}
+                faintNeu
               />
             </View>
           </KeyboardAwareScrollView>
@@ -240,14 +244,14 @@ const RepayModal: React.FC<RepayModalProps> = ({
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: withAlpha(C.dimBg, 0.4),
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   sheetContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '92%',
@@ -284,10 +288,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.accent,
   },
   repayContextCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
     marginBottom: SPACING.sm + 2,
@@ -314,10 +316,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: 2,
   },
   heroCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
@@ -353,10 +353,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 0,
   },
   walletPickerCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
     marginBottom: SPACING.sm + 2,
@@ -366,7 +364,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   closeLink: {
     marginTop: SPACING.lg,

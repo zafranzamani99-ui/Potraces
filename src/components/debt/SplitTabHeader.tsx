@@ -50,7 +50,7 @@ const SplitTabHeader: React.FC<SplitTabHeaderProps> = ({
   settledColor,
 }) => {
   const C = useCalm();
-  const neu = useNeu();
+  const neu = useNeu(undefined, { faintDark: true });
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   return (

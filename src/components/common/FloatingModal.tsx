@@ -20,7 +20,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { lightTap } from '../../services/haptics';
 import { useCalm } from '../../hooks/useCalm';
-import { SPACING, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { SPACING, RADIUS, withAlpha } from '../../constants';
 import ModalToastHost from './ModalToastHost';
 
 const SPRING_OPEN = { damping: 22, stiffness: 220, mass: 0.5 };
@@ -172,7 +172,7 @@ const makeStyles = (C: typeof import('../../constants').CALM) =>
   StyleSheet.create({
     backdrop: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: withAlpha(C.textPrimary, 0.4),
+      backgroundColor: 'rgba(0,0,0,0.4)',
     },
     sheetContainer: {
       ...StyleSheet.absoluteFillObject,
@@ -186,11 +186,8 @@ const makeStyles = (C: typeof import('../../constants').CALM) =>
     card: {
       width: '100%',
       maxHeight: '85%',
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       borderRadius: RADIUS.xl,
-      borderWidth: 1,
-      borderColor: C.border,
-      ...SHADOWS.lg,
       overflow: 'hidden',
     },
     handleHit: {

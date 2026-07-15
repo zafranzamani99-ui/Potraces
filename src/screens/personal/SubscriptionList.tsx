@@ -379,10 +379,7 @@ const SubscriptionList: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
-  const neu = useNeu();
-  // Modal sheets are C.surface-toned, so their inner neu surfaces must blend to
-  // C.surface (not the screen's C.background) or they read as dark slabs.
-  const neuS = useNeu(C.surface);
+  const neu = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<SubscriptionListParams, 'SubscriptionList'>>();
@@ -1743,7 +1740,7 @@ const SubscriptionList: React.FC = () => {
                   style={[
                     styles.dayCol,
                     isToday && styles.dayColToday,
-                    bills.length > 0 && !isToday && styles.dayColHasBill,
+                    bills.length > 0 && !isToday && [styles.dayColHasBill, neu.raised],
                   ]}
                   onPress={() => bills[0] && handleEdit(bills[0].id)}
                   activeOpacity={bills.length > 0 ? 0.6 : 1}
@@ -1844,11 +1841,11 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={closeMp}>
         <Pressable style={styles.overlayCenter} onPress={closeMp}>
-          <View style={[styles.markPaidCard, neuS.raisedSoft, mpCalendarOpen && { width: '94%', paddingHorizontal: SPACING.sm }]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.markPaidCard, neu.raisedSoft, mpCalendarOpen && { width: '94%', paddingHorizontal: SPACING.sm }]} onStartShouldSetResponder={() => true}>
             {mpCalendarOpen ? (
               <>
                 <View style={[styles.modalHeader, { width: '100%' }]}>
-                  <TouchableOpacity onPress={() => setMpCalendarOpen(false)} style={[styles.backBtn, neuS.raised]} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                  <TouchableOpacity onPress={() => setMpCalendarOpen(false)} style={[styles.backBtn, neu.raised]} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                     <Feather name="arrow-left" size={20} color={C.textPrimary} />
                   </TouchableOpacity>
                   <Text style={styles.modalTitle}>when did you pay?</Text>
@@ -1868,7 +1865,7 @@ const SubscriptionList: React.FC = () => {
                 {/* Dismiss X */}
                 <TouchableOpacity
                   onPress={closeMp}
-                  style={[styles.mpCloseBtn, neuS.raised]}
+                  style={[styles.mpCloseBtn, neu.raised]}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
                   <Feather name="x" size={18} color={C.textMuted} />
@@ -1883,7 +1880,7 @@ const SubscriptionList: React.FC = () => {
 
                 {/* Paid-on date — tap to pick when you actually paid */}
                 <TouchableOpacity
-                  style={[styles.mpDatePill, neuS.raised]}
+                  style={[styles.mpDatePill, neu.raised]}
                   onPress={() => { lightTap(); setMpCalendarOpen(true); }}
                   activeOpacity={0.7}
                   hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
@@ -1907,7 +1904,7 @@ const SubscriptionList: React.FC = () => {
                   {linkedWallet ? (
                     <>
                       <TouchableOpacity
-                        style={[styles.markPaidBtn, neuS.raised, { backgroundColor: withAlpha(linkedWallet.color, 0.15) }]}
+                        style={[styles.markPaidBtn, neu.raised, { backgroundColor: withAlpha(linkedWallet.color, 0.15) }]}
                         onPress={() => {
                           // Overdraw guard: paying more than a non-credit wallet holds would
                           // silently push it negative (deductFromWallet only warns). Confirm first.
@@ -1931,7 +1928,7 @@ const SubscriptionList: React.FC = () => {
                           pay from {linkedWallet.name}
                         </Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.mpWalletBtn, neuS.raised]} onPress={() => guardedMarkPaid(false)} activeOpacity={0.85}>
+                      <TouchableOpacity style={[styles.mpWalletBtn, neu.raised]} onPress={() => guardedMarkPaid(false)} activeOpacity={0.85}>
                         <Feather name="check" size={18} color={C.textSecondary} />
                         <Text style={styles.mpWalletBtnText}>mark as paid</Text>
                       </TouchableOpacity>
@@ -1958,8 +1955,8 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setPayWarning(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setPayWarning(null)}>
-          <View style={[styles.warnCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
-            <View style={[styles.warnIconCircle, neuS.well]}>
+          <View style={[styles.warnCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.warnIconCircle, neu.well]}>
               <Feather name={isDouble ? 'alert-circle' : isNotStarted ? 'calendar' : 'clock'} size={24} color={C.gold} />
             </View>
             <Text style={styles.warnTitle}>
@@ -2009,7 +2006,7 @@ const SubscriptionList: React.FC = () => {
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setCelebrationSub(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setCelebrationSub(null)}>
           <Reanimated.View entering={ZoomIn.duration(320)}>
-            <View style={[styles.celebCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.celebCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
 
               {/* Confetti burst + glow rings + icon */}
               <View style={styles.celebBurstWrap}>
@@ -2029,7 +2026,7 @@ const SubscriptionList: React.FC = () => {
                 <ConfettiPiece angle={300} distance={58} size={6} color={withAlpha(C.accent, 0.5)} delay={130} />
                 <ConfettiPiece angle={330} distance={42} size={4} color={withAlpha(C.bronze, 0.45)} delay={170} />
 
-                <Reanimated.View entering={BounceIn.delay(100).duration(700)} style={[styles.celebIconCircle, neuS.well]}>
+                <Reanimated.View entering={BounceIn.delay(100).duration(700)} style={[styles.celebIconCircle, neu.well]}>
                   <Feather name="award" size={30} color={C.accent} />
                 </Reanimated.View>
               </View>
@@ -2048,11 +2045,11 @@ const SubscriptionList: React.FC = () => {
 
               {/* Stats */}
               <Reanimated.View entering={FadeInDown.delay(540).duration(350).springify()} style={[styles.celebStatsRow, { alignSelf: 'stretch' }]}>
-                <View style={[styles.celebStatPill, neuS.raised]}>
+                <View style={[styles.celebStatPill, neu.raised]}>
                   <Text style={styles.celebStatValue}>{installments}</Text>
                   <Text style={styles.celebStatLabel}>payments</Text>
                 </View>
-                <View style={[styles.celebStatPill, neuS.raised]}>
+                <View style={[styles.celebStatPill, neu.raised]}>
                   <Text style={styles.celebStatValue}>{currency} {totalPaid.toLocaleString()}</Text>
                   <Text style={styles.celebStatLabel}>total paid</Text>
                 </View>
@@ -2101,9 +2098,9 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDeleteConfirmSub(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setDeleteConfirmSub(null)}>
-          <View style={[styles.deleteCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.deleteCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
             {/* Icon */}
-            <View style={[styles.delIconCircle, neuS.well]}>
+            <View style={[styles.delIconCircle, neu.well]}>
               <Feather name="trash-2" size={18} color={C.neutral} />
             </View>
 
@@ -2175,7 +2172,7 @@ const SubscriptionList: React.FC = () => {
             {/* Close */}
             <TouchableOpacity
               onPress={() => setDetailSub(null)}
-              style={[styles.dtClose, neuS.raised]}
+              style={[styles.dtClose, neu.raised]}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
               <Feather name="x" size={18} color={C.textMuted} />
@@ -2185,17 +2182,17 @@ const SubscriptionList: React.FC = () => {
               {/* Hero */}
               <View style={styles.dtHero}>
                 {instDone || isArchived ? (
-                  <View style={[styles.dtAvatar, neuS.raised, { backgroundColor: withAlpha(instDone ? C.positive : C.textMuted, 0.14) }]}>
+                  <View style={[styles.dtAvatar, neu.raised, { backgroundColor: withAlpha(instDone ? C.positive : C.textMuted, 0.14) }]}>
                     <Feather name={instDone ? 'check-circle' : 'archive'} size={22} color={instDone ? C.positive : C.textMuted} />
                   </View>
                 ) : sub.imageUri ? (
                   <Image source={{ uri: sub.imageUri }} style={styles.dtAvatarImage} />
                 ) : sub.iconName ? (
-                  <View style={[styles.dtAvatar, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                  <View style={[styles.dtAvatar, neu.raised, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                     {renderIcon(sub.iconName, 24, C.accent)}
                   </View>
                 ) : (
-                  <View style={[styles.dtAvatar, neuS.raised, { backgroundColor: cleared ? withAlpha(C.positive, 0.14) : withAlpha(accentColor, 0.14) }]}>
+                  <View style={[styles.dtAvatar, neu.raised, { backgroundColor: cleared ? withAlpha(C.positive, 0.14) : withAlpha(accentColor, 0.14) }]}>
                     {cleared
                       ? <Feather name="check" size={22} color={C.positive} />
                       : <Text style={[styles.dtAvatarLetter, { color: accentColor }]}>{sub.name.charAt(0).toUpperCase()}</Text>
@@ -2211,7 +2208,7 @@ const SubscriptionList: React.FC = () => {
               </View>
 
               {/* Amount */}
-              <View style={[styles.dtAmountSection, neuS.raisedSoft, { backgroundColor: isDark ? withAlpha(C.accent, 0.07) : withAlpha(C.accent, 0.04) }]}>
+              <View style={[styles.dtAmountSection, neu.raisedSoft, { backgroundColor: isDark ? withAlpha(C.accent, 0.07) : withAlpha(C.accent, 0.04) }]}>
                 <Text style={styles.dtAmount}>
                   <Text style={styles.dtAmountCurrency}>{currency} </Text>
                   {sub.amount.toFixed(2)}
@@ -2230,10 +2227,10 @@ const SubscriptionList: React.FC = () => {
               )}
 
               {/* Info rows */}
-              <View style={[styles.dtInfoSection, neuS.raisedSoft]}>
+              <View style={[styles.dtInfoSection, neu.raisedSoft]}>
                 <View style={styles.dtInfoRow}>
                   <View style={styles.dtInfoLeft}>
-                    <View style={[styles.dtInfoIcon, neuS.raised]}>
+                    <View style={[styles.dtInfoIcon, neu.raised]}>
                       <Feather name="calendar" size={12} color={C.accent} />
                     </View>
                     <Text style={styles.dtInfoLabel}>{cleared ? 'paid' : 'next due'}</Text>
@@ -2246,7 +2243,7 @@ const SubscriptionList: React.FC = () => {
                 {linkedWallet && (
                   <View style={styles.dtInfoRow}>
                     <View style={styles.dtInfoLeft}>
-                      <View style={[styles.dtInfoIcon, neuS.raised]}>
+                      <View style={[styles.dtInfoIcon, neu.raised]}>
                         <WalletLogo wallet={linkedWallet} size={18} />
                       </View>
                       <Text style={styles.dtInfoLabel}>wallet</Text>
@@ -2257,7 +2254,7 @@ const SubscriptionList: React.FC = () => {
 
                 <View style={styles.dtInfoRow}>
                   <View style={styles.dtInfoLeft}>
-                    <View style={[styles.dtInfoIcon, neuS.raised]}>
+                    <View style={[styles.dtInfoIcon, neu.raised]}>
                       <Feather name="bell" size={12} color={C.accent} />
                     </View>
                     <Text style={styles.dtInfoLabel}>reminder</Text>
@@ -2267,7 +2264,7 @@ const SubscriptionList: React.FC = () => {
 
                 <View style={[styles.dtInfoRow, { borderBottomWidth: 0 }]}>
                   <View style={styles.dtInfoLeft}>
-                    <View style={[styles.dtInfoIcon, neuS.raised]}>
+                    <View style={[styles.dtInfoIcon, neu.raised]}>
                       <Feather name="play" size={12} color={C.accent} />
                     </View>
                     <Text style={styles.dtInfoLabel}>started</Text>
@@ -2281,7 +2278,7 @@ const SubscriptionList: React.FC = () => {
                 if (!linkedShared) return null;
                 const memberCount = linkedShared.members.filter(m => m.isActive).length;
                 return (
-                  <View style={[neuS.raisedSoft, {
+                  <View style={[neu.raisedSoft, {
                     backgroundColor: withAlpha(C.accent, isDark ? 0.06 : 0.04),
                     borderRadius: RADIUS.lg,
                     padding: SPACING.md,
@@ -2290,7 +2287,7 @@ const SubscriptionList: React.FC = () => {
                     gap: SPACING.sm,
                     alignItems: 'flex-start',
                   }]}>
-                    <View style={[neuS.raised, {
+                    <View style={[neu.raised, {
                       width: 28, height: 28, borderRadius: 8,
                       backgroundColor: withAlpha(C.accent, 0.10),
                       alignItems: 'center', justifyContent: 'center', marginTop: 1,
@@ -2325,15 +2322,15 @@ const SubscriptionList: React.FC = () => {
               })()}
 
               {sub.note ? (
-                <View style={[styles.dtNoteWrap, neuS.raisedSoft]}>
+                <View style={[styles.dtNoteWrap, neu.raisedSoft]}>
                   <Text style={styles.dtNoteLabel}>note</Text>
                   <Text style={styles.dtNoteText} numberOfLines={3}>{sub.note}</Text>
                 </View>
               ) : null}
 
               {sub.isPaused && !instDone && !isArchived && (
-                <View style={[styles.dtStatusCard, neuS.raisedSoft]}>
-                  <View style={[styles.dtStatusIconCircle, neuS.raised, { backgroundColor: withAlpha(C.bronze, 0.10) }]}>
+                <View style={[styles.dtStatusCard, neu.raisedSoft]}>
+                  <View style={[styles.dtStatusIconCircle, neu.raised, { backgroundColor: withAlpha(C.bronze, 0.10) }]}>
                     <Feather name="pause-circle" size={16} color={C.bronze} />
                   </View>
                   <View style={styles.dtStatusContent}>
@@ -2347,11 +2344,11 @@ const SubscriptionList: React.FC = () => {
               {(instDone || isArchived) && (
                 <View style={[
                   styles.dtStatusCard,
-                  neuS.raisedSoft,
+                  neu.raisedSoft,
                 ]}>
                   <View style={[
                     styles.dtStatusIconCircle,
-                    neuS.raised,
+                    neu.raised,
                     { backgroundColor: withAlpha(instDone ? C.positive : C.textMuted, 0.10) },
                   ]}>
                     <Feather
@@ -2566,7 +2563,7 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible={filterModalVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setFilterModalVisible(false)}>
         <Pressable style={styles.overlayCenter} onPress={() => setFilterModalVisible(false)}>
-          <View style={[styles.filterModalCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.filterModalCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
             <Text style={styles.filterModalTitle}>filter by status</Text>
             {filterOptions.map(opt => {
               const active = statusFilter === opt.key;
@@ -2646,7 +2643,7 @@ const SubscriptionList: React.FC = () => {
   const renderHowItWorksModal = () => (
     <Modal visible={howItWorksVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setHowItWorksVisible(false)}>
       <Pressable style={styles.hiwOverlay} onPress={() => setHowItWorksVisible(false)}>
-        <View style={[styles.hiwCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+        <View style={[styles.hiwCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: SPACING.sm }}>
             <View style={styles.hiwCardHeader}>
               <Text style={styles.hiwTitle}>how it works</Text>
@@ -2657,8 +2654,8 @@ const SubscriptionList: React.FC = () => {
               <View key={section.group}>
                 <Text style={styles.hiwGroupLabel}>{section.group}</Text>
                 {section.items.map((item, ii) => (
-                  <View key={ii} style={[styles.hiwItem, neuS.raised]}>
-                    <View style={[styles.hiwIconCircle, neuS.well]}>
+                  <View key={ii} style={[styles.hiwItem, neu.raised]}>
+                    <View style={[styles.hiwIconCircle, neu.well]}>
                       <Feather name={item.icon as any} size={14} color={C.textSecondary} />
                     </View>
                     <Text style={styles.hiwText}>
@@ -3047,7 +3044,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   filterModalCard: {
     width: '80%',
     maxWidth: 320,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
@@ -3285,9 +3282,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: 'transparent',
   },
   dayColHasBill: {
-    backgroundColor: C.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(C.textPrimary, 0.12),
+    backgroundColor: C.background,
   },
   dayColToday: {
     backgroundColor: withAlpha(C.accent, 0.10),
@@ -3647,7 +3642,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Modal overlay ─────────────────────────────────────
   overlayCenter: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.45),
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -3676,7 +3671,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Mark as Paid modal (renovated) ─────────────────────
   markPaidCard: {
     width: '88%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.xl + 4,
     paddingBottom: SPACING.lg,
@@ -3735,7 +3730,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.full,
     paddingLeft: SPACING.md,
     paddingRight: SPACING.sm + 2,
@@ -3795,7 +3790,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Pay warning modal ──────────────────────────────────
   warnCard: {
     width: '84%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.xl + 4,
     paddingBottom: SPACING.lg,
@@ -3846,7 +3841,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Celebration modal ─────────────────────────────────
   celebCard: {
     width: '84%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
@@ -3975,7 +3970,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Delete confirm modal (renovated) ───────────────────
   deleteCard: {
     width: '84%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.xl + 4,
     paddingBottom: SPACING.lg,
@@ -4047,7 +4042,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── How it works modal ─────────────────────────────────
   hiwOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.45),
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
@@ -4056,7 +4051,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '100%',
     maxWidth: 380,
     maxHeight: '75%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
@@ -4125,7 +4120,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   dtCard: {
     width: '90%',
     maxHeight: '82%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.lg,
     paddingHorizontal: SPACING.xl,

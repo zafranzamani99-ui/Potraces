@@ -49,7 +49,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
-  const neuS = useNeu(C.surface); // sheet body sits on C.surface
+  const neu = useNeu(undefined, { faintDark: true }); // sheet body sits on C.background
   const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
   const currency = useSettingsStore((s) => s.currency);
   const recordSharedSubPriceChange = useDebtStore((s) => s.recordSharedSubPriceChange);
@@ -231,7 +231,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
           keyboardDismissMode="on-drag"
         >
           {/* Hero amount — new total */}
-          <View style={[styles.heroCard, neuS.raisedSoft]}>
+          <View style={[styles.heroCard, neu.raisedSoft]}>
             <Text style={styles.fieldLabel}>
               {t.sharedSubs.newTotal} <Text style={styles.requiredStar}>*</Text>
             </Text>
@@ -269,10 +269,10 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
           </View>
 
           {/* Per-member shares */}
-          <View style={[styles.fieldCard, neuS.raisedSoft]}>
+          <View style={[styles.fieldCard, neu.raisedSoft]}>
             <View style={styles.membersHeaderRow}>
               <Text style={styles.fieldLabel}>{t.sharedSubs.shareAmount}</Text>
-              <TouchableOpacity onPress={handleEqualSplit} style={[styles.splitEvenBtn, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} activeOpacity={0.7}>
+              <TouchableOpacity onPress={handleEqualSplit} style={[styles.splitEvenBtn, neu.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} activeOpacity={0.7}>
                 <Feather name="divide" size={12} color={C.accent} />
                 <Text style={styles.splitEvenText}>split even</Text>
               </TouchableOpacity>
@@ -282,11 +282,11 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
               const initial = (m.contact.name || '?')[0].toUpperCase();
               return (
                 <View key={m.contact.id} style={styles.memberRow}>
-                  <View style={[styles.avatar, neuS.raised, { borderColor: withAlpha(C.textPrimary, 0.12) }]}>
+                  <View style={[styles.avatar, neu.raised, { borderColor: withAlpha(C.textPrimary, 0.12) }]}>
                     <Text style={[styles.avatarText, { color: C.textSecondary }]}>{initial}</Text>
                   </View>
                   <Text style={styles.memberName} numberOfLines={1}>{m.contact.name}</Text>
-                  <View style={[styles.shareInputWrap, neuS.inset]}>
+                  <View style={[styles.shareInputWrap, neu.inset]}>
                     <Text style={styles.shareCurrency}>{currency}</Text>
                     <TextInput
                       style={styles.shareInput}
@@ -362,7 +362,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '80%',
@@ -410,7 +410,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     paddingBottom: SPACING.lg,
   },
   heroCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
@@ -440,7 +440,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     paddingVertical: 0,
   },
   fieldCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
@@ -551,7 +551,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     paddingTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   closeLink: {
     marginTop: SPACING.lg,

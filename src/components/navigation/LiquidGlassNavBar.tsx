@@ -46,6 +46,7 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { selectionChanged } from '../../services/haptics';
 import DuoIcon, { FEATHER_TO_GLYPH } from '../common/DuoIcon';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
+import { useUILayoutStore } from '../../store/uiLayoutStore';
 
 // Compiled-in check (false on Android / older iOS → use the blur fallback path).
 const GLASS = isLiquidGlassAvailable();
@@ -83,6 +84,7 @@ const LiquidGlassNavBar: React.FC<Props> = ({ state, descriptors, navigation, ac
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(C), [C]);
   const pendingCount = useAIInsightsStore((s) => s.pendingActions.length);
+  const setNavBarHeight = useUILayoutStore((s) => s.setNavBarHeight);
 
   const ACTIVE = C.accent;
   const INACTIVE = C.textMuted;
@@ -235,7 +237,13 @@ const LiquidGlassNavBar: React.FC<Props> = ({ state, descriptors, navigation, ac
   const onRowLayout = (e: LayoutChangeEvent) => { barW.value = e.nativeEvent.layout.width; };
 
   return (
-    <View style={[styles.wrap, { paddingBottom: insets.bottom + SPACING.xs }]} pointerEvents="box-none">
+    <View
+      style={[styles.wrap, { paddingBottom: insets.bottom + SPACING.xs }]}
+      pointerEvents="box-none"
+      // Report the bar's true height (capsule + bottom safe-area padding) so the
+      // Echo composer can seat itself just above it instead of guessing (was: +88).
+      onLayout={(e) => setNavBarHeight(e.nativeEvent.layout.height)}
+    >
       <GestureDetector gesture={pan}>
         {GLASS ? (
           // ── Native iOS 26 Liquid Glass ──

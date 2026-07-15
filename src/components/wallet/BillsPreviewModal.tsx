@@ -27,17 +27,15 @@ const makeStyles = (C: typeof CALM) =>
   StyleSheet.create({
     floatingOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)',
+      backgroundColor: 'rgba(0,0,0,0.4)',
       justifyContent: 'center',
       paddingHorizontal: SPACING['2xl'],
     },
     floatingContent: {
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       borderRadius: RADIUS.xl,
       padding: SPACING.xl,
       maxHeight: '70%',
-      borderWidth: 1,
-      borderColor: C.border,
     },
     modalHeader: {
       flexDirection: 'row',

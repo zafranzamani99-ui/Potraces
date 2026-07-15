@@ -33,6 +33,7 @@ import {
   withAlpha,
 } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
 import WalletPicker from '../common/WalletPicker';
 import WalletLogo from '../common/WalletLogo';
@@ -80,6 +81,8 @@ const TransferModal: React.FC<TransferModalProps> = ({
   const insets = useSafeAreaInsets();
   const { height: SCREEN_H } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // Sheet is now C.background (Goals/Debt standard) — cards use the soft dark neu tier.
+  const neu = useNeu(undefined, { faintDark: true });
 
   // ── Drag-to-dismiss ──
   const sheetY = useSharedValue(SCREEN_H);
@@ -200,6 +203,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
                 wallets={nonCreditWallets}
                 selectedId={transferFrom}
                 onSelect={(id) => { lightTap(); setTransferFrom(id); }}
+                faintNeu
               />
             </View>
 
@@ -209,10 +213,11 @@ const TransferModal: React.FC<TransferModalProps> = ({
                 wallets={transferToWallets}
                 selectedId={transferTo}
                 onSelect={(id) => { lightTap(); setTransferTo(id); }}
+                faintNeu
               />
             </View>
 
-            <View style={styles.heroCard}>
+            <View style={[styles.heroCard, neu.raisedSoft]}>
               <Text style={styles.fieldLabel}>
                 {t.wallets.amount.toLowerCase()}
               </Text>
@@ -264,7 +269,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
               );
             })()}
 
-            <View style={styles.fieldCard}>
+            <View style={[styles.fieldCard, neu.raisedSoft]}>
               <Text style={styles.fieldLabel}>
                 {t.wallets.noteOptional.toLowerCase()}
               </Text>
@@ -307,14 +312,14 @@ const TransferModal: React.FC<TransferModalProps> = ({
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: withAlpha(C.dimBg, 0.4),
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   sheetContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '92%',
@@ -351,10 +356,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.accent,
   },
   heroCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
@@ -391,10 +394,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.2,
   },
   fieldCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
     marginBottom: SPACING.sm + 2,
@@ -446,7 +447,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   closeLink: {
     marginTop: SPACING.lg,

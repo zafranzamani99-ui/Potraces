@@ -24,6 +24,12 @@ interface CategoryPickerProps {
   label?: string;
   layout?: 'horizontal' | 'grid' | 'dropdown';
   onNavigateToSettings?: () => void;
+  /** Hide the "Manage categories in Settings" hint/footer. Set false for fixed
+   *  enums (e.g. savings account types) where there is nothing to manage. */
+  showManageHint?: boolean;
+  /** "Soft neu dark" — pass true when the host screen uses useNeu(..., { faintDark: true })
+   *  so the picker's trigger/rows match the screen's quieter dark-mode neu. */
+  faintDark?: boolean;
 }
 
 const CategoryPicker: React.FC<CategoryPickerProps> = ({
@@ -33,11 +39,15 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
   label,
   layout = 'horizontal',
   onNavigateToSettings,
+  showManageHint = true,
+  faintDark = true,
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
-  const neu = useNeu();                 // trigger sits on C.background
-  const neuS = useNeu(C.surface);       // dropdown modal + rows are C.surface
+  const neu = useNeu(undefined, { faintDark });   // trigger sits on C.background
+  // Dropdown modal card is C.background (all modals use the edit-commitment tone),
+  // so its rows re-base to the default tone too.
+  const neuS = useNeu(undefined, { faintDark });
   const navigation = useNavigation<any>();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownAnimation, setDropdownAnimation] = useState<'fade' | 'none'>('fade');
@@ -114,6 +124,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
       key={category.id}
       style={[
         styles.categoryButton,
+        selectedId !== category.id && neu.raised,
         selectedId === category.id && styles.selectedCategory,
         {
           borderColor: category.color,
@@ -159,7 +170,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
           activeOpacity={0.7}
         >
           <View style={styles.dropdownSelected}>
-            {selectedCategory && (
+            {selectedCategory ? (
               <View
                 style={[
                   styles.dropdownIcon,
@@ -172,6 +183,18 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                   size={18}
                   color={selectedCategory.color}
                 />
+              </View>
+            ) : (
+              // Placeholder well so the empty trigger has the same anatomy as the
+              // selected state (icon + text + chevron), just neutral-tinted.
+              <View
+                style={[
+                  styles.dropdownIcon,
+                  neu.raised,
+                  { backgroundColor: withAlpha(C.textSecondary, 0.12) },
+                ]}
+              >
+                <Feather name="grid" size={16} color={C.textSecondary} />
               </View>
             )}
             <Text style={styles.dropdownText}>
@@ -213,25 +236,27 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                 contentContainerStyle={{ paddingTop: SPACING.sm }}
                 renderItem={renderDropdownItem}
                 ListFooterComponent={
-                  <TouchableOpacity
-                    style={styles.dropdownFooter}
-                    onPress={() => {
-                      setDropdownAnimation('none');
-                      setDropdownOpen(false);
-                      setTimeout(() => {
-                        setDropdownAnimation('fade');
-                        if (onNavigateToSettings) {
-                          onNavigateToSettings();
-                        } else {
-                          navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'categories' });
-                        }
-                      }, 50);
-                    }}
-                    activeOpacity={0.6}
-                  >
-                    <Feather name="settings" size={14} color={C.accent} />
-                    <Text style={styles.dropdownFooterText}>Manage categories in Settings</Text>
-                  </TouchableOpacity>
+                  showManageHint ? (
+                    <TouchableOpacity
+                      style={styles.dropdownFooter}
+                      onPress={() => {
+                        setDropdownAnimation('none');
+                        setDropdownOpen(false);
+                        setTimeout(() => {
+                          setDropdownAnimation('fade');
+                          if (onNavigateToSettings) {
+                            onNavigateToSettings();
+                          } else {
+                            navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'categories' });
+                          }
+                        }, 50);
+                      }}
+                      activeOpacity={0.6}
+                    >
+                      <Feather name="settings" size={14} color={C.accent} />
+                      <Text style={styles.dropdownFooterText}>Manage categories in Settings</Text>
+                    </TouchableOpacity>
+                  ) : null
                 }
               />
             </View>
@@ -257,7 +282,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
           {categories.map(renderCategoryButton)}
         </View>
       )}
-      {settingsHint}
+      {showManageHint && settingsHint}
     </View>
   );
 };
@@ -331,12 +356,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   dropdownOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
   dropdownModal: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
   },

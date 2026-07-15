@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   Text,
@@ -29,7 +29,7 @@ import { CALM, CALM_DARK, SHADOWS, withAlpha, RADIUS, SPACING, TYPOGRAPHY } from
 import WalletLogo from './WalletLogo';
 import CategoryIcon from './CategoryIcon';
 import ModalToastHost from './ModalToastHost';
-import { NeuSurface } from './neu';
+import { NeuSurface, useNeu } from './neu';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { lightTap, successNotification } from '../../services/haptics';
@@ -63,6 +63,31 @@ interface QuickAddExpenseProps {
    * so the toggle isn't biased toward spending. Per FIRSTRUN-H7.
    */
   defaultDirection?: Direction;
+  /**
+   * Render the draggable Quick-Add FAB. Default true (Dashboard host).
+   * Screens that only need the modal (e.g. Calculator's "Log as expense")
+   * pass false so no second FAB appears.
+   */
+  showFab?: boolean;
+  /**
+   * Register this instance as the global `openQuickAdd()` target via the
+   * module-level ref. Default true. A second, locally-controlled instance
+   * (opened through the imperative ref) MUST pass false — otherwise its
+   * unmount cleanup nulls the ref while the Dashboard host is still mounted,
+   * silently breaking deep-link / Back Tap / GettingStarted openers.
+   */
+  registerGlobalOpener?: boolean;
+  /**
+   * Fired when the sheet closes. `saved` is true if a transaction was logged,
+   * false if it was dismissed/cancelled. Lets a host (e.g. Calculator) distinguish
+   * "done" from "backed out". Only meaningful for locally-controlled instances.
+   */
+  onDismiss?: (saved: boolean) => void;
+}
+
+export interface QuickAddExpenseHandle {
+  /** Imperatively open the sheet (used by locally-hosted instances). */
+  open: (direction?: Direction, initialAmount?: string) => void;
 }
 
 // Module-level ref for deep link trigger.
@@ -106,11 +131,17 @@ const NumpadKey = React.memo(
 );
 
 // ─── Main Component ──────────────────────────────────────────
-const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'expense' }) => {
+const QuickAddExpense = forwardRef<QuickAddExpenseHandle, QuickAddExpenseProps>(function QuickAddExpense({
+  defaultDirection = 'expense',
+  showFab = true,
+  registerGlobalOpener = true,
+  onDismiss,
+}, ref) {
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const currency = useSettingsStore((s) => s.currency);
@@ -148,6 +179,9 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
   const confirmCardOpacity = useRef(new Animated.Value(0)).current;
   const bgCardScale = useRef(new Animated.Value(1)).current;
   const bgCardOpacity = useRef(new Animated.Value(1)).current;
+  // Track save-vs-dismiss so onDismiss can tell the host which happened.
+  const didSaveRef = useRef(false);
+  const prevVisibleRef = useRef(false);
 
   // ── FX: fetch rates when a non-MYR currency is chosen ─────
   useEffect(() => {
@@ -196,6 +230,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
 
   // Load saved position on mount
   useEffect(() => {
+    if (!showFab) return; // no FAB → skip its position bookkeeping
     // Position above tab bar — account for header (~56), tab bar (~90), safe area
     const defaultPos = { x: SCREEN_WIDTH - FAB_SIZE - SNAP_MARGIN, y: SCREEN_HEIGHT - FAB_SIZE - 200 - insets.bottom };
 
@@ -219,10 +254,11 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
         fabPos.setValue(defaultPos);
         lastPos.current = defaultPos;
       });
-  }, [insets]);
+  }, [insets, showFab]);
 
   // Show drag hint for the first 3 visits
   useEffect(() => {
+    if (!showFab) return; // no FAB → no drag hint
     AsyncStorage.getItem(FAB_HINT_KEY).then((val) => {
       const count = val ? parseInt(val, 10) : 0;
       if (count >= 3) return;
@@ -240,7 +276,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
       }, 1200);
       return () => clearTimeout(timer);
     }).catch(() => {});
-  }, []);
+  }, [showFab]);
 
   // ── Open ──────────────────────────────────────────────────
   // Accepts an optional direction override (used by external openers like
@@ -266,6 +302,9 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
   }, [slideAnim, cardScale, cardOpacity, bgCardScale, defaultDirection]);
 
   useEffect(() => {
+    // Locally-controlled instances (Calculator) opt out so they never touch the
+    // module-level ref that the Dashboard host owns.
+    if (!registerGlobalOpener) return;
     _quickAddOpenRef = handleOpen;
     let pendingTimer: ReturnType<typeof setTimeout> | undefined;
     if (_pendingQuickAdd) {
@@ -278,7 +317,21 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
       if (pendingTimer) clearTimeout(pendingTimer);
       if (_quickAddOpenRef === handleOpen) _quickAddOpenRef = null;
     };
-  }, [handleOpen]);
+  }, [handleOpen, registerGlobalOpener]);
+
+  // Imperative opener for locally-hosted instances (e.g. Calculator), so the
+  // modal is owned by the CURRENT screen's view controller and iOS can present it.
+  useImperativeHandle(ref, () => ({ open: handleOpen }), [handleOpen]);
+
+  // Notify the host when the sheet closes, distinguishing a save from a dismissal.
+  useEffect(() => {
+    if (prevVisibleRef.current && !visible) {
+      const saved = didSaveRef.current;
+      didSaveRef.current = false;
+      onDismiss?.(saved);
+    }
+    prevVisibleRef.current = visible;
+  }, [visible, onDismiss]);
 
   const panResponder = useMemo(
     () =>
@@ -456,6 +509,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
       if (catName) useLearningStore.getState().learnCategory(catName, catId);
 
       successNotification();
+      didSaveRef.current = true;
       setVisible(false);
       const label = txType === 'expense' ? t.quickAdd.wentOut : t.quickAdd.cameIn;
       const capturedTxId = txId;
@@ -615,30 +669,32 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
   return (
     <>
       {/* ── Draggable FAB ──────────────────────────────── */}
-      <Animated.View
-        style={[
-          styles.fabWrap,
-          { left: fabPos.x, top: fabPos.y },
-        ]}
-        {...panResponder.panHandlers}
-      >
-        {/* Neumorphic face only — the PanResponder stays on the wrapper above,
-            so the drag behaviour is untouched. Icon goes olive (neu face is
-            background-toned, not solid accent). */}
-        <NeuSurface
-          style={styles.fab}
-          accessibilityLabel={t.quickAdd.fabLabel}
-          accessibilityHint={t.quickAdd.fabHint}
-          accessibilityRole="button"
+      {showFab && (
+        <Animated.View
+          style={[
+            styles.fabWrap,
+            { left: fabPos.x, top: fabPos.y },
+          ]}
+          {...panResponder.panHandlers}
         >
-          <Ionicons name="add" size={30} color={C.accent} />
-        </NeuSurface>
-        {showHint && (
-          <Animated.View style={[styles.hint, { opacity: hintOpacity }]} pointerEvents="none">
-            <Text style={styles.hintText}>{t.quickAdd.fabDragHint}</Text>
-          </Animated.View>
-        )}
-      </Animated.View>
+          {/* Neumorphic face only — the PanResponder stays on the wrapper above,
+              so the drag behaviour is untouched. Icon goes olive (neu face is
+              background-toned, not solid accent). */}
+          <NeuSurface
+            style={styles.fab}
+            accessibilityLabel={t.quickAdd.fabLabel}
+            accessibilityHint={t.quickAdd.fabHint}
+            accessibilityRole="button"
+          >
+            <Ionicons name="add" size={30} color={C.accent} />
+          </NeuSurface>
+          {showHint && (
+            <Animated.View style={[styles.hint, { opacity: hintOpacity }]} pointerEvents="none">
+              <Text style={styles.hintText}>{t.quickAdd.fabDragHint}</Text>
+            </Animated.View>
+          )}
+        </Animated.View>
+      )}
 
       {/* ── Modal ───────────────────────────────────────── */}
       <Modal
@@ -654,7 +710,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
           </TouchableWithoutFeedback>
           <Animated.View style={{ opacity: bgCardOpacity }}>
           <Animated.View
-            style={[styles.card, { transform: [{ scale: cardScale }, { scale: bgCardScale }], opacity: cardOpacity }, SHADOWS['2xl']]}
+            style={[styles.card, { transform: [{ scale: cardScale }, { scale: bgCardScale }], opacity: cardOpacity }, neuF.raisedSoft]}
             onStartShouldSetResponder={() => true}
           >
             {/* ── Header row ──────────────────────────── */}
@@ -710,7 +766,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                   {/* Type toggle */}
                   <View style={styles.typeToggle} accessibilityRole="radiogroup">
                     <TouchableOpacity
-                      style={[styles.typePill, txType === 'expense' && styles.typePillActive]}
+                      style={[styles.typePill, neuF.raised, txType === 'expense' && styles.typePillActive]}
                       onPress={() => { lightTap(); setTxType('expense'); }}
                       activeOpacity={0.7}
                       hitSlop={HITSLOP_10}
@@ -722,7 +778,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                       <Text style={[styles.typePillText, txType === 'expense' && styles.typePillTextActive]}>{t.quickAdd.wentOut}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.typePill, txType === 'income' && styles.typePillActiveIncome]}
+                      style={[styles.typePill, neuF.raised, txType === 'income' && styles.typePillActiveIncome]}
                       onPress={() => { lightTap(); setTxType('income'); }}
                       activeOpacity={0.7}
                       hitSlop={HITSLOP_10}
@@ -739,7 +795,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                   <View style={styles.pad}>
                     {[['1','2','3'],['4','5','6'],['7','8','9'],['.','0','⌫']].map((row, ri) => (
                       <View key={ri} style={styles.padRow}>
-                        {row.map((k) => <NumpadKey key={k} label={k} onPress={handleNumpad} mutedColor={C.textMuted} keyStyle={styles.numKey} keyTextStyle={styles.numKeyText} />)}
+                        {row.map((k) => <NumpadKey key={k} label={k} onPress={handleNumpad} mutedColor={C.textMuted} keyStyle={[styles.numKey, neuF.raised]} keyTextStyle={styles.numKeyText} />)}
                       </View>
                     ))}
                   </View>
@@ -802,7 +858,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                       {[...wallets].sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0)).map((w) => (
                         <TouchableOpacity
                           key={w.id}
-                          style={styles.walletRow}
+                          style={[styles.walletRow, neuF.raisedSoft]}
                           onPress={() => guardedWalletSelect(w.id)}
                           activeOpacity={0.55}
                           accessibilityRole="button"
@@ -836,7 +892,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
             const pendingWallet = wallets.find((w) => w.id === pendingWalletId);
             return (
               <Animated.View
-                style={[styles.receiptCard, { transform: [{ scale: confirmCardScale }], opacity: confirmCardOpacity }]}
+                style={[styles.receiptCard, { transform: [{ scale: confirmCardScale }], opacity: confirmCardOpacity }, neuF.raisedSoft]}
                 onStartShouldSetResponder={() => true}
               >
                 <Text style={styles.receiptAmount}>{currency} {parsedAmount.toFixed(2)}</Text>
@@ -911,10 +967,10 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
               style={{
                 width: '85%',
                 maxHeight: '70%',
-                backgroundColor: C.surface,
+                backgroundColor: C.background,
                 borderRadius: RADIUS.xl,
                 padding: SPACING.lg,
-                ...SHADOWS.lg,
+                ...neuF.raisedSoft,
               }}
               onPress={(e) => e.stopPropagation()}
             >
@@ -962,7 +1018,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
             <TouchableWithoutFeedback onPress={handlePbDismiss}>
               <View style={StyleSheet.absoluteFill} />
             </TouchableWithoutFeedback>
-            <Animated.View style={[styles.pbPromptCard, { transform: [{ scale: pbPromptScale }], opacity: pbPromptOpacity }]} onStartShouldSetResponder={() => true}>
+            <Animated.View style={[styles.pbPromptCard, { transform: [{ scale: pbPromptScale }], opacity: pbPromptOpacity }, neuF.raisedSoft]} onStartShouldSetResponder={() => true}>
               <View style={styles.pbPromptIcon}>
                 <Ionicons name="rocket-outline" size={28} color={C.accent} />
               </View>
@@ -972,7 +1028,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
               </Text>
               <View style={styles.pbPromptActions}>
                 <TouchableOpacity
-                  style={styles.pbPromptSkip}
+                  style={[styles.pbPromptSkip, neuF.raised]}
                   onPress={handlePbDismiss}
                   activeOpacity={0.7}
                   accessibilityRole="button"
@@ -998,7 +1054,9 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
       )}
     </>
   );
-};
+});
+
+QuickAddExpense.displayName = 'QuickAddExpense';
 
 export default React.memo(QuickAddExpense);
 
@@ -1035,19 +1093,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
 
   /* ── Card ─────────────────────────────────── */
   card: {
     width: CARD_WIDTH,
     maxHeight: SCREEN_HEIGHT * 0.88,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: 28,
     overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(C.textPrimary, 0.06),
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+    // neu.raisedSoft (bg + soft drop) spread at the call site
   },
 
   /* ── Header ──────────────────────────────── */
@@ -1114,9 +1170,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: 'transparent',
+    // neu.raised (bg + shadow) spread at the call site
   },
   typePillActive: {
     backgroundColor: C.accent,
@@ -1209,14 +1263,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   receiptCard: {
     position: 'absolute',
     width: CARD_WIDTH - 12,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: 26,
     paddingHorizontal: 24,
     paddingTop: 28,
     paddingBottom: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(C.textPrimary, 0.07),
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+    // neu.raisedSoft (bg + soft drop) spread at the call site
   },
   receiptAmount: {
     fontSize: 40,
@@ -1320,13 +1372,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   /* ── Playbook prompt ───────────────────── */
   pbPromptCard: {
     width: CARD_WIDTH - 32,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: 24,
     padding: 28,
     alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(C.textPrimary, 0.06),
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+    // neu.raisedSoft (bg + soft drop) spread at the call site
   },
   pbPromptIcon: {
     width: 56,

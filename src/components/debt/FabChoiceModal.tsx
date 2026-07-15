@@ -16,7 +16,7 @@ interface FabChoiceModalProps {
 
 const FabChoiceModal: React.FC<FabChoiceModalProps> = ({ visible, onClose, onAddDebt, onSplitExpense, onAddSharedSub }) => {
   const C = useCalm();
-  const neuS = useNeu(C.surface); // base = C.surface — modal card + rows sit on the scrim's centered C.surface body
+  const neuS = useNeu(undefined, { faintDark: true }); // base = C.background — modal card + rows sit on the scrim's centered C.background body
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
@@ -24,7 +24,7 @@ const FabChoiceModal: React.FC<FabChoiceModalProps> = ({ visible, onClose, onAdd
 
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={onClose}>
+      <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }} onPress={onClose}>
         <Pressable onPress={() => {}} style={[styles.choiceCard, SHADOWS.lg]}>
           <Text style={styles.choiceTitle}>{t.debts.newEntry}</Text>
           <Text style={styles.choiceSubtitle}>{t.debts.whatWouldYouAdd}</Text>
@@ -51,7 +51,7 @@ const FabChoiceModal: React.FC<FabChoiceModalProps> = ({ visible, onClose, onAdd
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   choiceCard: {
     width: '82%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,

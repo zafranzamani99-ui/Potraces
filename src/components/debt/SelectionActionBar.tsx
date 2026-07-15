@@ -20,14 +20,13 @@ interface SelectionActionBarProps {
 const SelectionActionBar: React.FC<SelectionActionBarProps> = ({ count, allArchived, onCancel, onSelectAll, onEdit, onArchive, onDelete }) => {
   const C = useCalm();
   const isDark = useIsDark();
-  const neu = useNeu();              // base = C.background — for the bar sitting on the screen
-  const neuS = useNeu(C.surface);    // base = C.surface — for tiles on the C.surface bar
+  const neu = useNeu(undefined, { faintDark: true });              // base = C.background — bar + tiles all sit on the C.background bar
   const t = useT();
   const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
   const destructiveC = semantic(BIZ_SAFE.destructive, isDark);   // terracotta
 
   return (
-    <View style={[styles.selectionBar, neu.raisedSoft, { backgroundColor: C.surface }]}>
+    <View style={[styles.selectionBar, neu.raisedSoft, { backgroundColor: C.background }]}>
       <View style={styles.selectionBarTop}>
         <TouchableOpacity onPress={onCancel} style={styles.selectionBarBtn}>
           <Feather name="x" size={18} color={C.textPrimary} />
@@ -41,12 +40,12 @@ const SelectionActionBar: React.FC<SelectionActionBarProps> = ({ count, allArchi
       </View>
       <View style={styles.selectionBarActions}>
         {count === 1 && (
-          <TouchableOpacity style={[styles.selectionEditBtn, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} onPress={onEdit} activeOpacity={0.7}>
+          <TouchableOpacity style={[styles.selectionEditBtn, neu.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} onPress={onEdit} activeOpacity={0.7}>
             <Feather name="edit-2" size={18} color={C.accent} />
             <Text style={styles.selectionEditText}>{t.common.edit}</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={[styles.selectionEditBtn, neuS.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} onPress={onArchive} activeOpacity={0.7}>
+        <TouchableOpacity style={[styles.selectionEditBtn, neu.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} onPress={onArchive} activeOpacity={0.7}>
           <Feather name={allArchived ? 'corner-up-left' : 'archive'} size={18} color={C.bronze} />
           <Text style={[styles.selectionEditText, { color: C.bronze }]}>{allArchived ? 'unarchive' : 'archive'}</Text>
         </TouchableOpacity>
@@ -70,7 +69,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
       bottom: 0,
       left: 0,
       right: 0,
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       borderTopWidth: 2,
       borderTopColor: C.accent,
       paddingHorizontal: SPACING.lg,

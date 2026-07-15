@@ -1,13 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Alert } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { NeuSurface, useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
 import BottomSheet from '../../components/common/BottomSheet';
 import QuickSplitSheet from '../../components/split/QuickSplitSheet';
-import { openQuickAdd } from '../../components/common/QuickAddExpense';
+import QuickAddExpense, { type QuickAddExpenseHandle } from '../../components/common/QuickAddExpense';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
@@ -83,6 +83,24 @@ const Calculator: React.FC = () => {
   const [hubView, setHubView] = useState<HubView>('main');
   const [showQuick, setShowQuick] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Locally-hosted quick-add sheet. It MUST live on this screen (not rely on the
+  // Dashboard-hosted global one) — an iOS RN Modal only presents from its owning
+  // screen's view controller, and Dashboard is buried under the pushed Calculator.
+  const quickAddRef = useRef<QuickAddExpenseHandle>(null);
+  // Neu surface for the hub rows — based on the shared BottomSheet's C.background bg
+  // (all modals use the edit-commitment tone), soft-dark tier.
+  const hubNeu = useNeu(undefined, { faintDark: true });
+  // When a sub-action opened FROM the hub is dismissed (not saved), reopen the
+  // "What next?" hub instead of dropping the user on the bare calculator.
+  const reopenHubRef = useRef(false);
+  const maybeReopenHub = useCallback(() => {
+    if (!reopenHubRef.current) return;
+    reopenHubRef.current = false;
+    // Let the sub-modal / pushed screen finish dismissing before presenting the hub.
+    setTimeout(() => { setHubView('main'); setShowHub(true); }, 300);
+  }, []);
+  // Navigation sub-actions (detailed split, goal) goBack to here — reopen on return.
+  useFocusEffect(useCallback(() => { maybeReopenHub(); }, [maybeReopenHub]));
 
   const value = result(state);
   const amount = currencyAmount(value); // currency-safe (2dp, no float noise / e-notation) for money hand-off
@@ -119,6 +137,16 @@ const Calculator: React.FC = () => {
   };
 
   const openHub = () => { setHubView('main'); setShowHub(true); }; // NeuButton fires the haptic
+  // Log the amount as expense/income via the locally-hosted quick-add sheet.
+  // Close the hub first, then present after it has dismissed — presenting a modal
+  // while another is dismissing drops the second one on iOS.
+  const openLog = (dir: 'expense' | 'income') => {
+    lightTap();
+    const amt = currencyAmountString(value);
+    reopenHubRef.current = true; // dismissing the log sheet returns to the hub
+    setShowHub(false);
+    setTimeout(() => quickAddRef.current?.open(dir, amt), 260);
+  };
   const insertFromHistory = (r: number) => { lightTap(); setState((s) => insertValue(s, String(r))); setShowHistory(false); };
   const confirmClear = () => {
     lightTap();
@@ -280,14 +308,14 @@ const Calculator: React.FC = () => {
         <ScrollView contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
           {hubView === 'main' && (
             <>
-              <ActionRow C={C} icon="arrow-down-circle" tint={C.accent} title={t.calc.logExpense} subtitle={t.calc.logExpenseSub}
-                onPress={() => { lightTap(); setShowHub(false); openQuickAdd('expense', currencyAmountString(value)); }} />
-              <ActionRow C={C} icon="arrow-up-circle" tint={C.positive} title={t.calc.logIncome} subtitle={t.calc.logIncomeSub}
-                onPress={() => { lightTap(); setShowHub(false); openQuickAdd('income', currencyAmountString(value)); }} />
-              <ActionRow C={C} icon="people" tint={C.bronze} title={t.calc.split} subtitle={t.calc.splitSub}
+              <ActionRow C={C} surface={hubNeu.raisedSoft} icon="arrow-down-circle" tint={C.accent} title={t.calc.logExpense} subtitle={t.calc.logExpenseSub}
+                onPress={() => openLog('expense')} />
+              <ActionRow C={C} surface={hubNeu.raisedSoft} icon="arrow-up-circle" tint={C.positive} title={t.calc.logIncome} subtitle={t.calc.logIncomeSub}
+                onPress={() => openLog('income')} />
+              <ActionRow C={C} surface={hubNeu.raisedSoft} icon="people" tint={C.bronze} title={t.calc.split} subtitle={t.calc.splitSub}
                 onPress={() => { lightTap(); setHubView('split'); }} />
               {activeGoals.length > 0 && (
-                <ActionRow C={C} icon="flag" tint={C.gold} title={t.calc.goal} subtitle={t.calc.goalSub}
+                <ActionRow C={C} surface={hubNeu.raisedSoft} icon="flag" tint={C.gold} title={t.calc.goal} subtitle={t.calc.goalSub}
                   onPress={() => { lightTap(); setHubView('goal'); }} />
               )}
             </>
@@ -295,10 +323,10 @@ const Calculator: React.FC = () => {
 
           {hubView === 'split' && (
             <>
-              <ActionRow C={C} icon="flash" tint={C.accent} title={t.calc.quickSplit} subtitle={t.calc.quickSplitSub}
-                onPress={() => { lightTap(); setShowHub(false); setShowQuick(true); }} />
-              <ActionRow C={C} icon="list" tint={C.bronze} title={t.calc.detailedSplit} subtitle={t.calc.detailedSplitSub}
-                onPress={() => { lightTap(); setShowHub(false); navigation.navigate('DebtTracking', { prefillSplitAmount: amount }); }} />
+              <ActionRow C={C} surface={hubNeu.raisedSoft} icon="flash" tint={C.accent} title={t.calc.quickSplit} subtitle={t.calc.quickSplitSub}
+                onPress={() => { lightTap(); reopenHubRef.current = true; setShowHub(false); setShowQuick(true); }} />
+              <ActionRow C={C} surface={hubNeu.raisedSoft} icon="list" tint={C.bronze} title={t.calc.detailedSplit} subtitle={t.calc.detailedSplitSub}
+                onPress={() => { lightTap(); reopenHubRef.current = true; setShowHub(false); navigation.navigate('DebtTracking', { prefillSplitAmount: amount }); }} />
             </>
           )}
 
@@ -311,11 +339,12 @@ const Calculator: React.FC = () => {
                 <ActionRow
                   key={g.id}
                   C={C}
+                  surface={hubNeu.raisedSoft}
                   icon="flag"
                   tint={C.gold}
                   title={g.name}
                   subtitle={`RM ${formatNumber(g.currentAmount)} / RM ${formatNumber(g.targetAmount)} · ${pct}%`}
-                  onPress={() => { lightTap(); setShowHub(false); navigation.navigate('Goals', { contributeGoalId: g.id, contributeAmount: amount }); }}
+                  onPress={() => { lightTap(); reopenHubRef.current = true; setShowHub(false); navigation.navigate('Goals', { contributeGoalId: g.id, contributeAmount: amount }); }}
                 />
               );
             })
@@ -323,20 +352,35 @@ const Calculator: React.FC = () => {
         </ScrollView>
       </BottomSheet>
 
-      {/* Quick split */}
-      <QuickSplitSheet visible={showQuick} total={amount} onClose={() => setShowQuick(false)} />
+      {/* Quick split — saving completes (→ calculator); closing returns to the hub */}
+      <QuickSplitSheet
+        visible={showQuick}
+        total={amount}
+        onCreated={() => { reopenHubRef.current = false; }}
+        onClose={() => { setShowQuick(false); maybeReopenHub(); }}
+      />
+
+      {/* Locally-hosted quick-add sheet (no FAB, opts out of the global opener) so
+          "Log as expense/income" presents over the Calculator, not the buried Dashboard.
+          Saving completes; dismissing returns to the hub. */}
+      <QuickAddExpense
+        ref={quickAddRef}
+        showFab={false}
+        registerGlobalOpener={false}
+        onDismiss={(saved) => { if (saved) reopenHubRef.current = false; maybeReopenHub(); }}
+      />
     </View>
   );
 };
 
 const ActionRow: React.FC<{
-  C: typeof CALM; icon: any; title: string; subtitle?: string; tint?: string; onPress: () => void;
-}> = ({ C, icon, title, subtitle, tint, onPress }) => {
+  C: typeof CALM; icon: any; title: string; subtitle?: string; tint?: string; onPress: () => void; surface?: any;
+}> = ({ C, icon, title, subtitle, tint, onPress, surface }) => {
   const s = useMemo(() => rowStyles(C), [C]);
   const accent = tint || C.accent;
   return (
     <Pressable
-      style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}
+      style={({ pressed }) => [s.row, surface, pressed && { opacity: 0.7 }]}
       onPress={onPress}
       accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
     >
@@ -353,7 +397,8 @@ const ActionRow: React.FC<{
 };
 
 const rowStyles = (C: typeof CALM) => StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 16, backgroundColor: C.pillBg },
+  // backgroundColor comes from the `surface` neu fragment (raisedSoft) passed in.
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 14, borderRadius: 16 },
   iconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 15, fontWeight: '600', color: C.textPrimary },
   sub: { fontSize: 12.5, color: C.textMuted, marginTop: 2, fontVariant: ['tabular-nums'] },

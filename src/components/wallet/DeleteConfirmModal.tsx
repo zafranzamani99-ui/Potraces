@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Modal, Pressable, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CALM, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
 
 interface DeleteConfirmModalProps {
@@ -25,6 +26,7 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
 }) => {
   const C = useCalm();
   const t = useT();
+  const neuF = useNeu(undefined, { faintDark: true });
   const styles = useMemo(() => makeStyles(C), [C]);
 
   const blocked = linkedCount > 0;
@@ -68,7 +70,7 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               <Text style={styles.deleteConfirmSub}>This cannot be undone.</Text>
               <View style={styles.deleteConfirmBtns}>
                 <TouchableOpacity
-                  style={[styles.deleteConfirmBtn, styles.deleteConfirmCancelBtn]}
+                  style={[styles.deleteConfirmBtn, styles.deleteConfirmCancelBtn, neuF.raised]}
                   onPress={onCancel}
                   accessibilityRole="button"
                   accessibilityLabel={t.common.cancel.toLowerCase()}
@@ -101,14 +103,12 @@ const makeStyles = (C: typeof CALM) =>
       alignItems: 'center',
     },
     deleteConfirmCard: {
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       borderRadius: RADIUS.xl,
       padding: SPACING.xl,
       width: '82%',
       maxWidth: 380,
       alignSelf: 'center',
-      borderWidth: 1,
-      borderColor: C.border,
     },
     deleteConfirmTitle: {
       fontSize: TYPOGRAPHY.size.lg,
@@ -138,8 +138,6 @@ const makeStyles = (C: typeof CALM) =>
     },
     deleteConfirmCancelBtn: {
       backgroundColor: C.background,
-      borderWidth: 1,
-      borderColor: C.border,
     },
     deleteConfirmDeleteBtn: {
       backgroundColor: C.accent,

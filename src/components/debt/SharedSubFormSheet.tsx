@@ -53,9 +53,9 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
-  // The sheet body + icon-picker card are C.surface-toned, so their inner neu
-  // surfaces must blend to C.surface, not the screen's C.background.
-  const neuS = useNeu(C.surface);
+  // The sheet body + icon-picker card are C.background-toned, so their inner
+  // neu surfaces blend to C.background (the hook's default base).
+  const neu = useNeu(undefined, { faintDark: true });
   const currency = useSettingsStore((s) => s.currency);
   const userName = useSettingsStore((s) => s.userName);
   const addSharedSubscription = useDebtStore((s) => s.addSharedSubscription);
@@ -351,17 +351,17 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
           keyboardDismissMode="on-drag"
         >
           {/* Icon + Name (grouped card — matches CommitmentForm) */}
-          <View style={[styles.card, neuS.raisedSoft]}>
+          <View style={[styles.card, neu.raisedSoft]}>
             <View style={styles.cardRow}>
               <TouchableOpacity onPress={openIconPicker} activeOpacity={0.7} style={styles.nameIconBtn}>
                 {imageUri ? (
                   <Image source={{ uri: imageUri }} style={styles.nameIconImage} />
                 ) : iconName ? (
-                  <View style={[styles.nameIconFallback, neuS.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                  <View style={[styles.nameIconFallback, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                     {renderIcon(iconName, 20, C.accent)}
                   </View>
                 ) : (
-                  <View style={[styles.nameIconFallback, neuS.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                  <View style={[styles.nameIconFallback, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                     <Text style={{ fontSize: 18, fontWeight: '700', color: C.accent }}>
                       {name ? name.charAt(0).toUpperCase() : '?'}
                     </Text>
@@ -386,7 +386,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
           </View>
 
           {/* Hero amount card — only during creation; use "adjust amounts" to change later */}
-          {!isEditing && (<View style={[styles.heroCard, neuS.raisedSoft]}>
+          {!isEditing && (<View style={[styles.heroCard, neu.raisedSoft]}>
             <Text style={styles.fieldLabel}>
               {t.sharedSubs.totalCost} <Text style={styles.requiredStar}>*</Text>
             </Text>
@@ -430,7 +430,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
               return (
                 <TouchableOpacity
                   key={cycle}
-                  style={[styles.cyclePill, neuS.raised, isActive && styles.cyclePillActive]}
+                  style={[styles.cyclePill, neu.raised, isActive && styles.cyclePillActive]}
                   onPress={() => { setBillingCycle(cycle); lightTap(); }}
                   activeOpacity={0.7}
                 >
@@ -443,7 +443,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
           </View>
 
           {/* Billing day */}
-          <View style={[styles.fieldCard, neuS.raisedSoft]}>
+          <View style={[styles.fieldCard, neu.raisedSoft]}>
             <Text style={styles.fieldLabel}>{t.sharedSubs.billingDay}</Text>
             <TextInput
               style={[styles.fieldInput, { width: 80 }]}
@@ -459,11 +459,11 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
           </View>
 
           {/* Members */}
-          <View style={[styles.fieldCard, neuS.raisedSoft]}>
+          <View style={[styles.fieldCard, neu.raisedSoft]}>
             <View style={styles.membersHeaderRow}>
               <Text style={styles.fieldLabel}>members <Text style={styles.requiredStar}>*</Text></Text>
               {!isEditing && totalNum > 0 && members.length >= 2 && (
-                <TouchableOpacity onPress={handleEqualSplit} style={styles.splitEvenBtn} activeOpacity={0.7}>
+                <TouchableOpacity onPress={handleEqualSplit} style={[styles.splitEvenBtn, neu.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} activeOpacity={0.7}>
                   <Feather name="divide" size={12} color={C.accent} />
                   <Text style={styles.splitEvenText}>split even</Text>
                 </TouchableOpacity>
@@ -546,7 +546,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
           )}
 
           {/* Note */}
-          <View style={[styles.fieldCard, neuS.raisedSoft]}>
+          <View style={[styles.fieldCard, neu.raisedSoft]}>
             <Text style={styles.fieldLabel}>
               note <Text style={styles.optionalLabel}>optional</Text>
             </Text>
@@ -598,10 +598,10 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
             style={StyleSheet.absoluteFill}
             onPress={() => setIconPickerVisible(false)}
           >
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.4) }]} />
           </Pressable>
           <View style={styles.iconPickerWrap} pointerEvents="box-none">
-            <View style={[styles.iconPickerCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.iconPickerCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
               <View style={styles.iconPickerHeader}>
                 <Text style={styles.iconPickerTitle}>
                   {'choose '}
@@ -610,7 +610,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
                 <TouchableOpacity
                   onPress={() => setIconPickerVisible(false)}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  style={[styles.iconPickerClose, neuS.raised]}
+                  style={[styles.iconPickerClose, neu.raised]}
                 >
                   <Feather name="x" size={16} color={C.textMuted} />
                 </TouchableOpacity>
@@ -625,7 +625,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
                       return (
                         <TouchableOpacity
                           key={`s-${icon}`}
-                          style={[styles.iconGridItem, neuS.raised, sel && styles.iconGridItemActive]}
+                          style={[styles.iconGridItem, neu.raised, sel && styles.iconGridItemActive]}
                           onPress={() => selectIcon(icon)}
                           activeOpacity={0.7}
                         >
@@ -650,7 +650,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
                     return (
                       <TouchableOpacity
                         key={icon}
-                        style={[styles.iconGridItem, neuS.raised, sel && styles.iconGridItemActive]}
+                        style={[styles.iconGridItem, neu.raised, sel && styles.iconGridItemActive]}
                         onPress={() => selectIcon(icon)}
                         activeOpacity={0.7}
                       >
@@ -699,7 +699,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '92%',
@@ -747,7 +747,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     paddingBottom: SPACING.lg,
   },
   card: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     marginBottom: SPACING.sm + 2,
   },
@@ -779,7 +779,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
   },
   fieldFlex: { flex: 1 },
   fieldCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
@@ -812,7 +812,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     letterSpacing: -0.1,
   },
   heroCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
@@ -956,7 +956,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     paddingTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   closeLink: {
     marginTop: SPACING.lg,
@@ -986,7 +986,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
   iconPickerCard: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,

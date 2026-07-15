@@ -20,7 +20,7 @@ interface SharedSubscriptionTabProps {
 
 const SharedSubscriptionTab: React.FC<SharedSubscriptionTabProps> = ({ onPressSub, onAddSub }) => {
   const C = useCalm();
-  const neu = useNeu();
+  const neu = useNeu(undefined, { faintDark: true });
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);

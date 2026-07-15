@@ -13,7 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { ScrollView, Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { KeyboardAwareScrollView, KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Reanimated, {
   FadeIn,
@@ -52,13 +52,16 @@ import {
   RADIUS,
   SHADOWS,
   withAlpha,
+  ensureContrastOnDark,
 } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import EmptyState from '../../components/common/EmptyState';
 import FAB from '../../components/common/FAB';
+import NeuButton from '../../components/common/NeuButton';
 import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
 import CollapsibleSection from '../../components/common/CollapsibleSection';
 
@@ -198,6 +201,10 @@ const GOAL_COLORS = [
 
 // ── QUICK CONTRIBUTE AMOUNTS ──────────────────────────────────
 const QUICK_AMOUNTS = [10, 50, 100, 500];
+
+// Flat NeuButton for the goals screen: strips the neu box-shadow (keeps the fill
+// + scale-on-press). NeuButton applies `style` last, so this overrides its shadow.
+const FLAT_BTN = { boxShadow: [] as any };
 
 // ── ECHO GOAL INSIGHT (local computation, no AI call) ────────
 interface GoalInsightResult {
@@ -390,6 +397,10 @@ const MAX_GOALS = 10;
 // ── MAIN COMPONENT ────────────────────────────────────────────
 const Goals: React.FC = () => {
   const C = useCalm();
+  // faintDark: the "soft neu dark" tier (single gentle drop, no highlight) — the
+  // same tier the bills / commitments / debt screens use, so cards + pills match.
+  const neu = useNeu(undefined, { faintDark: true });    // base = screen C.background
+  const neuS = useNeu(undefined, { faintDark: true });   // base = C.background (centered modals sit on the scrim's C.background card)
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -449,6 +460,9 @@ const Goals: React.FC = () => {
   const [goalIcon, setGoalIcon] = useState<string>('f/target');
   const [goalColor, setGoalColor] = useState(GOAL_COLORS[0]);
   const [goalImageUri, setGoalImageUri] = useState<string | undefined>(undefined);
+  // Dark goal swatches (e.g. olive #4F5104) wash out as icons/numbers on the
+  // dark sheet — lift them just enough to stay legible. Light mode unchanged.
+  const goalColorLegible = useMemo(() => (isDark ? ensureContrastOnDark(goalColor) : goalColor), [goalColor, isDark]);
   const [iconPickerVisible, setIconPickerVisible] = useState(false);
   const [pickerSelection, setPickerSelection] = useState<string | undefined>(undefined);
   const suggestedIcons = useMemo(() => suggestGoalIcons(goalName), [goalName]);
@@ -456,6 +470,11 @@ const Goals: React.FC = () => {
   // ── Contribute Modal state ──
   const [contributeModalVisible, setContributeModalVisible] = useState(false);
   const [contributingGoal, setContributingGoal] = useState<Goal | null>(null);
+  // Legible-on-dark version of the goal's colour for the hero icon/ring/chips.
+  const contribColor = useMemo(
+    () => (contributingGoal ? (isDark ? ensureContrastOnDark(contributingGoal.color) : contributingGoal.color) : C.accent),
+    [contributingGoal, isDark, C.accent],
+  );
   const [contributeAmount, setContributeAmount] = useState('');
   const [contributeNote, setContributeNote] = useState('');
   const [contributeWalletId, setContributeWalletId] = useState<string | undefined>(undefined);
@@ -632,22 +651,33 @@ const Goals: React.FC = () => {
 
   const contribGoalRef = useRef<Goal | null>(null);
   const reopenDetailRef = useRef<((goal: Goal) => void) | null>(null);
+  // True when the contribute sheet was opened by a Calculator "Put toward a goal"
+  // hand-off. When set, closing pops back to the Calculator and does NOT reopen the
+  // goal detail sheet (there was never a detail sheet underneath).
+  const arrivedViaContribPrefillRef = useRef(false);
 
   const contribFinishClose = useCallback(() => {
     if (!contribClosingRef.current) return;
     contribClosingRef.current = false;
     const goalId = contribGoalRef.current?.id;
+    const handedOff = arrivedViaContribPrefillRef.current;
+    arrivedViaContribPrefillRef.current = false;
     setContributeModalVisible(false);
     setContributingGoal(null);
     setIsWithdrawMode(false);
     contribGoalRef.current = null;
+    if (handedOff) {
+      // Calculator hand-off: return to the Calculator; skip the detail-sheet reopen.
+      if (navigation.canGoBack()) navigation.goBack();
+      return;
+    }
     if (goalId) {
       const fresh = usePersonalStore.getState().goals.find((g) => g.id === goalId);
       if (fresh) {
         setTimeout(() => reopenDetailRef.current?.(fresh), 80);
       }
     }
-  }, []);
+  }, [navigation]);
 
   const closeContributeModal = useCallback(() => {
     if (contribClosingRef.current) return;
@@ -799,13 +829,21 @@ const Goals: React.FC = () => {
     if (goalId && amt != null && amt > 0) {
       const g = goals.find((x) => x.id === goalId && !x.isArchived);
       if (g) {
+        arrivedViaContribPrefillRef.current = true;
         // Defer so the screen finishes mounting before the sheet animates in
         // (mirrors the highlightId hand-off) and avoids setState-in-effect.
-        const timer = setTimeout(() => openContribute(g, amt), 280);
+        const timer = setTimeout(() => {
+          openContribute(g, amt);
+          // Consume the params AFTER opening. This effect is keyed on `goals`, so a
+          // contribution (which mutates goals) would otherwise re-fire it and
+          // re-open the sheet. Clearing here (not before the timer) avoids the
+          // re-fire's cleanup cancelling this very timer.
+          navigation.setParams({ contributeGoalId: undefined, contributeAmount: undefined });
+        }, 280);
         return () => clearTimeout(timer);
       }
     }
-  }, [route.params?.contributeGoalId, route.params?.contributeAmount, goals, openContribute]);
+  }, [route.params?.contributeGoalId, route.params?.contributeAmount, goals, openContribute, navigation]);
 
   // ── Handle Contribution ──
   const handleContribute = useCallback(() => {
@@ -1400,41 +1438,45 @@ const Goals: React.FC = () => {
         {activeGoals.length > 0 ? (
           <>
             {/* ── Filter & Sort Pills ── */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.filterRow}
-              contentContainerStyle={styles.filterRowContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              {filterOptions.map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.filterChip, filter === opt.key && styles.filterChipActive]}
-                  onPress={() => { selectionChanged(); setFilter(opt.key); }}
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={opt.label}
-                  accessibilityState={{ selected: filter === opt.key }}
+            <View style={styles.filterRowOuter}>
+              <View style={styles.filterScrollWrap}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.filterRowContent}
+                  keyboardShouldPersistTaps="handled"
                 >
-                  <Text style={[styles.filterChipText, filter === opt.key && styles.filterChipTextActive]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                  {filterOptions.map((opt) => (
+                    <TouchableOpacity
+                      key={opt.key}
+                      style={[styles.filterChip, neu.raised, filter === opt.key && styles.filterChipActive]}
+                      onPress={() => { selectionChanged(); setFilter(opt.key); }}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={opt.label}
+                      accessibilityState={{ selected: filter === opt.key }}
+                    >
+                      <Text style={[styles.filterChipText, filter === opt.key && styles.filterChipTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <LinearGradient colors={[withAlpha(C.background, 0), C.background]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.hScrollFade} pointerEvents="none" />
+              </View>
               <TouchableOpacity
-                style={[styles.sortPill, sort !== 'manual' && styles.sortPillActive]}
+                style={[styles.sortPill, neu.raised, sort !== 'manual' && styles.sortPillActive]}
                 onPress={() => setShowSortMenu(true)}
                 activeOpacity={0.7}
                 hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.goals.sortBy ?? 'sort by'}
               >
-                <Feather name="sliders" size={13} color={sort !== 'manual' ? C.onAccent : C.textMuted} />
-                <Text style={[styles.sortPillText, sort !== 'manual' && styles.sortPillTextActive]}>
-                  {sort === 'manual' ? (t.goals.sortBy ?? 'sort by') : sort === 'deadline' ? t.goals.deadline : t.goals.progress}
-                </Text>
+                <Feather name="sliders" size={14} color={sort !== 'manual' ? C.accent : C.textMuted} />
+                {sort !== 'manual' && <View style={styles.sortPillDot} />}
               </TouchableOpacity>
-            </ScrollView>
+            </View>
 
             {/* ── Goal Cards (grid) ── */}
             {enrichedGoals.length > 0 ? (
@@ -1446,6 +1488,7 @@ const Goals: React.FC = () => {
                       key={goal.id}
                       style={({ pressed }) => [
                         styles.goalCard,
+                        neu.raisedSoft,
                         { width: Math.min((SCREEN_W - SPACING.xl * 2 - SPACING.md) / 2, 220) },
                         goal.isPaused && { opacity: 0.5 },
                         pressed && { opacity: goal.isPaused ? 0.3 : 0.7 },
@@ -1490,7 +1533,7 @@ const Goals: React.FC = () => {
                 title={t.goals.archived}
                 subtitle={`${archivedGoals.length} ${archivedGoals.length > 1 ? t.goals.goals : t.goals.goal}`}
               >
-                <View style={styles.groupCard}>
+                <View style={[styles.groupCard, neu.raisedSoft]}>
                   {archivedGoals.map((goal, index) => {
                     const pct = goal.targetAmount > 0 ? Math.round((goal.currentAmount / goal.targetAmount) * 100) : 0;
                     return (
@@ -1563,13 +1606,14 @@ const Goals: React.FC = () => {
                 </View>
                 {/* Title */}
                 <View style={styles.gfTitleZone}>
-                  <Text style={styles.gfTitleText}>
-                    {editingGoal ? t.goals.edit.toLowerCase() + ' goal' : 'new goal'}
+                  <Text style={styles.gfTitleText} numberOfLines={1} ellipsizeMode="tail">
+                    {editingGoal ? t.goals.edit.toLowerCase() + ' ' : 'new '}
+                    <Text style={styles.gfTitleAccent}>
+                      {editingGoal ? editingGoal.name.toLowerCase() : 'goal'}
+                    </Text>
                   </Text>
                   <Text style={styles.gfSubtitleText}>
-                    {editingGoal
-                      ? `${editingGoal.name.toLowerCase()}`
-                      : t.goals.setGoalWatch}
+                    {t.goals.setGoalWatch}
                   </Text>
                 </View>
               </View>
@@ -1593,12 +1637,12 @@ const Goals: React.FC = () => {
                       size={56}
                       strokeWidth={5}
                       percentage={0}
-                      color={goalColor}
-                      trackColor={withAlpha(goalColor, 0.15)}
+                      color={goalColorLegible}
+                      trackColor={withAlpha(goalColorLegible, 0.15)}
                     >
                       {goalImageUri
                         ? <Image source={{ uri: goalImageUri }} style={{ width: 36, height: 36, borderRadius: 18 }} />
-                        : renderGoalIcon(goalIcon, 18, goalColor)}
+                        : renderGoalIcon(goalIcon, 18, goalColorLegible)}
                     </CircularProgress>
                   </TouchableOpacity>
                   <View style={styles.gfHeroAmountCol}>
@@ -1615,7 +1659,7 @@ const Goals: React.FC = () => {
                         returnKeyType="done"
                         onSubmitEditing={Keyboard.dismiss}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={goalColor}
+                        selectionColor={goalColorLegible}
                       />
                     </View>
                     <Text style={styles.gfHeroHint}>
@@ -1653,7 +1697,8 @@ const Goals: React.FC = () => {
                           key={tmpl.name}
                           style={[
                             styles.gfTemplateChip,
-                            active && { backgroundColor: withAlpha(tmpl.color, 0.12), borderColor: withAlpha(tmpl.color, 0.4) },
+                            neu.raised,
+                            active && { backgroundColor: withAlpha(tmpl.color, 0.12) },
                           ]}
                           onPress={() => applyTemplate(tmpl)}
                           activeOpacity={0.7}
@@ -1672,11 +1717,21 @@ const Goals: React.FC = () => {
               {/* ── Name + Icon (grouped card) ── */}
               <View style={styles.gfCard}>
                 <View style={styles.gfCardRow}>
-                  <TouchableOpacity onPress={openIconPicker} activeOpacity={0.7} style={styles.gfNameIconBtn}>
-                    <View style={[styles.gfNameIconFallback, { backgroundColor: withAlpha(goalColor, 0.10) }]}>
+                  <TouchableOpacity
+                    style={styles.gfIconPicker}
+                    onPress={openIconPicker}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="add photo or choose icon"
+                  >
+                    <View style={[styles.gfIconPickerCircle, { backgroundColor: withAlpha(goalColorLegible, 0.12) }]}>
                       {goalImageUri
-                        ? <Image source={{ uri: goalImageUri }} style={{ width: 36, height: 36, borderRadius: RADIUS.md }} />
-                        : renderGoalIcon(goalIcon, 20, goalColor)}
+                        ? <Image source={{ uri: goalImageUri }} style={styles.gfIconPickerImage} />
+                        : renderGoalIcon(goalIcon, 20, goalColorLegible)}
+                    </View>
+                    <View style={[styles.gfIconPickerBadge, { backgroundColor: goalColorLegible }]} pointerEvents="none">
+                      <Feather name="plus" size={11} color={C.onAccent} />
                     </View>
                   </TouchableOpacity>
                   <View style={styles.gfFieldFlex}>
@@ -1686,17 +1741,13 @@ const Goals: React.FC = () => {
                       value={goalName}
                       onChangeText={setGoalName}
                       placeholder={t.goals.namePlaceholder}
-                      placeholderTextColor={C.textMuted}
+                      placeholderTextColor={withAlpha(C.textMuted, 0.45)}
                       returnKeyType="next"
                       maxLength={50}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
                       selectionColor={goalColor}
                     />
                   </View>
-                  <TouchableOpacity style={[styles.gfChangeIconPill, { borderColor: withAlpha(goalColor, 0.25) }]} onPress={openIconPicker} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                    <Feather name="image" size={11} color={goalColor} />
-                    <Text style={[styles.gfChangeIconText, { color: goalColor }]}>icon</Text>
-                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -1739,14 +1790,13 @@ const Goals: React.FC = () => {
 
             {/* Anchored save zone */}
             <View style={[styles.gfSaveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
-              <Pressable style={[styles.gfSaveBtn, { backgroundColor: goalColor }]} onPress={guardedSaveGoal}>
-                <View style={styles.gfSaveBtnInner}>
-                  <Feather name={editingGoal ? 'check' : 'plus'} size={16} color={C.onAccent} />
-                  <Text style={styles.gfSaveBtnText}>
-                    {editingGoal ? t.goals.saveChanges.toLowerCase() : t.goals.createGoal.toLowerCase()}
-                  </Text>
-                </View>
-              </Pressable>
+              <NeuButton
+                icon={editingGoal ? 'check' : 'plus'}
+                label={editingGoal ? t.goals.saveChanges.toLowerCase() : t.goals.createGoal.toLowerCase()}
+                color={goalColor}
+                onPress={guardedSaveGoal}
+                style={FLAT_BTN}
+              />
               <Pressable
                 style={styles.gfSecondaryLink}
                 onPress={closeGoalModal}
@@ -1769,7 +1819,7 @@ const Goals: React.FC = () => {
                 style={StyleSheet.absoluteFill}
                 onPress={() => setShowCalendar(false)}
               >
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
               </Pressable>
               <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]} pointerEvents="box-none">
                 <View style={styles.ipCard} onStartShouldSetResponder={() => true}>
@@ -1780,18 +1830,13 @@ const Goals: React.FC = () => {
                     </TouchableOpacity>
                   </View>
                   <CalendarPicker value={goalDeadline || new Date()} minimumDate={new Date()} onChange={(date) => { setGoalDeadline(date); }} />
-                  <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
-                    <TouchableOpacity
-                      style={[styles.ipSaveBtn, { backgroundColor: goalColor, flex: 1 }]}
-                      onPress={() => setShowCalendar(false)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.ipSaveBtnInner}>
-                        <Feather name="check" size={14} color={C.onAccent} />
-                        <Text style={styles.ipSaveBtnText}>done</Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
+                  <NeuButton
+                    icon="check"
+                    label="done"
+                    color={goalColor}
+                    onPress={() => setShowCalendar(false)}
+                    style={[FLAT_BTN, { marginTop: SPACING.md }]}
+                  />
                   <Pressable style={styles.ipRemoveBtn} onPress={() => { setGoalDeadline(undefined); setShowCalendar(false); }}>
                     {({ pressed }) => (
                       <View style={[styles.ipRemoveBtnInner, pressed && { opacity: 0.55 }]}>
@@ -1812,11 +1857,10 @@ const Goals: React.FC = () => {
                 style={StyleSheet.absoluteFill}
                 onPress={() => setIconPickerVisible(false)}
               >
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.45) }]} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
               </Pressable>
-              <KeyboardAvoidingView
+              <View
                 style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}
-                behavior="padding"
                 pointerEvents="box-none"
               >
                 <View style={styles.ipCard} onStartShouldSetResponder={() => true}>
@@ -1875,16 +1919,11 @@ const Goals: React.FC = () => {
                   <View style={styles.ipDivider} />
 
                   <TouchableOpacity style={styles.ipGalleryRow} onPress={pickGoalImage} activeOpacity={0.7}>
-                    <Feather name="image" size={16} color={goalColor} />
-                    <Text style={[styles.ipGalleryText, { color: goalColor }]}>choose from gallery</Text>
+                    <Feather name="image" size={16} color={C.textPrimary} />
+                    <Text style={[styles.ipGalleryText, { color: C.textPrimary }]}>choose from gallery</Text>
                   </TouchableOpacity>
 
-                  <Pressable style={[styles.ipSaveBtn, { backgroundColor: goalColor }]} onPress={saveIconSelection}>
-                    <View style={styles.ipSaveBtnInner}>
-                      <Feather name="check" size={14} color={C.onAccent} />
-                      <Text style={styles.ipSaveBtnText}>save</Text>
-                    </View>
-                  </Pressable>
+                  <NeuButton icon="check" label="save" color={goalColor} onPress={saveIconSelection} style={[FLAT_BTN, { marginTop: SPACING.md }]} />
 
                   {(goalImageUri || pickerSelection) && (
                     <Pressable style={styles.ipRemoveBtn} onPress={() => { setGoalImageUri(undefined); setPickerSelection('f/target'); }}>
@@ -1897,7 +1936,7 @@ const Goals: React.FC = () => {
                     </Pressable>
                   )}
                 </View>
-              </KeyboardAvoidingView>
+              </View>
             </>
           )}
         </View>
@@ -1920,11 +1959,14 @@ const Goals: React.FC = () => {
                 </View>
                 {contributingGoal && (
                   <View style={styles.gfTitleZone}>
-                    <Text style={styles.gfTitleText}>
-                      {isWithdrawMode ? t.goals.withdraw.toLowerCase() : t.goals.contribute.toLowerCase()}
+                    <Text style={styles.gfTitleText} numberOfLines={2} ellipsizeMode="tail">
+                      {(isWithdrawMode ? t.goals.withdraw.toLowerCase() : t.goals.contribute.toLowerCase()) + ' '}
+                      <Text style={styles.gfTitleAccent}>
+                        {contributingGoal.name.toLowerCase()}
+                      </Text>
                     </Text>
                     <Text style={styles.gfSubtitleText}>
-                      {contributingGoal.name.toLowerCase()} · {currency} {contributingGoal.currentAmount.toFixed(2)} / {currency} {contributingGoal.targetAmount.toFixed(2)}
+                      {currency} {contributingGoal.currentAmount.toFixed(2)} / {currency} {contributingGoal.targetAmount.toFixed(2)}
                     </Text>
                   </View>
                 )}
@@ -1949,10 +1991,10 @@ const Goals: React.FC = () => {
                       size={56}
                       strokeWidth={5}
                       percentage={contributingGoal.targetAmount > 0 ? Math.min((contributingGoal.currentAmount / contributingGoal.targetAmount) * 100, 100) : 0}
-                      color={contributingGoal.color}
-                      trackColor={withAlpha(contributingGoal.color, 0.15)}
+                      color={contribColor}
+                      trackColor={withAlpha(contribColor, 0.15)}
                     >
-                      {renderGoalIcon(contributingGoal.icon, 18, contributingGoal.color)}
+                      {renderGoalIcon(contributingGoal.icon, 18, contribColor)}
                     </CircularProgress>
                     <View style={styles.gfHeroAmountCol}>
                       <View style={styles.gfHeroAmountRow}>
@@ -1968,7 +2010,7 @@ const Goals: React.FC = () => {
                           returnKeyType="done"
                           onSubmitEditing={Keyboard.dismiss}
                           keyboardAppearance={isDark ? 'dark' : 'light'}
-                          selectionColor={contributingGoal.color}
+                          selectionColor={contribColor}
                         />
                       </View>
                       <Text style={styles.gfHeroHint}>
@@ -2002,12 +2044,12 @@ const Goals: React.FC = () => {
                         key={amt}
                         style={[
                           styles.cfQuickChip,
-                          { borderColor: withAlpha(contributingGoal.color, sel ? 0.5 : 0.15), backgroundColor: sel ? withAlpha(contributingGoal.color, 0.12) : withAlpha(contributingGoal.color, 0.04) },
+                          { borderColor: withAlpha(contribColor, sel ? 0.5 : 0.15), backgroundColor: sel ? withAlpha(contribColor, 0.12) : withAlpha(contribColor, 0.04) },
                         ]}
                         onPress={() => { lightTap(); setContributeAmount(amt.toString()); }}
                         activeOpacity={0.7}
                       >
-                        <Text style={[styles.cfQuickChipText, { color: contributingGoal.color }]}>+{amt}</Text>
+                        <Text style={[styles.cfQuickChipText, { color: contribColor }]}>+{amt}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -2024,6 +2066,7 @@ const Goals: React.FC = () => {
                   allowNone
                   noneLabel={t.goals.none}
                   label={isWithdrawMode ? t.goals.returnToWallet : t.goals.walletOptional}
+                  faintNeu
                 />
               )}
 
@@ -2040,7 +2083,7 @@ const Goals: React.FC = () => {
                       value={contributeNote}
                       onChangeText={setContributeNote}
                       placeholder={t.goals.notePlaceholder}
-                      placeholderTextColor={C.textMuted}
+                      placeholderTextColor={withAlpha(C.textMuted, 0.45)}
                       multiline
                       numberOfLines={3}
                       onFocus={() => setContribNoteFocused(true)}
@@ -2055,7 +2098,7 @@ const Goals: React.FC = () => {
 
             {contribKbVisible && contribNoteFocused && (
               <TouchableOpacity
-                style={[styles.doneFab, { bottom: contribKbHeight + 16 }]}
+                style={[styles.doneFab, neu.raised, { bottom: contribKbHeight + 16, backgroundColor: C.gold }]}
                 onPress={() => Keyboard.dismiss()}
                 activeOpacity={0.8}
               >
@@ -2065,19 +2108,13 @@ const Goals: React.FC = () => {
 
             {/* Save zone */}
             <View style={[styles.gfSaveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
-              <Pressable
-                style={[styles.gfSaveBtn, { backgroundColor: isWithdrawMode ? C.bronze : (contributingGoal?.color || C.accent) }]}
+              <NeuButton
+                icon={isWithdrawMode ? 'minus' : 'plus'}
+                label={isWithdrawMode ? t.goals.withdraw.toLowerCase() : t.goals.contribute.toLowerCase()}
+                color={isWithdrawMode ? C.bronze : (contributingGoal?.color || C.accent)}
                 onPress={isWithdrawMode ? guardedWithdraw : guardedContribute}
-              >
-                {({ pressed }: { pressed: boolean }) => (
-                  <View style={[styles.gfSaveBtnInner, pressed && { opacity: 0.7 }]}>
-                    <Feather name={isWithdrawMode ? 'minus' : 'plus'} size={16} color={C.onAccent} />
-                    <Text style={styles.gfSaveBtnText}>
-                      {isWithdrawMode ? t.goals.withdraw.toLowerCase() : t.goals.contribute.toLowerCase()}
-                    </Text>
-                  </View>
-                )}
-              </Pressable>
+                style={FLAT_BTN}
+              />
               <Pressable style={styles.gfSecondaryLink} onPress={closeContributeModal} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}>
                 {({ pressed }: { pressed: boolean }) => (
                   <View style={[styles.gfSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
@@ -2100,7 +2137,7 @@ const Goals: React.FC = () => {
           <Reanimated.View style={[styles.detailBackdrop, historyBackdropAnimStyle]}>
             <Pressable style={{ flex: 1 }} onPress={closeHistoryModal} />
           </Reanimated.View>
-          <Reanimated.View style={[styles.detailSheetContainer, { paddingBottom: Math.max(insets.bottom, SPACING.xl) }, historySheetAnimStyle]}>
+          <Reanimated.View style={[styles.detailSheetContainer, styles.gfSheet, { paddingBottom: Math.max(insets.bottom, SPACING.xl) }, historySheetAnimStyle]}>
             <GestureDetector gesture={historySheetGesture}>
               <View collapsable={false}>
                 <View style={styles.detailTopRow}>
@@ -2150,7 +2187,7 @@ const Goals: React.FC = () => {
                       <View key={c.id} style={styles.historyItem}>
                         <View style={styles.historyItemLeft}>
                           <Text style={styles.historyItemDate}>{isValid(d) ? format(d, 'MMM dd') : '—'}</Text>
-                          <Text style={[styles.historyItemAmount, isWithdrawal && { color: C.neutral }]}>
+                          <Text style={[styles.historyItemAmount, isWithdrawal ? { color: C.neutral } : historyGoal ? { color: historyGoal.color } : null]}>
                             {isWithdrawal ? '-' : '+'}{currency} {Math.abs(c.amount).toFixed(2)}
                           </Text>
                           {c.note && <Text style={styles.historyItemNote} numberOfLines={1}>{c.note}</Text>}
@@ -2197,22 +2234,34 @@ const Goals: React.FC = () => {
       {showSortMenu && (
         <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setShowSortMenu(false)}>
           <Pressable style={styles.sortMenuBackdrop} onPress={() => setShowSortMenu(false)}>
-            <View style={styles.sortMenuCard} onStartShouldSetResponder={() => true}>
+            <View style={[styles.sortMenuCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
               <Text style={styles.sortMenuTitle}>{t.goals.sortBy ?? 'sort by'}</Text>
-              {sortOptions.map((opt) => (
+              {sortOptions.map((opt) => {
+                const active = sort === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.sortMenuItem, active && styles.sortMenuItemActive]}
+                    onPress={() => { selectionChanged(); setSort(opt.key); setShowSortMenu(false); }}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name={opt.icon} size={18} color={active ? C.accent : C.textMuted} />
+                    <Text style={[styles.sortMenuItemText, active && styles.sortMenuItemTextActive]}>
+                      {opt.label}
+                    </Text>
+                    {active && <Feather name="check" size={16} color={C.accent} />}
+                  </TouchableOpacity>
+                );
+              })}
+              {sort !== 'manual' && (
                 <TouchableOpacity
-                  key={opt.key}
-                  style={styles.sortMenuItem}
-                  onPress={() => { selectionChanged(); setSort(opt.key); setShowSortMenu(false); }}
+                  style={styles.sortMenuClear}
+                  onPress={() => { lightTap(); setSort('manual'); setShowSortMenu(false); }}
                   activeOpacity={0.7}
                 >
-                  <Feather name={opt.icon} size={15} color={sort === opt.key ? C.accent : C.textMuted} />
-                  <Text style={[styles.sortMenuItemText, sort === opt.key && { color: C.accent, fontWeight: TYPOGRAPHY.weight.semibold as any }]}>
-                    {opt.label}
-                  </Text>
-                  {sort === opt.key && <Feather name="check" size={15} color={C.accent} style={{ marginLeft: 'auto' as any }} />}
+                  <Text style={styles.sortMenuClearText}>clear sort</Text>
                 </TouchableOpacity>
-              ))}
+              )}
             </View>
           </Pressable>
         </Modal>
@@ -2294,7 +2343,7 @@ const Goals: React.FC = () => {
                 <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={styles.detailScrollContent}>
                   {/* Summary stats card */}
                   {!done && !g.isPaused && (
-                    <View style={styles.dtSummaryCard}>
+                    <View style={[styles.dtSummaryCard, neu.raisedSoft]}>
                       <View style={styles.dtSummaryRow}>
                         <View style={styles.dtSummaryStat}>
                           <Text style={styles.dtSummaryValue}>
@@ -2349,14 +2398,13 @@ const Goals: React.FC = () => {
                   <View style={styles.detailCtaZone}>
                     {!done && !g.isPaused && (
                       <>
-                        <TouchableOpacity
-                          style={[styles.detailCtaMain, { backgroundColor: g.color }]}
+                        <NeuButton
+                          icon="plus"
+                          label={t.goals.addMoney ?? 'add money'}
+                          color={g.color}
                           onPress={() => { closeGoalDetail(); setTimeout(() => openContribute(g), 280); }}
-                          activeOpacity={0.7}
-                        >
-                          <Feather name="plus" size={18} color={C.onAccent} />
-                          <Text style={styles.detailCtaMainText}>{t.goals.addMoney ?? 'add money'}</Text>
-                        </TouchableOpacity>
+                          style={FLAT_BTN}
+                        />
                         {g.currentAmount > 0 && (
                           <TouchableOpacity
                             style={styles.detailCtaLink}
@@ -2370,14 +2418,13 @@ const Goals: React.FC = () => {
                       </>
                     )}
                     {done && (
-                      <TouchableOpacity
-                        style={[styles.detailCtaMain, { backgroundColor: C.positive }]}
+                      <NeuButton
+                        icon="archive"
+                        label={t.goals.archive}
+                        color={C.positive}
                         onPress={() => { closeGoalDetail(); setTimeout(() => handleArchive(g), 280); }}
-                        activeOpacity={0.7}
-                      >
-                        <Feather name="archive" size={18} color={C.onAccent} />
-                        <Text style={styles.detailCtaMainText}>{t.goals.archive}</Text>
-                      </TouchableOpacity>
+                        style={FLAT_BTN}
+                      />
                     )}
                   </View>
 
@@ -2385,7 +2432,7 @@ const Goals: React.FC = () => {
                   {recentContribs.length > 0 && (
                     <>
                       <Text style={styles.dtSectionLabel}>{t.goals.recentActivity ?? 'recent activity'}</Text>
-                      <View style={styles.dtActivityCard}>
+                      <View style={[styles.dtActivityCard, neu.raisedSoft]}>
                         {recentContribs.map((c, idx) => {
                           const d = c.date instanceof Date ? c.date : new Date(c.date);
                           const isW = c.amount < 0;
@@ -2425,27 +2472,27 @@ const Goals: React.FC = () => {
                   {/* Footer actions */}
                   <View style={styles.detailFooter}>
                     <TouchableOpacity
-                      style={styles.detailFooterPill}
+                      style={[styles.detailFooterPill, neu.raised]}
                       onPress={() => { closeGoalDetail(); setTimeout(() => openEditGoal(g), 280); }}
                       activeOpacity={0.7}
                     >
-                      <Feather name="edit-2" size={13} color={C.textSecondary} />
+                      <Feather name="edit-2" size={14} color={C.textSecondary} />
                       <Text style={styles.detailFooterPillText}>{t.goals.edit}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={styles.detailFooterPill}
+                      style={[styles.detailFooterPill, neu.raised]}
                       onPress={() => { handleTogglePause(g); closeGoalDetail(); }}
                       activeOpacity={0.7}
                     >
-                      <Feather name={g.isPaused ? 'play' : 'pause'} size={13} color={C.textSecondary} />
+                      <Feather name={g.isPaused ? 'play' : 'pause'} size={14} color={C.textSecondary} />
                       <Text style={styles.detailFooterPillText}>{g.isPaused ? t.goals.resume : t.goals.pause}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={styles.detailFooterPill}
+                      style={[styles.detailFooterPill, neu.raised]}
                       onPress={() => { closeGoalDetail(); setTimeout(() => handleDeleteGoal(g), 280); }}
                       activeOpacity={0.7}
                     >
-                      <Feather name="trash-2" size={13} color={C.neutral} />
+                      <Feather name="trash-2" size={14} color={C.neutral} />
                       <Text style={[styles.detailFooterPillText, { color: C.neutral }]}>{t.goals.delete}</Text>
                     </TouchableOpacity>
                   </View>
@@ -2559,8 +2606,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // ── Filter Chips ──
-  filterRow: {
+  filterRowOuter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
     marginBottom: SPACING.lg,
+  },
+  filterScrollWrap: {
+    flex: 1,
+    position: 'relative',
   },
   filterRowContent: {
     flexDirection: 'row',
@@ -2586,62 +2640,80 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.onAccent,
   },
   sortPill: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs + 2,
+    width: 34,
+    height: 34,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
-    marginLeft: SPACING.sm,
+    // surface + raise come from neu.raised
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   sortPillActive: {
-    backgroundColor: C.deepOlive,
+    backgroundColor: withAlpha(C.accent, 0.10),
   },
-  sortPillText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
-    color: C.textMuted,
-  },
-  sortPillTextActive: {
-    color: C.onAccent,
+  sortPillDot: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.accent,
   },
   sortMenuBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
   sortMenuCard: {
-    backgroundColor: C.surface,
+    width: '80%' as any,
+    maxWidth: 320,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    width: 240,
-    maxWidth: '80%' as any,
-    borderWidth: 1,
-    borderColor: C.border,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.lg),
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
   },
   sortMenuTitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: C.textSecondary,
-    textTransform: 'lowercase' as const,
-    letterSpacing: 0.3,
-    marginBottom: SPACING.md,
+    fontWeight: TYPOGRAPHY.weight.bold as any,
+    color: C.textMuted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    marginBottom: SPACING.sm + 2,
   },
   sortMenuItem: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(C.textPrimary, 0.06),
+    gap: SPACING.sm + 2,
+    paddingVertical: SPACING.sm + 4,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.md,
+    marginBottom: 2,
+  },
+  sortMenuItemActive: {
+    backgroundColor: withAlpha(C.accent, 0.08),
   },
   sortMenuItemText: {
+    flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium as any,
+  },
+  sortMenuItemTextActive: {
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+  },
+  sortMenuClear: {
+    alignItems: 'center' as const,
+    paddingVertical: SPACING.sm + 2,
+    marginTop: SPACING.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(C.textPrimary, 0.08),
+  },
+  sortMenuClearText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: C.accent,
   },
 
   // ── Section Label ──
@@ -2657,12 +2729,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Group Card ──
   groupCard: {
-    backgroundColor: C.surface,
+    // surface + elevation from neu.raisedSoft (base C.background)
     borderRadius: RADIUS.xl,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C.border,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
   cardDivider: {
     height: StyleSheet.hairlineWidth,
@@ -2745,12 +2813,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.lg,
   },
   goalCard: {
-    backgroundColor: C.surface,
+    // surface + elevation come from neu.raisedSoft (base C.background)
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
   goalCardName: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -2872,13 +2937,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Goal Form (CommitmentForm pattern) ──
   gfSheet: {
+    // no border/shadow — just bg + top radii, matching the add-debt sheet
     backgroundColor: C.background,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.06),
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
-    borderTopLeftRadius: RADIUS['2xl'] + 2,
-    borderTopRightRadius: RADIUS['2xl'] + 2,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
   },
   gfHandleRow: {
     alignItems: 'center',
@@ -2894,8 +2956,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   gfTitleZone: {
     alignItems: 'center',
     paddingHorizontal: SPACING.xl,
-    paddingBottom: SPACING.md,
-    gap: 4,
+    paddingBottom: SPACING.lg,
   },
   gfIconBubble: {
     width: 36,
@@ -2907,14 +2968,21 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   gfTitleText: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
-    letterSpacing: -0.5,
+    letterSpacing: C === CALM_DARK ? -0.2 : -0.4,
     textAlign: 'center',
+  },
+  gfTitleAccent: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.accent,
   },
   gfSubtitleText: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textMuted,
+    marginTop: SPACING.xs + 2,
     letterSpacing: 0.1,
     textAlign: 'center',
   },
@@ -2987,7 +3055,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xs + 2,
   },
   gfCard: {
-    backgroundColor: C.surface,
+    // black field on the black sheet (matches the commitment/bill modal cards),
+    // defined by a subtle border rather than a grey fill.
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.07),
@@ -3016,19 +3086,38 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  gfNameIconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+  gfIconPicker: {
+    width: 44,
+    height: 44,
     flexShrink: 0,
-    overflow: 'hidden',
+    position: 'relative',
   },
-  gfNameIconFallback: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+  gfIconPickerCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+  },
+  gfIconPickerImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  gfIconPickerBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.background,
   },
   gfFieldFlex: { flex: 1 },
   gfFieldLabel: {
@@ -3057,9 +3146,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   gfTemplateChipText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -3112,22 +3199,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopColor: withAlpha(C.textPrimary, 0.06),
     backgroundColor: C.background,
   },
-  gfSaveBtn: {
-    width: '100%',
-    paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  gfSaveBtnInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  gfSaveBtnText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-    letterSpacing: 0.3,
-  },
   gfSecondaryLink: { marginTop: SPACING.sm, alignSelf: 'center' },
   gfSecondaryLinkInner: {
     flexDirection: 'row',
@@ -3168,7 +3239,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 100,
-    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
+    // raise from neu.raised (fill re-applied inline)
   },
 
   // ── Delete ──
@@ -3183,7 +3254,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   contributePreviewCelebrate: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.positive, marginTop: SPACING.xs },
 
   // ── History ──
-  historyStatsRow: { flexDirection: 'row', backgroundColor: C.background, borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.lg },
+  historyStatsRow: { flexDirection: 'row', backgroundColor: withAlpha(C.textPrimary, 0.06), borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.lg },
   historyStatItem: { flex: 1, alignItems: 'center', gap: 2 },
   historyStatLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium },
   historyStatValue: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, fontVariant: ['tabular-nums'] },
@@ -3231,7 +3302,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '92%',
@@ -3368,13 +3439,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Detail Summary Card ──
   dtSummaryCard: {
-    backgroundColor: C.surface,
+    // surface + elevation from neu.raisedSoft (base C.background)
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.1 : 0.06),
     padding: SPACING.md,
     marginBottom: SPACING.md,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
   dtSummaryRow: {
     flexDirection: 'row' as const,
@@ -3415,13 +3483,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Detail Activity Card ──
   dtActivityCard: {
-    backgroundColor: C.surface,
+    // surface + elevation from neu.raisedSoft (base C.background)
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.1 : 0.06),
-    overflow: 'hidden' as const,
     marginBottom: SPACING.md,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
   dtActivityRow: {
     flexDirection: 'row' as const,
@@ -3629,25 +3693,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Detail CTA ──
   detailCtaZone: {
     marginBottom: SPACING.xl,
-    alignItems: 'center' as const,
-  },
-  detailCtaMain: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: SPACING.sm,
-    width: '100%' as any,
-    paddingVertical: 14,
-    borderRadius: RADIUS.full,
-    minHeight: 50,
-  },
-  detailCtaMainText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
+    // stretch children so NeuButton is full-width; the link centers itself
   },
   detailCtaLink: {
     paddingVertical: SPACING.md,
+    alignSelf: 'center' as const,
   },
   detailCtaLinkText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -3715,31 +3765,32 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopColor: withAlpha(C.textPrimary, 0.06),
   },
   detailFooterPill: {
+    // Equal thirds filling the row — matches the sheet's full-width rhythm (add money)
+    // instead of three small pills floating in dead space. 12v padding ≈ 44pt target.
+    flex: 1,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     gap: 6,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 12,
     borderRadius: RADIUS.full,
     backgroundColor: withAlpha(C.textPrimary, 0.04),
   },
   detailFooterPillText: {
-    fontSize: TYPOGRAPHY.size.xs,
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
   },
 
   // ── Icon Picker Overlay ──
   ipCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     width: '88%' as any,
     maxWidth: 380,
     maxHeight: '80%' as any,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.06),
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   ipHeader: {
     flexDirection: 'row' as const,
@@ -3765,6 +3816,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   ipGrid: {
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
+    justifyContent: 'center' as const,
     gap: SPACING.xs + 2,
     marginBottom: SPACING.sm,
   },
@@ -3793,24 +3845,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
-  ipSaveBtn: {
-    width: '100%' as any,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.full,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginTop: SPACING.sm,
-  },
-  ipSaveBtnInner: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-  },
-  ipSaveBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
   ipRemoveBtn: {
     marginTop: SPACING.md,
     alignSelf: 'center' as const,
@@ -3831,20 +3865,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-  },
-  gfChangeIconPill: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 4,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-  },
-  gfChangeIconText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    letterSpacing: 0.3,
   },
 });
 
