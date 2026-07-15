@@ -15,8 +15,9 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from './neu';
 import { useT } from '../../i18n';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -30,6 +31,7 @@ const GettingStarted: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
+  const neuF = useNeu(undefined, { faintDark: true }); // soft raise for the card + step
   const navigation = useNavigation<any>();
   const dismissed = useSettingsStore((s) => s.gettingStartedDismissed);
   const setDismissed = useSettingsStore((s) => s.setGettingStartedDismissed);
@@ -88,7 +90,7 @@ const GettingStarted: React.FC = () => {
   const currentDot = dotsDone.findIndex((d) => !d);
 
   return (
-    <Animated.View entering={FadeIn.duration(300)} style={styles.card}>
+    <Animated.View entering={FadeIn.duration(300)} style={[styles.card, neuF.raisedSoft]}>
       <View style={styles.headerRow}>
         <Text style={styles.title} numberOfLines={1}>{title}</Text>
         <Text style={styles.progressText}>{progressText}</Text>
@@ -110,7 +112,7 @@ const GettingStarted: React.FC = () => {
       {/* the one next step — swaps with a soft entrance when completed */}
       <Animated.View key={next.title} entering={FadeInDown.duration(260)}>
         <TouchableOpacity
-          style={styles.nextStep}
+          style={[neuF.raisedSoft, styles.nextStep]}
           onPress={next.onPress}
           activeOpacity={0.7}
           accessibilityRole="button"
@@ -149,13 +151,12 @@ const GettingStarted: React.FC = () => {
 
 const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
   card: {
-    backgroundColor: C.surface,
+    // Neu raised card: base on the screen bg (C.background) so the neu shadow
+    // (neu.raisedSoft, spread at the call site) reads as a soft lift, no border.
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     padding: SPACING.lg,
     marginBottom: SPACING.md,
-    ...(isDark ? SHADOWS.none : SHADOWS.xs),
   },
   headerRow: {
     flexDirection: 'row',

@@ -23,15 +23,19 @@ interface Props {
   disabled?: boolean;
   /** Fill color; defaults to the mode accent (olive). */
   color?: string;
+  /** Icon/label color; defaults to onAccent (white). Override when the fill's
+   *  contrast ink differs from the app default — e.g. the onboarding night CTA
+   *  is gold and needs near-black ink, not white. */
+  textColor?: string;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
 }
 
-const NeuButton: React.FC<Props> = ({ onPress, label, icon, disabled, color, accessibilityLabel, style }) => {
+const NeuButton: React.FC<Props> = ({ onPress, label, icon, disabled, color, textColor, accessibilityLabel, style }) => {
   const C = useCalm();
   const neu = useNeu();
   const fill = color ?? C.accent;
-  const fg = C.onAccent;
+  const fg = textColor ?? C.onAccent;
 
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);

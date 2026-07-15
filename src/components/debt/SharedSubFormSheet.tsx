@@ -174,7 +174,10 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
   const totalNum = parseFloat(totalAmount) || 0;
   const sharesSum = members.reduce((sum, m) => sum + (parseFloat(m.shareAmount) || 0), 0);
   const sumMatches = totalNum > 0 && Math.abs(sharesSum - totalNum) < 0.01;
-  const canSave = name.trim().length > 0 && (isEditing || totalNum > 0) && members.length >= 2;
+  // Shares must sum to the total (within a sen) in BOTH create and edit — a sub that
+  // saves under/over-split produces permanently-wrong monthly "outstanding" and
+  // generates debts that don't cover the real bill. Mirrors PriceChangeSheet's gate.
+  const canSave = name.trim().length > 0 && totalNum > 0 && members.length >= 2 && sumMatches;
 
   const suggested = useMemo(() => suggestIcons(name), [name]);
 
@@ -236,15 +239,31 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
   }, []);
 
   const handleMemberField = useCallback((contactId: string, field: 'tag' | 'shareAmount', value: string) => {
+    // Sanitize share amounts to digits + a single decimal point — a pasted "-5" or
+    // "1e3" would otherwise store a negative/exponent share that parseFloat honours
+    // and, if another member overpays to compensate, slips past the sum gate.
+    let v = value;
+    if (field === 'shareAmount') {
+      const stripped = value.replace(/,/g, '').replace(/[^\d.]/g, '');
+      const fd = stripped.indexOf('.');
+      v = fd === -1 ? stripped : stripped.slice(0, fd + 1) + stripped.slice(fd + 1).replace(/\./g, '');
+    }
     setMembers((prev) => prev.map((m) =>
-      m.contact.id === contactId ? { ...m, [field]: value } : m
+      m.contact.id === contactId ? { ...m, [field]: v } : m
     ));
   }, []);
 
   const handleEqualSplit = useCallback(() => {
     if (totalNum <= 0 || members.length === 0) return;
-    const perPerson = (totalNum / members.length).toFixed(2);
-    setMembers((prev) => prev.map((m) => ({ ...m, shareAmount: perPerson })));
+    const n = members.length;
+    const per = Math.floor((totalNum / n) * 100) / 100;
+    const remainder = Math.round((totalNum - per * n) * 100) / 100;
+    setMembers((prev) => prev.map((m, i) => ({
+      ...m,
+      // Last member absorbs the rounding remainder so shares sum to the total
+      // EXACTLY (e.g. 3×33.33=99.99 → last is 33.34), satisfying the save gate.
+      shareAmount: (i === prev.length - 1 ? Math.round((per + remainder) * 100) / 100 : per).toFixed(2),
+    })));
     lightTap();
   }, [totalNum, members.length]);
 
@@ -252,7 +271,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
     if (!canSave) return;
     const day = parseInt(billingDay, 10);
     if (isNaN(day) || day < 1 || day > 31) {
-      showToast('billing day must be 1–31', 'error');
+      showToast(t.sharedSubs.billingDayRange, 'error');
       return;
     }
 
@@ -277,7 +296,12 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
       const newIds = new Set(builtMembers.map((m) => m.contact.id));
       builtMembers.forEach((m) => {
         if (existingIds.has(m.contact.id)) {
-          updateSharedSubMember(editingSub.id, m.contact.id, { tag: m.tag });
+          // Persist BOTH tag and share — a redistributed/edited share must save, or
+          // existing members silently keep their old amount and the sub under/over-splits.
+          // Also re-set isActive: a member removed earlier is only deactivated (kept in
+          // the array), so re-adding them here must reactivate — otherwise they stay
+          // isActive:false and are silently excluded from every future month's billing.
+          updateSharedSubMember(editingSub.id, m.contact.id, { tag: m.tag, shareAmount: m.shareAmount, isActive: true });
         } else {
           addSharedSubMember(editingSub.id, m);
         }
@@ -330,13 +354,13 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
             </View>
             <View style={styles.titleZone}>
               <Text style={styles.title}>
-                {isEditing ? 'edit ' : 'new '}
+                {isEditing ? t.sharedSubs.editPrefix : t.sharedSubs.newPrefix}
                 <Text style={styles.titleAccent}>
-                  {isEditing ? (editingSub?.name?.toLowerCase() || 'subscription') : 'shared subscription'}
+                  {isEditing ? (editingSub?.name?.toLowerCase() || t.sharedSubs.subscriptionFallback) : t.sharedSubs.sharedSubscription}
                 </Text>
               </Text>
               <Text style={styles.subtitle}>
-                {isEditing ? 'update subscription details' : 'track shared recurring costs with others'}
+                {isEditing ? t.sharedSubs.editSubtitle : t.sharedSubs.createSubtitle}
               </Text>
             </View>
           </View>
@@ -353,20 +377,28 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
           {/* Icon + Name (grouped card — matches CommitmentForm) */}
           <View style={[styles.card, neu.raisedSoft]}>
             <View style={styles.cardRow}>
-              <TouchableOpacity onPress={openIconPicker} activeOpacity={0.7} style={styles.nameIconBtn}>
-                {imageUri ? (
-                  <Image source={{ uri: imageUri }} style={styles.nameIconImage} />
-                ) : iconName ? (
-                  <View style={[styles.nameIconFallback, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
-                    {renderIcon(iconName, 20, C.accent)}
-                  </View>
-                ) : (
-                  <View style={[styles.nameIconFallback, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+              <TouchableOpacity
+                onPress={openIconPicker}
+                activeOpacity={0.7}
+                style={styles.nameIconBtn}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.sharedSubs.addPhotoOrIcon}
+              >
+                <View style={[styles.nameIconCircle, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} style={styles.nameIconImage} />
+                  ) : iconName ? (
+                    renderIcon(iconName, 20, C.accent)
+                  ) : (
                     <Text style={{ fontSize: 18, fontWeight: '700', color: C.accent }}>
                       {name ? name.charAt(0).toUpperCase() : '?'}
                     </Text>
-                  </View>
-                )}
+                  )}
+                </View>
+                <View style={[styles.nameIconBadge, { backgroundColor: C.accent }]} pointerEvents="none">
+                  <Feather name="plus" size={11} color={C.onAccent} />
+                </View>
               </TouchableOpacity>
               <View style={styles.fieldFlex}>
                 <Text style={styles.fieldLabel}>
@@ -445,27 +477,30 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
           {/* Billing day */}
           <View style={[styles.fieldCard, neu.raisedSoft]}>
             <Text style={styles.fieldLabel}>{t.sharedSubs.billingDay}</Text>
-            <TextInput
-              style={[styles.fieldInput, { width: 80 }]}
-              value={billingDay}
-              onChangeText={setBillingDay}
-              placeholder="1"
-              placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
-              keyboardType="number-pad"
-              maxLength={2}
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={withAlpha(C.accent, 0.25)}
-            />
+            <View style={styles.billingDayRow}>
+              <TextInput
+                style={[styles.memberInput, { width: 64, textAlign: 'center' }]}
+                value={billingDay}
+                onChangeText={setBillingDay}
+                placeholder="1"
+                placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                keyboardType="number-pad"
+                maxLength={2}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={withAlpha(C.accent, 0.25)}
+              />
+              <Text style={styles.billingDaySuffix}>{t.sharedSubs.ofTheMonth}</Text>
+            </View>
           </View>
 
           {/* Members */}
           <View style={[styles.fieldCard, neu.raisedSoft]}>
             <View style={styles.membersHeaderRow}>
-              <Text style={styles.fieldLabel}>members <Text style={styles.requiredStar}>*</Text></Text>
-              {!isEditing && totalNum > 0 && members.length >= 2 && (
+              <Text style={styles.fieldLabel}>{t.sharedSubs.members} <Text style={styles.requiredStar}>*</Text></Text>
+              {totalNum > 0 && members.length >= 2 && (
                 <TouchableOpacity onPress={handleEqualSplit} style={[styles.splitEvenBtn, neu.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} activeOpacity={0.7}>
                   <Feather name="divide" size={12} color={C.accent} />
-                  <Text style={styles.splitEvenText}>split even</Text>
+                  <Text style={styles.splitEvenText}>{t.sharedSubs.splitEven}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -494,18 +529,16 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
                         keyboardAppearance={isDark ? 'dark' : 'light'}
                         selectionColor={withAlpha(C.accent, 0.25)}
                       />
-                      {!isEditing && (
-                        <TextInput
-                          style={[styles.memberInput, { width: 80 }]}
-                          value={m.shareAmount}
-                          onChangeText={(v) => handleMemberField(m.contact.id, 'shareAmount', v)}
-                          placeholder={currency}
-                          placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
-                          keyboardType="decimal-pad"
-                          keyboardAppearance={isDark ? 'dark' : 'light'}
-                          selectionColor={withAlpha(C.accent, 0.25)}
-                        />
-                      )}
+                      <TextInput
+                        style={[styles.memberInput, { width: 80 }]}
+                        value={m.shareAmount}
+                        onChangeText={(v) => handleMemberField(m.contact.id, 'shareAmount', v)}
+                        placeholder={currency}
+                        placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                        keyboardType="decimal-pad"
+                        keyboardAppearance={isDark ? 'dark' : 'light'}
+                        selectionColor={withAlpha(C.accent, 0.25)}
+                      />
                     </View>
                   </View>
                   {!isSelf && (
@@ -525,13 +558,16 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
               selectedContacts={selectedContacts}
               onSelect={handleAddContacts}
               mode="multi"
+              variant="input"
+              hideSelectedPills
+              placeholder={t.sharedSubs.addNamePlaceholder}
               label={t.sharedSubs.addMember}
               hideLabel
             />
           </View>
 
-          {/* Sum check — only during creation */}
-          {!isEditing && totalNum > 0 && members.length > 0 && (
+          {/* Sum check — shares must equal the total (create AND edit) */}
+          {totalNum > 0 && members.length > 0 && (
             <View style={[styles.sumCheck, sumMatches ? styles.sumMatch : styles.sumMismatch]}>
               <Feather
                 name={sumMatches ? 'check-circle' : 'alert-circle'}
@@ -548,13 +584,13 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
           {/* Note */}
           <View style={[styles.fieldCard, neu.raisedSoft]}>
             <Text style={styles.fieldLabel}>
-              note <Text style={styles.optionalLabel}>optional</Text>
+              {t.sharedSubs.note} <Text style={styles.optionalLabel}>{t.common.optional}</Text>
             </Text>
             <TextInput
               style={styles.fieldInput}
               value={note}
               onChangeText={setNote}
-              placeholder="anything to remember"
+              placeholder={t.sharedSubs.notePlaceholder}
               placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
               keyboardAppearance={isDark ? 'dark' : 'light'}
               selectionColor={withAlpha(C.accent, 0.25)}
@@ -566,10 +602,10 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
         <View style={[styles.saveZone, { paddingBottom: Math.max(SPACING.lg, 34) }]}>
           <NeuButton
             icon="check"
-            label={isEditing ? 'save changes' : 'create subscription'}
+            label={isEditing ? t.sharedSubs.saveChanges : t.sharedSubs.createSubscription}
             onPress={guardedSave}
             disabled={!canSave}
-            accessibilityLabel={isEditing ? 'save changes' : 'create subscription'}
+            accessibilityLabel={isEditing ? t.sharedSubs.saveChanges : t.sharedSubs.createSubscription}
           />
 
           <Pressable
@@ -577,12 +613,12 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
             onPress={closeSheet}
             hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
             accessibilityRole="button"
-            accessibilityLabel="close"
+            accessibilityLabel={t.common.close}
           >
             {({ pressed }) => (
               <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
                 <Feather name="x" size={12} color={C.textMuted} />
-                <Text style={styles.closeLinkText}>close</Text>
+                <Text style={styles.closeLinkText}>{t.common.close}</Text>
               </View>
             )}
           </Pressable>
@@ -604,8 +640,8 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
             <View style={[styles.iconPickerCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
               <View style={styles.iconPickerHeader}>
                 <Text style={styles.iconPickerTitle}>
-                  {'choose '}
-                  <Text style={styles.iconPickerTitleAccent}>icon</Text>
+                  {t.sharedSubs.choosePrefix}
+                  <Text style={styles.iconPickerTitleAccent}>{t.sharedSubs.icon}</Text>
                 </Text>
                 <TouchableOpacity
                   onPress={() => setIconPickerVisible(false)}
@@ -618,7 +654,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
 
               {suggested.length > 0 && (
                 <>
-                  <Text style={styles.iconPickerSectionLabel}>suggested</Text>
+                  <Text style={styles.iconPickerSectionLabel}>{t.sharedSubs.suggested}</Text>
                   <View style={styles.iconGrid}>
                     {suggested.map((icon) => {
                       const sel = pickerSelection === icon;
@@ -637,7 +673,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
                 </>
               )}
 
-              <Text style={styles.iconPickerSectionLabel}>common</Text>
+              <Text style={styles.iconPickerSectionLabel}>{t.sharedSubs.commonIcons}</Text>
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 style={{ maxHeight: 180 }}
@@ -664,18 +700,18 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
               <View style={styles.iconPickerDivider} />
 
               <TouchableOpacity style={styles.iconPickerRow} onPress={pickImage} activeOpacity={0.7}>
-                <Feather name="image" size={16} color={C.accent} />
-                <Text style={styles.iconPickerRowText}>choose from gallery</Text>
+                <Feather name="image" size={16} color={C.textPrimary} />
+                <Text style={styles.iconPickerRowText}>{t.sharedSubs.chooseFromGallery}</Text>
               </TouchableOpacity>
 
-              <NeuButton icon="check" label="save" onPress={saveIconSelection} style={{ marginTop: SPACING.sm }} />
+              <NeuButton icon="check" label={t.common.save} onPress={saveIconSelection} style={{ marginTop: SPACING.sm }} />
 
               {(imageUri || pickerSelection) && (
                 <Pressable style={styles.iconPickerRemove} onPress={removeAvatar}>
                   {({ pressed }) => (
                     <View style={[styles.iconPickerRemoveInner, pressed && { opacity: 0.55 }]}>
                       <Feather name="x" size={12} color={C.textMuted} />
-                      <Text style={styles.iconPickerRemoveText}>remove</Text>
+                      <Text style={styles.iconPickerRemoveText}>{t.sharedSubs.remove}</Text>
                     </View>
                   )}
                 </Pressable>
@@ -759,23 +795,37 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     gap: SPACING.sm + 2,
   },
   nameIconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
     flexShrink: 0,
-    overflow: 'hidden',
+    position: 'relative',
   },
-  nameIconImage: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-  },
-  nameIconFallback: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+  nameIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+  },
+  nameIconImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  nameIconBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.background,
   },
   fieldFlex: { flex: 1 },
   fieldCard: {
@@ -810,6 +860,17 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     paddingVertical: 2,
     minHeight: 22,
     letterSpacing: -0.1,
+  },
+  billingDayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  billingDaySuffix: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
   heroCard: {
     backgroundColor: C.background,
@@ -1064,7 +1125,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
   iconPickerRowText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.accent,
+    color: C.textPrimary,
     letterSpacing: -0.1,
   },
   iconPickerRemove: {

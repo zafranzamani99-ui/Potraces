@@ -345,7 +345,11 @@ export function upcomingBills(
   const today = startOfDay(now);
   const horizon = addDays(today, Math.max(days, 0));
   const items = subs
-    .filter((s) => s.isActive && !s.isPaused)
+    // A finished installment plan still carries an advanced nextBillingDate (a
+    // phantom cycle), so exclude it — otherwise a paid-off loan inflates the
+    // "bills to come" figure that BudgetPlanning subtracts from the spendable pool.
+    .filter((s) => s.isActive && !s.isPaused
+      && !(s.isInstallment && s.totalInstallments && (s.completedInstallments ?? 0) >= s.totalInstallments))
     .map((s) => ({ s, due: toDate(s.nextBillingDate) }))
     .filter(
       ({ due }) => isValid(due) && isWithinInterval(due, { start: today, end: horizon })

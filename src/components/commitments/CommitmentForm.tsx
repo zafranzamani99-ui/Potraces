@@ -23,6 +23,7 @@ import { lightTap, mediumTap } from '../../services/haptics';
 import { Subscription } from '../../types';
 import { parseCommitmentDraft } from '../../services/manglishParser';
 import { computeNextBillingDate } from '../../utils/commitmentParse';
+import { roundMoney } from '../../utils/money';
 import CategoryPicker from '../common/CategoryPicker';
 import CalendarPicker from '../common/CalendarPicker';
 import WalletLogo from '../common/WalletLogo';
@@ -386,7 +387,13 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
       setCompletedStr(subscription.completedInstallments?.toString() || '');
       setIsPaused(subscription.isPaused || false);
       setWalletId(subscription.walletId);
-      setOutstandingBalance(subscription.outstandingBalance?.toString() || '');
+      // outstandingBalance is stored as the REMAINING balance, but this field is
+      // the "total price". Reconstruct the total for display: remaining + paid.
+      setOutstandingBalance(
+        subscription.outstandingBalance != null
+          ? String(roundMoney(subscription.outstandingBalance + (subscription.completedInstallments || 0) * subscription.amount))
+          : ''
+      );
       setImageUri(subscription.imageUri);
       setIconName(subscription.iconName);
     } else {
@@ -489,10 +496,31 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
 
   const handleSave = useCallback(() => {
     if (!name.trim()) { onError?.(t.subscriptions.enterName); return; }
-    const amt = parseFloat(amount);
-    if (!amt || isNaN(amt) || amt <= 0) { onError?.(t.subscriptions.enterValidAmount); return; }
+    const amt = roundMoney(parseFloat(amount));
+    if (!amt || !Number.isFinite(amt) || amt <= 0) { onError?.(t.subscriptions.enterValidAmount); return; }
+    // Installment plan needs a real duration. Toggling installment on and dismissing
+    // the setup sheet leaves totalInstallments empty; without this it would silently
+    // save a bogus 1-installment plan.
+    const totalInst = parseInt(totalInstallments) || 0;
+    if (isInstallment && totalInst < 1) { onError?.('set the installment duration'); return; }
     if (savingRef.current) return; // ignore double-tap before the modal unmounts
     savingRef.current = true;
+    // "already paid": respect an explicit 0 (empty string falls back to the stored
+    // value), and clamp into [0, totalInst] so a bogus count can't lock a plan as
+    // "complete" or drive the schedule negative.
+    const completedInst = isInstallment
+      ? Math.max(0, Math.min(
+          completedStr.trim() !== '' ? (parseInt(completedStr) || 0) : (subscription?.completedInstallments ?? 0),
+          totalInst,
+        ))
+      : undefined;
+    // The field holds the loan's TOTAL price; the store tracks REMAINING. Store
+    // remaining = total − already-paid, rounded, so an in-progress import isn't
+    // overstated and the balance reaches ~0 when the plan completes.
+    const totalPriceInput = roundMoney(parseFloat(outstandingBalance) || 0);
+    const remainingBalance = isInstallment && totalPriceInput > 0
+      ? roundMoney(Math.max(0, totalPriceInput - (completedInst ?? 0) * amt))
+      : undefined;
     const validStart = isValid(startDate) ? startDate : new Date();
     const payload: SavePayload = {
       name: name.trim(),
@@ -501,18 +529,23 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
       billingCycle,
       startDate: validStart,
       nextBillingDate: subscription?.nextBillingDate || validStart,
-      isActive: true,
+      // Never revive a cancelled/archived commitment on a routine edit — preserve
+      // the existing active flag; only a brand-new commitment defaults to active.
+      isActive: subscription ? subscription.isActive : true,
       isPaused,
-      reminderDays: parseInt(reminderDays) || 3,
+      // Respect an explicit "0" (remind on the day); only blank/garbage → default 3.
+      reminderDays: (() => { const r = parseInt(reminderDays); return Number.isFinite(r) && r >= 0 ? r : 3; })(),
       isInstallment,
       note: note.trim() || undefined,
       walletId,
       imageUri,
       iconName,
-      ...(isInstallment && { totalInstallments: parseInt(totalInstallments) || 1, completedInstallments: parseInt(completedStr) || subscription?.completedInstallments || 0 }),
-      ...(isInstallment && outstandingBalance && parseFloat(outstandingBalance) > 0 && {
-        outstandingBalance: parseFloat(outstandingBalance),
-      }),
+      // Always write these (undefined when off) so toggling installment OFF can't
+      // leave stale totalInstallments / completedInstallments / outstandingBalance
+      // behind for the store's decrement logic to keep chewing on.
+      totalInstallments: isInstallment ? totalInst : undefined,
+      completedInstallments: completedInst,
+      outstandingBalance: remainingBalance,
     };
     mediumTap();
     onSave(payload);
@@ -580,7 +613,13 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
             ref={amountRef}
             style={styles.heroInput}
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={(raw) => {
+              // Strip grouping commas and any stray non-numeric chars so a pasted
+              // "1,000" doesn't parseFloat to 1. Keep a single decimal point.
+              const stripped = raw.replace(/,/g, '').replace(/[^\d.]/g, '');
+              const fd = stripped.indexOf('.');
+              setAmount(fd === -1 ? stripped : stripped.slice(0, fd + 1) + stripped.slice(fd + 1).replace(/\./g, ''));
+            }}
             placeholder="0.00"
             keyboardType="decimal-pad"
             placeholderTextColor={withAlpha(C.textMuted, 0.25)}
@@ -1240,9 +1279,12 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
               </View>
 
               {(() => {
-                const total = durationUnit === 'years'
+                // Cap at 100 years — a free number-pad can otherwise overflow
+                // addMonths() to an Invalid Date and crash date-fns format() mid-type.
+                const rawTotal = durationUnit === 'years'
                   ? (parseInt(durationValue) || 0) * 12
                   : parseInt(durationValue) || 0;
+                const total = Math.min(Math.max(rawTotal, 0), 1200);
                 const completed = parseInt(completedStr) || 0;
                 const remaining = Math.max(total - completed, 0);
                 const amt = parseFloat(amount) || 0;
@@ -1278,9 +1320,10 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
               <NeuButton
                 label="done"
                 onPress={() => {
-                  const total = durationUnit === 'years'
+                  const rawTotal = durationUnit === 'years'
                     ? (parseInt(durationValue) || 0) * 12
                     : parseInt(durationValue) || 0;
+                  const total = Math.min(Math.max(rawTotal, 0), 1200);
                   setTotalInstallments(total > 0 ? total.toString() : '');
                   setInstallModalVisible(false);
                 }}

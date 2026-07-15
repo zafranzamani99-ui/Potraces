@@ -14,6 +14,7 @@ import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { Wallet } from '../../types';
 import WalletLogo from '../common/WalletLogo';
+import { useNeu } from '../common/neu';
 
 interface RepayPickerModalProps {
   visible: boolean;
@@ -33,6 +34,7 @@ const RepayPickerModal: React.FC<RepayPickerModalProps> = ({
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
 
   return (
     <Modal
@@ -45,17 +47,18 @@ const RepayPickerModal: React.FC<RepayPickerModalProps> = ({
       <Pressable style={styles.deleteConfirmOverlay} onPress={onClose}>
         <View style={styles.repayPickerCard} onStartShouldSetResponder={() => true}>
           <Text style={styles.repayPickerTitle}>{t.wallets.repayCredit}</Text>
-          <Text style={styles.repayPickerSub}>Choose which card to repay</Text>
+          <Text style={styles.repayPickerSub}>{t.wallets.chooseCardToRepay}</Text>
           <ScrollView
             nestedScrollEnabled
             keyboardShouldPersistTaps="handled"
             style={styles.repayPickerList}
+            contentContainerStyle={styles.repayPickerListContent}
             showsVerticalScrollIndicator={false}
           >
-            {creditsWithBalance.map((w, idx) => (
+            {creditsWithBalance.map((w) => (
               <TouchableOpacity
                 key={w.id}
-                style={[styles.repayPickerRow, idx < creditsWithBalance.length - 1 && styles.repayPickerRowBorder]}
+                style={[styles.repayPickerRow, neuF.raisedSoft]}
                 onPress={() => {
                   onClose();
                   setTimeout(() => onSelectCredit(w.id), 250);
@@ -67,7 +70,7 @@ const RepayPickerModal: React.FC<RepayPickerModalProps> = ({
                 <WalletLogo wallet={w} size={36} />
                 <View style={styles.repayPickerRowInfo}>
                   <Text style={styles.repayPickerRowName} numberOfLines={1}>{w.name}</Text>
-                  <Text style={styles.repayPickerRowBalance}>{currency} {(w.usedCredit || 0).toFixed(2)} used</Text>
+                  <Text style={styles.repayPickerRowBalance}>{currency} {(w.usedCredit || 0).toFixed(2)} {t.wallets.usedLabel}</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color={C.textMuted} />
               </TouchableOpacity>
@@ -118,16 +121,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   repayPickerList: {
     maxHeight: 320,
   },
+  repayPickerListContent: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.xs,
+  },
   repayPickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
+    paddingHorizontal: SPACING.md,
     gap: SPACING.md,
-  },
-  repayPickerRowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.sm,
+    backgroundColor: C.background,
   },
   repayPickerRowInfo: {
     flex: 1,

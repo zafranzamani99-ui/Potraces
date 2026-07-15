@@ -47,7 +47,7 @@ const SelectionActionBar: React.FC<SelectionActionBarProps> = ({ count, allArchi
         )}
         <TouchableOpacity style={[styles.selectionEditBtn, neu.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} onPress={onArchive} activeOpacity={0.7}>
           <Feather name={allArchived ? 'corner-up-left' : 'archive'} size={18} color={C.bronze} />
-          <Text style={[styles.selectionEditText, { color: C.bronze }]}>{allArchived ? 'unarchive' : 'archive'}</Text>
+          <Text style={[styles.selectionEditText, { color: C.bronze }]}>{allArchived ? t.debts.unarchive : t.debts.archive}</Text>
         </TouchableOpacity>
         <View style={styles.selectionDeleteBtn}>
           <NeuButton

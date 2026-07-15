@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
-import Button from './Button';
+import NeuButton from './NeuButton';
 import CategoryIcon from './CategoryIcon';
 
 interface EmptyStateProps {
@@ -49,7 +49,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
       <Text style={styles.message}>{message}</Text>
       {actionLabel && onAction && (
         <View ref={actionRef} collapsable={false} style={styles.button}>
-          <Button title={actionLabel} onPress={onAction} />
+          <NeuButton label={actionLabel} onPress={onAction} />
         </View>
       )}
     </Animated.View>
@@ -88,7 +88,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING['2xl'],
     lineHeight: 20,
   },
-  button: { marginTop: SPACING.sm },
+  // NeuButton (Neu Select) is full-width; cap + center it so the CTA stays tidy.
+  button: { marginTop: SPACING.sm, width: '100%', maxWidth: 256 },
 });
 
 export default EmptyState;

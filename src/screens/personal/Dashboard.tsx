@@ -35,8 +35,7 @@ import { useCategories } from '../../hooks/useCategories';
 import GlassModeToggle from '../../components/common/GlassModeToggle';
 import QuickActions from '../../components/common/QuickActions';
 import NeuIconButton from '../../components/common/NeuIconButton';
-import StatCard from '../../components/common/StatCard';
-import Card from '../../components/common/Card';
+import { useNeu } from '../../components/common/neu';
 import TransactionItem from '../../components/common/TransactionItem';
 import EmptyState from '../../components/common/EmptyState';
 import Button from '../../components/common/Button';
@@ -59,7 +58,6 @@ import { lightTap } from '../../services/haptics';
 import QuickAddExpense from '../../components/common/QuickAddExpense';
 import { useBNPLTotal } from '../../hooks/useBNPLTotal';
 import { useKeptNumber } from '../../hooks/useKeptNumber';
-import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { generateSpendingMirror } from '../../services/spendingMirror';
 import BreathingRoom from '../../components/common/BreathingRoom';
 import FreshStart from '../../components/common/FreshStart';
@@ -181,6 +179,7 @@ const WeekTicks: React.FC<{ flags: boolean[]; color: string; C: typeof CALM }> =
 const PersonalDashboard: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
+  const neuF = useNeu(undefined, { faintDark: true }); // details cards — Onyx soft raise
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -809,7 +808,7 @@ const PersonalDashboard: React.FC = () => {
             <Text style={styles.insightCardLabel}>{t.dashboard.thisMonth.toLowerCase()}</Text>
             <View style={styles.insightBody}>
               <View style={styles.insightTextCol}>
-                <Text style={[styles.insightValue, { color: C.textPrimary }]}>
+                <Text style={[styles.insightValue, { color: C.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                   {stats.transactionCount}
                 </Text>
                 <Text style={styles.insightContext}>{t.dashboard.transactions.toLowerCase()}</Text>
@@ -838,7 +837,7 @@ const PersonalDashboard: React.FC = () => {
             <Text style={styles.insightCardLabel}>{t.dashboard.pace}</Text>
             <View style={styles.insightBody}>
               <View style={styles.insightTextCol}>
-                <Text style={[styles.insightValue, { color: C.textPrimary }]}>
+                <Text style={[styles.insightValue, { color: C.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                   {insightStrip.velocityPercent}%
                 </Text>
                 <Text style={styles.insightContext}>{t.dashboard.ofUsualSpending}</Text>
@@ -861,7 +860,7 @@ const PersonalDashboard: React.FC = () => {
             <Text style={styles.insightCardLabel}>{t.dashboard.hero.kept}</Text>
             <View style={styles.insightBody}>
               <View style={styles.insightTextCol}>
-                <Text style={[styles.insightValue, { color: C.textPrimary }]}>
+                <Text style={[styles.insightValue, { color: C.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                   {kept.keptThisMonth >= 0 ? '+' : ''}{currency} {kept.keptThisMonth.toFixed(0)}
                 </Text>
                 <Text style={styles.insightContext}>{t.dashboard.netThisMonth}</Text>
@@ -885,7 +884,7 @@ const PersonalDashboard: React.FC = () => {
               <Text style={styles.insightCardLabel}>{t.dashboard.owedLater}</Text>
               <View style={styles.insightBody}>
                 <View style={styles.insightTextCol}>
-                  <Text style={[styles.insightValue, { color: C.textPrimary }]}>
+                  <Text style={[styles.insightValue, { color: C.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                     {currency} {bnpl.totalUsed.toFixed(0)}
                   </Text>
                   <Text style={styles.insightContext}>{t.dashboard.buyNowPayLater}</Text>
@@ -909,7 +908,7 @@ const PersonalDashboard: React.FC = () => {
             <Text style={styles.insightCardLabel}>{t.dashboard.comingUp}</Text>
             <View style={styles.insightBody}>
               <View style={styles.insightTextCol}>
-                <Text style={[styles.insightValue, { color: C.textPrimary }]}>
+                <Text style={[styles.insightValue, { color: C.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                   {insightStrip.upcomingCount} {insightStrip.upcomingCount === 1 ? t.dashboard.billOne : t.dashboard.billMany}
                 </Text>
                 <Text style={styles.insightContext}>{currency} {insightStrip.upcomingTotal.toFixed(0)} {t.dashboard.thisWeekLower}</Text>
@@ -933,74 +932,34 @@ const PersonalDashboard: React.FC = () => {
 
         {/* Details section */}
         <CollapsibleSection title={t.dashboard.details} subtitle={t.dashboard.detailsSubtitle} defaultOpen={false}>
-          {/* Upcoming Bills */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => {
-              lightTap();
-              navigation.getParent()?.navigate('SubscriptionList');
-            }}
-          >
-            {stats.upcomingBillsList.length > 0 ? (
-              <Card style={styles.detailCard}>
-                <View style={styles.upcomingHeader}>
-                  <Feather name="calendar" size={18} color={C.neutral} />
-                  <Text style={styles.upcomingTitle}>{t.dashboard.upcomingBills}</Text>
-                  <Feather name="chevron-right" size={16} color={C.textSecondary} />
-                </View>
-                {stats.upcomingBillsList.slice(0, 3).map((sub) => {
-                  const daysUntil = Math.ceil(
-                    (sub.nextBillingDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-                  );
-                  return (
-                    <View key={sub.id} style={styles.upcomingItem}>
-                      <Text style={styles.upcomingName} numberOfLines={1}>{sub.name}</Text>
-                      <Text style={styles.upcomingDays}>{daysUntil <= 0 ? t.dashboard.today : `${daysUntil}d`}</Text>
-                      <Text style={styles.upcomingAmount}>{currency} {sub.amount.toFixed(2)}</Text>
-                    </View>
-                  );
-                })}
-                <View style={styles.upcomingFooter}>
-                  <Text style={styles.upcomingFooterTotal}>
-                    {t.dashboard.total}: {currency} {stats.upcomingTotal.toFixed(2)}
-                  </Text>
-                  {stats.upcomingBillsList.length > 3 && (
-                    <Text style={styles.upcomingFooterMore}>
-                      +{stats.upcomingBillsList.length - 3} {t.dashboard.more}
-                    </Text>
-                  )}
-                </View>
-              </Card>
-            ) : (
-              <Card style={styles.detailCard}>
-                <View style={styles.upcomingHeader}>
-                  <Feather name="calendar" size={18} color={C.neutral} />
-                  <Text style={styles.upcomingTitle}>{t.dashboard.upcomingBills}</Text>
-                  <Feather name="chevron-right" size={16} color={C.textSecondary} />
-                </View>
-                <Text style={styles.upcomingEmpty}>{t.dashboard.noBillsDueSoon}</Text>
-              </Card>
-            )}
-          </TouchableOpacity>
+          {/* Upcoming-bills card removed (2026-07-16) — bills live in the 7-day
+              tick ruler above + the Bills screen. */}
 
-          {/* Debt Stats */}
+          {/* You owe / owed to you — one minimal neu card, two columns. Micro-label
+              + light tabular number per side (insight-strip type language); the
+              divider separates them. Tap → Debt screen. */}
           {(stats.youOwe > 0 || stats.owedToYou > 0) && (
-            <View style={styles.statsGrid}>
-              <StatCard
-                title={t.dashboard.youOwe}
-                value={`${currency} ${stats.youOwe.toFixed(2)}`}
-                icon="arrow-up-circle"
-                iconColor={C.neutral}
-                subtitle={t.dashboard.outstanding}
-              />
-              <StatCard
-                title={t.dashboard.owedToYou}
-                value={`${currency} ${stats.owedToYou.toFixed(2)}`}
-                icon="arrow-down-circle"
-                iconColor={C.positive}
-                subtitle={t.dashboard.outstanding}
-              />
-            </View>
+            <TouchableOpacity
+              style={[styles.debtCard, neuF.raisedSoft]}
+              activeOpacity={0.7}
+              onPress={() => { lightTap(); navigation.getParent()?.navigate('DebtTracking'); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${t.dashboard.youOwe} ${currency} ${stats.youOwe.toFixed(2)}. ${t.dashboard.owedToYou} ${currency} ${stats.owedToYou.toFixed(2)}`}
+            >
+              <View style={styles.debtCol}>
+                <Text style={styles.debtLabel}>{t.dashboard.youOwe}</Text>
+                <Text style={styles.debtValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                  {currency} {stats.youOwe.toFixed(0)}
+                </Text>
+              </View>
+              <View style={styles.debtDivider} />
+              <View style={styles.debtCol}>
+                <Text style={styles.debtLabel}>{t.dashboard.owedToYou}</Text>
+                <Text style={[styles.debtValue, { color: C.positive }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                  {currency} {stats.owedToYou.toFixed(0)}
+                </Text>
+              </View>
+            </TouchableOpacity>
           )}
 
           {/* Breathing Room (replaces Budget Overview) */}
@@ -1385,82 +1344,44 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // Detail sections
-  detailCard: {
-    marginBottom: SPACING.md,
-  },
   detailSectionTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
 
-  statsGrid: {
+  // You owe / owed to you — Onyx neu card (no border; raise from neuF.raisedSoft
+  // at the call site), two columns in the insight-strip type language.
+  debtCard: {
     flexDirection: 'row',
-    gap: SPACING.md,
+    alignItems: 'center',
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
     marginBottom: SPACING.md,
+    gap: SPACING.lg,
   },
-
-  // Upcoming Bills
-  upcomingHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  upcomingTitle: {
+  debtCol: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
+    gap: 4,
   },
-  upcomingEmpty: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    textAlign: 'center',
-    paddingVertical: SPACING.md,
-  },
-  upcomingFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    marginTop: SPACING.xs,
-  },
-  upcomingFooterTotal: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-  },
-  upcomingFooterMore: {
+  debtLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
   },
-  upcomingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.xs,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-  },
-  upcomingName: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+  debtValue: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.light,
     color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
   },
-  upcomingDays: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.neutral,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    marginRight: SPACING.sm,
-  },
-  upcomingAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
+  debtDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: withAlpha(C.textPrimary, 0.08),
   },
 
   // Section

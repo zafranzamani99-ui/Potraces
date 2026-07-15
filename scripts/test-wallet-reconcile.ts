@@ -21,6 +21,7 @@ import { reconcileWalletBalances } from '../src/utils/walletReconcile';
 import { useWalletStore } from '../src/store/walletStore';
 import { usePersonalStore } from '../src/store/personalStore';
 import { useDebtStore } from '../src/store/debtStore';
+import { useBusinessStore } from '../src/store/businessStore';
 
 const D = new Date('2026-06-20T08:00:00.000Z');
 
@@ -79,6 +80,24 @@ const PERSONAL_TIP_INITIAL = 1500;
 const PERSONAL_TIP_PAY = 200; // moved once by linked tx tx-personal-tip
 const PERSONAL_TIP_EXPECTED = PERSONAL_TIP_INITIAL - PERSONAL_TIP_PAY; // 1300
 
+// ── Self-paid SPLIT expenses (the reconcile-erases-business-split bug) ──
+// A self-paid split deducts the payer's wallet by the bill total at creation. A
+// business-mode split links to a business tx reconcile does NOT replay, so the
+// outlay must be counted from the split record (using the LIVE business-tx amount,
+// so an edited total reconciles at its real value) — else autoReconcile adds the
+// money back and erases the expense. A personal-mode split links to a personal tx
+// that the transactions loop already replays, so it must be SKIPPED (no double-count).
+const WALLET_BIZ_SPLIT = 'w-biz-split';
+const BIZ_SPLIT_INITIAL = 4000;
+const BIZ_SPLIT_TX_AMOUNT = 950; // live business-tx amount (split.totalAmount below is stale)
+const BIZ_SPLIT_STALE_TOTAL = 900;
+const BIZ_SPLIT_EXPECTED = BIZ_SPLIT_INITIAL - BIZ_SPLIT_TX_AMOUNT; // 3050
+
+const WALLET_PERSONAL_SPLIT = 'w-personal-split';
+const PERSONAL_SPLIT_INITIAL = 2000;
+const PERSONAL_SPLIT_AMOUNT = 300; // moved once by linked personal tx tx-personal-split
+const PERSONAL_SPLIT_EXPECTED = PERSONAL_SPLIT_INITIAL - PERSONAL_SPLIT_AMOUNT; // 1700
+
 // ─── Seed the REAL stores ──────────────────────────────────────────────────────
 useWalletStore.setState({
   wallets: [
@@ -98,9 +117,18 @@ useWalletStore.setState({
     { id: WALLET_BIZ_TIP_THEYOWE, name: 'Biz Tip TheyOwe', type: 'bank', balance: SENTINEL_STORED, initialBalance: BIZ_TIP_THEYOWE_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
     { id: WALLET_BIZ_TIP_IOWE, name: 'Biz Tip IOwe', type: 'bank', balance: SENTINEL_STORED, initialBalance: BIZ_TIP_IOWE_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
     { id: WALLET_PERSONAL_TIP, name: 'Personal Tip', type: 'cash', balance: SENTINEL_STORED, initialBalance: PERSONAL_TIP_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
+    { id: WALLET_BIZ_SPLIT, name: 'Biz Split', type: 'bank', balance: SENTINEL_STORED, initialBalance: BIZ_SPLIT_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
+    { id: WALLET_PERSONAL_SPLIT, name: 'Personal Split', type: 'cash', balance: SENTINEL_STORED, initialBalance: PERSONAL_SPLIT_INITIAL, icon: 'home', color: '#4F5104', createdAt: D, updatedAt: D } as any,
   ],
   transfers: [],
 });
+
+// Business-mode split expense lives on a business transaction reconcile doesn't replay.
+useBusinessStore.setState({
+  businessTransactions: [
+    { id: 'biz-split-tx', date: D, amount: BIZ_SPLIT_TX_AMOUNT, type: 'cost', category: 'split_expense', note: 'dinner', inputMethod: 'manual', createdAt: D, updatedAt: D } as any,
+  ],
+} as any);
 
 usePersonalStore.setState({
   // The two linked transactions that ACTUALLY move the wallet (replayed once each).
@@ -147,6 +175,21 @@ usePersonalStore.setState({
       inputMethod: 'manual',
       linkedPaymentId: 'pay-personal-tip',
       linkedDebtId: 'd-personal-tip',
+      createdAt: D,
+      updatedAt: D,
+    } as any,
+    // Linked personal tx for the personal-mode self-paid split (moves the wallet once);
+    // the split below references it, so reconcile must SKIP the split (no double-count).
+    {
+      id: 'tx-personal-split',
+      amount: PERSONAL_SPLIT_AMOUNT,
+      category: 'split_expense',
+      description: 'lunch',
+      date: D,
+      type: 'expense',
+      mode: 'personal',
+      walletId: WALLET_PERSONAL_SPLIT,
+      inputMethod: 'manual',
       createdAt: D,
       updatedAt: D,
     } as any,
@@ -236,6 +279,21 @@ useDebtStore.setState({
       mode: 'personal', createdAt: D, updatedAt: D,
     } as any,
   ],
+  splits: [
+    // Business-mode self-paid split: business tx NOT replayed → reconcile counts the
+    // outlay from here, using the LIVE business-tx amount (950), not the stale total (900).
+    {
+      id: 's-biz', description: 'dinner', totalAmount: BIZ_SPLIT_STALE_TOTAL, splitMethod: 'equal',
+      participants: [], items: [], paidBy: { id: '__self__', name: 'me', isFromPhone: false },
+      linkedTransactionId: 'biz-split-tx', walletId: WALLET_BIZ_SPLIT, mode: 'business', createdAt: D, updatedAt: D,
+    } as any,
+    // Personal-mode self-paid split: links to tx-personal-split (already replayed) → SKIPPED.
+    {
+      id: 's-personal', description: 'lunch', totalAmount: PERSONAL_SPLIT_AMOUNT, splitMethod: 'equal',
+      participants: [], items: [], paidBy: { id: '__self__', name: 'me', isFromPhone: false },
+      linkedTransactionId: 'tx-personal-split', walletId: WALLET_PERSONAL_SPLIT, mode: 'personal', createdAt: D, updatedAt: D,
+    } as any,
+  ],
 } as any);
 
 // ─── Run the REAL reconcile ──────────────────────────────────────────────────────
@@ -299,6 +357,20 @@ check(
   `personal payment with linked tx is SKIPPED, tip NOT counted (${PERSONAL_TIP_EXPECTED})`,
   !!rowPersonalTip && Math.abs(rowPersonalTip.computed - PERSONAL_TIP_EXPECTED) < 0.005,
   `got computed=${rowPersonalTip?.computed} (double-count/tip-count bug would differ)`,
+);
+
+const rowBizSplit = results.find((r) => r.walletId === WALLET_BIZ_SPLIT);
+check(
+  `business self-paid split is COUNTED at live tx amount, not erased (${BIZ_SPLIT_EXPECTED})`,
+  !!rowBizSplit && Math.abs(rowBizSplit.computed - BIZ_SPLIT_EXPECTED) < 0.005,
+  `got computed=${rowBizSplit?.computed} (erase bug → ${BIZ_SPLIT_INITIAL}; stale-total bug → ${BIZ_SPLIT_INITIAL - BIZ_SPLIT_STALE_TOTAL})`,
+);
+
+const rowPersonalSplit = results.find((r) => r.walletId === WALLET_PERSONAL_SPLIT);
+check(
+  `personal split with linked tx is SKIPPED, not double-counted (${PERSONAL_SPLIT_EXPECTED})`,
+  !!rowPersonalSplit && Math.abs(rowPersonalSplit.computed - PERSONAL_SPLIT_EXPECTED) < 0.005,
+  `got computed=${rowPersonalSplit?.computed} (double-count bug → ${PERSONAL_SPLIT_INITIAL - 2 * PERSONAL_SPLIT_AMOUNT})`,
 );
 
 console.log('');

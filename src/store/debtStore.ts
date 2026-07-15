@@ -203,16 +203,32 @@ export const useDebtStore = create<DebtState>()(
             const existing = debt.payments.find((p) => p.id === paymentId);
             if (!existing) return debt;
 
+            // Cap an amount edit to the debt's remaining capacity (total minus the
+            // OTHER payments), mirroring addPayment — the overflow is a tip the caller
+            // tracks separately in tipAmount, and must NOT also live in amount. Without
+            // this cap, editing or consolidating into an overpayment stored the tip in
+            // amount AND tipAmount, and business-mode walletReconcile (which counts
+            // amount + tipAmount) double-counted it, inflating the wallet every sync.
+            const othersTotal = roundMoney(
+              debt.payments.reduce((sum, p) => (p.id === paymentId ? sum : sum + p.amount), 0),
+            );
+            const capacity = roundMoney(Math.max(0, debt.totalAmount - othersTotal));
+            const cappedUpdates = { ...updates };
+            if (updates.amount !== undefined) {
+              const raw = Number.isFinite(updates.amount) && updates.amount >= 0 ? updates.amount : 0;
+              cappedUpdates.amount = roundMoney(Math.min(raw, capacity));
+            }
+
             const newPayments = debt.payments.map((p) => {
               if (p.id !== paymentId) return p;
-              const amountChanged = updates.amount !== undefined && updates.amount !== p.amount;
-              const noteChanged = updates.note !== undefined && updates.note !== p.note;
+              const amountChanged = cappedUpdates.amount !== undefined && cappedUpdates.amount !== p.amount;
+              const noteChanged = cappedUpdates.note !== undefined && cappedUpdates.note !== p.note;
               const editEntry = (amountChanged || noteChanged)
                 ? { editedAt: new Date(), previousAmount: p.amount, previousNote: p.note }
                 : null;
               return {
                 ...p,
-                ...updates,
+                ...cappedUpdates,
                 editLog: editEntry
                   ? [...(p.editLog ?? []), editEntry]
                   : p.editLog,
@@ -355,6 +371,16 @@ export const useDebtStore = create<DebtState>()(
         }));
         // Tombstone the sub + each cascade-deleted debt so sync doesn't resurrect them.
         useTombstoneStore.getState().addTombstones([id, ...deletedDebtIds]);
+        // Clear the reverse back-link so the linked commitment doesn't keep a stale
+        // sharedSubId (which would flag it as "shared" with a subscription that's
+        // gone). Lazy require to avoid an import cycle (see walletStore).
+        try {
+          const { usePersonalStore } = require('./personalStore');
+          const ps = usePersonalStore.getState();
+          ps.subscriptions
+            .filter((s: any) => s.sharedSubId === id)
+            .forEach((s: any) => ps.updateSubscription(s.id, { sharedSubId: undefined }));
+        } catch {}
       },
 
       addSharedSubMember: (subId, member) =>
@@ -483,7 +509,21 @@ export const useDebtStore = create<DebtState>()(
         })),
 
       updateMonthAmounts: (subId, month, newTotal, memberShares) =>
-        set((state) => ({
+        set((state) => {
+          // Precompute each member's settled-ness at their NEW share from the linked
+          // debt's actual payments, so the month-record isPaid flag can't drift out of
+          // sync with the debt (raising a share past what was paid must un-settle it;
+          // lowering it below what was paid must settle it). Members with no linked
+          // debt (e.g. self / debts not yet generated) keep their existing flag.
+          const settledByContact: Record<string, boolean> = {};
+          for (const d of state.debts) {
+            if (d.sharedSubId !== subId || d.sharedSubMonth !== month) continue;
+            const share = memberShares.find((s) => s.contactId === d.contact.id);
+            const shareTotal = share ? share.shareAmount : d.totalAmount;
+            const rawPaid = roundMoney(d.payments.reduce((sum, p) => sum + p.amount, 0));
+            settledByContact[d.contact.id] = shareTotal > 0 && roundMoney(Math.min(shareTotal, rawPaid)) >= shareTotal;
+          }
+          return {
           sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
             if (sub.id !== subId) return sub;
             return {
@@ -495,7 +535,9 @@ export const useDebtStore = create<DebtState>()(
                   totalAmount: newTotal,
                   payments: r.payments.map((p) => {
                     const share = memberShares.find((s) => s.contactId === p.contactId);
-                    return share ? { ...p, amount: share.shareAmount } : p;
+                    const amount = share ? share.shareAmount : p.amount;
+                    const isPaid = p.contactId in settledByContact ? settledByContact[p.contactId] : p.isPaid;
+                    return { ...p, amount, isPaid };
                   }),
                 };
               }),
@@ -526,7 +568,8 @@ export const useDebtStore = create<DebtState>()(
               updatedAt: new Date(),
             };
           }),
-        })),
+          };
+        }),
 
       addContact: (contact) =>
         set((state) => ({

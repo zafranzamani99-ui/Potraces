@@ -14,6 +14,7 @@ import { lightTap } from '../../services/haptics';
 import { withAlpha } from '../../constants';
 import { usePersonalStore } from '../../store/personalStore';
 import { useCalculatorStore } from '../../store/calculatorStore';
+import { calcHub } from '../../utils/calcHub';
 import {
   initialCalc, inputDigit, inputDoubleZero, inputDot, inputOp, inputBracket,
   inputPercent, backspace, clearAll, equals, evaluate, liveResult, result,
@@ -75,7 +76,8 @@ const Calculator: React.FC = () => {
   const clearHistory = useCalculatorStore((s) => s.clearHistory);
   const removeEntry = useCalculatorStore((s) => s.removeEntry);
   const goals = usePersonalStore((s) => s.goals);
-  const activeGoals = useMemo(() => goals.filter((g) => !g.isArchived), [goals]);
+  // Exclude completed goals — they have no room left, so contributing would be a no-op.
+  const activeGoals = useMemo(() => goals.filter((g) => !g.isArchived && g.currentAmount < g.targetAmount), [goals]);
 
   const [state, setState] = useState<CalcState>(initialCalc);
   const [showHistory, setShowHistory] = useState(false);
@@ -90,17 +92,27 @@ const Calculator: React.FC = () => {
   // Neu surface for the hub rows — based on the shared BottomSheet's C.background bg
   // (all modals use the edit-commitment tone), soft-dark tier.
   const hubNeu = useNeu(undefined, { faintDark: true });
-  // When a sub-action opened FROM the hub is dismissed (not saved), reopen the
-  // "What next?" hub instead of dropping the user on the bare calculator.
+  // Reopen the "What next?" hub after a sub-action is CANCELLED (not saved), so the
+  // user lands back on the menu instead of the bare calculator.
+  //  • Local sheets (Log, Quick split): close the hub, present the sheet; on cancel
+  //    reopen via reopenHubRef; a save clears the ref so it stays closed.
+  //  • Nav sub-actions (Detailed split, goal): the other screen sets calcHub on
+  //    cancel and goBack()s; we reopen here on focus.
   const reopenHubRef = useRef(false);
-  const maybeReopenHub = useCallback(() => {
+  const reopenHubSoon = useCallback(() => {
+    setTimeout(() => { setHubView('main'); setShowHub(true); }, 260);
+  }, []);
+  const maybeReopenHubLocal = useCallback(() => {
     if (!reopenHubRef.current) return;
     reopenHubRef.current = false;
-    // Let the sub-modal / pushed screen finish dismissing before presenting the hub.
-    setTimeout(() => { setHubView('main'); setShowHub(true); }, 300);
-  }, []);
-  // Navigation sub-actions (detailed split, goal) goBack to here — reopen on return.
-  useFocusEffect(useCallback(() => { maybeReopenHub(); }, [maybeReopenHub]));
+    reopenHubSoon();
+  }, [reopenHubSoon]);
+  useFocusEffect(useCallback(() => {
+    if (calcHub.reopenOnReturn) {
+      calcHub.reopenOnReturn = false;
+      reopenHubSoon();
+    }
+  }, [reopenHubSoon]));
 
   const value = result(state);
   const amount = currencyAmount(value); // currency-safe (2dp, no float noise / e-notation) for money hand-off
@@ -143,8 +155,9 @@ const Calculator: React.FC = () => {
   const openLog = (dir: 'expense' | 'income') => {
     lightTap();
     const amt = currencyAmountString(value);
-    reopenHubRef.current = true; // dismissing the log sheet returns to the hub
+    reopenHubRef.current = true; // cancelling the log sheet returns to the hub
     setShowHub(false);
+    // Present after the hub finishes dismissing (avoids the iOS present-while-dismiss drop).
     setTimeout(() => quickAddRef.current?.open(dir, amt), 260);
   };
   const insertFromHistory = (r: number) => { lightTap(); setState((s) => insertValue(s, String(r))); setShowHistory(false); };
@@ -324,9 +337,9 @@ const Calculator: React.FC = () => {
           {hubView === 'split' && (
             <>
               <ActionRow C={C} surface={hubNeu.raisedSoft} icon="flash" tint={C.accent} title={t.calc.quickSplit} subtitle={t.calc.quickSplitSub}
-                onPress={() => { lightTap(); reopenHubRef.current = true; setShowHub(false); setShowQuick(true); }} />
+                onPress={() => { lightTap(); reopenHubRef.current = true; setShowHub(false); setTimeout(() => setShowQuick(true), 260); }} />
               <ActionRow C={C} surface={hubNeu.raisedSoft} icon="list" tint={C.bronze} title={t.calc.detailedSplit} subtitle={t.calc.detailedSplitSub}
-                onPress={() => { lightTap(); reopenHubRef.current = true; setShowHub(false); navigation.navigate('DebtTracking', { prefillSplitAmount: amount }); }} />
+                onPress={() => { lightTap(); setShowHub(false); navigation.navigate('DebtTracking', { prefillSplitAmount: amount }); }} />
             </>
           )}
 
@@ -344,7 +357,7 @@ const Calculator: React.FC = () => {
                   tint={C.gold}
                   title={g.name}
                   subtitle={`RM ${formatNumber(g.currentAmount)} / RM ${formatNumber(g.targetAmount)} · ${pct}%`}
-                  onPress={() => { lightTap(); reopenHubRef.current = true; setShowHub(false); navigation.navigate('Goals', { contributeGoalId: g.id, contributeAmount: amount }); }}
+                  onPress={() => { lightTap(); setShowHub(false); navigation.navigate('Goals', { contributeGoalId: g.id, contributeAmount: amount }); }}
                 />
               );
             })
@@ -357,7 +370,7 @@ const Calculator: React.FC = () => {
         visible={showQuick}
         total={amount}
         onCreated={() => { reopenHubRef.current = false; }}
-        onClose={() => { setShowQuick(false); maybeReopenHub(); }}
+        onClose={() => { setShowQuick(false); maybeReopenHubLocal(); }}
       />
 
       {/* Locally-hosted quick-add sheet (no FAB, opts out of the global opener) so
@@ -367,7 +380,7 @@ const Calculator: React.FC = () => {
         ref={quickAddRef}
         showFab={false}
         registerGlobalOpener={false}
-        onDismiss={(saved) => { if (saved) reopenHubRef.current = false; maybeReopenHub(); }}
+        onDismiss={(saved) => { if (saved) reopenHubRef.current = false; maybeReopenHubLocal(); }}
       />
     </View>
   );

@@ -93,6 +93,10 @@ const TransactionsList: React.FC = () => {
   // → existing callers are unaffected.
   const initialFilterDateRange: DateRange | undefined = route.params?.filterDateRange;
   const initialFilterSearch: string | undefined = route.params?.filterSearch;
+  // Optional initial wallet filter, passed from the "Fix balance" flow so the
+  // list lands pre-filtered to a single wallet. Optional → existing callers are
+  // unaffected.
+  const initialFilterWallet: string | undefined = route.params?.filterWallet;
 
   const TYPE_FILTERS = useMemo(() => [
     { key: 'all' as FilterType, label: t.transactionList.all.toLowerCase() },
@@ -145,7 +149,7 @@ const TransactionsList: React.FC = () => {
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     () => (initialFilterCategory ? new Set([initialFilterCategory]) : new Set())
   );
-  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
+  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(initialFilterWallet ?? null);
   const [sortBy, setSortBy] = useState<SortBy>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 

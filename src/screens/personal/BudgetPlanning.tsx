@@ -56,6 +56,7 @@ import CircularProgress from '../../components/common/CircularProgress';
 import HalfGauge from '../../components/common/HalfGauge';
 import PaywallModal from '../../components/common/PaywallModal';
 import EmptyState from '../../components/common/EmptyState';
+import NeuButton from '../../components/common/NeuButton';
 import BudgetPlannerSheet from '../../components/common/BudgetPlannerSheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
@@ -108,6 +109,10 @@ const getPeriodDates = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
       return { startDate: startOfMonth(now), endDate: endOfMonth(now) };
   }
 };
+
+// Playbook ships in v1.2.0. Until then the whole tab is a locked "coming soon"
+// state — no create FAB, no active/past list. Flip to false to enable the feature.
+const PLAYBOOK_COMING_SOON = true;
 
 // ─── Component ─────────────────────────────────────────────
 const BudgetPlanning: React.FC = () => {
@@ -1371,9 +1376,16 @@ const BudgetPlanning: React.FC = () => {
               onPress={() => { lightTap(); setViewMode('playbook'); }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.segmentText, viewMode === 'playbook' && styles.segmentTextActive]}>
-                {t.budget.playbookTab}
-              </Text>
+              <View style={styles.segmentChipInner}>
+                <Text style={[styles.segmentText, viewMode === 'playbook' && styles.segmentTextActive]}>
+                  {t.budget.playbookTab}
+                </Text>
+                {PLAYBOOK_COMING_SOON && (
+                  <View style={styles.segmentSoonBadge}>
+                    <Text style={styles.segmentSoonText}>soon</Text>
+                  </View>
+                )}
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -1710,17 +1722,14 @@ const BudgetPlanning: React.FC = () => {
             <Text style={styles.emptyMessage}>
               {t.budget.emptyHeroSub}
             </Text>
-            <TouchableOpacity
-              ref={guideTargetRef}
-              style={styles.emptyButton}
-              onPress={openAddModal}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel={t.budget.addBudget}
-            >
-              <Feather name="plus" size={18} color={C.onAccent} />
-              <Text style={styles.emptyButtonText}>{t.budget.addBudget.toLowerCase()}</Text>
-            </TouchableOpacity>
+            <View ref={guideTargetRef} collapsable={false} style={styles.emptyCtaWrap}>
+              <NeuButton
+                onPress={openAddModal}
+                label={t.budget.addBudget.toLowerCase()}
+                icon="plus"
+                accessibilityLabel={t.budget.addBudget}
+              />
+            </View>
             <TouchableOpacity
               style={styles.emptyPlanLink}
               onPress={() => { lightTap(); setBudgetPlannerVisible(true); }}
@@ -1737,7 +1746,13 @@ const BudgetPlanning: React.FC = () => {
         </>)}
 
         {/* ══════════════ PLAYBOOK VIEW ══════════════ */}
-        {viewMode === 'playbook' && (<>
+        {viewMode === 'playbook' && (PLAYBOOK_COMING_SOON ? (
+          <EmptyState
+            icon="i/book-outline"
+            title="playbooks — coming soon"
+            message="this arrives in version 1.2.0. you'll be able to plan each paycheck and track where every ringgit goes."
+          />
+        ) : (<>
 
           {/* Active / Past tabs */}
           <View style={styles.pbTabRow}>
@@ -2024,7 +2039,7 @@ const BudgetPlanning: React.FC = () => {
             )}
           </>)}
 
-        </>)}
+        </>))}
 
       </ScrollView>
 
@@ -2512,7 +2527,7 @@ const BudgetPlanning: React.FC = () => {
       />
 
       {/* ── Playbook FAB ── */}
-      {viewMode === 'playbook' && playbookTab === 'active' && !createPlaybookVisible && (
+      {viewMode === 'playbook' && !PLAYBOOK_COMING_SOON && playbookTab === 'active' && !createPlaybookVisible && (
         <TouchableOpacity
           style={[styles.fab, { bottom: insets.bottom + 88 + SPACING.md }]}
           onPress={() => {
@@ -2791,20 +2806,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.xl,
     lineHeight: 20,
   },
-  emptyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: C.accent,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.full,
-  },
-  emptyButtonText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
+  // Width wrapper so the full-width Neu Select stays capped + centered (a
+  // center-aligned parent would otherwise collapse NeuButton to content width).
+  emptyCtaWrap: { width: '100%', maxWidth: 256 },
 
   // FAB
   fab: {
@@ -3380,6 +3384,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   segmentTextActive: {
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.accent,
+  },
+  segmentChipInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  segmentSoonBadge: {
+    backgroundColor: withAlpha(C.bronze, 0.16),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  segmentSoonText: {
+    fontSize: 9,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
 
   // ─── Playbook Tabs ────────────────────────────────────────

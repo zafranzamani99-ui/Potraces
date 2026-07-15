@@ -44,7 +44,7 @@ import { lightTap } from '../../services/haptics';
 import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
 import EchoInlineChat from '../../components/common/EchoInlineChat';
 import { useT } from '../../i18n';
-import { reconcileWalletBalances } from '../../utils/walletReconcile';
+import { computeWalletReconcile, type ReconcileResult } from '../../utils/walletReconcile';
 import { HITSLOP_10 } from '../../utils/hitSlop';
 import AddEditWalletModal from '../../components/wallet/AddEditWalletModal';
 import TransferModal from '../../components/wallet/TransferModal';
@@ -55,6 +55,7 @@ import EchoFab from '../../components/wallet/EchoFab';
 import { useEchoFabPan } from '../../hooks/useEchoFabPan';
 import RepayPickerModal from '../../components/wallet/RepayPickerModal';
 import DeleteConfirmModal from '../../components/wallet/DeleteConfirmModal';
+import FixBalanceSheet from '../../components/wallet/FixBalanceSheet';
 import FloatingModal from '../../components/common/FloatingModal';
 import TimeRangePills from '../../components/common/TimeRangePills';
 import { getRange, type RangeKey } from '../../utils/insights';
@@ -926,7 +927,7 @@ const WalletManagement: React.FC = () => {
         if (limitNum < used) {
           // A limit below what's already used would force a negative available
           // balance and an impossible usedCredit > limit state.
-          Alert.alert(t.a11y.error, `Credit limit can't be below the ${currency} ${used.toFixed(2)} you've already used.`);
+          Alert.alert(t.a11y.error, t.wallets.creditLimitBelowUsed.replace('{currency}', currency).replace('{amount}', used.toFixed(2)));
           return;
         }
         updates.creditLimit = limitNum;
@@ -1122,36 +1123,18 @@ const WalletManagement: React.FC = () => {
     setRepayPickerVisible(true);
   }, [creditsWithBalance, openRepay]);
 
-  const reconcileOne = useCallback((walletId: string) => {
-    const wallet = wallets.find((w) => w.id === walletId);
-    if (!wallet) return;
-    const allResults = reconcileWalletBalances();
-    const result = allResults.find((r) => r.walletId === walletId);
-    const stored = result?.stored ?? wallet.balance;
-    const computed = result?.computed ?? wallet.balance;
-    const drift = result?.drift ?? 0;
-    const fmt = (n: number) => `${currency} ${n.toFixed(2)}`;
-    const diffText = drift >= 0 ? `+${fmt(drift)}` : `−${fmt(Math.abs(drift))}`;
+  // "Fix balance" — open the plain-language explainer sheet (breakdown + tiered
+  // guidance) instead of a scary recalculate alert. computeWalletReconcile always
+  // returns a result (even when the balance already matches).
+  const [fixBalanceVisible, setFixBalanceVisible] = useState(false);
+  const [fixBalanceData, setFixBalanceData] = useState<ReconcileResult | null>(null);
 
-    Alert.alert(
-      `Recalculate "${wallet.name}"?`,
-      `Stored balance: ${fmt(stored)}\n` +
-      `From transactions: ${fmt(computed)}\n` +
-      `Difference: ${diffText}\n\n` +
-      `This re-sums every transaction, transfer, debt payment, and goal contribution. ` +
-      `If your wallet had an unlogged initial deposit, the recomputed balance will be off — skip this.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Recalculate',
-          style: 'destructive',
-          onPress: () => {
-            setWalletBalance(walletId, computed);
-          },
-        },
-      ],
-    );
-  }, [wallets, currency, setWalletBalance]);
+  const reconcileOne = useCallback((walletId: string) => {
+    const result = computeWalletReconcile(walletId);
+    if (!result) return;
+    setFixBalanceData(result);
+    setFixBalanceVisible(true);
+  }, []);
 
   const closeActionSheet = useCallback(() => {
     const walletId = actionSheetWalletId;
@@ -1548,12 +1531,11 @@ const WalletManagement: React.FC = () => {
       />
 
       {/* ─── "See all" activity modal — all transfers, date-filterable ─── */}
-      <FloatingModal visible={activityModalVisible} onClose={() => setActivityModalVisible(false)}>
+      <FloatingModal visible={activityModalVisible} onClose={() => setActivityModalVisible(false)} showDragHandle={false} entrance="fade">
         <View style={{ paddingBottom: SPACING.lg, flexShrink: 1 }}>
           <View style={styles.activityTitleZone}>
-            <Text style={styles.activityTitle}>
-              recent <Text style={styles.activityTitleAccent}>activity</Text>
-            </Text>
+            <Text style={styles.activityTitle}>{t.wallets.recentActivity}</Text>
+            <Text style={styles.activitySub}>{t.wallets.recentActivitySub}</Text>
           </View>
           <TimeRangePills
             value={activityRange}
@@ -1567,7 +1549,7 @@ const WalletManagement: React.FC = () => {
             <FlatList
               data={filteredTransfers}
               keyExtractor={(item) => item.id}
-              style={{ flexShrink: 1 }}
+              style={{ flexShrink: 1, maxHeight: 340 }}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: SPACING.xl, paddingTop: SPACING.xs, paddingBottom: SPACING.sm }}
               renderItem={({ item }) => (
@@ -1687,6 +1669,20 @@ const WalletManagement: React.FC = () => {
         onEdit={sheetEdit}
         onRecalculate={sheetRecalc}
         onDelete={sheetDelete}
+      />
+
+      {/* ─── Fix Balance explainer sheet ───────────────────── */}
+      <FixBalanceSheet
+        visible={fixBalanceVisible}
+        onClose={() => setFixBalanceVisible(false)}
+        data={fixBalanceData}
+        currency={currency}
+        onReview={() => {
+          if (fixBalanceData) navigation.navigate('TransactionsList', { filterWallet: fixBalanceData.walletId });
+        }}
+        onSetBalance={(computed) => {
+          if (fixBalanceData) setWalletBalance(fixBalanceData.walletId, computed);
+        }}
       />
 
       {/* ── Bills this week — float preview modal ── */}
@@ -2007,25 +2003,21 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     marginBottom: SPACING.md,
   },
-  // "See all" modal header — centered title + italic-serif accent, matching
-  // RepayModal / TransferModal / AddEditWalletModal's sheet-header pattern.
+  // "See all" modal header — left-aligned bold title + muted subtitle,
+  // matching the Repay Credit picker (RepayPickerModal) header pattern.
   activityTitleZone: {
-    alignItems: 'center',
     paddingHorizontal: SPACING.xl,
-    paddingBottom: SPACING.lg,
+    paddingTop: SPACING.xl,
   },
   activityTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
-    letterSpacing: -0.4,
-    textAlign: 'center',
+    marginBottom: SPACING.xs,
   },
-  activityTitleAccent: {
-    fontStyle: 'italic',
-    fontFamily: 'serif',
-    fontWeight: TYPOGRAPHY.weight.regular,
-    color: C.accent,
+  activitySub: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
   },
   transferRow: {
     flexDirection: 'row',

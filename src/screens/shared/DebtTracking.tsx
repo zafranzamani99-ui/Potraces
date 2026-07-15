@@ -106,6 +106,7 @@ import CalendarPicker from '../../components/common/CalendarPicker';
 import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { newId } from '../../utils/id';
+import { calcHub } from '../../utils/calcHub';
 import {
   Contact,
   Debt,
@@ -192,7 +193,7 @@ const DebtTracking: React.FC = () => {
 
   const getSelfContact = useCallback((): Contact => ({
     id: '__self__',
-    name: userName?.trim() || 'me',
+    name: userName?.trim() || t.debts.selfNameFallback,
     isFromPhone: false,
   }), [userName]);
 
@@ -247,7 +248,7 @@ const DebtTracking: React.FC = () => {
 
   // Inline category manager (avoids navigating-from-modal blocking bug)
   const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment' | null>(null);
-  const categoryManagerCallerRef = useRef<'debt' | 'payment'>('debt');
+  const categoryManagerCallerRef = useRef<'debt' | 'payment' | 'split'>('debt');
 
   // Keyboard visibility tracking — drives the floating gold "done" FAB inside modals.
   // FAB shows only when a multiline text input is focused — numeric keypads have their
@@ -321,6 +322,7 @@ const DebtTracking: React.FC = () => {
   const [newItemName, setNewItemName] = useState('');
   const [newItemAmount, setNewItemAmount] = useState('');
   const [splitWalletId, setSplitWalletId] = useState<string | null>(null);
+  const [splitCategory, setSplitCategory] = useState('');
   const [splitDueDateObj, setSplitDueDateObj] = useState<Date | null>(null);
   const [splitDueDatePickerOpen, setSplitDueDatePickerOpen] = useState(false);
 
@@ -472,7 +474,7 @@ const DebtTracking: React.FC = () => {
         <TouchableOpacity
           onPress={() => setSettingsModalVisible(true)}
           accessibilityRole="button"
-          accessibilityLabel="settings"
+          accessibilityLabel={t.common.settings}
           style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
         >
           <Feather name="settings" size={20} color={C.textPrimary} />
@@ -603,9 +605,13 @@ const DebtTracking: React.FC = () => {
   // (via the prefillSplitAmount param). When set, closing/saving the modal pops
   // back to the Calculator instead of stranding the user on this pushed screen.
   const arrivedViaSplitPrefillRef = useRef(false);
-  const returnToCallerIfHandedOff = useCallback(() => {
+  // `saved` = a real split was committed. Return to the Calculator either way, but
+  // only ask it to reopen the "What next?" hub when the user CANCELLED — reopening
+  // it after a save would show the same amount and invite a duplicate split.
+  const returnToCallerIfHandedOff = useCallback((saved: boolean) => {
     if (!arrivedViaSplitPrefillRef.current) return;
     arrivedViaSplitPrefillRef.current = false;
+    calcHub.reopenOnReturn = !saved; // reopen the calc hub on cancel, not after a save
     if (navigation.canGoBack()) navigation.goBack();
   }, [navigation]);
 
@@ -615,7 +621,7 @@ const DebtTracking: React.FC = () => {
     dSplitClosingRef.current = false;
     setSplitModalVisible(false);
     setTimeout(() => resetSplitForm(), 0);
-    returnToCallerIfHandedOff();
+    returnToCallerIfHandedOff(false); // closed without saving → reopen the hub
   }, [returnToCallerIfHandedOff]);
 
   const dSplitCloseSheet = useCallback(() => {
@@ -686,6 +692,9 @@ const DebtTracking: React.FC = () => {
       setInPayDetail(false);
       setPayDetailPayment(null);
       setGroupPaymentId(null);
+      // Clear the split-return marker on dismiss-without-recording, or a later
+      // unrelated payment would wrongly re-open this stale split's detail sheet.
+      setReturnToSplitId(null);
       paymentSavingRef.current = false;
     }, 0);
     const willReturnToDetail = !!returnToDetailRef.current;
@@ -1089,8 +1098,12 @@ const DebtTracking: React.FC = () => {
       setTimeout(() => {
         setDetailDebtId(hid);
       }, 300);
+      // Consume the param — otherwise this effect (which also depended on `debts`)
+      // re-fired on every debt mutation, force-switching back to the Debts tab and
+      // re-opening the highlighted detail sheet for the screen's whole lifetime.
+      navigation.setParams({ highlightId: undefined } as any);
     }
-  }, [route.params?.highlightId, debts]);
+  }, [route.params?.highlightId, navigation]);
 
   // Scroll to highlighted debt card via callback ref
   const highlightDebtRef = useCallback((node: View | null) => {
@@ -1130,7 +1143,7 @@ const DebtTracking: React.FC = () => {
 
   const handleEditDebt = useCallback((debt: Debt) => {
     if (debt.isArchived) {
-      showToast('Unarchive this debt before editing.', 'error');
+      showToast(t.debts.unarchiveBeforeEdit, 'error');
       return;
     }
     setEditingDebtId(debt.id);
@@ -1156,11 +1169,11 @@ const DebtTracking: React.FC = () => {
   const handleSaveDebt = useCallback(() => {
     if (debtSavingRef.current) return;
     if (debtContacts.length === 0) {
-      showToast('Please select a contact', 'error');
+      showToast(t.debts.pleaseSelectContact, 'error');
       return;
     }
     if (!debtAmount || isNaN(parseFloat(debtAmount)) || parseFloat(debtAmount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+      showToast(t.debts.enterValidAmount, 'error');
       return;
     }
     debtSavingRef.current = true;
@@ -1171,7 +1184,7 @@ const DebtTracking: React.FC = () => {
       const newTotal = parseFloat(debtAmount);
 
       if (existingDebt && debtType !== existingDebt.type && existingDebt.payments.length > 0) {
-        showToast('Cannot change debt direction after payments have been recorded.', 'error');
+        showToast(t.debts.cannotChangeDirection, 'error');
         debtSavingRef.current = false;
         return;
       }
@@ -1180,14 +1193,14 @@ const DebtTracking: React.FC = () => {
         const contactChanged = debtContacts[0]?.id !== existingDebt.contact.id ||
           debtContacts[0]?.name !== existingDebt.contact.name;
         if (contactChanged) {
-          showToast('Cannot change contact after payments have been recorded.', 'error');
+          showToast(t.debts.cannotChangeContact, 'error');
           debtSavingRef.current = false;
           return;
         }
       }
 
       if (existingDebt && existingDebt.paidAmount >= existingDebt.totalAmount && newTotal !== existingDebt.totalAmount) {
-        showToast('Cannot change amount on a settled debt.', 'error');
+        showToast(t.debts.cannotChangeSettledAmount, 'error');
         debtSavingRef.current = false;
         return;
       }
@@ -1209,7 +1222,7 @@ const DebtTracking: React.FC = () => {
                   category: debtCategory || undefined,
                   dueDate: debtDueDateObj ? debtDueDateObj.toISOString() : undefined,
                 } as any);
-                showToast('Debt updated & marked as settled', 'success');
+                showToast(t.debts.debtUpdatedSettled, 'success');
                 dDebtCloseSheet();
                 resetDebtForm();
                 maybeReturnToDetail();
@@ -1244,7 +1257,7 @@ const DebtTracking: React.FC = () => {
         dueDate: debtDueDateObj ? debtDueDateObj.toISOString() : undefined,
         ...(newGroupId ? { groupId: newGroupId } : {}),
       } as any);
-      showToast('Debt updated!', 'success');
+      showToast(t.debts.debtUpdated, 'success');
     } else {
       addDebt({
         contact: debtContacts[0],
@@ -1261,7 +1274,7 @@ const DebtTracking: React.FC = () => {
       if (contactName && debtDescription.trim()) {
         useLearningStore.getState().learnPersonAlias(debtDescription.trim(), contactName);
       }
-      showToast('Debt added!', 'success');
+      showToast(t.debts.debtAdded, 'success');
     }
 
     debtSavingRef.current = false;
@@ -1310,31 +1323,31 @@ const DebtTracking: React.FC = () => {
 
     if (hasConsolidatedSiblings) {
       Alert.alert(
-        'Cannot Delete',
-        'This debt has payments from a consolidated group payment. Remove the group payment first from payment history, then delete this debt.',
-        [{ text: 'OK' }]
+        t.debts.cannotDeleteTitle,
+        t.debts.cannotDeleteConsolidated,
+        [{ text: t.common.ok }]
       );
       return;
     }
 
     if (debt.splitId) {
       Alert.alert(
-        'Linked to Split',
-        'This debt is part of a split expense. Edit or delete the split to remove this participant.',
-        [{ text: 'OK' }]
+        t.debts.linkedToSplitTitle,
+        t.debts.linkedToSplitMessage,
+        [{ text: t.common.ok }]
       );
       return;
     }
 
-    Alert.alert('Delete Debt', 'Are you sure? Linked transactions and wallet changes will be reversed.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t.debts.deleteDebtTitle, t.debts.deleteDebtConfirm, [
+      { text: t.common.cancel, style: 'cancel' },
       {
-        text: 'Delete',
+        text: t.common.delete,
         style: 'destructive',
         onPress: () => {
           cleanupDebtPayments(debt);
           deleteDebt(id);
-          showToast('Debt deleted', 'success');
+          showToast(t.debts.debtDeleted, 'success');
         },
       },
     ]);
@@ -1344,7 +1357,7 @@ const DebtTracking: React.FC = () => {
   const openPaymentModal = useCallback((debtId: string, historyOnly = false) => {
     const debt = debts.find((d) => d.id === debtId);
     if (!historyOnly && debt?.isArchived) {
-      showToast('Unarchive this debt before recording payments.', 'error');
+      showToast(t.debts.unarchiveBeforePayment, 'error');
       return;
     }
     setPaymentDebtId(debtId);
@@ -1360,18 +1373,18 @@ const DebtTracking: React.FC = () => {
     const currentMode = useAppStore.getState().mode;
     const currentDebt = useDebtStore.getState().debts.find(d => d.id === debt.id);
     if (!currentDebt || currentDebt.status === 'settled') {
-      showToast('this debt is already settled.', 'info');
+      showToast(t.debts.debtAlreadySettled, 'info');
       return;
     }
     if (currentDebt.isArchived) {
-      showToast('Unarchive this debt before recording payments.', 'error');
+      showToast(t.debts.unarchiveBeforePayment, 'error');
       return;
     }
 
     if (paymentWalletId) {
       const walletExists = wallets.some((w) => w.id === paymentWalletId);
       if (!walletExists) {
-        showToast('Selected wallet no longer exists. Please pick another.', 'error');
+        showToast(t.debts.walletNoLongerExists, 'error');
         return;
       }
     }
@@ -1388,7 +1401,7 @@ const DebtTracking: React.FC = () => {
     });
 
     if (!paymentId) {
-      showToast('this debt is already settled.', 'info');
+      showToast(t.debts.debtAlreadySettled, 'info');
       return;
     }
 
@@ -1458,7 +1471,7 @@ const DebtTracking: React.FC = () => {
     setPaymentModalVisible(false);
     setPaymentAmount('');
     setPaymentNote('');
-    showToast('Payment recorded!', 'success');
+    showToast(t.debts.paymentRecorded, 'success');
 
     if (returnToSplitId) {
       setTimeout(() => {
@@ -1484,7 +1497,7 @@ const DebtTracking: React.FC = () => {
     if (paymentSavingRef.current) return;
     if (!paymentDebtId) return;
     if (!paymentAmount || isNaN(parseFloat(paymentAmount)) || parseFloat(paymentAmount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+      showToast(t.debts.enterValidAmount, 'error');
       return;
     }
     paymentSavingRef.current = true;
@@ -1525,7 +1538,7 @@ const DebtTracking: React.FC = () => {
             if (!fresh || fresh.status === 'settled') continue;
             const rem = Math.max(0, fresh.totalAmount - fresh.paidAmount);
             if (rem > 0) {
-              const nId = addPayment(d.id, { amount: rem, date: new Date(), note: 'netted' });
+              const nId = addPayment(d.id, { amount: rem, date: new Date(), note: t.debts.noteNetted });
               if (nId) nettedPaymentRefs.push({ debtId: d.id, paymentId: nId });
               const after = freshDebt(d.id);
               if (after?.status === 'settled') {
@@ -1543,7 +1556,7 @@ const DebtTracking: React.FC = () => {
             const rem = Math.max(0, fresh.totalAmount - fresh.paidAmount);
             const pay = Math.min(rem, offsetLeft);
             if (pay > 0) {
-              const nId = addPayment(d.id, { amount: pay, date: new Date(), note: 'netted' });
+              const nId = addPayment(d.id, { amount: pay, date: new Date(), note: t.debts.noteNetted });
               if (nId) nettedPaymentRefs.push({ debtId: d.id, paymentId: nId });
               const after = freshDebt(d.id);
               if (after?.status === 'settled' && d.splitId) {
@@ -1553,7 +1566,7 @@ const DebtTracking: React.FC = () => {
             }
           }
           if (Math.abs(iOweRem - theyOweRem) < 0.01) {
-            showToast(`Debts netted — settled`, 'success');
+            showToast(t.debts.debtsNettedSettled, 'success');
             setGroupPaymentId(null);
             setPaymentModalVisible(false);
             paymentSavingRef.current = false;
@@ -1621,7 +1634,7 @@ const DebtTracking: React.FC = () => {
               pay = Math.round(Math.min(rem, rem * ratio) * 100) / 100;
             }
             if (pay > 0) {
-              const pId = addPayment(d.id, { amount: pay, date: new Date(), note: paymentNote.trim() || 'consolidated payment', linkedTransactionId: linkedTxId, walletId: paymentWalletId || undefined });
+              const pId = addPayment(d.id, { amount: pay, date: new Date(), note: paymentNote.trim() || t.debts.noteConsolidatedPayment, linkedTransactionId: linkedTxId, walletId: paymentWalletId || undefined });
               if (!pId) continue;
               if (!firstPaymentId) firstPaymentId = pId;
               const after = freshDebt(d.id);
@@ -1639,8 +1652,11 @@ const DebtTracking: React.FC = () => {
         // Tip: if overpayment remains, attach to last payment so sum matches wallet
         const leftover = Math.round((amount - distributed) * 100) / 100;
         if (leftover > 0 && lastPaidInfo?.paymentId) {
+          // Tip only — do NOT fold leftover into amount. The last payment already
+          // sits at its debt's remaining; storing amount+leftover would double-count
+          // the tip in business-mode reconcile (amount + tipAmount). updatePayment
+          // also caps amount defensively, but keep the intent explicit here.
           updatePayment(lastPaidInfo.debtId, lastPaidInfo.paymentId, {
-            amount: lastPaidInfo.amount + leftover,
             tipAmount: leftover,
           });
           if (linkedTxId) {
@@ -1708,12 +1724,12 @@ const DebtTracking: React.FC = () => {
     const totalAmount = payment.amount + siblings.reduce((s, sib) => s + sib.amount, 0);
     const msg = isConsolidated
       ? `This was a consolidated payment of ${currency} ${totalAmount.toFixed(2)} across ${siblings.length + 1} debts. Remove all?`
-      : 'This will undo this payment and its linked transaction. Continue?';
+      : t.debts.removePaymentConfirm;
 
-    Alert.alert('Remove Payment', msg, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t.debts.removePayment, msg, [
+      { text: t.common.cancel, style: 'cancel' },
       {
-        text: 'Remove',
+        text: t.debts.remove,
         style: 'destructive',
         onPress: () => {
           // Delete linked transaction once
@@ -1783,7 +1799,7 @@ const DebtTracking: React.FC = () => {
     if (!payDetailDebtId || !payDetailPayment) return;
     const newAmount = parseFloat(editPayAmount);
     if (isNaN(newAmount) || newAmount <= 0) {
-      showToast('Enter a valid amount', 'error');
+      showToast(t.debts.enterValidAmount, 'error');
       return;
     }
 
@@ -1796,7 +1812,7 @@ const DebtTracking: React.FC = () => {
         d.id !== payDetailDebtId && d.payments.some((p) => p.linkedTransactionId === txId)
       );
       if (hasSiblings) {
-        showToast('Cannot edit amount on a consolidated payment. Remove and re-record instead.', 'error');
+        showToast(t.debts.cannotEditConsolidated, 'error');
         return;
       }
     }
@@ -1805,7 +1821,7 @@ const DebtTracking: React.FC = () => {
     if (amountChanged) {
       const freshDebt = useDebtStore.getState().debts.find((d) => d.id === payDetailDebtId);
       if (freshDebt?.status === 'settled') {
-        showToast('Cannot change amount on a settled debt', 'error');
+        showToast(t.debts.cannotChangeSettledAmount, 'error');
         return;
       }
 
@@ -1833,7 +1849,7 @@ const DebtTracking: React.FC = () => {
     const freshPayment = freshDebt?.payments.find((p) => p.id === payDetailPayment.id);
     if (!freshDebt || !freshPayment) {
       setPayDetailSaving(false);
-      showToast('Payment no longer exists', 'error');
+      showToast(t.debts.paymentNoLongerExists, 'error');
       handleClosePayDetail();
       return;
     }
@@ -1895,13 +1911,13 @@ const DebtTracking: React.FC = () => {
 
     setPayDetailSaving(false);
     handleClosePayDetail();
-    showToast('Payment updated', 'success');
+    showToast(t.debts.paymentUpdated, 'success');
   };
 
   // ── Split Mark Paid / Undo Handlers ──────────────────────────
   const handleSplitMarkPaid = (split: SplitExpense, participant: SplitParticipant) => {
     if ((split as any).status === 'draft') {
-      showToast('Finalize this split before recording payments.', 'error');
+      showToast(t.debts.finalizeSplitFirst, 'error');
       return;
     }
     // Find linked debt for this split + participant
@@ -1932,12 +1948,12 @@ const DebtTracking: React.FC = () => {
 
   const handleSplitUndoPaid = (split: SplitExpense, participant: SplitParticipant) => {
     Alert.alert(
-      'Undo Payment',
+      t.debts.undoPaymentTitle,
       `Mark ${participant.contact.name} as unpaid? This will reverse all recorded payments for this participant.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Undo',
+          text: t.debts.undo,
           style: 'destructive',
           onPress: () => {
             // Find linked debt — read fresh from store (closure `debts` may be stale by Alert time)
@@ -2017,6 +2033,7 @@ const DebtTracking: React.FC = () => {
     setNewItemName('');
     setNewItemAmount('');
     setSplitWalletId(null);
+    setSplitCategory('');
     setSplitDueDateObj(null);
     setSplitDueDatePickerOpen(false);
   }, []);
@@ -2045,7 +2062,7 @@ const DebtTracking: React.FC = () => {
 
   const handleEditSplit = useCallback((split: SplitExpense) => {
     if (split.isArchived) {
-      showToast('Unarchive this split before editing.', 'error');
+      showToast(t.debts.unarchiveSplitBeforeEdit, 'error');
       return;
     }
     setEditingSplitId(split.id);
@@ -2055,6 +2072,7 @@ const DebtTracking: React.FC = () => {
     setSplitContacts(split.participants.map((p) => p.contact));
     setSplitPaidBy(split.paidBy ? [split.paidBy] : []);
     setSplitWalletId(split.walletId || null);
+    setSplitCategory(split.category || '');
     if (split.splitMethod === 'custom') {
       const amounts: Record<string, string> = {};
       split.participants.forEach((p) => { amounts[p.contact.id] = p.amount.toString(); });
@@ -2076,25 +2094,25 @@ const DebtTracking: React.FC = () => {
   const handleSaveSplit = useCallback(() => {
     if (splitSavingRef.current) return;
     if (!splitDescription.trim()) {
-      showToast('Please add a description', 'error');
+      showToast(t.debts.addDescription, 'error');
       return;
     }
     if (!splitAmount || isNaN(parseFloat(splitAmount)) || parseFloat(splitAmount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+      showToast(t.debts.enterValidAmount, 'error');
       return;
     }
     if (splitContacts.length < 2) {
-      showToast('Please add at least 2 participants', 'error');
+      showToast(t.debts.addTwoParticipants, 'error');
       return;
     }
     if (splitContacts.length === 0) return;
     if (!editingSplitId && splitPaidBy.length === 0) {
-      showToast('Please select who paid', 'error');
+      showToast(t.debts.selectWhoPaid, 'error');
       return;
     }
     const hasMe = splitContacts.some(c => c.id === '__self__');
     if (!hasMe) {
-      showToast('add yourself to the split first.', 'error');
+      showToast(t.debts.addYourselfFirst, 'error');
       return;
     }
     const total = parseFloat(splitAmount);
@@ -2111,9 +2129,15 @@ const DebtTracking: React.FC = () => {
         isPaid: false,
       }));
     } else if (splitMethod === 'custom') {
-      const customTotal = Object.values(customAmounts).reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
+      // Sum over the CURRENT participants only — a removed participant can leave a
+      // stale customAmounts entry that would otherwise corrupt this total.
+      const customTotal = splitContacts.reduce((sum, c) => sum + (parseFloat(customAmounts[c.id]) || 0), 0);
       if (Math.abs(customTotal - total) > 0.01) {
         showToast(`Custom amounts must sum to ${currency} ${total.toFixed(2)}`, 'error');
+        return;
+      }
+      if (splitContacts.some((c) => (parseFloat(customAmounts[c.id]) || 0) < 0)) {
+        showToast(t.debts.customAmountsNegative, 'error');
         return;
       }
       participants = splitContacts.map((c) => ({
@@ -2123,12 +2147,20 @@ const DebtTracking: React.FC = () => {
       }));
     } else if (splitMethod === 'item_based') {
       if (splitItems.length === 0) {
-        showToast('Please add at least one item', 'error');
+        showToast(t.debts.addAtLeastOneItem, 'error');
         return;
       }
       const unassigned = splitItems.some((item) => item.assignedTo.length === 0);
       if (unassigned) {
-        showToast('Assign all items to at least one person', 'error');
+        showToast(t.debts.assignAllItems, 'error');
+        return;
+      }
+      // Items are the breakdown of the bill — their raw sum must equal the entered
+      // total (within a sen). A genuine mismatch would otherwise be silently dumped
+      // onto the payer below as a distorted or NEGATIVE share; block it like custom.
+      const rawItemSum = splitItems.reduce((sum, item) => sum + (parseFloat(String(item.amount)) || 0), 0);
+      if (Math.abs(rawItemSum - total) > 0.01) {
+        showToast(`Items sum to ${currency} ${rawItemSum.toFixed(2)} but the total is ${currency} ${total.toFixed(2)} — make them match.`, 'error');
         return;
       }
       const perPersonMap: Record<string, number> = {};
@@ -2167,7 +2199,7 @@ const DebtTracking: React.FC = () => {
     if (zeroShareCount > 0) {
       participants = participants.filter((p) => p.amount > 0 || p.isPaid);
       if (participants.length < 2) {
-        showToast('Not enough participants with amounts assigned', 'error');
+        showToast(t.debts.notEnoughParticipantsAmounts, 'error');
         return;
       }
     }
@@ -2224,6 +2256,7 @@ const DebtTracking: React.FC = () => {
         paidBy: newPayer || undefined,
         dueDate: splitDueDateObj ? splitDueDateObj.toISOString() : undefined,
         walletId: splitWalletId || undefined,
+        category: splitCategory || undefined,
       } as any);
 
       if (paidByChanged) {
@@ -2231,9 +2264,9 @@ const DebtTracking: React.FC = () => {
         if (newPayer?.id === selfId) {
           let txId: string | undefined;
           if (mode === 'personal') {
-            txId = addTransaction({ amount: total, category: 'split_expense', description: desc, date: new Date(), type: 'expense', mode, walletId: splitWalletId || undefined, inputMethod: 'manual' });
+            txId = addTransaction({ amount: total, category: splitCategory || 'split_expense', description: desc, date: new Date(), type: 'expense', mode, walletId: splitWalletId || undefined, inputMethod: 'manual' });
           } else {
-            txId = addBusinessTransaction({ date: new Date(), amount: total, type: 'cost', category: 'split_expense', note: desc, inputMethod: 'manual' });
+            txId = addBusinessTransaction({ date: new Date(), amount: total, type: 'cost', category: splitCategory || 'split_expense', note: desc, inputMethod: 'manual' });
           }
           if (txId || splitWalletId) {
             updateSplit(editingSplitId, { linkedTransactionId: txId, walletId: splitWalletId || undefined });
@@ -2297,11 +2330,11 @@ const DebtTracking: React.FC = () => {
         });
 
         if (settledAmountBlocked) {
-          showToast('Some amounts were not updated — linked debts are already settled or have payments exceeding the new amount.', 'info');
+          showToast(t.debts.someAmountsNotUpdated, 'info');
         }
       }
 
-      showToast('Split updated!', 'success');
+      showToast(t.debts.splitUpdated, 'success');
     } else {
       commitSplit({
         description: splitDescription.trim(),
@@ -2311,19 +2344,21 @@ const DebtTracking: React.FC = () => {
         items: splitMethod === 'item_based' ? splitItems : [],
         paidBy: splitPaidBy.length > 0 ? splitPaidBy[0] : undefined,
         walletId: splitWalletId || undefined,
+        category: splitCategory || undefined,
         dueDate: splitDueDateObj || undefined,
         mode,
       });
 
-      showToast('Split created!', 'success');
+      showToast(t.debts.splitCreated, 'success');
     }
 
     setSplitModalVisible(false);
     resetSplitForm();
     splitSavingRef.current = false;
-    // Saving from a Calculator "Detailed split" hand-off returns to the Calculator.
-    returnToCallerIfHandedOff();
-  }, [splitDescription, splitAmount, splitContacts, splitPaidBy, editingSplitId, splitMethod, customAmounts, splitItems, splitDueDateObj, splitWalletId, mode, currency, addSplit, updateSplit, addDebt, updateDebt, deleteDebt, addTransaction, addBusinessTransaction, deductFromWallet, useCredit, deleteTransaction, deleteBusinessTransaction, addToWallet, resetSplitForm, showToast, returnToCallerIfHandedOff]);
+    // Saving from a Calculator "Detailed split" hand-off returns to the Calculator
+    // WITHOUT reopening the hub (the task is done — avoid a duplicate-split invite).
+    returnToCallerIfHandedOff(true);
+  }, [splitDescription, splitAmount, splitContacts, splitPaidBy, editingSplitId, splitMethod, customAmounts, splitItems, splitDueDateObj, splitWalletId, splitCategory, mode, currency, addSplit, updateSplit, addDebt, updateDebt, deleteDebt, addTransaction, addBusinessTransaction, deductFromWallet, useCredit, deleteTransaction, deleteBusinessTransaction, addToWallet, resetSplitForm, showToast, returnToCallerIfHandedOff]);
 
   const cleanupSplitTransaction = (split: SplitExpense) => {
     // Look up actual transaction amount (may differ from split.totalAmount if edited before C8 fix)
@@ -2355,14 +2390,14 @@ const DebtTracking: React.FC = () => {
     const split = splits.find((s) => s.id === id);
     const isDraft = split?.status === 'draft';
     Alert.alert(
-      isDraft ? 'Delete Draft' : 'Delete Split',
+      isDraft ? t.debts.deleteDraftTitle : t.debts.deleteSplitTitle,
       isDraft
-        ? 'Delete this draft? No debts or transactions have been created.'
-        : 'Are you sure you want to delete this split? Linked debts, transactions, and wallet changes will also be reversed.',
+        ? t.debts.deleteDraftConfirm
+        : t.debts.deleteSplitConfirm,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: t.common.delete,
           style: 'destructive',
           onPress: () => {
             const freshSplitRef = useDebtStore.getState().splits.find(s => s.id === id);
@@ -2376,7 +2411,7 @@ const DebtTracking: React.FC = () => {
             }
             deleteSplit(id);
             setSplitDetailVisible(false);
-            showToast(isDraft ? 'Draft deleted' : 'Split deleted', 'success');
+            showToast(isDraft ? t.debts.draftDeleted : t.debts.splitDeleted, 'success');
           },
         },
       ]
@@ -2438,7 +2473,7 @@ const DebtTracking: React.FC = () => {
         );
       });
       if (hasExternalConsolidated) {
-        showToast('Some debts share group payments with unselected debts. Select all related debts or remove group payments first.', 'error');
+        showToast(t.debts.debtsShareGroupPayments, 'error');
         return;
       }
     }
@@ -2560,7 +2595,7 @@ const DebtTracking: React.FC = () => {
 
   const handleAddItem = useCallback(() => {
     if (!newItemName.trim() || !newItemAmount || parseFloat(newItemAmount) <= 0) {
-      showToast('Please enter item name and amount', 'error');
+      showToast(t.debts.enterItemNameAmount, 'error');
       return;
     }
     setSplitItems([...splitItems, {
@@ -2589,7 +2624,7 @@ const DebtTracking: React.FC = () => {
   const handleScanReceipt = async () => {
     const premium = usePremiumStore.getState();
     if (!premium.canScanReceipt()) {
-      showToast('Scan limit reached this month', 'error');
+      showToast(t.debts.scanLimitReached, 'error');
       return;
     }
 
@@ -2604,7 +2639,7 @@ const DebtTracking: React.FC = () => {
     if (!imageUri) {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        showToast('Camera permission is required', 'error');
+        showToast(t.debts.cameraPermission, 'error');
         return;
       }
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
@@ -2634,10 +2669,10 @@ const DebtTracking: React.FC = () => {
         }
         showToast(`${receipt.items.length} items scanned`, 'success');
       } else {
-        showToast('No items found on receipt', 'error');
+        showToast(t.debts.noItemsFound, 'error');
       }
     } catch (e: any) {
-      showToast(e.message || 'Scan failed', 'error');
+      showToast(e.message || t.debts.scanFailed, 'error');
     } finally {
       setScanningReceipt(false);
     }
@@ -2665,7 +2700,7 @@ const DebtTracking: React.FC = () => {
   const processReceiptImage = async (uri: string) => {
     const premium = usePremiumStore.getState();
     if (!premium.canScanReceipt()) {
-      showToast('Scan limit reached this month', 'error');
+      showToast(t.debts.scanLimitReached, 'error');
       return;
     }
 
@@ -2700,7 +2735,7 @@ const DebtTracking: React.FC = () => {
       premium.incrementScanCount();
       if (receipt.items.length === 0 && receipt.total === 0) {
         if (opened) setWizardVisible(false);
-        showToast('Could not read receipt', 'error');
+        showToast(t.debts.couldNotReadReceipt, 'error');
         return;
       }
       // Finalize with the authoritative parsed data (vendor/total/tax + clean items).
@@ -2724,7 +2759,7 @@ const DebtTracking: React.FC = () => {
       }
     } catch (e: any) {
       if (opened) setWizardVisible(false);
-      showToast(e.message || 'Scan failed', 'error');
+      showToast(e.message || t.debts.scanFailed, 'error');
     } finally {
       setScanningReceipt(false);
     }
@@ -2736,13 +2771,22 @@ const DebtTracking: React.FC = () => {
     if (scanner) {
       try {
         const scanResult = await scanner.scanDocument({ maxNumDocuments: 1 });
-        if (scanResult.scannedImages?.length) imageUri = scanResult.scannedImages[0];
-      } catch { /* fall through to ImagePicker */ }
+        if (scanResult.scannedImages?.length) {
+          imageUri = scanResult.scannedImages[0];
+        } else {
+          // Scanner opened and the user cancelled / captured nothing. Respect that —
+          // do NOT fall through to a SECOND (ImagePicker) camera, which made the
+          // camera appear to open twice.
+          return;
+        }
+      } catch {
+        /* scanner genuinely unavailable/errored → fall back to the ImagePicker camera */
+      }
     }
     if (!imageUri) {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        showToast('Camera permission is required', 'error');
+        showToast(t.debts.cameraPermission, 'error');
         return;
       }
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
@@ -2755,7 +2799,7 @@ const DebtTracking: React.FC = () => {
   const handleWizardGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      showToast('Gallery permission is required', 'error');
+      showToast(t.debts.galleryPermission, 'error');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -2772,13 +2816,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   const handleWizardNext = () => {
     if (wizardStep === 1) {
       if (!wizardDescription.trim()) {
-        showToast('Please enter a description', 'error');
+        showToast(t.debts.enterDescription, 'error');
         return;
       }
       setWizardStep(2);
     } else if (wizardStep === 2) {
       if (!wizardTotal || parseFloat(wizardTotal) <= 0) {
-        showToast('Please enter a valid amount', 'error');
+        showToast(t.debts.enterValidAmount, 'error');
         return;
       }
       setWizardStep(wizardHasTax ? 3 : 4);
@@ -2786,12 +2830,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       setWizardStep(4);
     } else if (wizardStep === 4) {
       if (wizardParticipants.length < 2) {
-        showToast('Add at least 2 participants', 'error');
+        showToast(t.debts.addTwoParticipants, 'error');
         return;
       }
       const unassigned = wizardItems.some((item) => item.assignedTo.length === 0);
       if (unassigned) {
-        showToast('Assign all items to at least one person', 'error');
+        showToast(t.debts.assignAllItems, 'error');
         return;
       }
       // Auto-remove participants with no items assigned
@@ -2801,7 +2845,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       if (participantsWithNoItems.length > 0) {
         const remaining = wizardParticipants.length - participantsWithNoItems.length;
         if (remaining < 2) {
-          showToast('Not enough participants have items assigned', 'error');
+          showToast(t.debts.notEnoughParticipantsItems, 'error');
           return;
         }
         setWizardParticipants((prev) =>
@@ -2829,7 +2873,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       setWizardStep(5);
     } else if (wizardStep === 5) {
       if (!wizardPaidBy) {
-        showToast('Please select who paid the bill', 'error');
+        showToast(t.debts.selectWhoPaidBill, 'error');
         return;
       }
       setWizardStep(6);
@@ -2876,6 +2920,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
     if (wizardSavingRef.current) return;
     if (!wizardResult || !wizardPaidBy) return;
     wizardSavingRef.current = true;
+    try {
     const splitData = {
       description: wizardDescription.trim(),
       totalAmount: wizardResult.effectiveTotal,
@@ -2974,10 +3019,17 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       }
     }
 
-    wizardSavingRef.current = false;
     setWizardVisible(false);
     resetWizardForm();
     showToast('Split created!', 'success');
+    } catch (e) {
+      // A store mutation threw mid-save — surface it and, crucially, release the
+      // saving guard in finally so the Save button never dead-locks for the rest
+      // of the screen's lifetime.
+      showToast(t.debts.couldNotSaveSplit, 'error');
+    } finally {
+      wizardSavingRef.current = false;
+    }
   };
 
   // Shared builder for a draft-split payload (status: 'draft' — drafts never
@@ -2998,14 +3050,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
   const handleSaveAsDraft = useCallback(() => {
     if (!wizardDescription.trim()) {
-      showToast('add a description first', 'error');
+      showToast(t.debts.addDescriptionFirst, 'error');
       return;
     }
     const assignedCount = wizardItems.filter((item) => item.assignedTo.length > 0).length;
     const draftData = buildWizardDraftData(wizardDescription.trim());
     if (wizardDraftId.current) {
       updateSplit(wizardDraftId.current, draftData);
-      showToast('draft updated', 'success');
+      showToast(t.debts.draftUpdated, 'success');
     } else {
       addSplit(draftData);
       showToast(`draft saved · ${assignedCount}/${wizardItems.length} assigned`, 'success');
@@ -3028,7 +3080,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       } else {
         addSplit(draftData);
       }
-      showToast('draft saved', 'success');
+      showToast(t.debts.draftSaved, 'success');
     }
     setWizardVisible(false);
     resetWizardForm();
@@ -3113,9 +3165,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   }, [editingItemIndex]);
 
   const handleAddWizardItem = useCallback(() => {
-    setWizardItems((prev) => [...prev, { name: 'New item', amount: 0, assignedTo: [] }]);
+    setWizardItems((prev) => [...prev, { name: t.debts.newItem, amount: 0, assignedTo: [] }]);
     setEditingItemIndex(wizardItems.length);
-    setEditItemName('New item');
+    setEditItemName(t.debts.newItem);
     setEditItemAmount('0.00');
   }, [wizardItems.length]);
 
@@ -3169,7 +3221,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   const loadItemPhoneContacts = async () => {
     const { status } = await Contacts.requestPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please grant contacts permission in Settings.');
+      Alert.alert(t.debts.contactsPermissionTitle, t.debts.contactsPermissionMsg);
       return;
     }
     const { data } = await Contacts.getContactsAsync({
@@ -3180,7 +3232,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       .filter((c) => c.name)
       .map((c) => ({
         id: c.id || newId(),
-        name: c.name || 'Unknown',
+        name: c.name || t.debts.unknownContact,
         phone: c.phoneNumbers?.[0]?.number,
         isFromPhone: true,
       }));
@@ -3192,8 +3244,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   // ── Request Payment Handlers ──────────────────────────────
   const composePaymentMessage = (debt: Debt): string => {
     const remaining = Math.max(0, debt.totalAmount - debt.paidAmount);
-    const senderName = userName?.trim() || 'Me';
-    let message = `Hey ${debt.contact.name}, you owe me ${currency} ${remaining.toFixed(2)} for ${debt.description || 'untitled'}`;
+    const senderName = userName?.trim() || t.debts.senderMe;
+    let message = `Hey ${debt.contact.name}, you owe me ${currency} ${remaining.toFixed(2)} for ${debt.description || t.debts.untitled}`;
 
     if (debt.splitId) {
       const linkedSplit = splits.find((s) => s.id === debt.splitId);
@@ -3202,7 +3254,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           item.assignedTo.some((c) => c.id === debt.contact.id)
         );
         if (contactItems.length > 0) {
-          message += '\n\nBreakdown:';
+          message += '\n\n' + t.debts.msgBreakdown;
           contactItems.forEach((item) => {
             const shareCount = item.assignedTo.length;
             const share = Math.round((item.amount / shareCount) * 100) / 100;
@@ -3223,7 +3275,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       }
     }
 
-    if (hasPaymentQr) message += '\n\nQR code attached for payment';
+    if (hasPaymentQr) message += '\n\n' + t.debts.msgQrAttached;
     message += `\n\nThanks!\n-${senderName}`;
     return message;
   };
@@ -3269,11 +3321,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       if (qrIndex !== null && paymentQrs[qrIndex]) {
         // Copy message to clipboard, then share QR via native share sheet
         await Clipboard.setStringAsync(requestPaymentMessage);
-        showToast('Message copied — send QR then paste message', 'info');
+        showToast(t.debts.msgCopiedSendQr, 'info');
         const qrUri = paymentQrs[qrIndex].uri;
         const isAvailable = await Sharing.isAvailableAsync();
         if (isAvailable) {
-          await Sharing.shareAsync(qrUri, { mimeType: 'image/png', dialogTitle: 'Send QR' });
+          await Sharing.shareAsync(qrUri, { mimeType: 'image/png', dialogTitle: t.debts.sendQrDialogTitle });
         }
       } else {
         // No QR — just open WhatsApp with message
@@ -3285,7 +3337,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       setShowQrPicker(false);
       maybeReturnToDetail();
     } catch {
-      showToast('Could not open WhatsApp', 'error');
+      showToast(t.debts.couldNotOpenWhatsapp, 'error');
     }
   };
 
@@ -3352,7 +3404,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         setPaymentModalVisible(true);
       }, 100);
     } else {
-      showToast('generate debts first', 'info');
+      showToast(t.debts.generateDebtsFirst, 'info');
     }
   }, [debts, showToast]);
 
@@ -3373,7 +3425,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   const handleLinkCommitment = useCallback((sub: SharedSubscription) => {
     const activeSubs = subscriptions.filter((s) => s.isActive);
     if (activeSubs.length === 0) {
-      showToast('no commitments found', 'info');
+      showToast(t.debts.noCommitmentsFound, 'info');
       return;
     }
     setSharedDetailVisible(false);
@@ -3385,7 +3437,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
     updateSharedSubscription(commitmentPickerSubId, { subscriptionId });
     updateSubscription(subscriptionId, { sharedSubId: commitmentPickerSubId });
     setCommitmentPickerSubId(null);
-    showToast('linked to commitment', 'success');
+    showToast(t.debts.linkedToCommitment, 'success');
   }, [commitmentPickerSubId, updateSharedSubscription, updateSubscription, showToast]);
 
   const handleViewCommitment = useCallback((subscriptionId: string) => {
@@ -3446,8 +3498,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           setActiveTab={setActiveTab}
           selectionMode={selectionMode}
           exitSelectionMode={exitSelectionMode}
-          modeDebtsCount={modeDebts.length}
-          modeSplitsCount={modeSplits.length}
+          modeDebtsCount={debtsShowArchive ? modeDebts.length : modeDebts.filter((d) => !d.isArchived).length}
+          modeSplitsCount={debtsShowArchive ? modeSplits.length : modeSplits.filter((s) => !s.isArchived).length}
           activeSharedSubsCount={activeSharedSubs.length}
         />
 
@@ -4254,17 +4306,34 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               )}
             </View>
 
-            {/* Paid from wallet — only when 'you' is the fronter */}
+            {/* Paid from wallet + category — only when 'you' is the fronter (there's
+                only an expense transaction to categorise when I paid). */}
             {splitPaidBy.length > 0 && splitPaidBy[0].id === '__self__' && (
-              <View style={{ marginBottom: SPACING.sm + 2 }}>
-                <WalletPicker
-                  wallets={wallets}
-                  selectedId={splitWalletId}
-                  onSelect={setSplitWalletId}
-                  label="paid from wallet"
-                  faintNeu
-                />
-              </View>
+              <>
+                <View style={{ marginBottom: SPACING.sm + 2 }}>
+                  <WalletPicker
+                    wallets={wallets}
+                    selectedId={splitWalletId}
+                    onSelect={setSplitWalletId}
+                    label="paid from wallet"
+                    faintNeu
+                  />
+                </View>
+                <View style={{ marginBottom: SPACING.sm + 2 }}>
+                  <CategoryPicker
+                    categories={expenseCategories}
+                    selectedId={splitCategory}
+                    onSelect={setSplitCategory}
+                    layout="dropdown"
+                    faintDark
+                    onNavigateToSettings={() => {
+                      categoryManagerCallerRef.current = 'split';
+                      setSplitModalVisible(false);
+                      setTimeout(() => setCategoryManagerType('expense'), 50);
+                    }}
+                  />
+                </View>
+              </>
             )}
 
             {/* Due date field card */}
@@ -7765,6 +7834,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           setCategoryManagerType(null);
           if (categoryManagerCallerRef.current === 'payment') {
             setPaymentModalVisible(true);
+          } else if (categoryManagerCallerRef.current === 'split') {
+            setSplitModalVisible(true);
           } else {
             setDebtModalVisible(true);
           }

@@ -5,7 +5,8 @@ import { differenceInDays } from 'date-fns';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SPLIT_METHODS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../common/neu';
-import { getDebtAge } from '../../utils/debtTracking';
+import { useT } from '../../i18n';
+import { formatAmount } from '../../utils/formatters';
 import { SplitExpense } from '../../types';
 import type { SplitTab } from '../../screens/shared/debt/useDebtFilters';
 
@@ -44,6 +45,7 @@ const SplitRow: React.FC<SplitRowProps> = ({
 }) => {
   const C = useCalm();
   const neu = useNeu(undefined, { faintDark: true });
+  const t = useT();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   const isDraft = split.status === 'draft';
@@ -61,33 +63,6 @@ const SplitRow: React.FC<SplitRowProps> = ({
     : theyOweColor;
   const draftAssigned = isDraft ? split.items.filter((item) => item.assignedTo.length > 0).length : 0;
 
-  // Compact subtitle — one line, "X of Y · Md" or "due in Nd" with overdue color.
-  let subtitle = '';
-  let subtitleColor: string | null = null;
-  if (isDraft) {
-    subtitle = `draft · ${draftAssigned}/${split.items.length} items assigned`;
-  } else {
-    const dueRaw = (split as any).dueDate;
-    const dueD = dueRaw ? new Date(dueRaw) : null;
-    if (dueD && !isNaN(dueD.getTime()) && !isSettled) {
-      const daysUntil = differenceInDays(dueD, new Date());
-      if (daysUntil < 0) {
-        subtitle = `${paidCount} of ${totalCount} paid · overdue ${Math.abs(daysUntil)}d`;
-        subtitleColor = overdueColor;
-      } else if (daysUntil === 0) {
-        subtitle = `${paidCount} of ${totalCount} paid · due today`;
-        subtitleColor = C.gold;
-      } else if (daysUntil <= 3) {
-        subtitle = `${paidCount} of ${totalCount} paid · due in ${daysUntil}d`;
-        subtitleColor = C.gold;
-      } else {
-        subtitle = `${paidCount} of ${totalCount} paid · due in ${daysUntil}d`;
-      }
-    } else {
-      subtitle = `${paidCount} of ${totalCount} paid · ${getDebtAge(split.createdAt)}`;
-    }
-  }
-
   const isSelected = selectionMode === 'split' && selectedIds.has(split.id);
   const inSplitSelection = selectionMode === 'split';
 
@@ -98,29 +73,29 @@ const SplitRow: React.FC<SplitRowProps> = ({
   let footerText = '';
   let footerColor: string | null = null;
   if (isDraft) {
-    footerText = `draft · ${draftAssigned} of ${split.items.length} items assigned`;
+    footerText = t.debts.draftItemsAssigned.replace('{assigned}', String(draftAssigned)).replace('{total}', String(split.items.length));
   } else {
     const dueRaw = (split as any).dueDate;
     const dueD = dueRaw ? new Date(dueRaw) : null;
     if (dueD && !isNaN(dueD.getTime()) && !isSettled) {
       const daysUntil = differenceInDays(dueD, new Date());
       if (daysUntil < 0) {
-        footerText = `${currency} ${leftAmount.toFixed(2)} left · overdue ${Math.abs(daysUntil)}d`;
+        footerText = `${formatAmount(leftAmount, currency)} left · overdue ${Math.abs(daysUntil)}d`;
         footerColor = overdueColor;
       } else if (daysUntil === 0) {
-        footerText = `${currency} ${leftAmount.toFixed(2)} left · due today`;
+        footerText = `${formatAmount(leftAmount, currency)} left · due today`;
         footerColor = C.gold;
       } else if (daysUntil <= 3) {
-        footerText = `${currency} ${leftAmount.toFixed(2)} left · due in ${daysUntil}d`;
+        footerText = `${formatAmount(leftAmount, currency)} left · due in ${daysUntil}d`;
         footerColor = C.gold;
       } else {
-        footerText = `${currency} ${leftAmount.toFixed(2)} left · ${totalCount - paidCount} unpaid`;
+        footerText = `${formatAmount(leftAmount, currency)} left · ${t.sharedSubs.unpaidCount.replace('{n}', String(totalCount - paidCount))}`;
       }
     } else if (isSettled) {
-      footerText = `settled · everyone paid up`;
+      footerText = t.debts.settledEveryonePaid;
       footerColor = settledColor;
     } else {
-      footerText = `${currency} ${leftAmount.toFixed(2)} left · ${totalCount - paidCount} unpaid`;
+      footerText = `${formatAmount(leftAmount, currency)} left · ${t.sharedSubs.unpaidCount.replace('{n}', String(totalCount - paidCount))}`;
     }
   }
 
@@ -141,7 +116,7 @@ const SplitRow: React.FC<SplitRowProps> = ({
       onLongPress={() => !inSplitSelection && enterSelectionMode('split', split.id)}
       delayLongPress={400}
       accessibilityRole="button"
-      accessibilityLabel={`${split.description}, ${currency} ${split.totalAmount.toFixed(2)}, ${footerText}`}
+      accessibilityLabel={`${split.description}, ${formatAmount(split.totalAmount, currency)}, ${footerText}`}
     >
       {/* Top header line — title left, dotted leader, amount right */}
       <View style={styles.tickerSplitHeaderRow}>
@@ -155,7 +130,7 @@ const SplitRow: React.FC<SplitRowProps> = ({
         </Text>
         <View style={styles.tickerLeader} />
         <Text style={styles.tickerSplitAmount}>
-          {currency} {split.totalAmount.toFixed(2)}
+          {formatAmount(split.totalAmount, currency)}
         </Text>
       </View>
 

@@ -254,7 +254,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
           <View style={[styles.summaryCard, neu.raisedSoft]}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryCollected}>{currency}{collected.toFixed(2)}</Text>
-              <Text style={styles.summaryOf}> of {currency}{totalAmount.toFixed(2)} {t.sharedSubs.collected}</Text>
+              <Text style={styles.summaryOf}> {t.sharedSubs.of} {currency}{totalAmount.toFixed(2)} {t.sharedSubs.collected}</Text>
             </View>
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${pctCollected}%` as const, backgroundColor: C.accent }]} />
@@ -297,7 +297,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
                     onViewCommitment(liveSub.subscriptionId);
                   } else {
                     markSharedSubPayment(sub.id, viewMonth, '__self__');
-                    showToast('marked as paid', 'success');
+                    showToast(t.sharedSubs.markedAsPaid, 'success');
                   }
                 };
                 return (
@@ -314,7 +314,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
                     <View style={styles.memberInfo}>
                       <Text style={styles.memberName}>{member.contact.name}</Text>
                       {isOwner && liveSub?.subscriptionId ? (
-                        <Text style={[styles.memberTag, { color: C.accent }]}>via commitment</Text>
+                        <Text style={[styles.memberTag, { color: C.accent }]}>{t.sharedSubs.viaCommitment}</Text>
                       ) : member.tag ? (
                         <Text style={styles.memberTag}>{member.tag}</Text>
                       ) : null}
@@ -346,7 +346,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
                     onViewCommitment(liveSub.subscriptionId);
                   } else {
                     unmarkSharedSubPayment(sub.id, viewMonth, '__self__');
-                    showToast('unmarked', 'info');
+                    showToast(t.sharedSubs.unmarked, 'info');
                   }
                 };
                 const Row = isOwner ? TouchableOpacity : View;
@@ -361,7 +361,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
                     <View style={styles.memberInfo}>
                       <Text style={[styles.memberName, { color: C.textSecondary }]}>{member.contact.name}</Text>
                       {isOwner && liveSub?.subscriptionId ? (
-                        <Text style={[styles.memberTag, { color: C.accent }]}>via commitment</Text>
+                        <Text style={[styles.memberTag, { color: C.accent }]}>{t.sharedSubs.viaCommitment}</Text>
                       ) : member.tag ? (
                         <Text style={styles.memberTag}>{member.tag}</Text>
                       ) : null}
@@ -398,7 +398,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
                 activeOpacity={0.7}
               >
                 <Feather name="sliders" size={16} color={C.textSecondary} />
-                <Text style={styles.actionBtnText}>adjust amounts</Text>
+                <Text style={styles.actionBtnText}>{t.sharedSubs.adjustAmounts}</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -425,10 +425,10 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
                     <Feather name="link" size={13} color={C.accent} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.commitmentCardTitle}>linked to commitment</Text>
+                    <Text style={styles.commitmentCardTitle}>{t.sharedSubs.linkedToCommitment}</Text>
                     <Text style={styles.commitmentCardSub}>
-                      {'your share · '}
-                      {currency} {(liveSub.members.find(m => m.contact.id === '__self__')?.shareAmount ?? 0).toFixed(2)}/{liveSub.billingCycle === 'yearly' ? 'yr' : liveSub.billingCycle === 'quarterly' ? 'qtr' : 'mo'}
+                      {t.sharedSubs.yourShare}{' · '}
+                      {currency} {(liveSub.members.find(m => m.contact.id === '__self__')?.shareAmount ?? 0).toFixed(2)}/{liveSub.billingCycle === 'yearly' ? t.sharedSubs.yearShort : liveSub.billingCycle === 'quarterly' ? t.sharedSubs.quarterShort : t.sharedSubs.monthShort}
                     </Text>
                   </View>
                 </View>
@@ -440,14 +440,14 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
                   lightTap();
                   if (liveSub.subscriptionId) updateSubscription(liveSub.subscriptionId, { sharedSubId: undefined });
                   updateSharedSubscription(liveSub.id, { subscriptionId: undefined });
-                  showToast('unlinked', 'info');
+                  showToast(t.sharedSubs.unlinked, 'info');
                 }}
                 hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
               >
                 {({ pressed }) => (
                   <View style={[styles.unlinkLinkInner, pressed && { opacity: 0.55 }]}>
                     <Feather name="link" size={11} color={C.textMuted} />
-                    <Text style={styles.unlinkLinkText}>unlink</Text>
+                    <Text style={styles.unlinkLinkText}>{t.sharedSubs.unlink}</Text>
                   </View>
                 )}
               </Pressable>
@@ -459,7 +459,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
               activeOpacity={0.7}
             >
               <Feather name="link" size={14} color={C.textMuted} />
-              <Text style={styles.commitmentLinkBtnText}>link to commitment</Text>
+              <Text style={styles.commitmentLinkBtnText}>{t.sharedSubs.linkToCommitment}</Text>
             </TouchableOpacity>
           )}
 
@@ -481,7 +481,7 @@ const SharedSubDetailSheet: React.FC<SharedSubDetailSheetProps> = ({
             onPress={closeSheet}
             hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
             accessibilityRole="button"
-            accessibilityLabel="close"
+            accessibilityLabel={t.common.close}
           >
             {({ pressed }) => (
               <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>

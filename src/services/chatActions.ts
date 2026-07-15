@@ -734,6 +734,13 @@ export function executeAction(action: ChatAction): ExecuteResult {
         if (!goal) {
           return { success: false, message: `No savings goal matching "${goalName}" found.`, action };
         }
+        // Cap to the room left — a full/over-target goal must not take money without
+        // advancing progress (matches the Goals UI handleContribute guard).
+        const cRoom = Math.max(0, goal.targetAmount - goal.currentAmount);
+        const cApply = Math.min(action.amount, cRoom);
+        if (cApply <= 0) {
+          return { success: false, message: `"${goal.name}" is already fully funded.`, action };
+        }
         // Mirror the Goals UI (handleContribute): money must actually leave a wallet
         // + create a linked 'savings' expense, or the goal grows against no real money
         // — phantom savings that overstate net worth and let the user double-spend.
@@ -745,7 +752,7 @@ export function executeAction(action: ChatAction): ExecuteResult {
         let cLinkedTxId: string | undefined;
         if (cSrcId) {
           cLinkedTxId = usePersonalStore.getState().addTransaction({
-            amount: action.amount,
+            amount: cApply,
             category: 'savings',
             description: goal.name,
             type: 'expense',
@@ -754,14 +761,14 @@ export function executeAction(action: ChatAction): ExecuteResult {
             walletId: cSrcId,
             linkedGoalId: goal.id,
           }) || undefined;
-          useWalletStore.getState().deductFromWallet(cSrcId, action.amount);
+          useWalletStore.getState().deductFromWallet(cSrcId, cApply);
         }
-        usePersonalStore.getState().contributeToGoal(goal.id, action.amount, action.description || 'contribution via chat', cSrcId || undefined, cLinkedTxId);
-        const newAmount = Math.min(goal.currentAmount + action.amount, goal.targetAmount);
+        usePersonalStore.getState().contributeToGoal(goal.id, cApply, action.description || 'contribution via chat', cSrcId || undefined, cLinkedTxId);
+        const newAmount = Math.min(goal.currentAmount + cApply, goal.targetAmount);
         const pct = goal.targetAmount > 0 ? Math.round((newAmount / goal.targetAmount) * 100) : 0;
         return {
           success: true,
-          message: `Added RM ${action.amount.toFixed(2)} to "${goal.name}" — now at RM ${newAmount.toFixed(2)} (${pct}%)`,
+          message: `Added RM ${cApply.toFixed(2)} to "${goal.name}" — now at RM ${newAmount.toFixed(2)} (${pct}%)`,
           action,
         };
       }

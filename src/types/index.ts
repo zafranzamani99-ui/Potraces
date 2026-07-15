@@ -624,7 +624,7 @@ export type RootStackParamList = {
   BusinessMain: undefined;
   PersonalReports: undefined;
   BusinessReports: undefined;
-  TransactionsList: undefined;
+  TransactionsList: { filterWallet?: string } | undefined;
   SubscriptionList: undefined;
   SupplierList: undefined;
   DebtTracking: { receiptData?: { vendor: string; total: number; items: { name: string; amount: number }[] } } | undefined;
@@ -1377,7 +1377,7 @@ export interface DebtState {
   updateSharedSubscription: (id: string, updates: Partial<Pick<SharedSubscription, 'name' | 'iconName' | 'imageUri' | 'billingDay' | 'billingCycle' | 'isActive' | 'note' | 'subscriptionId'>>) => void;
   deleteSharedSubscription: (id: string) => void;
   addSharedSubMember: (subId: string, member: SharedSubMember) => void;
-  updateSharedSubMember: (subId: string, contactId: string, updates: Partial<Pick<SharedSubMember, 'tag' | 'shareAmount'>>) => void;
+  updateSharedSubMember: (subId: string, contactId: string, updates: Partial<Pick<SharedSubMember, 'tag' | 'shareAmount' | 'isActive'>>) => void;
   removeSharedSubMember: (subId: string, contactId: string) => void;
   ensureMonthRecord: (subId: string, month: string) => void;
   markSharedSubPayment: (subId: string, month: string, contactId: string) => void;

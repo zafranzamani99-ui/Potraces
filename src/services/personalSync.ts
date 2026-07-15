@@ -14,6 +14,7 @@ import {
   goalToRemote, debtToRemote, splitToRemote, contactToRemote, savingsToRemote, receiptToRemote,
   txFromRemote, walletFromRemote, transferFromRemote, subFromRemote, budgetFromRemote,
   goalFromRemote, debtFromRemote, splitFromRemote, contactFromRemote, savingsFromRemote, receiptFromRemote,
+  mergeSubscription,
 } from './personalSyncMappers';
 import type { Debt, Goal, SavingsAccount } from '../types';
 
@@ -296,6 +297,10 @@ async function pullAll(userId: string): Promise<boolean> {
       }
       return { ...base, history, currentValue } as SavingsAccount;
     };
+    // Subscriptions carry paymentHistory (each entry ↔ a wallet debit + expense
+    // transaction), so whole-row LWW would silently drop a payment recorded on
+    // another device. mergeSubscription (pure, in personalSyncMappers) unions the
+    // history and re-derives the schedule — see its comment for the full rationale.
 
     // skew-tolerant LWW: near-ties (within the window) fall back to a stable
     // deterministic tiebreak (higher id wins) so a slightly-fast device clock
@@ -330,7 +335,7 @@ async function pullAll(userId: string): Promise<boolean> {
 
     usePersonalStore.setState({
       transactions: mergeById(personalState.transactions, transactions.remote),
-      subscriptions: mergeById(personalState.subscriptions, subscriptions.remote),
+      subscriptions: mergeById(personalState.subscriptions, subscriptions.remote, mergeSubscription),
       budgets: mergeById(personalState.budgets, budgets.remote),
       goals: mergeById(personalState.goals, goals.remote, mergeGoal),
     });
@@ -426,14 +431,19 @@ async function pushAll(userId: string): Promise<boolean> {
 // fields. If a probe column is missing we DISABLE sync rather than write a lossy
 // round-trip. One representative new column per table is probed (cheap; cached).
 const SCHEMA_PROBES: Array<[string, string]> = [
-  ['personal_transactions', 'playbook_links'],
-  ['personal_wallets', 'initial_balance'],
-  ['personal_wallet_transfers', 'kind'],
-  ['personal_subscriptions', 'payment_history'],
-  ['personal_budgets', 'rollover'],
-  ['personal_goals', 'icon'],
-  ['personal_debts', 'group_id'],
-  ['personal_splits', 'items'],
+  // Probe client_edit_at (added last, in 20260716000000): its presence proves the
+  // DB is fully migrated (every earlier column exists too) AND that LWW's edit-time
+  // column is available, so sync stays disabled on an un-migrated DB instead of
+  // erroring mid-push. personal_contacts uses id-tiebreak LWW (no client_edit_at),
+  // so it keeps probing an older column.
+  ['personal_transactions', 'client_edit_at'],
+  ['personal_wallets', 'client_edit_at'],
+  ['personal_wallet_transfers', 'client_edit_at'],
+  ['personal_subscriptions', 'client_edit_at'],
+  ['personal_budgets', 'client_edit_at'],
+  ['personal_goals', 'client_edit_at'],
+  ['personal_debts', 'client_edit_at'],
+  ['personal_splits', 'client_edit_at'],
   ['personal_contacts', 'is_from_phone'],
 ];
 

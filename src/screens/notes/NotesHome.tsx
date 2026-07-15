@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { useNotesStore } from '../../store/notesStore';
 import { useAppStore } from '../../store/appStore';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import NeuButton from '../../components/common/NeuButton';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { NotePage } from '../../types';
@@ -193,15 +194,14 @@ const NotesHome: React.FC = () => {
           <Text style={styles.emptyHint}>
             {isFirstWrite ? t.notes.firstWriteHint : t.notes.startWritingHint}
           </Text>
-          <TouchableOpacity
-            ref={emptyCtaRef}
-            style={styles.emptyCTA}
-            activeOpacity={0.7}
-            onPress={handleNewNote}
-          >
-            <Feather name="plus" size={18} color={C.onAccent} />
-            <Text style={styles.emptyCTAText}>{t.notes.startWriting}</Text>
-          </TouchableOpacity>
+          <View ref={emptyCtaRef} collapsable={false} style={styles.emptyCtaWrap}>
+            <NeuButton
+              onPress={handleNewNote}
+              label={t.notes.startWriting}
+              icon="plus"
+              accessibilityLabel={t.notes.startWriting}
+            />
+          </View>
         </View>
 
         {/* First impression greets HERE, on arrival — not after "start writing".
@@ -453,21 +453,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-  emptyCTA: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.xl,
-    paddingVertical: SPACING.lg,
-    paddingHorizontal: SPACING['2xl'],
+  // Width wrapper so the full-width Neu Select stays capped + centered (a
+  // center-aligned parent would otherwise collapse NeuButton to content width).
+  emptyCtaWrap: {
+    width: '100%',
+    maxWidth: 256,
     marginTop: SPACING.lg,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
-  },
-  emptyCTAText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
   },
 });

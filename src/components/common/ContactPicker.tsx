@@ -14,7 +14,6 @@ import {
   Keyboard,
 } from 'react-native';
 import { KeyboardAwareScrollView, KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,12 +32,13 @@ interface ContactPickerProps {
   selfName?: string;
   /** When true, skip rendering the internal label — caller renders its own. */
   hideLabel?: boolean;
-  /** 'input' renders a free-type name field (avatar + placeholder + contacts pill + recent chips), matching the seller New Order customer input. Single mode. */
+  /** 'input' renders a free-type name field (avatar + placeholder + contacts pill), matching the seller New Order customer input. Single mode. */
   variant?: 'pills' | 'input';
-  /** Recent people shown as quick-pick chips below the input (variant='input' only). */
-  recent?: Contact[];
   /** Placeholder for the input variant. */
   placeholder?: string;
+  /** input+multi only: skip the selected-contact pills (the parent renders its own
+   *  member rows). Leaves just the "add a name" row + contacts pill. */
+  hideSelectedPills?: boolean;
 }
 
 const ContactPicker: React.FC<ContactPickerProps> = ({
@@ -50,8 +50,8 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   selfName = 'me',
   hideLabel = false,
   variant = 'pills',
-  recent = [],
   placeholder = "who's this for?",
+  hideSelectedPills = false,
 }) => {
   const C = useCalm();
   const isDark = useIsDark();
@@ -205,7 +205,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
       {variant === 'input' && mode === 'multi' ? (
         <>
           {/* Participants as pills (includes "me") */}
-          {selectedContacts.length > 0 && (
+          {!hideSelectedPills && selectedContacts.length > 0 && (
             <View style={styles.pillContainer}>
               {selectedContacts.map((contact) => {
                 const isSelf = contact.id === '__self__';
@@ -298,29 +298,6 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
               )}
             </View>
           </View>
-          {recent.length > 0 && !name.trim() && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled contentContainerStyle={styles.recentScroll} keyboardShouldPersistTaps="handled">
-              {recent.map((c, i) => (
-                <Pressable
-                  key={c.id ?? i}
-                  onPress={() => onSelect([c])}
-                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Select ${c.name}`}
-                  style={({ pressed }) => [styles.recentPill, neuF.raised, pressed && styles.recentPillPressed]}
-                >
-                  {({ pressed }) => (
-                    <>
-                      <View style={[styles.recentPillAvatar, pressed && styles.recentPillAvatarPressed]}>
-                        <Text style={[styles.recentPillAvatarText, pressed && styles.recentPillAvatarTextPressed]}>{c.name?.[0]?.toUpperCase() ?? '?'}</Text>
-                      </View>
-                      <Text style={[styles.recentName, pressed && styles.recentNamePressed]} numberOfLines={1}>{c.name}</Text>
-                    </>
-                  )}
-                </Pressable>
-              ))}
-            </ScrollView>
-          )}
         </>
       ) : (
         <>
@@ -666,53 +643,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.accent,
   },
-  recentScroll: {
-    gap: SPACING.xs,
-    paddingVertical: SPACING.xs,
-    paddingTop: SPACING.sm,
-  },
-  recentPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.accent, 0.06),
-  },
-  recentPillPressed: {
-    backgroundColor: C.accent,
-  },
-  recentPillAvatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: withAlpha(C.accent, 0.12),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recentPillAvatarPressed: {
-    backgroundColor: withAlpha(C.onAccent, 0.2),
-  },
-  recentPillAvatarText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: C.accent,
-  },
-  recentPillAvatarTextPressed: {
-    color: C.onAccent,
-  },
-  recentName: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-    maxWidth: 100,
-  },
-  recentNamePressed: {
-    color: C.onAccent,
-  },
-
   // Modals
   modalOverlay: {
     flex: 1,

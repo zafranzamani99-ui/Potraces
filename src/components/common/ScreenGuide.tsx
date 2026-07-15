@@ -232,7 +232,19 @@ const LegacyGuide: React.FC<{
                     ))}
                   </View>
                 )}
-                <View style={styles.footerRow}>
+                <View style={[styles.footerRow, hasSpot && styles.footerRowSplit]}>
+                  {/* Skip the whole guide from the intro — only when a spotlight
+                      follows (no spot = "got it" already dismisses it). */}
+                  {hasSpot && (
+                    <TouchableOpacity
+                      onPress={finish}
+                      hitSlop={{ top: 10, bottom: 10, left: 16, right: 16 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.common.skip}
+                    >
+                      <Text style={[styles.footerBtn, styles.footerBtnSkip]}>{t.common.skip.toLowerCase()}</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={handleNext}
                     hitSlop={{ top: 10, bottom: 10, left: 16, right: 16 }}
@@ -498,7 +510,19 @@ const WalkThrough: React.FC<{ id: string; accent?: string; steps: GuideStep[] }>
               ))}
             </View>
           )}
-          <View style={styles.footerRow}>
+          <View style={[styles.footerRow, !isLast && styles.footerRowSplit]}>
+            {/* Skip the WHOLE tour from the first card. Only when there are more
+                steps — the payoff (last) card just shows "got it". */}
+            {!isLast && (
+              <TouchableOpacity
+                onPress={finish}
+                hitSlop={{ top: 10, bottom: 10, left: 16, right: 16 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.common.skip}
+              >
+                <Text style={[styles.footerBtn, styles.footerBtnSkip]}>{t.common.skip.toLowerCase()}</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={isLast ? finish : advance}
               hitSlop={{ top: 10, bottom: 10, left: 16, right: 16 }}
@@ -693,10 +717,18 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     justifyContent: 'flex-end',
     marginTop: SPACING.sm,
   },
+  // When the intro shows both "skip" (left) and "next" (right).
+  footerRowSplit: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   footerBtn: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     paddingVertical: SPACING.sm,
+  },
+  footerBtnSkip: {
+    color: C.bronze,
   },
   spotCard: {
     position: 'absolute',

@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../common/neu';
+import { useT } from '../../i18n';
 import { Subscription } from '../../types';
 
 interface CommitmentPickerModalProps {
@@ -18,6 +19,7 @@ interface CommitmentPickerModalProps {
 const CommitmentPickerModal: React.FC<CommitmentPickerModalProps> = ({ visible, subscriptions, currency, onPick, onClose }) => {
   const C = useCalm();
   const neuS = useNeu(undefined, { faintDark: true }); // surfaces sit inside the centered modal card (bg C.background)
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
   if (!visible) return null;
@@ -26,8 +28,8 @@ const CommitmentPickerModal: React.FC<CommitmentPickerModalProps> = ({ visible, 
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }} onPress={onClose}>
         <Pressable onPress={() => {}} style={[styles.choiceCard, SHADOWS.lg, { maxHeight: '60%' }]}>
-          <Text style={styles.choiceTitle}>link to commitment</Text>
-          <Text style={styles.choiceSubtitle}>pick an existing commitment</Text>
+          <Text style={styles.choiceTitle}>{t.debts.linkToCommitment}</Text>
+          <Text style={styles.choiceSubtitle}>{t.debts.pickExistingCommitment}</Text>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ marginTop: SPACING.md }}>
             {subscriptions.filter((s) => s.isActive).map((sub) => (
               <TouchableOpacity
@@ -41,7 +43,7 @@ const CommitmentPickerModal: React.FC<CommitmentPickerModalProps> = ({ visible, 
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.choiceLabel}>{sub.name}</Text>
-                  <Text style={styles.choiceDesc}>{currency}{sub.amount.toFixed(2)}/{sub.billingCycle === 'monthly' ? 'mo' : sub.billingCycle === 'yearly' ? 'yr' : 'qtr'}</Text>
+                  <Text style={styles.choiceDesc}>{currency}{sub.amount.toFixed(2)}{sub.billingCycle === 'monthly' ? t.sharedSubs.perMonth : sub.billingCycle === 'yearly' ? t.sharedSubs.perYear : t.sharedSubs.perQuarter}</Text>
                 </View>
                 <Feather name="link" size={16} color={C.accent} />
               </TouchableOpacity>

@@ -22,6 +22,10 @@ const TILE_ICONS: Record<IncomeType, keyof typeof Feather.glyphMap> = {
   mixed: 'layers',
 };
 
+// Income types not shipping in this release — shown but not selectable, with a
+// "soon · 1.2.0" badge. Only Selling products + Stall/walk-in are live for v1.0.
+const SOON_TYPES: IncomeType[] = ['freelance', 'parttime', 'rider', 'mixed'];
+
 const Setup: React.FC = () => {
   const C = useCalm();
   const t = useT();
@@ -75,26 +79,35 @@ const Setup: React.FC = () => {
           {TILES.map((tile) => {
             const isSelected = selected === tile.type;
             const icon = TILE_ICONS[tile.type];
+            const soon = SOON_TYPES.includes(tile.type);
             return (
               <Pressable
                 key={tile.type}
                 style={[styles.tile, isSelected && styles.tileSelected]}
-                onPress={() => { lightTap(); setSelected(tile.type); }}
+                // Soon tiles: tap gives a haptic but can't be selected.
+                onPress={() => { lightTap(); if (!soon) setSelected(tile.type); }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected, disabled: soon }}
+                accessibilityLabel={soon ? `${tile.label}, ${t.business.setupSoonBadge}` : tile.label}
               >
                 {({ pressed }) => (
-                  <View style={[styles.tileInner, pressed && { opacity: 0.75 }]}>
-                    <View style={[styles.tileIconCircle, isSelected && styles.tileIconCircleSelected]}>
+                  <View style={[styles.tileInner, pressed && !soon && { opacity: 0.75 }]}>
+                    <View style={[styles.tileIconCircle, isSelected && styles.tileIconCircleSelected, soon && styles.soonDim]}>
                       <Feather name={icon} size={18} color={isSelected ? C.accent : C.textSecondary} />
                     </View>
-                    <View style={styles.tileTextCol}>
+                    <View style={[styles.tileTextCol, soon && styles.soonDim]}>
                       <Text style={[styles.tileLabel, isSelected && { color: C.accent }]}>{tile.label}</Text>
                       <Text style={styles.tileSublabel}>{tile.sublabel}</Text>
                     </View>
-                    {isSelected && (
+                    {soon ? (
+                      <View style={styles.soonBadge}>
+                        <Text style={styles.soonBadgeText}>{t.business.setupSoonBadge}</Text>
+                      </View>
+                    ) : isSelected ? (
                       <View style={styles.tileCheck}>
                         <Feather name="check" size={16} color={C.accent} />
                       </View>
-                    )}
+                    ) : null}
                   </View>
                 )}
               </Pressable>
@@ -229,6 +242,22 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(C.accent, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Coming-soon tiles: icon + text dimmed, a bronze "soon · 1.2.0" badge on the right.
+  soonDim: {
+    opacity: 0.45,
+  },
+  soonBadge: {
+    backgroundColor: withAlpha(C.bronze, 0.16),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  soonBadgeText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+    letterSpacing: 0.2,
   },
   confirmBtn: {
     width: '100%',

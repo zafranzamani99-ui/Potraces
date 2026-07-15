@@ -109,8 +109,9 @@ function parseReceiptDate(dateStr?: string): Date {
 const ReceiptScanner: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
-  const neu = useNeu();            // base = C.background — on-screen surfaces
-  const neuS = useNeu(C.surface);  // base = C.surface — surfaces inside the picker modals
+  // Onyx: faint dark neu across the screen; the picker modals now sit on
+  // C.background too, so one default-base accessor covers everything.
+  const neu = useNeu(undefined, { faintDark: true });
   const t = useT();
   // ScreenGuide spotlight target — the shutter button (hero state only; the
   // guide falls back to inline points if it can't be measured).
@@ -1051,7 +1052,7 @@ const ReceiptScanner: React.FC = () => {
       {/* Tax Relief Picker Modal */}
       <Modal visible={taxPickerVisible} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setTaxPickerVisible(false)}>
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setTaxPickerVisible(false)}>
-          <View style={[styles.dropdownModal, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.dropdownModal, SHADOWS.lg]} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
               <Text style={styles.dropdownTitle}>{t.receipts.taxReliefCategory}</Text>
               <TouchableOpacity
@@ -1083,7 +1084,7 @@ const ReceiptScanner: React.FC = () => {
       {/* ── Category Picker Modal ── */}
       <Modal visible={categoryPickerVisible} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setCategoryPickerVisible(false)}>
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setCategoryPickerVisible(false)}>
-          <View style={[styles.dropdownModal, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.dropdownModal, SHADOWS.lg]} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
               <Text style={styles.dropdownTitle}>{t.receipts.expenseCategory}</Text>
               <TouchableOpacity
@@ -1139,7 +1140,7 @@ const ReceiptScanner: React.FC = () => {
       {/* ── Calendar Picker Modal ── */}
       <Modal visible={calendarPickerVisible} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setCalendarPickerVisible(false)}>
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setCalendarPickerVisible(false)}>
-          <View style={[styles.dropdownModal, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.dropdownModal, SHADOWS.lg]} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
               <Text style={styles.dropdownTitle}>{t.receipts.dateLabel}</Text>
               <TouchableOpacity
@@ -1705,9 +1706,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   dropdownModal: {
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
-    // bg (C.surface) + shadow come from neuS.raisedSoft spread at the call site
+    // Onyx: C.background dialog on the 0.4 scrim; flat SHADOWS.lg shell at the call site.
   },
   dropdownHeader: {
     flexDirection: 'row',

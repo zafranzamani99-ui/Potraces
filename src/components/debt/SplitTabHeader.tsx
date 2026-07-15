@@ -4,6 +4,7 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../common/neu';
 import DebtSegmentedControl from './DebtSegmentedControl';
+import { useT } from '../../i18n';
 import { SplitExpense } from '../../types';
 import type { SplitTab } from '../../screens/shared/debt/useDebtFilters';
 import { Feather } from '@expo/vector-icons';
@@ -51,6 +52,7 @@ const SplitTabHeader: React.FC<SplitTabHeaderProps> = ({
 }) => {
   const C = useCalm();
   const neu = useNeu(undefined, { faintDark: true });
+  const t = useT();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   return (
@@ -58,13 +60,13 @@ const SplitTabHeader: React.FC<SplitTabHeaderProps> = ({
       {/* Segmented control — 3 emotional buckets + optional archive */}
       <DebtSegmentedControl
         tabs={[
-          { key: 'waiting' as const, label: 'waiting on', count: splitBuckets.waiting.length, color: theyOweColor },
-          { key: 'youOwe' as const,  label: 'you owe',    count: splitBuckets.youOwe.length,  color: iOweColor    },
-          { key: 'settled' as const, label: 'settled',    count: splitBuckets.settled.length, color: settledColor },
-          ...(debtsShowArchive ? [{ key: 'archive' as const, label: 'archive', count: archiveSplitCount, color: C.bronze }] : []),
+          { key: 'waiting' as const, label: t.debts.tabWaitingOn, count: splitBuckets.waiting.length, color: theyOweColor },
+          { key: 'youOwe' as const,  label: t.debts.tabYouOwe,    count: splitBuckets.youOwe.length,  color: iOweColor    },
+          { key: 'settled' as const, label: t.debts.settledLower,    count: splitBuckets.settled.length, color: settledColor },
+          ...(debtsShowArchive ? [{ key: 'archive' as const, label: t.debts.archive, count: archiveSplitCount, color: C.bronze }] : []),
         ]}
         active={splitTab as 'waiting' | 'youOwe' | 'settled' | 'archive'}
-        itemNoun="split"
+        itemNoun={t.debts.itemNounSplit}
         onSelect={(key) => {
           if (selectionMode) exitSelectionMode();
           if (splitTab !== key) setSplitTab(key);
@@ -76,7 +78,7 @@ const SplitTabHeader: React.FC<SplitTabHeaderProps> = ({
             onPress={() => { exitSelectionMode(); setSplitTab('drafts'); }}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel={`${draftSplitCount} ${draftSplitCount === 1 ? 'draft' : 'drafts'}`}
+            accessibilityLabel={`${draftSplitCount} ${draftSplitCount === 1 ? t.debts.draft : t.debts.drafts}`}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Feather name="bookmark" size={14} color={C.bronze} />
@@ -89,40 +91,40 @@ const SplitTabHeader: React.FC<SplitTabHeaderProps> = ({
       <View style={[styles.splitHeroCard, neu.raisedSoft]}>
         {splitTab === 'waiting' && (
           <>
-            <Text style={styles.splitHeroLabel}>you're owed back</Text>
+            <Text style={styles.splitHeroLabel}>{t.debts.youreOwedBack}</Text>
             <Text style={[styles.splitHeroAmount, { color: theyOweColor }]}>
               {currency} {waitingTotal.toFixed(2)}
             </Text>
             <Text style={styles.splitHeroSub}>
               {splitBuckets.waiting.length === 0
-                ? "nothing pending — you're clean"
-                : `across ${splitBuckets.waiting.length} ${splitBuckets.waiting.length === 1 ? 'split' : 'splits'}`}
+                ? t.debts.nothingPending
+                : t.debts.acrossSplits.replace('{n}', String(splitBuckets.waiting.length))}
             </Text>
           </>
         )}
         {splitTab === 'youOwe' && (
           <>
-            <Text style={styles.splitHeroLabel}>you owe</Text>
+            <Text style={styles.splitHeroLabel}>{t.debts.tabYouOwe}</Text>
             <Text style={[styles.splitHeroAmount, { color: iOweColor }]}>
               {currency} {youOweTotal.toFixed(2)}
             </Text>
             <Text style={styles.splitHeroSub}>
               {splitBuckets.youOwe.length === 0
-                ? "you don't owe anyone — living free"
-                : `across ${splitBuckets.youOwe.length} ${splitBuckets.youOwe.length === 1 ? 'split' : 'splits'}`}
+                ? t.debts.youOweNoOne
+                : t.debts.acrossSplits.replace('{n}', String(splitBuckets.youOwe.length))}
             </Text>
           </>
         )}
         {splitTab === 'settled' && (
           <>
-            <Text style={styles.splitHeroLabel}>all squared up</Text>
+            <Text style={styles.splitHeroLabel}>{t.debts.allSquaredUp}</Text>
             <Text style={[styles.splitHeroAmount, { color: settledColor }]}>
               {currency} {settledTotal.toFixed(2)}
             </Text>
             <Text style={styles.splitHeroSub}>
               {splitBuckets.settled.length === 0
-                ? "settled splits land here when everyone's paid up"
-                : `${splitBuckets.settled.length} done · everyone paid up`}
+                ? t.debts.settledSplitsLandHere
+                : t.debts.nDoneEveryonePaid.replace('{n}', String(splitBuckets.settled.length))}
             </Text>
           </>
         )}

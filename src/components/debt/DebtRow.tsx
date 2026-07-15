@@ -5,7 +5,9 @@ import { differenceInDays } from 'date-fns';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../common/neu';
+import { useT } from '../../i18n';
 import { getDebtAge } from '../../utils/debtTracking';
+import { formatAmount } from '../../utils/formatters';
 import { Contact, Debt } from '../../types';
 
 interface DebtGroup {
@@ -59,6 +61,7 @@ const DebtRow: React.FC<DebtRowProps> = ({
 }) => {
   const C = useCalm();
   const neu = useNeu(undefined, { faintDark: true });
+  const t = useT();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   const isMulti = group.debts.length > 1;
@@ -120,21 +123,21 @@ const DebtRow: React.FC<DebtRowProps> = ({
               {group.contactName.toLowerCase()}
             </Text>
             <Text style={[styles.tickerDebtTypeChip, { color: typeConfig.color }]}>
-              {group.debts.length} debts
+              {t.debts.nDebts.replace('{count}', String(group.debts.length))}
             </Text>
             <View style={styles.tickerLeader} />
             <Text style={[styles.tickerSplitAmount, { color: allSettled ? settledColor : typeConfig.color }]}>
-              {allSettled ? `${currency} ${groupTotal.toFixed(2)}` : isMixed ? `${currency} ${netAmount.toFixed(2)}` : `${currency} ${group.totalRemaining.toFixed(2)}`}
+              {allSettled ? formatAmount(groupTotal, currency) : isMixed ? formatAmount(netAmount, currency) : formatAmount(group.totalRemaining, currency)}
             </Text>
             <Feather name="chevron-right" size={14} color={C.textMuted} style={{ marginLeft: 4 }} />
           </View>
           <Text style={styles.tickerSplitFooter} numberOfLines={1}>
             {allSettled
               ? wasMixed
-                ? `settled up · net ${currency} ${groupTotal.toFixed(2)}`
-                : `${group.debts[0].type === 'i_owe' ? 'i owe' : 'they owe'} · settled · ${currency} ${groupTotal.toFixed(2)} total`
-              : isMixed ? `net ${netDirection === 'i_owe' ? 'i owe' : 'they owe'}` : `${primaryType === 'i_owe' ? 'i owe' : 'they owe'}`}
-            {!allSettled && settledCount > 0 ? ` · ${settledCount} settled` : ''}
+                ? t.debts.settledUpNet.replace('{amount}', formatAmount(groupTotal, currency))
+                : `${group.debts[0].type === 'i_owe' ? t.debts.iOweLower : t.debts.theyOweLower} · ${t.debts.settledLower} · ${formatAmount(groupTotal, currency)} ${t.debts.totalSuffix}`
+              : isMixed ? `${t.debts.netPrefix} ${netDirection === 'i_owe' ? t.debts.iOweLower : t.debts.theyOweLower}` : `${primaryType === 'i_owe' ? t.debts.iOweLower : t.debts.theyOweLower}`}
+            {!allSettled && settledCount > 0 ? ` · ${t.debts.nSettled.replace('{count}', String(settledCount))}` : ''}
           </Text>
         </TouchableOpacity>
       </View>
@@ -152,31 +155,31 @@ const DebtRow: React.FC<DebtRowProps> = ({
   let debtFooterText = '';
   let debtFooterColor: string | null = null;
   if (debt.status === 'settled') {
-    const dir = debt.type === 'i_owe' ? 'i owe' : 'they owe';
-    debtFooterText = `${dir} · settled · ${currency} ${debt.totalAmount.toFixed(2)} total`;
+    const dir = debt.type === 'i_owe' ? t.debts.iOweLower : t.debts.theyOweLower;
+    debtFooterText = `${dir} · ${t.debts.settledLower} · ${formatAmount(debt.totalAmount, currency)} ${t.debts.totalSuffix}`;
     debtFooterColor = settledColor;
   } else if (debt.dueDate) {
     const dueD = new Date(debt.dueDate);
     if (!isNaN(dueD.getTime())) {
       const daysUntil = differenceInDays(dueD, new Date());
       if (daysUntil < 0) {
-        debtFooterText = `${currency} ${remaining.toFixed(2)} left · overdue ${Math.abs(daysUntil)}d`;
+        debtFooterText = `${t.debts.amountLeft.replace('{amount}', formatAmount(remaining, currency))} · ${t.debts.overdueDays.replace('{n}', String(Math.abs(daysUntil)))}`;
         debtFooterColor = overdueColor;
       } else if (daysUntil === 0) {
-        debtFooterText = `${currency} ${remaining.toFixed(2)} left · due today`;
+        debtFooterText = `${t.debts.amountLeft.replace('{amount}', formatAmount(remaining, currency))} · ${t.debts.dueToday}`;
         debtFooterColor = C.gold;
       } else if (daysUntil <= 3) {
-        debtFooterText = `${currency} ${remaining.toFixed(2)} left · due in ${daysUntil}d`;
+        debtFooterText = `${t.debts.amountLeft.replace('{amount}', formatAmount(remaining, currency))} · ${t.debts.dueInDays.replace('{n}', String(daysUntil))}`;
         debtFooterColor = C.gold;
       } else {
-        debtFooterText = `${currency} ${remaining.toFixed(2)} left · due in ${daysUntil}d`;
+        debtFooterText = `${t.debts.amountLeft.replace('{amount}', formatAmount(remaining, currency))} · ${t.debts.dueInDays.replace('{n}', String(daysUntil))}`;
       }
     } else {
-      debtFooterText = `${currency} ${remaining.toFixed(2)} left · ${getDebtAge(debt.createdAt)}`;
+      debtFooterText = `${t.debts.amountLeft.replace('{amount}', formatAmount(remaining, currency))} · ${getDebtAge(debt.createdAt)}`;
     }
   } else {
     const days = differenceInDays(new Date(), new Date(debt.createdAt));
-    debtFooterText = `${currency} ${remaining.toFixed(2)} left · ${getDebtAge(debt.createdAt)}`;
+    debtFooterText = `${t.debts.amountLeft.replace('{amount}', formatAmount(remaining, currency))} · ${getDebtAge(debt.createdAt)}`;
     if (days >= 30) debtFooterColor = overdueColor;
     else if (days >= 7) debtFooterColor = C.gold;
   }
@@ -197,7 +200,7 @@ const DebtRow: React.FC<DebtRowProps> = ({
         onLongPress={() => !inDebtSelection && enterSelectionMode('debt', debt.id)}
         delayLongPress={400}
         accessibilityRole="button"
-        accessibilityLabel={`${debt.contact.name}, ${currency} ${remaining.toFixed(2)} left, ${typeConfig.label}`}
+        accessibilityLabel={t.debts.a11yDebtRow.replace('{name}', debt.contact.name).replace('{amount}', formatAmount(remaining, currency)).replace('{type}', typeConfig.label)}
       >
         <View style={styles.tickerDebtHeaderRow}>
           {inDebtSelection && (
@@ -214,11 +217,11 @@ const DebtRow: React.FC<DebtRowProps> = ({
             {debt.contact.name.toLowerCase()}
           </Text>
           <Text style={[styles.tickerDebtTypeChip, { color: typeConfig.color }]}>
-            {debt.type === 'i_owe' ? 'i owe' : 'they owe'}
+            {debt.type === 'i_owe' ? t.debts.iOweLower : t.debts.theyOweLower}
           </Text>
           <View style={styles.tickerLeader} />
           <Text style={[styles.tickerSplitAmount, { color: debt.status === 'settled' ? settledColor : typeConfig.color }]}>
-            {currency} {debt.status === 'settled' ? debt.totalAmount.toFixed(2) : remaining.toFixed(2)}
+            {debt.status === 'settled' ? formatAmount(debt.totalAmount, currency) : formatAmount(remaining, currency)}
           </Text>
           {!inDebtSelection && (
             <Feather

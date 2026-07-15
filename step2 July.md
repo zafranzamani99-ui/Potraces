@@ -1,6 +1,6 @@
 # Potraces — Step 2 Plan (July 2026)
 
-_Branch: `feat/calculator-quick-action` (level with `origin`, **21 commits ahead of `main`**). Last updated 2026-07-10._
+_On `main`, level with `origin/main` — the `feat/calculator-quick-action` redesign branch has been **merged**. Last updated 2026-07-15._
 
 Three tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the locked 3-material standard), **(B) money data-safety hardening** (correctness), **(C) ScreenGuide walk-throughs** (first-run UX). Track B's CRITICAL tier is shipped. Tracks A and C roll out screen-by-screen.
 
@@ -8,27 +8,34 @@ Three tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the 
 
 # ▶ START HERE
 
-**Where it stands right now:** `tsc` 0 · all 7 `tsx` suites green · **7 files uncommitted** · **nothing device-verified**.
+**Where it stands (2026-07-15):** merged to `main`, level with `origin`. The old doc's "7 uncommitted files" are now **committed** (`ff76023`). There is **new uncommitted WIP** in the tree (11 files — Onboarding, Goals, WalletManagement + shared modals; looks like further Onyx polish). Commit or discard that before starting fresh work.
+
+## ✅ Done since 2026-07-10 (was on this list, now cleared)
+
+- **HIGH money fix committed** — walletReconcile tip bug + the other 6 files, merged to `main` (`ff76023`).
+- **Import double-booking fixed** — CSV + statement re-imports now dedup (`src/utils/importDedup.ts`, wired into both import screens, `82428cf`). *Category name→id mapping is still open — see Track B.*
+- **Savings & Investments redesign merged** — Savings now on the neu kit (`a46f872`).
+- **"Onyx" dark-surface standard committed** app-wide for sheets/modals/pills (`54337ed`). This **supersedes the old "modal shell = flat" decision** — see CLAUDE.md "Onyx" section for the locked checklist + which screens still need it.
+- **Settings split** into App / Personal / Business screens (`2aaa7bb`).
+- **Beta site on `main`** — `site/index.html` is on `main` pointing at Singapore. The old "get the site onto main" blocker is **cleared**; only the two secrets remain.
+- **Singapore backend migration** — all live code + all 7 `site/*.html` swept to Singapore. Only docs/READMEs/already-applied migration SQL still *name* Tokyo — harmless history.
 
 ## 1. Do these, in order
 
-| # | Do this | Why it's first | Detail |
+| # | Do this | Why | Detail |
 |---|---|---|---|
-| 1 | **Commit the 7 uncommitted files** | They contain a **HIGH money fix** that currently exists *only in your working tree*. Losing the tree loses the fix. | [Track A](#track-a--neu-kit-redesign) |
-| 2 | **Device-verify Debt + Receipt, light AND dark** | The single sign-off gate for the whole Debt+Receipt rollout. Everything else is already `tsc`/test-proven. | [What to look at](#what-to-look-at-on-device) |
-| 3 | **Track B — sync/backup cluster** | Highest-severity code left in the repo (silent cross-device data loss). | [Track B](#track-b--money-data-safety-remaining-ranked) |
-| 4 | Track A — remaining neu screens | Cosmetic, low risk, mechanical. | [Remaining screens](#remaining-screens) |
+| 1 | **Device-verify Debt + Receipt, light AND dark** | The one un-cleared sign-off gate for that rollout. `tsc`/test-proven, but no human has eyeballed it on a phone. | [What to look at](#what-to-look-at-on-device) |
+| 2 | **Track B — sync/backup cluster** | Highest-severity code left in the repo (silent cross-device data loss). | [Track B](#track-b--money-data-safety-remaining-ranked) |
+| 3 | **Beta go-live — set the 2 secrets** | Site is already live-ready on `main`; only `BETA_IOS_URL` + `BETA_ANDROID_URL` remain. | [Beta](#beta-distribution--secrets-only) |
+| 4 | Track A — remaining neu screens | Cosmetic, low risk, mechanical. Savings now done; Goals/Budget/Account/Reports/Pulse/MoneyChat/Import remain. | [Remaining screens](#remaining-screens) |
 | 5 | Track C — guide upgrades | UX polish. | [Track C](#track-c--screenguide-walk-throughs-first-run-ux) |
-| 6 | Beta go-live | Blocked on a clean website-only commit onto `main`. | [Beta](#beta-distribution--pending) |
-
-**The 7 uncommitted files** (all verified: `tsc` 0, 7/7 suites green):
-`src/utils/walletReconcile.ts` · `src/store/debtStore.ts` · `src/screens/shared/DebtTracking.tsx` · `src/components/debt/PriceChangeSheet.tsx` · `src/components/debt/SelectionActionBar.tsx` · `src/components/common/NeuPressable.tsx` · `scripts/test-wallet-reconcile.ts`
+| 6 | ~~Onboarding "Skip" → land on start-choice page~~ **DONE 2026-07-15** | Skip now jumps to the final start-choice page (`handleSkip`) instead of committing "start fresh". | [Onboarding](#onboarding--skip-should-land-on-the-start-choice-page-todo-2026-07-14) |
+| 7 | Singapore shortcut re-sign (**Mac-only**) | Back-Tap shortcuts still point at the old Tokyo endpoint. | [Migration](#supabase-tokyo--singapore-migration--back-tap-shortcut-re-sign-mac-only-deferred-2026-07-14) |
 
 ## 2. Decisions only you can make
 
-| Decision | Context | Cost of deciding "yes" |
+| Decision | Context | Cost of "yes" |
 |---|---|---|
-| **Back-apply "modal shell = flat" to the locked screens?** | You set this rule on Debt (*pop-up modal OUTER card = plain `SHADOWS.lg`; neu only on inner picker rows / the CTA*). Debt's modals follow it. The **commitment + wallet benchmark modals still have neu outer cards** (mark-paid, pay-warning, celebration, delete-confirm, filter, how-it-works). Untouched because you locked those two screens. | ~6 modals, mechanical |
 | **Echo FAB + greeting bubble (#15)?** | Still non-neu. Cross-screen element — migrate **app-wide in one pass**, never per-screen. | 1 pass, touches many screens |
 | **Fix the `NeuButton`/`NeuPressable` flex footgun in the shared components?** | See [footgun](#known-footgun-shared-buttons-and-flex). Worked around locally in `SelectionActionBar`. | Blast radius = wallet + commitment + calculator (locked look) |
 
@@ -38,7 +45,9 @@ Three tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the 
 
 ## Status (2026-07-09/10)
 
-**Done:** navbar · Dashboard/home · Wallet (+ its modals, WalletPicker) · **Commitment/Bills** (`SubscriptionList` + `CommitmentForm`) · **Debt** (`DebtTracking` + all 17 `components/debt/*`) · **Receipt ×3** (`ReceiptHistory`, `ReceiptDetail`, `ReceiptScanner`) · shared `CategoryPicker` / `TransactionItem` / `NeuButton` / `NeuPressable` / `FAB`.
+**Done:** navbar · Dashboard/home · Wallet (+ its modals, WalletPicker) · **Commitment/Bills** (`SubscriptionList` + `CommitmentForm`) · **Debt** (`DebtTracking` + all 17 `components/debt/*`) · **Receipt ×3** (`ReceiptHistory`, `ReceiptDetail`, `ReceiptScanner`) · **Savings & Investments** (S&I redesign, merged `a46f872`) · shared `CategoryPicker` / `TransactionItem` / `NeuButton` / `NeuPressable` / `FAB`.
+
+**Onyx** (dark-surface standard) is now committed app-wide (`54337ed`) — see CLAUDE.md for the LOCKED checklist. Screens not yet Onyx'd are listed there (BudgetPlanning, AccountOverview, Reports, FinancialPulse, MoneyChat, Import, Receipt modals, seller/*).
 
 Debt + Receipt were converted by a 21-agent workflow (166 surfaces), then Debt got a 37-agent adversarial audit (6 task-divided lenses + 3 refuters per finding). **All 11 verified findings fixed.**
 
@@ -58,8 +67,8 @@ Worked around **locally** in `SelectionActionBar` (wrapped in a `flex:1` View). 
 
 ### Remaining screens
 
-Same standard, same process. One screen at a time:
-`Goals.tsx` · `BudgetPlanning.tsx` · `SavingsTracker.tsx` · `AccountOverview.tsx` · `Reports.tsx` · `FinancialPulse.tsx` · `MoneyChat.tsx` · `ImportFromCsv.tsx` / `ImportFromStatement.tsx`
+Same standard, same process. One screen at a time (Savings is done — removed from this list):
+`Goals.tsx` _(in the current WIP)_ · `BudgetPlanning.tsx` · `AccountOverview.tsx` · `Reports.tsx` · `FinancialPulse.tsx` · `MoneyChat.tsx` · `ImportFromCsv.tsx` / `ImportFromStatement.tsx`
 
 Each: spread `useNeu().raised/inset/well/raisedSoft` into existing rows/cards (keep all logic), swap CTAs to `NeuButton`, FABs to shared `FAB`, respect container-tone + clipping. Verify light+dark on device.
 
@@ -83,9 +92,9 @@ CRITICAL tier already fixed (Echo transfer/goal/withdraw guards, corruption-quar
 - **Savings `currentValue` merge** picks latest wall-clock → clock-behind device's newer update discarded — `personalSync.ts:292`.
 - **Backup restore not account/mode-gated** — can restore another user's snapshot over live data — `storageBackup.ts:179`.
 
-### Import cluster (needs a focused pass — category store + dedup UX)
-- **Category name→id mapping** — imports store the display NAME, so imported txns are detached from budgets. Resolve to a category id (reuse the learning/category store).
-- **Duplicate detection** — no dedup, so re-importing a statement doubles everything. Add a (date+amount+description) dedup with a user prompt.
+### Import cluster
+- ✅ **Duplicate detection — DONE (`82428cf`).** CSV + statement re-imports dedup on a content-identity key (wallet + calendar-day + amount-to-the-sen + type + normalized description), so re-importing the same file can't double-book. Lives in `src/utils/importDedup.ts` (`markNewImportRows`), wired into both import screens.
+- **Category name→id mapping — STILL OPEN.** Imports store the display NAME, so imported txns are detached from budgets. Resolve to a category id (reuse the learning/category store).
 - _(Deferred, needs UI/deploy):_ single-column positive-Amount sign toggle; supabase `parse-statement` own-account-transfer double-count.
 
 Each sync/backup fix gets a regression test (extend the `scripts/test-wallet-reconcile.ts` pattern) before it's called done.
@@ -153,11 +162,13 @@ User-facing copy says **demo data** everywhere (Settings, banner, toasts, en+ms)
 
 ---
 
-# Beta distribution — PENDING
+# Beta distribution — SECRETS ONLY
+
+> ✅ **Site is on `main`** pointing at Singapore (verified 2026-07-15: `site/index.html` → `jngmanwvhbpkpkeklfiv.supabase.co`). The old "get `site/index.html` onto `main`" blocker is **cleared**. Vercel deploys from `main`. **Only the two secrets below remain.**
 
 The beta welcome-email + the site's on-screen download buttons read two links from **Supabase secrets**. Until set, both show a calm "download links on the way — check your email" state (no dead buttons). Setting a secret is live — **no redeploy**.
 
-**Step 1 — set both secrets:**
+**Set both secrets:**
 - **iOS (TestFlight):** `eas build` → `eas submit` → App Store Connect → TestFlight → enable the **public link** → copy `https://testflight.apple.com/join/XXXX`, then:
   ```
   npx supabase secrets set BETA_IOS_URL="https://testflight.apple.com/join/XXXX"
@@ -167,15 +178,11 @@ The beta welcome-email + the site's on-screen download buttons read two links fr
   npx supabase secrets set BETA_ANDROID_URL="https://jejakbaki.my/dl/android"
   ```
 
-**Step 2 — get `site/index.html` onto `main`** (Vercel deploys from `main`).
-
-> **State verified 2026-07-10:** the site wiring is commit **`ecf88e8`** ("Beta welcome email on signup + on-screen download buttons"). It lives on `feat/calculator-quick-action` (and is pushed to `origin/feat/calculator-quick-action`), but is **NOT on `origin/main`**, so the live site still uses the old form.
-> The blocker is that this branch is **21 commits ahead of `main`** — merging it would carry all the app work. **Do a website-only commit onto `main`** (e.g. `git checkout main && git checkout ecf88e8 -- site/index.html && commit && push`).
-> _(An older note referenced commit `64677d6` — that object is orphaned, no branch contains it. Ignore it.)_
+> ~~Step 2 — get `site/index.html` onto `main`~~ — ✅ **DONE.** The feature branch was merged; `site/index.html` is on `main` pointing at Singapore. (Historical: the wiring was commit `ecf88e8`; the old `64677d6` reference was an orphaned object — both moot now.)
 
 The `beta-signup` edge fn (wraps `waitlist_signup` + Resend welcome email + returns links, hourly-capped, falls back to raw RPC if down) and the `waitlist.welcomed_at` migration are **already deployed**.
 
-**Go-live = both secrets set AND `site/index.html` on `main`.**
+**Go-live = both secrets set.** (Site half is already done.)
 
 ---
 
@@ -230,14 +237,18 @@ npx supabase storage cp "shortcut/Potraces Auto Log.shortcut"  ss:///web/Potrace
 **Blocker:** do NOT delete the old Tokyo project until this is done — the shortcut download links (`jejakbaki.my/shortcut`, `/autolog`) and any already-installed shortcuts still hit Tokyo until re-signed + re-uploaded.
 
 **Rest of the migration still pending (NOT Mac-gated):**
-1. Redeploy `site/` to Vercel — the 7 `site/*.html` pages are already swept to Singapore (URL + anon key + CSP), but the live site still serves the old build.
+1. ✅ ~~Redeploy `site/` to Vercel~~ — the site sweep is committed and `main` points at Singapore; Vercel deploys from `main`. _(Confirm the live URL shows the Singapore build.)_
 2. Repoint any Telegram / DuitNow-QR provider webhooks from the old Tokyo function URLs to Singapore (only if used).
 3. **Delete the Tokyo project** — LAST, after the above + this shortcut re-sign.
-4. **Commit** this session's changes: 3 new migrations (`20260616120000_beta_feedback`, `130000_beta_installers`, `140000_waitlist`) + 14 files swept off `iydqeeonaljqapulboaz` + AccountScreen redesign/back-fix/scroll-fix + AuthScreen scroll-fix.
+4. ✅ ~~Commit this session's changes~~ — the migrations + Singapore sweep + AccountScreen/AuthScreen fixes are committed to `main` (`bd0f86f`, `a0afd82`, `73fc108`). _(Remaining Tokyo `iydqeeonaljqapulboaz` refs are docs/READMEs/already-applied migration SQL only — harmless history.)_
+
+> **Shortcut re-sign status (2026-07-15):** still **NOT done**. The `-unsigned.shortcut` rebuilds are dated Jul 15, but the **signed** `Potraces Quick Log.shortcut` / `Potraces Auto Log.shortcut` are older (Jul 8/12) — i.e. they predate the latest rebuild and still carry the old Tokyo URL. Run the sign+upload block above on a Mac.
 
 ---
 
-# Onboarding — Skip should land on the start-choice page (TODO, 2026-07-14)
+# Onboarding — Skip should land on the start-choice page (FIXED 2026-07-15)
+
+> **Fixed 2026-07-15:** Skip's `onPress` is now `handleSkip` (`Onboarding.tsx`), which jumps to the final start-choice page via the same advance pattern as `handleNext` (`settleIndex(last)` + `scrollTo`) instead of calling `handleComplete`. `canSkip=false` on the last page hides Skip there, so the StartChoicePage CTA is the only commit — no dead-end. The original write-up follows for context.
 
 **Idea:** The onboarding pager's **last page IS the "start fresh vs demo data" choice** (`StartChoicePage`; `StartChoice = 'fresh' | 'demo'`, `Onboarding.tsx:67-72`). Today **Skip** (`Onboarding.tsx:925-928`) calls `handleComplete(null, sampleBracket)` — it **commits immediately as "start fresh"** and drops the user into an empty app, bypassing the choice. Change Skip to **jump to the last page** instead, so every user makes the explicit fresh-vs-demo decision. Demo data is the main first-run engagement lever — Skip shouldn't hide it.
 

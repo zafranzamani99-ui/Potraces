@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react';
 import { Modal, Pressable, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { CALM, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../common/neu';
+import NeuPressable from '../common/NeuPressable';
 import { useT } from '../../i18n';
 
 interface DeleteConfirmModalProps {
@@ -35,7 +37,7 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
     <Modal
       visible={visible}
       transparent
-      animationType="none"
+      animationType="fade"
       statusBarTranslucent
       onRequestClose={onCancel}
     >
@@ -43,31 +45,37 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
         <View style={styles.deleteConfirmCard} onStartShouldSetResponder={() => true}>
           {blocked ? (
             <>
-              <Text style={styles.deleteConfirmTitle}>Can't delete this wallet</Text>
+              <Text style={styles.deleteConfirmTitle}>{t.wallets.cantDeleteTitle}</Text>
               <Text style={styles.deleteConfirmName} numberOfLines={1}>
                 {walletName}
               </Text>
               <Text style={styles.deleteConfirmSub}>
-                It still has {linkedCount} linked {linkedCount === 1 ? 'transaction' : 'transactions'}. Move or delete {linkedCount === 1 ? 'it' : 'them'} first, then you can remove this wallet.
+                {t.wallets.cantDeleteLinkedMsg
+                  .replace('{count}', String(linkedCount))
+                  .replace('{plural}', linkedCount === 1 ? '' : 's')}
               </Text>
               <View style={styles.deleteConfirmBtns}>
-                <TouchableOpacity
-                  style={[styles.deleteConfirmBtn, styles.deleteConfirmDeleteBtn]}
-                  onPress={onCancel}
-                  accessibilityRole="button"
-                  accessibilityLabel="got it"
-                >
-                  <Text style={styles.deleteConfirmDeleteText}>Got it</Text>
-                </TouchableOpacity>
+                <View style={styles.deleteConfirmBtnFlex}>
+                  <NeuPressable
+                    style={[styles.deleteConfirmPill, neuF.raisedSoft, { backgroundColor: C.accent }]}
+                    onPress={onCancel}
+                    accessibilityLabel={t.common.gotIt.toLowerCase()}
+                  >
+                    <View style={styles.deleteConfirmPillInner}>
+                      <Feather name="check" size={16} color={C.onAccent} />
+                      <Text style={styles.deleteConfirmPillText}>{t.common.gotIt}</Text>
+                    </View>
+                  </NeuPressable>
+                </View>
               </View>
             </>
           ) : (
             <>
-              <Text style={styles.deleteConfirmTitle}>Delete wallet?</Text>
+              <Text style={styles.deleteConfirmTitle}>{t.wallets.deleteWalletTitle}</Text>
               <Text style={styles.deleteConfirmName} numberOfLines={1}>
                 {walletName}
               </Text>
-              <Text style={styles.deleteConfirmSub}>This cannot be undone.</Text>
+              <Text style={styles.deleteConfirmSub}>{t.wallets.deleteUndone}</Text>
               <View style={styles.deleteConfirmBtns}>
                 <TouchableOpacity
                   style={[styles.deleteConfirmBtn, styles.deleteConfirmCancelBtn, neuF.raised]}
@@ -75,16 +83,20 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
                   accessibilityRole="button"
                   accessibilityLabel={t.common.cancel.toLowerCase()}
                 >
-                  <Text style={styles.deleteConfirmCancelText}>Cancel</Text>
+                  <Text style={styles.deleteConfirmCancelText}>{t.common.cancel}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.deleteConfirmBtn, styles.deleteConfirmDeleteBtn]}
-                  onPress={onConfirm}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.common.delete.toLowerCase()}
-                >
-                  <Text style={styles.deleteConfirmDeleteText}>Delete</Text>
-                </TouchableOpacity>
+                <View style={styles.deleteConfirmBtnFlex}>
+                  <NeuPressable
+                    style={[styles.deleteConfirmPill, neuF.raisedSoft, { backgroundColor: C.overdue }]}
+                    onPress={onConfirm}
+                    accessibilityLabel={t.common.delete.toLowerCase()}
+                  >
+                    <View style={styles.deleteConfirmPillInner}>
+                      <Feather name="trash-2" size={16} color={C.onAccent} />
+                      <Text style={styles.deleteConfirmPillText}>{t.common.delete}</Text>
+                    </View>
+                  </NeuPressable>
+                </View>
               </View>
             </>
           )}
@@ -133,24 +145,40 @@ const makeStyles = (C: typeof CALM) =>
     deleteConfirmBtn: {
       flex: 1,
       paddingVertical: SPACING.md,
-      borderRadius: RADIUS.lg,
+      borderRadius: RADIUS.full,
       alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 52,
     },
     deleteConfirmCancelBtn: {
       backgroundColor: C.background,
     },
-    deleteConfirmDeleteBtn: {
-      backgroundColor: C.accent,
-    },
     deleteConfirmCancelText: {
-      fontSize: TYPOGRAPHY.size.sm,
+      fontSize: TYPOGRAPHY.size.base,
       fontWeight: TYPOGRAPHY.weight.semibold,
       color: C.textSecondary,
     },
-    deleteConfirmDeleteText: {
-      fontSize: TYPOGRAPHY.size.sm,
+    deleteConfirmBtnFlex: {
+      flex: 1,
+    },
+    deleteConfirmPill: {
+      width: '100%',
+      paddingVertical: SPACING.md,
+      borderRadius: RADIUS.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 52,
+    },
+    deleteConfirmPillInner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    deleteConfirmPillText: {
+      fontSize: TYPOGRAPHY.size.base,
       fontWeight: TYPOGRAPHY.weight.semibold,
       color: C.onAccent,
+      letterSpacing: 0.3,
     },
   });
 

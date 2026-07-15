@@ -81,3 +81,17 @@ const neu = useNeu(undefined, { faintDark: true });
 **Reference:** Bills status pills (`statusPill` in `src/screens/personal/SubscriptionList.tsx`).
 
 Neu family recap: **Neu Key** = icon button, presses IN. **Neu Select** = primary olive CTA, shadow stays + scales down. **Neu Pills** = faintDark selector pills, raised idle / olive-filled when selected.
+
+## "Note Fields" — multi-line note/description inputs (LOCKED)
+
+Any **note / description** input is **multi-line** and carries the **gold keyboard-done FAB**. When the user says a note/description field is wrong, this is the rule to apply.
+
+**Recipe:**
+- The `TextInput` is `multiline` + `textAlignVertical="top"` with a `minHeight` (~64).
+- Track focus: `const [multilineFocused, setMultilineFocused] = useState(false)` + `onFocus`/`onBlur` on the input.
+- Keyboard state via the shared hook: `const { keyboardVisible, keyboardHeight } = useKeyboardVisible(() => setMultilineFocused(false))` (`src/hooks/useKeyboardVisible.ts`).
+- Render the shared FAB as the LAST child of the modal root: `<KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />` (`src/components/common/KeyboardDoneFab.tsx`).
+
+**The FAB:** a `C.gold` 46×46 circle with a white `check` icon that floats just above the keyboard and dismisses it on tap. It only appears while a multiline field is focused (numeric keypads have their own native Done key). Extracted 2026-07-15 from the inline versions in `CommitmentForm` + `DebtTracking` into the shared `KeyboardDoneFab` — new note fields use the component, and those two can adopt it later.
+
+**Reference:** `CommitmentForm.tsx` (note field wiring) and `TransferModal.tsx` (uses the shared `KeyboardDoneFab`).
