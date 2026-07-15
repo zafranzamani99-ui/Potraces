@@ -76,9 +76,12 @@ type TabLayout = { x: number; w: number; cx: number };
 
 interface Props extends BottomTabBarProps {
   accentColor: string;
+  /** Active tab tint (icon + label). Defaults to the olive C.accent (personal);
+   *  business passes C.bronze so its bar matches business identity, not personal's olive. */
+  activeColor?: string;
 }
 
-const LiquidGlassNavBar: React.FC<Props> = ({ state, descriptors, navigation, accentColor }) => {
+const LiquidGlassNavBar: React.FC<Props> = ({ state, descriptors, navigation, accentColor, activeColor }) => {
   const C = useCalm();
   const isDark = useIsDark();
   const insets = useSafeAreaInsets();
@@ -86,7 +89,7 @@ const LiquidGlassNavBar: React.FC<Props> = ({ state, descriptors, navigation, ac
   const pendingCount = useAIInsightsStore((s) => s.pendingActions.length);
   const setNavBarHeight = useUILayoutStore((s) => s.setNavBarHeight);
 
-  const ACTIVE = C.accent;
+  const ACTIVE = activeColor ?? C.accent;
   const INACTIVE = C.textMuted;
 
   // ── Morphing highlight state (UI-thread shared values) ──

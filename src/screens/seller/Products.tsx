@@ -49,6 +49,7 @@ import { parseProductList, parseProductImage, ParsedProduct } from '../../servic
 import { uploadProductImage } from '../../services/sellerSync';
 import ImageSourcePills from '../../components/common/ImageSourcePills';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import { useNeu } from '../../components/common/neu';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -101,6 +102,7 @@ const Products: React.FC = () => {
   const bizKept = semantic(BIZ_SAFE.profit, isDark);
   const bizDestructive = semantic(BIZ_SAFE.destructive, isDark);
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const products = useSellerStore((s) => s.products);
   const orders = useSellerStore((s) => s.orders);
   const ingredientCosts = useSellerStore((s) => s.ingredientCosts);
@@ -1042,7 +1044,7 @@ const Products: React.FC = () => {
           contentContainerStyle={styles.categoryChipRow}
         >
           <Pressable
-            style={[styles.categoryChip, !filterCategory && styles.categoryChipActive]}
+            style={[styles.categoryChip, neuF.raised, !filterCategory && styles.categoryChipActive]}
             onPress={() => { lightTap(); setFilterCategory(null); }}
           >
             <Text style={[styles.categoryChipText, !filterCategory && styles.categoryChipTextActive]}>{sl.allCategory}</Text>
@@ -1050,7 +1052,7 @@ const Products: React.FC = () => {
           {productCategories.map((cat) => (
             <Pressable
               key={cat}
-              style={[styles.categoryChip, filterCategory === cat && styles.categoryChipActive]}
+              style={[styles.categoryChip, neuF.raised, filterCategory === cat && styles.categoryChipActive]}
               onPress={() => { lightTap(); setFilterCategory(filterCategory === cat ? null : cat); }}
             >
               <Text style={[styles.categoryChipText, filterCategory === cat && styles.categoryChipTextActive]}>{cat}</Text>
@@ -1064,7 +1066,7 @@ const Products: React.FC = () => {
         {selectMode ? (
           <>
             <TouchableOpacity
-              style={styles.actionPill}
+              style={[styles.actionPill, neuF.raised]}
               activeOpacity={0.7}
               onPress={() => {
                 lightTap();
@@ -1085,7 +1087,7 @@ const Products: React.FC = () => {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionPill, styles.actionPillActive]}
+              style={[styles.actionPill, neuF.raised, styles.actionPillActive]}
               activeOpacity={0.7}
               onPress={() => {
                 lightTap();
@@ -1101,7 +1103,7 @@ const Products: React.FC = () => {
             {products.length > 1 && (
               <>
                 <TouchableOpacity
-                  style={styles.actionPill}
+                  style={[styles.actionPill, neuF.raised]}
                   activeOpacity={0.7}
                   onPress={() => {
                     lightTap();
@@ -1115,7 +1117,7 @@ const Products: React.FC = () => {
                   <Text style={styles.actionPillText}>{sl.selectMode}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.actionPill, reorderMode && styles.actionPillActive]}
+                  style={[styles.actionPill, neuF.raised, reorderMode && styles.actionPillActive]}
                   activeOpacity={0.7}
                   onPress={() => {
                     lightTap();
@@ -1132,7 +1134,7 @@ const Products: React.FC = () => {
               </>
             )}
             <TouchableOpacity
-              style={styles.actionPill}
+              style={[styles.actionPill, neuF.raised]}
               activeOpacity={0.7}
               onPress={() => handleOpenCostModal()}
               accessibilityRole="button"
@@ -1181,7 +1183,7 @@ const Products: React.FC = () => {
       {/* ── Success state after adding ─────────────────────── */}
       {justAdded && !editingProduct ? (
         <View style={styles.justAddedSection}>
-          <View style={styles.justAddedCard}>
+          <View style={[styles.justAddedCard, neuF.raisedSoft]}>
             {newImageUrl ? (
               <Image source={{ uri: newImageUrl }} style={styles.justAddedThumb} />
             ) : (
@@ -1303,7 +1305,7 @@ const Products: React.FC = () => {
       {/* ── Unit + Stock ──────────────────────────────────── */}
       <View style={styles.unitStockRow}>
         <Pressable
-          style={({ pressed }) => [styles.unitSelector, pressed && { opacity: 0.7 }]}
+          style={({ pressed }) => [styles.unitSelector, neuF.raised, pressed && { opacity: 0.7 }]}
           onPress={() => { Keyboard.dismiss(); lightTap(); setShowUnitPicker(true); }}
           accessibilityRole="button"
           accessibilityLabel={sl.selectedUnitHint.replace('{unit}', newUnit)}
@@ -1364,14 +1366,14 @@ const Products: React.FC = () => {
               {productCategories.map((cat) => (
                 <Pressable
                   key={cat}
-                  style={[styles.formCategoryChip, newCategory === cat && styles.formCategoryChipActive]}
+                  style={[styles.formCategoryChip, neuF.raised, newCategory === cat && styles.formCategoryChipActive]}
                   onPress={() => { lightTap(); setNewCategory(newCategory === cat ? '' : cat); setShowCatInput(false); }}
                 >
                   <Text style={[styles.formCategoryChipText, newCategory === cat && styles.formCategoryChipTextActive]}>{cat}</Text>
                 </Pressable>
               ))}
               <Pressable
-                style={[styles.formCategoryChip, showCatInput && styles.formCategoryChipActive]}
+                style={[styles.formCategoryChip, neuF.raised, showCatInput && styles.formCategoryChipActive]}
                 onPress={() => { lightTap(); setNewCategory(''); setShowCatInput(true); }}
               >
                 <Text style={[styles.formCategoryChipText, showCatInput && styles.formCategoryChipTextActive]}>+</Text>
@@ -1545,7 +1547,7 @@ const Products: React.FC = () => {
             {selectedIds.size > 0 && (
               <View style={styles.bulkActionsRow}>
                 <TouchableOpacity
-                  style={styles.bulkActionBtn}
+                  style={[styles.bulkActionBtn, neuF.raised]}
                   activeOpacity={0.7}
                   onPress={() => handleBulkSetActive(true)}
                 >
@@ -1553,7 +1555,7 @@ const Products: React.FC = () => {
                   <Text style={styles.bulkActionText}>{sl.activate}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.bulkActionBtn}
+                  style={[styles.bulkActionBtn, neuF.raised]}
                   activeOpacity={0.7}
                   onPress={() => handleBulkSetActive(false)}
                 >
@@ -1700,14 +1702,14 @@ const Products: React.FC = () => {
                     {/* Actions grid */}
                     <View style={styles.detailActionsGrid}>
                       <Pressable
-                        style={({ pressed }) => [styles.detailActionPill, pressed && { opacity: 0.7 }]}
+                        style={({ pressed }) => [styles.detailActionPill, neuF.raised, pressed && { opacity: 0.7 }]}
                         onPress={() => { setDetailProduct(null); openEditModal(p); }}
                       >
                         <Feather name="edit-2" size={15} color={C.bronze} />
                         <Text style={styles.detailActionPillText}>{sl.editBtn}</Text>
                       </Pressable>
                       <Pressable
-                        style={({ pressed }) => [styles.detailActionPill, pressed && { opacity: 0.7 }]}
+                        style={({ pressed }) => [styles.detailActionPill, neuF.raised, pressed && { opacity: 0.7 }]}
                         onPress={() => { setDetailProduct(null); handleOpenCostModal(); }}
                       >
                         <Feather name="dollar-sign" size={15} color={C.bronze} />
@@ -1715,7 +1717,7 @@ const Products: React.FC = () => {
                       </Pressable>
                       {p.trackStock && (
                         <Pressable
-                          style={({ pressed }) => [styles.detailActionPill, pressed && { opacity: 0.7 }]}
+                          style={({ pressed }) => [styles.detailActionPill, neuF.raised, pressed && { opacity: 0.7 }]}
                           onPress={() => { setDetailProduct(null); setStockAdjProduct(p); }}
                         >
                           <Feather name="package" size={15} color={C.bronze} />
@@ -2213,7 +2215,7 @@ const Products: React.FC = () => {
 
                   {/* Unit & Category */}
                   <View style={styles.unitStockRow}>
-                    <View style={[styles.unitSelector, bdFocused === 'bd-unit' && styles.currencyInputRowFocused]}>
+                    <View style={[styles.unitSelector, neuF.raised, bdFocused === 'bd-unit' && styles.currencyInputRowFocused]}>
                       <Text style={styles.unitSelectorLabel}>{sl.unitLabel}</Text>
                       <TextInput
                         style={styles.bdFieldInput}
@@ -2226,7 +2228,7 @@ const Products: React.FC = () => {
                         onBlur={() => setBdFocused(null)}
                       />
                     </View>
-                    <View style={[styles.unitSelector, bdFocused === 'bd-cat' && styles.currencyInputRowFocused]}>
+                    <View style={[styles.unitSelector, neuF.raised, bdFocused === 'bd-cat' && styles.currencyInputRowFocused]}>
                       <Text style={styles.unitSelectorLabel}>{sl.categoryPlaceholder.replace(/\s*\(.*\)/, '')}</Text>
                       <TextInput
                         style={styles.bdFieldInput}
@@ -2346,7 +2348,7 @@ const Products: React.FC = () => {
                 {(['received', 'spoilage', 'damage', 'correction', 'returned'] as StockAdjustmentReason[]).map((r) => (
                   <Pressable
                     key={r}
-                    style={[styles.stockAdjReasonPill, stockAdjReason === r && styles.stockAdjReasonPillActive]}
+                    style={[styles.stockAdjReasonPill, neuF.raised, stockAdjReason === r && styles.stockAdjReasonPillActive]}
                     onPress={() => { selectionChanged(); setStockAdjReason(r); }}
                   >
                     <Text style={[styles.stockAdjReasonText, stockAdjReason === r && styles.stockAdjReasonTextActive]}>{(sl as any)[r] || r}</Text>
@@ -2630,7 +2632,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: withAlpha(C.bronze, 0.08),
+    backgroundColor: C.background,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
@@ -2657,7 +2659,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
   },
   categoryChipActive: {
     backgroundColor: C.bronze,
@@ -2681,12 +2683,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.bronze, 0.08),
-    borderWidth: 1,
-    borderColor: 'transparent',
+    backgroundColor: C.background,
   },
   formCategoryChipActive: {
     backgroundColor: withAlpha(C.bronze, 0.15),
+    borderWidth: 1,
     borderColor: withAlpha(C.bronze, 0.4),
   },
   formCategoryChipText: {
@@ -2795,7 +2796,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.xs,
-    backgroundColor: withAlpha(C.bronze, C === CALM_DARK ? 0.12 : 0.06),
+    backgroundColor: C.background,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.sm,
     minHeight: 44,
@@ -2827,10 +2828,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
   },
@@ -2920,7 +2919,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   unitModalContent: {
     width: '100%',
     maxHeight: '60%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
@@ -3005,10 +3004,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '100%',
   },
   modalContent: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.lg,
@@ -3419,7 +3416,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: withAlpha(C.bronze, 0.15),
@@ -3504,16 +3501,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Product detail modal ──
   detailOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
   },
   detailSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING['2xl'],
     paddingBottom: SPACING['2xl'],
@@ -3629,7 +3624,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.xs,
-    backgroundColor: withAlpha(C.bronze, C === CALM_DARK ? 0.12 : 0.06),
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
@@ -3674,7 +3669,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
   },
   bulkTextArea: {
-    backgroundColor: C.background,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
     borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: C.border,
@@ -3743,7 +3738,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   bulkDetailDim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: withAlpha(C.dimBg, 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
   },
   bulkDetailDimAbs: {
     ...StyleSheet.absoluteFillObject,
@@ -3756,12 +3751,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   bulkDetailCard: {
     width: '88%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING['2xl'],
     gap: SPACING.lg,
-    borderWidth: 1,
-    borderColor: C.border,
     ...SHADOWS.lg,
   },
   bdFieldInput: {
@@ -3782,7 +3775,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 200,
-    ...SHADOWS.md,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.md),
   },
 
   // Stock adjustment modal
@@ -3795,12 +3788,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   stockAdjCard: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     gap: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
     ...SHADOWS.lg,
   },
   stockAdjSubtitle: {
@@ -3816,7 +3807,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textPrimary, 0.06),
+    backgroundColor: C.background,
     marginRight: SPACING.sm,
   },
   stockAdjReasonPillActive: {

@@ -30,6 +30,7 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import { useNeu } from '../../components/common/neu';
 
 // -- Count-up animation hook ----------------------------------------
 const useCountUp = (target: number, duration: number = 300) => {
@@ -104,6 +105,7 @@ const SeasonSummary: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { seasons, orders, ingredientCosts, endSeason, addSeason, markOrdersTransferred, unmarkOrdersTransferred, deleteSeason, updateSeasonName, updateSeasonTarget } = useSellerStore();
@@ -595,7 +597,7 @@ const SeasonSummary: React.FC = () => {
                     {pastSeasons.slice(0, 4).map((s) => (
                       <TouchableOpacity
                         key={s.id}
-                        style={[styles.comparePill, compareSeasonId === s.id && styles.comparePillActive]}
+                        style={[styles.comparePill, neuF.raised, compareSeasonId === s.id && styles.comparePillActive]}
                         onPress={() => setCompareSeasonId(s.id)}
                         activeOpacity={0.7}
                       >
@@ -1009,7 +1011,7 @@ const SeasonSummary: React.FC = () => {
               <Text style={styles.endModalTitle}>{t.seller.endSeasonTitle.replace('{name}', season?.name || '')}</Text>
             </View>
 
-            <View style={styles.endModalStats}>
+            <View style={[styles.endModalStats, neuF.raised]}>
               <View style={styles.endModalStatItem}>
                 <Text style={styles.endModalStatValue}>{stats?.totalOrders ?? 0}</Text>
                 <Text style={styles.endModalStatLabel}>{t.seller.orders}</Text>
@@ -1048,7 +1050,7 @@ const SeasonSummary: React.FC = () => {
 
             <View style={styles.endModalActions}>
               <TouchableOpacity
-                style={styles.endModalCancelBtn}
+                style={[styles.endModalCancelBtn, neuF.raised]}
                 onPress={() => setShowEndModal(false)}
                 activeOpacity={0.7}
               >
@@ -1693,7 +1695,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   // -- List detail modal
   listModalContent: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     width: '100%',
@@ -1996,7 +1998,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // -- Rename season modal -----------------------------------------------
   renameModalContent: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     width: '100%',
@@ -2050,14 +2052,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // -- Modal overlay ----------------------------------------------------
   modalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
   // -- End season modal --------------------------------------------------
   endModalContent: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     gap: SPACING.lg,
@@ -2175,6 +2177,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 5,
     borderRadius: RADIUS.full,
     maxWidth: 110,
+    backgroundColor: C.background,
   },
   comparePillActive: {
     backgroundColor: withAlpha(C.accent, 0.12),

@@ -103,6 +103,32 @@ export interface PaymentQr {
 /** Optional decoded fields attached to a captured (scanned/pasted) QR. */
 type PaymentQrMeta = Partial<Pick<PaymentQr, 'payload' | 'network' | 'merchantName'>>;
 
+/**
+ * Business "card" — the shop's public-facing identity. Business-only, so it
+ * lives here alongside businessPaymentQrs: it survives a business sign-out (a
+ * temporary log-out shouldn't erase the card) and is wiped only by
+ * clearBusinessData ("Delete Account"). Every field is optional.
+ */
+export interface BusinessProfile {
+  shopName: string;
+  ownerName: string;
+  whatsapp: string;
+  address: string;
+  email: string;
+  ssm: string;
+  hours: string;
+  logoUri: string;
+  /** Card accent colour (hex). Empty → app default. */
+  cardColor: string;
+  /** Card font key (see CARD_FONTS in BusinessProfile). Empty → default. */
+  cardFont: string;
+}
+
+export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
+  shopName: '', ownerName: '', whatsapp: '', address: '', email: '', ssm: '', hours: '', logoUri: '',
+  cardColor: '', cardFont: '',
+};
+
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type AppLanguage = 'en' | 'ms';
 
@@ -118,6 +144,7 @@ interface SettingsState {
   language: AppLanguage;
   paymentQrs: PaymentQr[];
   businessPaymentQrs: PaymentQr[];
+  businessProfile: BusinessProfile;
   customPaymentMethods: CategoryOption[];
   paymentMethodOverrides: Record<string, Partial<CategoryOption> & { hidden?: boolean }>;
   hasCompletedOnboarding: boolean;
@@ -194,6 +221,7 @@ interface SettingsState {
   replacePaymentQr: (index: number, uri: string, label?: string, mode?: 'personal' | 'business', meta?: PaymentQrMeta) => void;
   updatePaymentQrLabel: (index: number, label: string, mode?: 'personal' | 'business') => void;
   getPaymentQrs: (mode: 'personal' | 'business') => PaymentQr[];
+  setBusinessProfile: (patch: Partial<BusinessProfile>) => void;
   setHasCompletedOnboarding: (value: boolean) => void;
   setGettingStartedDismissed: (value: boolean) => void;
   dismissHint: (id: string) => void;
@@ -385,6 +413,7 @@ export const useSettingsStore = create<SettingsState>()(
       language: 'en',
       paymentQrs: [],
       businessPaymentQrs: [],
+      businessProfile: { ...EMPTY_BUSINESS_PROFILE },
       customPaymentMethods: [],
       paymentMethodOverrides: {},
       hasCompletedOnboarding: false,
@@ -479,6 +508,7 @@ export const useSettingsStore = create<SettingsState>()(
         const s = get();
         return mode === 'business' ? s.businessPaymentQrs : s.paymentQrs;
       },
+      setBusinessProfile: (patch) => set((s) => ({ businessProfile: { ...s.businessProfile, ...patch } })),
       setHasCompletedOnboarding: (hasCompletedOnboarding) => set({ hasCompletedOnboarding }),
       setGettingStartedDismissed: (gettingStartedDismissed) => set({ gettingStartedDismissed }),
       setBiometricLockEnabled: (biometricLockEnabled) => set({ biometricLockEnabled }),
@@ -638,6 +668,7 @@ export const useSettingsStore = create<SettingsState>()(
           businessModeEnabled: false,
           defaultMode: 'personal',
           businessPaymentQrs: [],
+          businessProfile: { ...EMPTY_BUSINESS_PROFILE },
         });
       },
     }),
@@ -657,6 +688,10 @@ export const useSettingsStore = create<SettingsState>()(
         if (raw.paymentQrUris && Array.isArray(raw.paymentQrUris) && raw.paymentQrUris.length > 0 && (!state.paymentQrs || state.paymentQrs.length === 0)) {
           state.paymentQrs = raw.paymentQrUris.map((uri: string, i: number) => ({ uri, label: `QR ${i + 1}` }));
           delete raw.paymentQrUris;
+        }
+        // Ensure businessProfile exists (added after some installs shipped)
+        if (!state.businessProfile) {
+          state.businessProfile = { ...EMPTY_BUSINESS_PROFILE };
         }
         // Ensure businessPaymentQrs exists
         if (!state.businessPaymentQrs) {

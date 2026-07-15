@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -32,6 +33,7 @@ const SessionHistory: React.FC = () => {
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { sessions, getLifetimeStats, getSessionSummary } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
 
@@ -205,7 +207,7 @@ const SessionHistory: React.FC = () => {
         data={closedSessions}
         renderItem={renderSessionCard}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
         showsVerticalScrollIndicator={false}

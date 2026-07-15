@@ -19,7 +19,7 @@ import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { explainMixedMonth } from '../../../utils/explainMixedMonth';
 import WeekBar from '../../../components/common/WeekBar';
-import ModeToggle from '../../../components/common/ModeToggle';
+import GlassModeToggle from '../../../components/common/GlassModeToggle';
 import MixedSetup from './MixedSetup';
 import BusinessHeroNumber from '../../../components/business/BusinessHeroNumber';
 
@@ -189,7 +189,7 @@ const MixedDashboard: React.FC = () => {
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -203,7 +203,7 @@ const MixedDashboard: React.FC = () => {
           />
         }
       >
-        <ModeToggle />
+        <GlassModeToggle />
         {/* Zone 1 — Hero: Total Income */}
         <BusinessHeroNumber
           amount={mixedDetails.hasRoadCosts ? net : total}
@@ -361,7 +361,7 @@ const MixedDashboard: React.FC = () => {
       </ScrollView>
 
       {/* FABs — dual if hasRoadCosts, single if not */}
-      <View style={styles.fabContainer}>
+      <View style={[styles.fabContainer, { bottom: insets.bottom + 80 + SPACING.sm }]}>
         {mixedDetails.hasRoadCosts && (
           <TouchableOpacity
             style={styles.fabSecondary}

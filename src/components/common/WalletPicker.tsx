@@ -29,6 +29,12 @@ interface WalletPickerProps {
   /** Use the "soft neu dark" tier (raisedSoft + faintDark) for the trigger, to
    *  match sheets that opt into faintDark cards (e.g. Quick split). Default off. */
   faintNeu?: boolean;
+  /** Force the FULL (non-faint) dark-mode raised shadow on the trigger even when
+   *  faintNeu keeps it on C.background — for a standalone picker that needs to
+   *  read as a proper "onyx" raised surface instead of blending flat into a
+   *  same-tone sheet. No effect in light mode. Default off (existing screens
+   *  keep their current faint-dark look). */
+  onyxTrigger?: boolean;
 }
 
 const TYPE_ORDER: WalletType[] = ['bank', 'ewallet', 'credit', 'cash'];
@@ -43,12 +49,15 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
   label,
   typeFilter,
   faintNeu = true,
+  onyxTrigger = false,
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
   // Trigger sits on the HOST container: converted (faintNeu) hosts are C.background
-  // sheets; legacy hosts are still C.surface sheets.
-  const neu = useNeu(faintNeu ? undefined : C.surface, { faintDark: faintNeu });
+  // sheets; legacy hosts are still C.surface sheets. onyxTrigger keeps that same
+  // base color but opts the trigger OUT of the faint/stacked-list shadow tier —
+  // it's a single standalone control, not a repeated list row.
+  const neu = useNeu(faintNeu ? undefined : C.surface, { faintDark: faintNeu && !onyxTrigger });
   // The picker's own dropdown modal card is C.background (all modals use the
   // edit-commitment tone), so rows inside it re-base to the default tone.
   const neuModal = useNeu(undefined, { faintDark: faintNeu });

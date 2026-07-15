@@ -532,7 +532,7 @@ const CRM: React.FC = () => {
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Stats Summary Row */}
@@ -684,6 +684,7 @@ const CRM: React.FC = () => {
         onPress={openAddCustomer}
         icon="plus"
         color={C.bronze}
+        style={{ bottom: insets.bottom + 84 }}
       />
 
       {/* ── Add/Edit Customer Modal ────────────────────────────── */}

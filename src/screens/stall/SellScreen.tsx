@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useStallStore } from '../../store/stallStore';
@@ -47,6 +48,7 @@ const SellScreen: React.FC = () => {
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const t = useT();
   const {
     products, getActiveSession, addSale, quickSale, addCustomSale,
@@ -737,7 +739,7 @@ const SellScreen: React.FC = () => {
           {/* Product grid */}
           <ScrollView
             style={styles.productsScroll}
-            contentContainerStyle={styles.productsGrid}
+            contentContainerStyle={[styles.productsGrid, { paddingBottom: insets.bottom + 88 }]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
@@ -944,7 +946,7 @@ const SellScreen: React.FC = () => {
 
           {/* Cart footer */}
           <Pressable
-            style={styles.cartFooter}
+            style={[styles.cartFooter, { paddingBottom: insets.bottom + 84 }]}
             onPress={!cartExpanded && cart.length > 0 ? expandCart : undefined}
             disabled={cartExpanded || cart.length === 0}
           >

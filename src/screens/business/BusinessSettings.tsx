@@ -1,0 +1,464 @@
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Switch,
+  TouchableOpacity,
+  Alert,
+  Platform,
+  Share,
+  InteractionManager,
+} from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import SettingRow from '../../components/common/SettingRow';
+import Card from '../../components/common/Card';
+import PaymentQrCard from '../../components/settings/PaymentQrCard';
+import SubscriptionCard from '../../components/settings/SubscriptionCard';
+import CategoryManager from '../../components/common/CategoryManager';
+import PaymentMethodManager from '../../components/common/PaymentMethodManager';
+import UnitManager from '../../components/common/UnitManager';
+import ModalToastHost from '../../components/common/ModalToastHost';
+import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
+import { useBusinessStore } from '../../store/businessStore';
+import { useAppStore } from '../../store/appStore';
+import { useAuthStore } from '../../store/authStore';
+import { useSellerStore } from '../../store/sellerStore';
+import { signOut, supabaseBusiness } from '../../services/supabase';
+import { clearProfileCache, syncAll } from '../../services/sellerSync';
+import { tapToPayAvailable } from '../../services/tapToPay';
+import { getOrCreateReferralCode, referralMessage } from '../../services/referrals';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { RootStackParamList, SettingsSection } from '../../types';
+import { useToast } from '../../context/ToastContext';
+import { lightTap } from '../../services/haptics';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
+
+/**
+ * Business-mode Settings: hub, business setup (income type, units, business QR,
+ * tap-to-pay, business categories), and the business danger zone (sign out,
+ * clear business data). No personal rows, no personal data tools. Shared
+ * app/device settings live in AppSettings (preferences/security/about
+ * sections). Rendered by the shared Settings router; also serves SellerSettings.
+ */
+const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string }> = ({ section, scrollTo }) => {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const { showToast } = useToast();
+
+  const [ready, setReady] = useState(false);
+  const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
+  const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment'>('expense');
+  const [paymentMethodManagerVisible, setPaymentMethodManagerVisible] = useState(false);
+  const [unitManagerVisible, setUnitManagerVisible] = useState(false);
+  const scrollRef = useRef<any>(null);
+  const sectionY = useRef<Record<string, number>>({});
+
+  const businessProfile = useSettingsStore((s) => s.businessProfile);
+  const clearBusinessData = useSettingsStore((s) => s.clearBusinessData);
+  const tapToPayEnabled = useSettingsStore((s) => s.tapToPayEnabled);
+  const setTapToPayEnabled = useSettingsStore((s) => s.setTapToPayEnabled);
+  const incomeType = useBusinessStore((s) => s.incomeType);
+  const isAuthenticated = useAuthStore((s) => s.personal.isAuthenticated);
+
+  const isProductBusiness = incomeType === 'seller' || incomeType === 'stall';
+
+  useEffect(() => {
+    if (ready) return;
+    if (scrollTo) { setReady(true); return; }
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    const fallback = setTimeout(() => setReady(true), 400);
+    return () => { task.cancel(); clearTimeout(fallback); };
+  }, [scrollTo, ready]);
+
+  useEffect(() => {
+    if (!scrollTo || !ready) return;
+    const timer = setTimeout(() => {
+      if (sectionY.current[scrollTo] !== undefined) {
+        scrollRef.current?.scrollTo({ y: sectionY.current[scrollTo], animated: true });
+      }
+      navigation.setParams({ scrollTo: undefined } as never);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [scrollTo, ready, navigation]);
+
+  useEffect(() => {
+    if (!section) return;
+    const titles: Record<string, string> = {
+      money: t.settings.moneySetup,
+    };
+    if (titles[section]) navigation.setOptions({ title: titles[section] });
+  }, [section, navigation, t]);
+
+  const handleSignOut = useCallback(() => {
+    Alert.alert(
+      t.settings.signOutTitle,
+      t.settings.signOutMsg,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.settings.signOut,
+          onPress: () => {
+            // Snapshot data for fire-and-forget sync before clearing stores.
+            const { isAuthenticated: bizAuthed, isVerified } = useAuthStore.getState().business;
+            let syncData: { products: any; orders: any; seasons: any; sellerCustomers: any } | null = null;
+            if (bizAuthed && isVerified) {
+              const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
+              syncData = { products, orders, seasons, sellerCustomers };
+            }
+
+            // Reset business auth + navigate IMMEDIATELY so sign-out feels instant.
+            useAuthStore.getState().resetBusiness();
+            clearProfileCache();
+            if (navigation.canGoBack()) navigation.goBack();
+
+            // Background cleanup — user already sees AuthScreen.
+            if (syncData) syncAll(syncData.products, syncData.orders, syncData.seasons, syncData.sellerCustomers).catch(() => {});
+            clearBusinessLocalData().catch(() => {});
+            signOut(supabaseBusiness).catch(() => {});
+          },
+        },
+      ]
+    );
+  }, [t, navigation]);
+
+  const handleClearBusinessData = useCallback(() => {
+    Alert.alert(
+      t.settings.clearBusinessDataTitle,
+      t.settings.clearBusinessDataMsg,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.settings.clearAndSignOut,
+          style: 'destructive',
+          onPress: async () => {
+            await clearBusinessData();
+            showToast(t.settings.businessDataCleared, 'success');
+          },
+        },
+      ]
+    );
+  }, [clearBusinessData, showToast, t]);
+
+  return (
+    <View style={[styles.container, { backgroundColor: C.background }]}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
+      >
+        {/* ── HUB ── */}
+        {!section && (
+          <>
+            {/* Business profile (the shop's "business card") — replaces the personal
+                name field so business settings no longer shows a personal setting. */}
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/briefcase"
+                chipColor="#5A5320"
+                label={t.businessProfile.entryTitle}
+                sublabel={businessProfile.shopName || t.businessProfile.entryUnset}
+                onPress={() => { lightTap(); navigation.navigate('BusinessProfile'); }}
+                last
+              />
+            </Card>
+
+            {/* Account */}
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.accountSection}</Text>
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/person-circle-outline"
+                chipColor="#6BA3BE"
+                label={t.auth.acctTitle}
+                sublabel={isAuthenticated ? t.auth.acctManageEntry : t.auth.acctSignInEntry}
+                onPress={() => { lightTap(); navigation.navigate('Account' as never); }}
+                last
+              />
+            </Card>
+
+            <SubscriptionCard variant="business" />
+
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/gift"
+                chipColor="#4F5104"
+                label={t.settings.inviteFriends}
+                onPress={async () => {
+                  lightTap();
+                  const code = await getOrCreateReferralCode();
+                  if (!code) {
+                    Alert.alert(t.settings.signInRequired, t.settings.signInRequiredInvite);
+                    return;
+                  }
+                  try {
+                    await Share.share({ message: referralMessage(code) });
+                  } catch {
+                    // ignore user-cancelled
+                  }
+                }}
+                last
+              />
+            </Card>
+
+            {/* Hub nav */}
+            <Card style={styles.card}>
+              <SettingRow
+                icon="m/tune-variant"
+                chipColor="#A688B8"
+                label={t.settings.preferences}
+                onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'preferences' }); }}
+              />
+              <SettingRow
+                icon="i/wallet"
+                chipColor="#4F5104"
+                label={t.settings.moneySetup}
+                onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'money' }); }}
+              />
+              <SettingRow
+                icon="i/stats-chart"
+                chipColor="#4F5104"
+                label={t.settings.viewReports}
+                onPress={() => { lightTap(); navigation.navigate('BusinessReports'); }}
+              />
+              {/* Whole-app rolling backup (covers business + seller stores too) — a
+                  data-safety tool, not a personal one, so business needs it here. */}
+              <SettingRow
+                icon="i/cloud-upload-outline"
+                chipColor="#4F5104"
+                label={t.settings.backupsRestore}
+                onPress={() => { lightTap(); navigation.navigate('BackupRestore' as never); }}
+              />
+              <SettingRow
+                icon="i/shield-checkmark"
+                chipColor="#9A6400"
+                label={t.settings.security}
+                onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'security' }); }}
+              />
+              <SettingRow
+                icon="i/information-circle-outline"
+                chipColor="#5A5320"
+                label={t.settings.aboutSection}
+                onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'about' }); }}
+                last
+              />
+            </Card>
+
+            <Text style={{ fontSize: TYPOGRAPHY.size.xs, lineHeight: 18, color: C.textMuted, textAlign: 'center', paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
+              {t.settings.financialDisclaimer}
+            </Text>
+
+            {/* Danger zone — business only */}
+            <Text style={[styles.sectionHeader, { color: '#B5705A' }]}>{t.settings.dangerZone}</Text>
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/log-out-outline"
+                chipColor="#B5705A"
+                label={t.settings.signOut}
+                onPress={handleSignOut}
+              />
+              <SettingRow
+                icon="m/broom"
+                chipColor="#B5705A"
+                label={t.settings.clearBusinessDataBtn}
+                onPress={handleClearBusinessData}
+                last
+              />
+            </Card>
+          </>
+        )}
+
+        {/* ── BUSINESS SETUP (money) ── */}
+        {section === 'money' && (
+          <>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.moneySetup}</Text>
+            <Card style={styles.card}>
+              {/* Income type — sellers change this from the Manage tab's "Change
+                  Business Setup", so exclude them here to avoid a duplicate entry.
+                  Every other sub-mode (stall/freelance/rider/parttime/mixed) has no
+                  Manage tab, so this is their only way to change it. */}
+              {incomeType !== 'seller' && (
+                <SettingRow
+                  icon="m/storefront"
+                  chipColor="#9A6400"
+                  label={t.settings.changeIncomeType}
+                  value={incomeType || t.settings.notSet}
+                  onPress={() => { lightTap(); useBusinessStore.getState().resetSetup(); }}
+                />
+              )}
+
+              {ready && isProductBusiness && (
+                <SettingRow
+                  icon="i/cube-outline"
+                  chipColor="#9A6400"
+                  label={t.settings.manageUnits}
+                  onPress={() => { lightTap(); setUnitManagerVisible(true); }}
+                />
+              )}
+
+              {ready && !isProductBusiness && (
+                <View onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>
+                  <SettingRow
+                    icon="i/pricetags"
+                    chipColor="#9A6400"
+                    label={t.settings.expenseCategories}
+                    onPress={() => { lightTap(); setCategoryManagerType('expense'); setCategoryManagerVisible(true); }}
+                  />
+                  <SettingRow
+                    icon="i/trending-up"
+                    chipColor="#4F5104"
+                    label={t.settings.incomeCategories}
+                    onPress={() => { lightTap(); setCategoryManagerType('income'); setCategoryManagerVisible(true); }}
+                  />
+                  <SettingRow
+                    icon="i/pie-chart"
+                    chipColor="#A688B8"
+                    label={t.settings.investmentCategories}
+                    onPress={() => { lightTap(); setCategoryManagerType('investment'); setCategoryManagerVisible(true); }}
+                  />
+                  <SettingRow
+                    icon="i/card"
+                    chipColor="#6BA3BE"
+                    label={t.settings.paymentMethods}
+                    onPress={() => { lightTap(); setPaymentMethodManagerVisible(true); }}
+                  />
+                </View>
+              )}
+
+              <PaymentQrCard mode="business" onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }} />
+
+              {Platform.OS === 'ios' && (() => {
+                const av = tapToPayAvailable();
+                const status = !tapToPayEnabled
+                  ? t.tapToPay.settingsSubtitle
+                  : av.available
+                    ? t.tapToPay.statusAvailable
+                    : av.reason === 'currency' ? t.tapToPay.statusCurrency
+                      : av.reason === 'device' ? t.tapToPay.statusDevice
+                        : av.reason === 'offline' ? t.tapToPay.statusOffline
+                          : av.reason === 'config' ? t.tapToPay.statusConfig
+                            : av.reason === 'platform' ? t.tapToPay.statusPlatform
+                              : t.tapToPay.statusFlag;
+                return (
+                  <>
+                    <View style={[styles.divider, { backgroundColor: C.border }]} />
+                    <SettingRow
+                      icon="i/card"
+                      chipColor="#6BA3BE"
+                      label={t.tapToPay.settingsTitle}
+                      sublabel={status}
+                      rightElement={
+                        <Switch
+                          value={tapToPayEnabled}
+                          onValueChange={(v) => { lightTap(); setTapToPayEnabled(v); }}
+                          trackColor={{ false: C.border, true: C.positive }}
+                          thumbColor={C.surface}
+                        />
+                      }
+                      last
+                    />
+                  </>
+                );
+              })()}
+            </Card>
+          </>
+        )}
+
+        <View style={{ height: SPACING['3xl'] }} />
+
+        {ready && (
+          <>
+            {categoryManagerVisible && (
+              <CategoryManager
+                visible
+                onClose={() => setCategoryManagerVisible(false)}
+                type={categoryManagerType}
+                mode="business"
+              />
+            )}
+            {unitManagerVisible && (
+              <UnitManager
+                visible
+                onClose={() => setUnitManagerVisible(false)}
+              />
+            )}
+            {paymentMethodManagerVisible && (
+              <PaymentMethodManager
+                visible
+                onClose={() => setPaymentMethodManagerVisible(false)}
+              />
+            )}
+          </>
+        )}
+      </ScrollView>
+      <ModalToastHost />
+    </View>
+  );
+};
+
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: C.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: SPACING.lg,
+  },
+  sectionHeader: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.md,
+    marginLeft: SPACING.xs,
+  },
+  card: {
+    marginBottom: SPACING.sm,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    minHeight: 44,
+  },
+  settingLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  settingLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  input: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    textAlign: 'right',
+    flex: 1,
+    marginLeft: SPACING.lg,
+    paddingVertical: SPACING.xs,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: C.border,
+    marginVertical: SPACING.xs,
+  },
+});
+
+export default BusinessSettings;

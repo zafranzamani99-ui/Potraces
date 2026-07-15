@@ -9,6 +9,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from './neu';
 import { selectionChanged } from '../../services/haptics';
 import type { RangeKey } from '../../utils/insights';
 
@@ -22,6 +23,8 @@ interface TimeRangePillsProps {
   /** Background the right-edge fade blends into (defaults to screen bg). */
   edgeBg?: string;
   containerStyle?: ViewStyle;
+  /** Opt-in neu (faintDark) pill styling for Onyx sheets. Default: flat. */
+  neu?: boolean;
 }
 
 const TimeRangePills: React.FC<TimeRangePillsProps> = ({
@@ -31,9 +34,11 @@ const TimeRangePills: React.FC<TimeRangePillsProps> = ({
   options = DEFAULT_OPTIONS,
   edgeBg,
   containerStyle,
+  neu = false,
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const fadeBg = edgeBg ?? C.background;
 
   return (
@@ -41,7 +46,7 @@ const TimeRangePills: React.FC<TimeRangePillsProps> = ({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, neu && styles.contentNeu]}
       >
         {options.map((key) => {
           const active = key === value;
@@ -55,12 +60,12 @@ const TimeRangePills: React.FC<TimeRangePillsProps> = ({
                   onChange(key);
                 }
               }}
-              style={[styles.pill, active && styles.pillActive]}
+              style={neu ? [styles.pillNeu, neuF.raised, active && styles.pillNeuActive] : [styles.pill, active && styles.pillActive]}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               accessibilityLabel={labels[key]}
             >
-              <Text style={[styles.pillText, active && styles.pillTextActive]}>
+              <Text style={neu ? [styles.pillText, active && styles.pillNeuTextActive] : [styles.pillText, active && styles.pillTextActive]}>
                 {labels[key]}
               </Text>
             </TouchableOpacity>
@@ -89,6 +94,11 @@ const makeStyles = (C: typeof CALM) =>
       paddingRight: SPACING['2xl'],
       gap: SPACING.sm,
     },
+    // Neu pills cast a shadow; the horizontal ScrollView clips it to pill height,
+    // so give it vertical room (matches the card fix in the wallet activity modal).
+    contentNeu: {
+      paddingVertical: SPACING.md,
+    },
     pill: {
       paddingHorizontal: SPACING.lg,
       paddingVertical: SPACING.sm,
@@ -96,6 +106,18 @@ const makeStyles = (C: typeof CALM) =>
       borderWidth: 1,
       borderColor: C.border,
       backgroundColor: C.surface,
+    },
+    pillNeu: {
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.xs + 3,
+      borderRadius: RADIUS.full,
+    },
+    pillNeuActive: {
+      backgroundColor: C.accent,
+    },
+    pillNeuTextActive: {
+      color: C.onAccent,
+      fontWeight: TYPOGRAPHY.weight.bold,
     },
     pillActive: {
       borderColor: C.accent,

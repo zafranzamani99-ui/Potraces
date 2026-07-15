@@ -45,6 +45,7 @@ interface WalletPreset {
   name: string;
   type: WalletType;
   color: string;
+  icon?: string;
 }
 
 interface WalletTypeConfigEntry {
@@ -332,6 +333,11 @@ const AddEditWalletModal: React.FC<Props> = ({
                                   cachePolicy="memory-disk"
                                   transition={0}
                                 />
+                              ) : preset.icon ? (
+                                <>
+                                  <Feather name={preset.icon as any} size={26} color={preset.color} />
+                                  <Text style={[styles.providerName, { marginTop: 4 }]} numberOfLines={1}>{preset.name}</Text>
+                                </>
                               ) : (
                                 <Text style={styles.providerName} numberOfLines={2}>{preset.name}</Text>
                               )}
@@ -749,6 +755,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING.sm - 2,
+    // Optical centering: geometric center reads slightly low, so bias content up
+    // a few px via extra bottom padding. Applies to every tile (logos + icon+label).
+    paddingBottom: SPACING.sm + 4,
   },
   networkTile: {
     flexBasis: '30%',

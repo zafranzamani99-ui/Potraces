@@ -36,6 +36,7 @@ import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import { useNeu } from '../../components/common/neu';
 
 // ─── Types ─────────────────────────────────────────────────
 interface PaymentEvent {
@@ -81,6 +82,7 @@ const SellerTransactions: React.FC = () => {
   const bizSuccess = semantic(BIZ_SAFE.success, isDark);
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
 
   const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
     { value: 'newest', label: t.seller.sortNewest, icon: SORT_ICONS.newest },
@@ -474,7 +476,7 @@ const SellerTransactions: React.FC = () => {
           )}
         </View>
         <TouchableOpacity
-          style={[styles.sortButton, hasActiveFilters && styles.sortButtonActive]}
+          style={[styles.sortButton, neuF.raised, hasActiveFilters && styles.sortButtonActive]}
           onPress={() => { setShowFilterModal(true); lightTap(); }}
           activeOpacity={0.7}
         >
@@ -493,7 +495,7 @@ const SellerTransactions: React.FC = () => {
           contentContainerStyle={styles.quickChipRow}
           renderItem={({ item: chip }) => (
             <TouchableOpacity
-              style={[styles.quickChip, chip.active && styles.quickChipActive]}
+              style={[styles.quickChip, neuF.raised, chip.active && styles.quickChipActive]}
               activeOpacity={0.7}
               onPress={chip.onPress}
             >
@@ -624,7 +626,7 @@ const SellerTransactions: React.FC = () => {
                       return (
                         <TouchableOpacity
                           key={opt.value}
-                          style={[styles.filterPill, active && styles.filterPillActive]}
+                          style={[styles.filterPill, neuF.raised, active && styles.filterPillActive]}
                           onPress={() => { setSortBy(opt.value); lightTap(); }}
                           activeOpacity={0.7}
                         >
@@ -645,7 +647,7 @@ const SellerTransactions: React.FC = () => {
                   <Text style={styles.filterSectionLabel}>{t.seller.paymentMethod}</Text>
                   <View style={styles.filterSectionPills}>
                     <TouchableOpacity
-                      style={[styles.filterPill, filterMethod === 'all' && styles.filterPillActive]}
+                      style={[styles.filterPill, neuF.raised, filterMethod === 'all' && styles.filterPillActive]}
                       onPress={() => { setFilterMethod('all'); lightTap(); }}
                       activeOpacity={0.7}
                     >
@@ -658,7 +660,7 @@ const SellerTransactions: React.FC = () => {
                       return (
                         <TouchableOpacity
                           key={m}
-                          style={[styles.filterPill, active && styles.filterPillActive]}
+                          style={[styles.filterPill, neuF.raised, active && styles.filterPillActive]}
                           onPress={() => { setFilterMethod(m); lightTap(); }}
                           activeOpacity={0.7}
                         >
@@ -683,7 +685,7 @@ const SellerTransactions: React.FC = () => {
                       return (
                         <TouchableOpacity
                           key={opt.value}
-                          style={[styles.filterPill, active && styles.filterPillActive]}
+                          style={[styles.filterPill, neuF.raised, active && styles.filterPillActive]}
                           onPress={() => { setFilterType(opt.value); lightTap(); }}
                           activeOpacity={0.7}
                         >
@@ -703,7 +705,7 @@ const SellerTransactions: React.FC = () => {
                       return (
                         <TouchableOpacity
                           key={opt.value}
-                          style={[styles.filterPill, active && styles.filterPillActive]}
+                          style={[styles.filterPill, neuF.raised, active && styles.filterPillActive]}
                           onPress={() => {
                             setPeriodFilter(opt.value);
                             if (opt.value !== 'custom') {
@@ -726,7 +728,7 @@ const SellerTransactions: React.FC = () => {
                   {periodFilter === 'custom' && (
                     <View style={styles.customDateSection}>
                       <TouchableOpacity
-                        style={styles.dateRangeBtn}
+                        style={[styles.dateRangeBtn, neuF.raised]}
                         onPress={() => setShowFromCalendar(true)}
                         activeOpacity={0.7}
                       >
@@ -738,7 +740,7 @@ const SellerTransactions: React.FC = () => {
                       </TouchableOpacity>
 
                       <TouchableOpacity
-                        style={styles.dateRangeBtn}
+                        style={[styles.dateRangeBtn, neuF.raised]}
                         onPress={() => setShowToCalendar(true)}
                         activeOpacity={0.7}
                       >
@@ -868,7 +870,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -900,7 +902,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
   },
   quickChipActive: {
     backgroundColor: withAlpha(C.bronze, 0.1),
@@ -1071,12 +1073,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Filter modal ──
   sortOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.42),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
   },
   filterSortSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
@@ -1116,7 +1118,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
   },
   filterPillActive: {
     backgroundColor: withAlpha(C.bronze, 0.1),
@@ -1151,7 +1153,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   dateRangeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(C.accent, 0.05),
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,

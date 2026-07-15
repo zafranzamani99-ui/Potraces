@@ -10,6 +10,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useStallStore } from '../../store/stallStore';
@@ -22,6 +23,7 @@ const RegularCustomers: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const isDark = useIsDark();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(C), [C]);
   const {
     regularCustomers,
@@ -408,7 +410,7 @@ const RegularCustomers: React.FC = () => {
           data={regularCustomers}
           renderItem={renderCustomer}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
           ListHeaderComponent={renderHeader}
           ListEmptyComponent={renderEmpty}
           showsVerticalScrollIndicator={false}

@@ -19,7 +19,7 @@ import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { explainOnTheRoadMonth } from '../../../utils/explainOnTheRoadMonth';
 import WeekBar from '../../../components/common/WeekBar';
-import ModeToggle from '../../../components/common/ModeToggle';
+import GlassModeToggle from '../../../components/common/GlassModeToggle';
 import OnTheRoadSetup from './OnTheRoadSetup';
 import BusinessHeroNumber from '../../../components/business/BusinessHeroNumber';
 
@@ -170,7 +170,7 @@ const OnTheRoadDashboard: React.FC = () => {
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -184,7 +184,7 @@ const OnTheRoadDashboard: React.FC = () => {
           />
         }
       >
-        <ModeToggle />
+        <GlassModeToggle />
         {/* Zone 1 — Hero: Net Earnings */}
         <BusinessHeroNumber
           amount={net}
@@ -339,7 +339,7 @@ const OnTheRoadDashboard: React.FC = () => {
       </ScrollView>
 
       {/* Dual FABs — log earnings (primary) + log cost (secondary) */}
-      <View style={styles.fabContainer}>
+      <View style={[styles.fabContainer, { bottom: insets.bottom + 80 + SPACING.sm }]}>
         <TouchableOpacity
           style={styles.fabSecondary}
           onPress={() => navigation.getParent()?.navigate('OnTheRoadAddCost')}

@@ -214,6 +214,7 @@ const RepayModal: React.FC<RepayModalProps> = ({
                 selectedId={repaySourceId}
                 onSelect={(id) => { lightTap(); setRepaySourceId(id); }}
                 faintNeu
+                onyxTrigger
               />
             </View>
           </KeyboardAwareScrollView>

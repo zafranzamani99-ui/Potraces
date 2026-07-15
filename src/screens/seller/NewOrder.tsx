@@ -39,6 +39,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap, selectionChanged, successNotification, mediumTap, warningNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import { useNeu } from '../../components/common/neu';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -108,6 +109,7 @@ const NewOrder: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const products = useSellerStore((s) => s.products);
@@ -683,7 +685,7 @@ const NewOrder: React.FC = () => {
     <View style={styles.container}>
       <KeyboardAwareScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         bottomOffset={80}
@@ -790,7 +792,7 @@ const NewOrder: React.FC = () => {
                   hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Select ${c.name}`}
-                  style={({ pressed }) => [styles.recentPill, pressed && styles.recentPillPressed]}
+                  style={({ pressed }) => [styles.recentPill, neuF.raised, pressed && styles.recentPillPressed]}
                 >
                   {({ pressed }) => (
                     <>
@@ -821,7 +823,7 @@ const NewOrder: React.FC = () => {
                   hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Select ${c.name}`}
-                  style={({ pressed }) => [styles.suggestionPill, pressed && styles.suggestionPillPressed]}
+                  style={({ pressed }) => [styles.suggestionPill, neuF.raised, pressed && styles.suggestionPillPressed]}
                 >
                   {({ pressed }) => (
                     <Text style={[styles.suggestionText, pressed && styles.suggestionTextPressed]} numberOfLines={1}>{c.name}</Text>
@@ -844,7 +846,7 @@ const NewOrder: React.FC = () => {
             {/* Paste order + reorder row */}
             <View style={styles.menuActionBar}>
               <TouchableOpacity
-                style={[styles.waPasteBtn, showWhatsAppPaste && styles.waPasteBtnActive]}
+                style={[styles.waPasteBtn, neuF.raised, showWhatsAppPaste && styles.waPasteBtnActive]}
                 onPress={() => {
                   lightTap();
                   if (showWhatsAppPaste) {
@@ -901,7 +903,7 @@ const NewOrder: React.FC = () => {
                     {detectedSections.map((section, idx) => (
                       <TouchableOpacity
                         key={idx}
-                        style={[styles.sectionChip, effectiveSectionIdx === idx && styles.sectionChipActive]}
+                        style={[styles.sectionChip, neuF.raised, effectiveSectionIdx === idx && styles.sectionChipActive]}
                         onPress={() => { lightTap(); setSelectedSectionIdx(idx); }}
                         activeOpacity={0.7}
                       >
@@ -964,7 +966,7 @@ const NewOrder: React.FC = () => {
                     onPress={() => handleReorder(order)}
                     accessibilityRole="button"
                     accessibilityLabel={`Reorder: ${order.items.map((i) => `${i.productName} x${i.quantity}`).join(', ')}`}
-                    style={({ pressed }) => [styles.reorderPill, pressed && styles.reorderPillPressed]}
+                    style={({ pressed }) => [styles.reorderPill, neuF.raised, pressed && styles.reorderPillPressed]}
                   >
                     {({ pressed }) => (
                       <>
@@ -1036,7 +1038,7 @@ const NewOrder: React.FC = () => {
                 <View style={styles.deliveryPills}>
                   <TouchableOpacity
                     activeOpacity={0.7}
-                    style={[styles.dPill, deliveryMode === 'today' && styles.dPillActive]}
+                    style={[styles.dPill, neuF.raised, deliveryMode === 'today' && styles.dPillActive]}
                     onPress={handleDeliveryToday}
                     hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
                     accessibilityRole="button"
@@ -1046,7 +1048,7 @@ const NewOrder: React.FC = () => {
                   </TouchableOpacity>
                   <TouchableOpacity
                     activeOpacity={0.7}
-                    style={[styles.dPill, deliveryMode === 'tomorrow' && styles.dPillActive]}
+                    style={[styles.dPill, neuF.raised, deliveryMode === 'tomorrow' && styles.dPillActive]}
                     onPress={handleDeliveryTomorrow}
                     hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
                     accessibilityRole="button"
@@ -1056,7 +1058,7 @@ const NewOrder: React.FC = () => {
                   </TouchableOpacity>
                   <TouchableOpacity
                     activeOpacity={0.7}
-                    style={[styles.dPill, deliveryMode === 'pick' && styles.dPillActive]}
+                    style={[styles.dPill, neuF.raised, deliveryMode === 'pick' && styles.dPillActive]}
                     onPress={handleDeliveryPick}
                     hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
                     accessibilityRole="button"
@@ -1143,7 +1145,7 @@ const NewOrder: React.FC = () => {
 
       {/* ── Bottom bar ────────────────────────────────────── */}
       {!isDisabled && (
-        <View style={styles.saveButtonWrap} pointerEvents="box-none">
+        <View style={[styles.saveButtonWrap, { bottom: insets.bottom + 80 + SPACING.lg }]} pointerEvents="box-none">
           <Pressable
             onPress={() => { lightTap(); setShowReviewModal(true); }}
             accessibilityRole="button"
@@ -1209,7 +1211,7 @@ const NewOrder: React.FC = () => {
               )}
 
               {/* Items slip */}
-              <View style={styles.reviewSlip}>
+              <View style={[styles.reviewSlip, neuF.raisedSoft]}>
                 <View style={styles.slipDividerRow}>
                   {Array.from({ length: 20 }).map((_, i) => (
                     <View key={i} style={styles.slipDash} />
@@ -1349,7 +1351,7 @@ const NewOrder: React.FC = () => {
             </View>
 
             {/* Product list */}
-            <View style={styles.pickerGroupCard}>
+            <View style={[styles.pickerGroupCard, neuF.raisedSoft]}>
               <ScrollView
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
@@ -1798,7 +1800,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.bronze, 0.06),
+    backgroundColor: C.background,
   },
   recentPillPressed: {
     backgroundColor: C.bronze,
@@ -1848,7 +1850,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.bronze, 0.06),
+    backgroundColor: C.background,
   },
   suggestionPillPressed: {
     backgroundColor: C.bronze,
@@ -1876,7 +1878,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.bronze, 0.06),
+    backgroundColor: C.background,
   },
   reorderPillPressed: {
     backgroundColor: C.bronze,
@@ -1916,14 +1918,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: 'transparent',
+    backgroundColor: C.background,
     marginRight: SPACING.xs,
   },
   sectionChipActive: {
     backgroundColor: C.accent,
     borderColor: C.accent,
+    borderWidth: 1,
   },
   sectionChipText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -2031,7 +2032,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.bronze, 0.08),
+    backgroundColor: C.background,
   },
   waPasteBtnActive: {
     backgroundColor: C.textPrimary,
@@ -2376,14 +2377,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Product picker modal ──────────────────────────────────
   pickerOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
   },
   pickerCard: {
     width: '100%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     maxHeight: '80%',
     overflow: 'hidden',
@@ -2597,13 +2598,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Review modal ─────────────────────────────────────────
   reviewOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
   },
   reviewSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
@@ -2660,8 +2661,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   reviewSlip: {
     backgroundColor: withAlpha(C.textMuted, 0.03),
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
     marginBottom: SPACING.sm,
@@ -2721,7 +2720,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Calendar date picker overlay ─────────────────────────
   datePickerOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     padding: SPACING.lg,
     zIndex: 999,
@@ -2732,7 +2731,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   datePickerCardInner: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
   },
@@ -2819,7 +2818,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     minHeight: 30,
-    backgroundColor: withAlpha(C.bronze, 0.06),
+    backgroundColor: C.background,
   },
   dPillActive: {
     backgroundColor: C.bronze,
@@ -2869,7 +2868,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingLeft: SPACING.lg,
     paddingRight: SPACING.md,
     minHeight: 48,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.lg),
   },
   saveButtonPressed: {
     transform: [{ scale: 0.97 }],
@@ -2903,7 +2902,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Confirmation modal ────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
@@ -2911,7 +2910,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     gap: SPACING.lg,
@@ -2948,10 +2947,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: 2,
   },
   modalTextBox: {
-    backgroundColor: C.background,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
     borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.border,
     padding: SPACING.lg,
   },
   modalPreviewText: {

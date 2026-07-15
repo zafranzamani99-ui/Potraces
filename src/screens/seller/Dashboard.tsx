@@ -30,7 +30,8 @@ import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha,
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { explainSellerMonth } from '../../utils/explainSellerMonth';
 import { lightTap, mediumTap } from '../../services/haptics';
-import ModeToggle from '../../components/common/ModeToggle';
+import GlassModeToggle from '../../components/common/GlassModeToggle';
+import NeuIconButton from '../../components/common/NeuIconButton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSellerProfile, updateSellerProfile, uploadShopLogo, getSyncStatus, getLastSyncAt, subscribeSyncStatus, SyncStatus } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
@@ -44,6 +45,7 @@ import { useSeasonInsights } from '../../hooks/useSeasonInsights';
 import SeasonStartSheet from '../../components/seller/SeasonStartSheet';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import OfflineBanner from '../../components/common/OfflineBanner';
+import { useNeu } from '../../components/common/neu';
 
 // ─── Sync status hook (CF-52) ────────────────────────────────
 function useSyncStatus(): { status: SyncStatus; lastSyncAt: Date | null } {
@@ -59,6 +61,8 @@ const SellerDashboard: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
+  const neu = useNeu(); // full neu — Neu Key buttons (quick-action trio)
   const insets = useSafeAreaInsets();
   const { orders, products, ingredientCosts, seasons, sellerCustomers, skippedOnboardingSteps, skipOnboardingStep } = useSellerStore();
   const isSyncing = useSellerStore((s) => s.isSyncing);
@@ -607,7 +611,7 @@ const SellerDashboard: React.FC = () => {
   if (needsSetup) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + SPACING.md }]}>
-        <ModeToggle />
+        <GlassModeToggle />
       </View>
     );
   }
@@ -628,7 +632,7 @@ const SellerDashboard: React.FC = () => {
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
@@ -637,7 +641,7 @@ const SellerDashboard: React.FC = () => {
         }
       >
         <View style={styles.topRow}>
-          <ModeToggle />
+          <GlassModeToggle />
         </View>
         <OfflineBanner />
         {/* ── Sync status (CF-52) ── */}
@@ -677,9 +681,10 @@ const SellerDashboard: React.FC = () => {
                 <Text style={styles.viewAllSeasonsText}>view all seasons</Text>
               </Pressable>
             </View>
-          ) : (
+          ) : isFirstTime ? null : (
+            // Hidden while the getting-started card shows — its step 1 is this same action.
             <Pressable
-              style={({ pressed }) => [styles.seasonStatusRow, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [styles.seasonStatusRow, neuF.raisedSoft, pressed && { opacity: 0.7 }]}
               onPress={() => { lightTap(); closeAllModals(); setShowStartSheet(true); }}
               accessibilityRole="button"
               accessibilityLabel="Start a new season"
@@ -722,10 +727,10 @@ const SellerDashboard: React.FC = () => {
                 )}
               </>
             )}
-            <Pressable
-              style={({ pressed }) => [styles.qrButton, pressed && { opacity: 0.7 }]}
+            <NeuIconButton
+              size={44}
+              radius={14}
               onPress={() => {
-                lightTap();
                 if (paymentQrs.length > 0) {
                   closeAllModals();
                   setQrViewIndex(0);
@@ -741,16 +746,14 @@ const SellerDashboard: React.FC = () => {
                   );
                 }
               }}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              accessibilityRole="button"
               accessibilityLabel="Show payment QR"
             >
               <Feather name="maximize" size={20} color={paymentQrs.length > 0 ? C.bronze : C.textMuted} />
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.shopLinkBtn, pressed && { opacity: 0.7 }]}
+            </NeuIconButton>
+            <NeuIconButton
+              size={42}
+              radius={12}
               onPress={() => {
-                lightTap();
                 setShopModalSlug(shopSlug || '');
                 setShopModalName(shopDisplayName || '');
                 setShopModalNotice(shopNotice || '');
@@ -758,12 +761,10 @@ const SellerDashboard: React.FC = () => {
                 closeAllModals();
                 setShowShopModal(true);
               }}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              accessibilityRole="button"
               accessibilityLabel="My shop link"
             >
               <Feather name="link-2" size={22} color={shopLinkUrl ? semantic(BIZ_SAFE.success, isDark) : C.textMuted} />
-            </Pressable>
+            </NeuIconButton>
           </View>
 
           {activeSeason && seasonInsights ? (
@@ -993,7 +994,7 @@ const SellerDashboard: React.FC = () => {
         <Animated.View style={quickActionsAnim}>
           <View style={styles.quickActionsRow}>
             <Pressable
-              style={({ pressed }) => [styles.quickActionButton, { borderColor: withAlpha(C.gold, 0.25), backgroundColor: withAlpha(C.gold, 0.08) }, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [styles.quickActionButton, pressed ? neu.inset : neu.raised, pressed && { transform: [{ scale: 0.96 }] }]}
               onPress={goToProducts}
               accessibilityRole="button"
               accessibilityLabel="View products"
@@ -1002,16 +1003,16 @@ const SellerDashboard: React.FC = () => {
               <Text style={[styles.quickActionLabel, { color: C.gold }]}>products</Text>
             </Pressable>
             <Pressable
-              style={({ pressed }) => [styles.quickActionButton, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [styles.quickActionButton, pressed ? neu.inset : neu.raised, pressed && { transform: [{ scale: 0.96 }] }]}
               onPress={goToCosts}
               accessibilityRole="button"
               accessibilityLabel="Manage costs"
             >
               <Feather name="shopping-bag" size={16} color={C.bronze} />
-              <Text style={styles.quickActionLabel}>costs</Text>
+              <Text style={[styles.quickActionLabel, { color: C.bronze }]}>costs</Text>
             </Pressable>
             <Pressable
-              style={({ pressed }) => [styles.quickActionButton, { borderColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.25), backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.08) }, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [styles.quickActionButton, pressed ? neu.inset : neu.raised, pressed && { transform: [{ scale: 0.96 }] }]}
               onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'online' }); }}
               accessibilityRole="button"
               accessibilityLabel="View online orders"
@@ -1029,7 +1030,7 @@ const SellerDashboard: React.FC = () => {
 
         {/* ── First-time getting started ─────────────── */}
         {isFirstTime ? (
-          <Animated.View style={[styles.gettingStartedCard, gettingStartedAnim]}>
+          <Animated.View style={[styles.gettingStartedCard, neuF.raisedSoft, gettingStartedAnim]}>
             <Text style={styles.gettingStartedTitle}>Let's get started 👋</Text>
             <Text style={styles.gettingStartedSubtitle}>
               3 simple steps to set up your store
@@ -1055,7 +1056,7 @@ const SellerDashboard: React.FC = () => {
                 <Feather name="chevron-right" size={16} color={C.textMuted} />
               </Pressable>
               <Pressable
-                style={({ pressed }) => [styles.skipBtn, pressed && { opacity: 0.7 }]}
+                style={({ pressed }) => [styles.skipBtn, neuF.raised, pressed && { opacity: 0.7 }]}
                 onPress={() => skipOnboardingStep('season')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
@@ -1084,7 +1085,7 @@ const SellerDashboard: React.FC = () => {
                 <Feather name="chevron-right" size={16} color={C.textMuted} />
               </Pressable>
               <Pressable
-                style={({ pressed }) => [styles.skipBtn, pressed && { opacity: 0.7 }]}
+                style={({ pressed }) => [styles.skipBtn, neuF.raised, pressed && { opacity: 0.7 }]}
                 onPress={() => skipOnboardingStep('products')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
@@ -1113,7 +1114,7 @@ const SellerDashboard: React.FC = () => {
                 <Feather name="chevron-right" size={16} color={C.textMuted} />
               </Pressable>
               <Pressable
-                style={({ pressed }) => [styles.skipBtn, pressed && { opacity: 0.7 }]}
+                style={({ pressed }) => [styles.skipBtn, neuF.raised, pressed && { opacity: 0.7 }]}
                 onPress={() => skipOnboardingStep('orders')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
@@ -1131,7 +1132,7 @@ const SellerDashboard: React.FC = () => {
                 <Text style={styles.emptyStateTitle}>no orders this month yet.</Text>
                 <Text style={styles.emptyStateSubtitle}>tap + to record a new order.</Text>
                 <Pressable
-                  style={({ pressed }) => [styles.emptyStateCta, pressed && { opacity: 0.7 }]}
+                  style={({ pressed }) => [styles.emptyStateCta, neuF.raised, pressed && { opacity: 0.7 }]}
                   onPress={goToNewOrder}
                   accessibilityRole="button"
                   accessibilityLabel="Create new order"
@@ -1351,7 +1352,7 @@ const SellerDashboard: React.FC = () => {
             </View>
 
             {/* ── Shop Name ── */}
-            <View style={styles.slmFieldCard}>
+            <View style={[styles.slmFieldCard, neuF.raisedSoft]}>
               <Text style={styles.slmFieldLabel}>shop name</Text>
               <TextInput
                 style={styles.slmFieldInput}
@@ -1366,7 +1367,7 @@ const SellerDashboard: React.FC = () => {
             </View>
 
             {/* ── Shop URL ── */}
-            <View style={styles.slmFieldCard}>
+            <View style={[styles.slmFieldCard, neuF.raisedSoft]}>
               <Text style={styles.slmFieldLabel}>
                 shop url{' '}
                 {!shopSlug && <Text style={styles.slmFieldHint}>(lowercase, numbers, -)</Text>}
@@ -1389,7 +1390,7 @@ const SellerDashboard: React.FC = () => {
             </View>
 
             {/* ── WhatsApp ── */}
-            <View style={styles.slmFieldCard}>
+            <View style={[styles.slmFieldCard, neuF.raisedSoft]}>
               <View style={styles.slmFieldLabelRow}>
                 <Text style={styles.slmFieldLabel}>whatsapp</Text>
                 <View style={styles.slmRequiredPill}>
@@ -1405,7 +1406,7 @@ const SellerDashboard: React.FC = () => {
             </View>
 
             {/* ── Customer Notice ── */}
-            <View style={styles.slmFieldCard}>
+            <View style={[styles.slmFieldCard, neuF.raisedSoft]}>
               <View style={styles.slmFieldLabelRow}>
                 <Text style={styles.slmFieldLabel}>customer notice</Text>
                 <Text style={styles.slmFieldHintInline}>optional</Text>
@@ -1491,7 +1492,7 @@ const SellerDashboard: React.FC = () => {
 
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               <Pressable
-                style={({ pressed }) => [styles.slmConfirmCancelBtn, pressed && { opacity: 0.7 }]}
+                style={({ pressed }) => [styles.slmConfirmCancelBtn, neuF.raised, pressed && { opacity: 0.7 }]}
                 onPress={() => { closeAllModals(); setTimeout(() => setShowShopModal(true), 50); }}
               >
                 <Text style={styles.slmConfirmCancelText}>go back</Text>
@@ -1689,7 +1690,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.sm + 4,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
   },
   seasonStatusLeft: {
     flexDirection: 'row',
@@ -1846,9 +1849,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: 6,
     minHeight: 44,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
   },
@@ -2056,15 +2057,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Getting started card ──────────────────────────────────
   gettingStartedCard: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     marginBottom: SPACING.xl,
   },
   gettingStartedTitle: {
-    ...TYPE.label, // fontSize 12, color #6B6B6B, uppercase, letterSpacing 1
+    ...TYPE.label, // fontSize 12, uppercase, letterSpacing 1
+    color: C.textSecondary, // TYPE.label's hardcoded #6B6B6B is illegible on the dark card
     marginBottom: SPACING.xs, // 4pt
   },
   gettingStartedSubtitle: {
@@ -2124,8 +2124,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: 1,
   },
   skipBtn: {
-    alignSelf: 'flex-end',
-    paddingTop: SPACING.xs,
+    paddingVertical: 5,
+    paddingHorizontal: SPACING.sm + 2,
+    borderRadius: RADIUS.full,
+    marginLeft: SPACING.sm,
   },
   skipText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -2683,7 +2685,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.bronze, 0.08),
+    backgroundColor: C.background,
     minHeight: 44,
   },
   emptyStateCtaText: {
@@ -2694,15 +2696,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
 
   // ── Shop link card ──
-  shopLinkBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(BIZ.success, 0.1),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   // ── Shop link modal ──
   shopModalOverlay: {
     flex: 1,
@@ -2858,10 +2851,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Shop link modal — field cards ──
   slmFieldCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
     marginBottom: SPACING.sm + 2,
@@ -2958,13 +2949,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Slug confirm modal ──
   slmConfirmOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.45),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
   slmConfirmCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     width: '100%',
@@ -3095,7 +3086,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   itemsModalCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     width: '100%',
     maxWidth: 420,
@@ -3121,14 +3112,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // ── QR modal ──
-  qrButton: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(C.bronze, 0.1),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   qrModalOverlay: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
   qrCloseBtn: { position: 'absolute', top: 72, right: SPACING.xl, width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', zIndex: 20 },
   qrLabel: { position: 'absolute', top: 80, left: 0, right: 0, textAlign: 'center', fontSize: TYPOGRAPHY.size['2xl'], fontWeight: TYPOGRAPHY.weight.bold, color: '#fff', zIndex: 10 },

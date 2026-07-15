@@ -19,7 +19,7 @@ import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
 import { lightTap } from '../../services/haptics';
-import ModeToggle from '../../components/common/ModeToggle';
+import GlassModeToggle from '../../components/common/GlassModeToggle';
 import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
 import OfflineBanner from '../../components/common/OfflineBanner';
 
@@ -160,7 +160,7 @@ const StallDashboard: React.FC = () => {
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -170,7 +170,7 @@ const StallDashboard: React.FC = () => {
             />
           }
         >
-          <ModeToggle />
+          <GlassModeToggle />
           <OfflineBanner />
           {/* Selling now / paused indicator */}
           {activeSession.paused ? (
@@ -291,7 +291,7 @@ const StallDashboard: React.FC = () => {
           />
         }
       >
-        <ModeToggle />
+        <GlassModeToggle />
         <OfflineBanner />
         {/* Heading */}
         <Animated.View style={headingAnim}>

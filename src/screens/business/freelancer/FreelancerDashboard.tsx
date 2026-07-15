@@ -13,7 +13,7 @@ import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { explainFreelancerMonth } from '../../../utils/explainFreelancerMonth';
 import WeekBar from '../../../components/common/WeekBar';
-import ModeToggle from '../../../components/common/ModeToggle';
+import GlassModeToggle from '../../../components/common/GlassModeToggle';
 import BusinessHeroNumber from '../../../components/business/BusinessHeroNumber';
 import { RefreshControl } from 'react-native';
 
@@ -137,7 +137,7 @@ const FreelancerDashboard: React.FC = () => {
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -151,7 +151,7 @@ const FreelancerDashboard: React.FC = () => {
           />
         }
       >
-        <ModeToggle />
+        <GlassModeToggle />
         {/* Zone 1 — Hero Number */}
         <BusinessHeroNumber
           amount={sixMonthAvg}
@@ -240,7 +240,7 @@ const FreelancerDashboard: React.FC = () => {
 
       {/* FAB — Log Payment */}
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: insets.bottom + 80 + SPACING['2xl'] }]}
         onPress={() => navigation.getParent()?.navigate('FreelancerAddPayment')}
         activeOpacity={0.7}
       >

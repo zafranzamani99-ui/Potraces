@@ -18,6 +18,7 @@ import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
 import { SellerOrder, SellerCustomer } from '../../types';
 import ModalToastHost from '../../components/common/ModalToastHost';
 
@@ -75,6 +76,7 @@ const StatsSummary: React.FC<{
 }> = React.memo(({ customers, currency, onTapAll, onTapOwes, onTapRepeat, styles }) => {
   const C = useCalm();
   const isDark = useIsDark();
+  const neuF = useNeu(undefined, { faintDark: true });
   const stats = useMemo(() => {
     let outstanding = 0;
     let repeatCount = 0;
@@ -88,7 +90,7 @@ const StatsSummary: React.FC<{
   return (
     <View style={styles.statsRow}>
       <TouchableOpacity
-        style={styles.statChip}
+        style={[styles.statChip, neuF.raised, { backgroundColor: withAlpha(BIZ.success, 0.05) }]}
         activeOpacity={0.7}
         onPress={() => { lightTap(); onTapAll(); }}
         accessibilityRole="button"
@@ -102,7 +104,7 @@ const StatsSummary: React.FC<{
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.statChip, { backgroundColor: withAlpha(semantic(BIZ_SAFE.unpaid, isDark), 0.05) }]}
+        style={[styles.statChip, neuF.raised, { backgroundColor: withAlpha(semantic(BIZ_SAFE.unpaid, isDark), 0.05) }]}
         activeOpacity={0.7}
         onPress={() => { lightTap(); onTapOwes(); }}
         accessibilityRole="button"
@@ -116,7 +118,7 @@ const StatsSummary: React.FC<{
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.statChip, { backgroundColor: withAlpha(C.accent, 0.05) }]}
+        style={[styles.statChip, neuF.raised, { backgroundColor: withAlpha(C.accent, 0.05) }]}
         activeOpacity={0.7}
         onPress={() => { lightTap(); onTapRepeat(); }}
         accessibilityRole="button"
@@ -250,6 +252,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
 }) => {
   const C = useCalm();
   const isDark = useIsDark();
+  const neuF = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
 
   const recentOrders = useMemo(() => {
@@ -382,7 +385,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
 
             {/* Hero numbers */}
             {customer.unpaidAmount > 0 ? (
-              <View style={styles.dtHeroCard}>
+              <View style={[neuF.raisedSoft, styles.dtHeroCard]}>
                 <Text style={styles.dtHeroLabel}>outstanding</Text>
                 <Text style={styles.dtHeroAmount}>{currency} {customer.unpaidAmount.toFixed(0)}</Text>
                 {customer.totalOrders > 1 && (
@@ -392,7 +395,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                 )}
               </View>
             ) : customer.totalOrders > 1 ? (
-              <View style={styles.dtHeroCard}>
+              <View style={[neuF.raisedSoft, styles.dtHeroCard]}>
                 <Text style={styles.dtHeroLabel}>lifetime</Text>
                 <Text style={[styles.dtHeroAmount, { color: C.textPrimary }]}>{currency} {customer.totalSpent.toFixed(0)}</Text>
                 <Text style={styles.dtHeroSub}>
@@ -468,7 +471,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.dtActionSecondary}
+                style={[styles.dtActionSecondary, neuF.raised]}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); onViewOrders(); }}
                 accessibilityRole="button"
@@ -478,7 +481,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.dtActionSecondary}
+                style={[styles.dtActionSecondary, neuF.raised]}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); onEditDetails(); }}
                 accessibilityRole="button"
@@ -488,7 +491,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.dtActionSecondary}
+                style={[styles.dtActionSecondary, neuF.raised]}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); onCopyInfo(); }}
                 accessibilityRole="button"
@@ -512,6 +515,7 @@ const SellerCustomers: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
   const { orders, sellerCustomers, addSellerCustomer, updateSellerCustomer, deleteSellerCustomer, deleteOrder, deleteOrders, updateOrder } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -1145,7 +1149,7 @@ const SellerCustomers: React.FC = () => {
           )}
         </View>
         <TouchableOpacity
-          style={[styles.sortButton, sortBy !== 'recent' && styles.sortButtonActive]}
+          style={[styles.sortButton, neuF.raised, sortBy !== 'recent' && styles.sortButtonActive]}
           activeOpacity={0.7}
           onPress={() => { lightTap(); setShowSortMenu(true); }}
           accessibilityRole="button"
@@ -1165,6 +1169,7 @@ const SellerCustomers: React.FC = () => {
               key={f.key}
               style={[
                 styles.filterPill,
+                neuF.raised,
                 isActive && styles.filterPillActive,
               ]}
               onPress={() => { selectionChanged(); setFilter(f.key); }}
@@ -1204,7 +1209,7 @@ const SellerCustomers: React.FC = () => {
       )}
 
     </View>
-  ), [search, sortBy, filter, filterCounts, hasActiveFilters, filteredCustomers.length, derivedCustomers.length, handleClearFilters, C, isDark]);
+  ), [search, sortBy, filter, filterCounts, hasActiveFilters, filteredCustomers.length, derivedCustomers.length, handleClearFilters, neuF, C, isDark]);
 
   return (
     <View style={styles.container}>
@@ -1294,7 +1299,7 @@ const SellerCustomers: React.FC = () => {
             </View>
           )
         }
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         onScrollBeginDrag={Keyboard.dismiss}
@@ -1424,7 +1429,7 @@ const SellerCustomers: React.FC = () => {
               {/* From contacts shortcut — only for new customers */}
               {!editingCustomer?.name && (
                 <TouchableOpacity
-                  style={styles.modalContactsBtn}
+                  style={[styles.modalContactsBtn, neuF.raised]}
                   activeOpacity={0.7}
                   onPress={() => {
                     setEditModalVisible(false);
@@ -1583,7 +1588,7 @@ const SellerCustomers: React.FC = () => {
             </View>
 
             {/* Contact search */}
-            <View style={styles.contactSearchBar}>
+            <View style={[styles.contactSearchBar, neuF.raised]}>
               <Feather name="search" size={14} color={C.textMuted} />
               <TextInput
                 style={styles.contactSearchInput}
@@ -1658,7 +1663,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   statChip: {
     flex: 1,
-    backgroundColor: withAlpha(BIZ.success, 0.05),
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
@@ -1715,7 +1720,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1736,7 +1741,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
     minHeight: 36,
     justifyContent: 'center',
   },
@@ -1901,15 +1906,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Detail modal ──
   detailOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.42),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
   },
   detailSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.xl,
@@ -2082,7 +2085,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(C.bronze, 0.06),
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
@@ -2226,15 +2229,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Sort modal ──
   sortOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.42),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
   },
   sortSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING.xl,
     width: '80%',
@@ -2271,15 +2272,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Edit modal ──
   modalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.42),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.lg,
@@ -2403,7 +2402,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.bronze, 0.08),
+    backgroundColor: C.background,
     alignSelf: 'flex-start',
     marginTop: SPACING.sm,
   },
@@ -2415,10 +2414,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Contact picker modal ──
   contactPickerSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     maxHeight: '80%',
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
@@ -2431,7 +2428,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   contactSearchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,

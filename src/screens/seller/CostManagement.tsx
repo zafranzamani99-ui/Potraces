@@ -42,6 +42,7 @@ import PaywallModal from '../../components/common/PaywallModal';
 import ImageSourcePills from '../../components/common/ImageSourcePills';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import CategoryIcon from '../../components/common/CategoryIcon';
+import { useNeu } from '../../components/common/neu';
 import {
   lightTap,
   successNotification,
@@ -62,6 +63,7 @@ const CostManagement: React.FC = () => {
   const bizLoss = semantic(BIZ_SAFE.loss, isDark);
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
   const ingredientCosts = useSellerStore((s) => s.ingredientCosts);
   const orders = useSellerStore((s) => s.orders);
@@ -827,7 +829,7 @@ const CostManagement: React.FC = () => {
               >
                 <Pressable
                   onPress={() => { lightTap(); setCategoryFilter(null); }}
-                  style={[styles.filterChip, !categoryFilter && styles.filterChipActive]}
+                  style={[styles.filterChip, neuF.raised, !categoryFilter && styles.filterChipActive]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: !categoryFilter }}
                 >
@@ -839,7 +841,7 @@ const CostManagement: React.FC = () => {
                     <Pressable
                       key={cat.id}
                       onPress={() => { lightTap(); setCategoryFilter(active ? null : cat.id); }}
-                      style={[styles.filterChip, active && { backgroundColor: withAlpha(cat.color, isDark ? 0.2 : 0.12), borderColor: cat.color }]}
+                      style={[styles.filterChip, neuF.raised, active && { backgroundColor: withAlpha(cat.color, isDark ? 0.2 : 0.12), borderWidth: 1, borderColor: cat.color }]}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
                     >
@@ -1019,7 +1021,7 @@ const CostManagement: React.FC = () => {
                   {(['weekly', 'biweekly', 'monthly'] as const).map((f) => (
                     <Pressable
                       key={f}
-                      style={({ pressed }) => [styles.freqPill, recurringFreq === f && styles.freqPillActive, pressed && { opacity: 0.7 }]}
+                      style={({ pressed }) => [styles.freqPill, neuF.raised, recurringFreq === f && styles.freqPillActive, pressed && { opacity: 0.7 }]}
                       onPress={() => setRecurringFreq(f)}
                     >
                       <Text style={[styles.freqPillText, recurringFreq === f && styles.freqPillTextActive]}>
@@ -1162,7 +1164,7 @@ const CostManagement: React.FC = () => {
                           ]);
                         }}
                         delayLongPress={400}
-                        style={({ pressed }) => [styles.templateItem, pressed && { opacity: 0.7 }]}
+                        style={({ pressed }) => [styles.templateItem, neuF.raised, pressed && { opacity: 0.7 }]}
                         accessibilityRole="button"
                         accessibilityLabel={`Use template: ${tmpl.description}`}
                       >
@@ -1927,10 +1929,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING['2xl'],
   },
   modalContent: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.lg,
@@ -2040,7 +2040,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignSelf: 'flex-start',
     top: 4,
     gap: SPACING.xs,
-    backgroundColor: C.background,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
@@ -2317,12 +2317,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: C.border,
     backgroundColor: C.background,
   },
   filterChipActive: {
     backgroundColor: withAlpha(C.bronze, 0.12),
+    borderWidth: 1,
     borderColor: C.bronze,
   },
   filterChipText: {

@@ -12,6 +12,7 @@ import { SellerCostCategory } from '../../types';
 import { lightTap, successNotification } from '../../services/haptics';
 import ModalToastHost from '../common/ModalToastHost';
 import CategoryIcon from '../common/CategoryIcon';
+import { useNeu } from '../common/neu';
 
 const ICON_CHOICES = [
   'm/cube-outline', 'm/package-variant-closed', 'm/wrench', 'i/flash', 'm/home-city',
@@ -42,6 +43,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
   const deleteCostCategory = useSellerStore((s) => s.deleteCostCategory);
   const { showToast } = useToast();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -120,7 +122,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
       {/* Dropdown trigger — shows current pick, opens the full list */}
       <Pressable
         onPress={() => { lightTap(); setPickerOpen(true); }}
-        style={styles.trigger}
+        style={[styles.trigger, neuF.raisedSoft]}
         accessibilityRole="button"
         accessibilityLabel={`${sl.categoryLabel}: ${current ? label(current) : ''}`}
       >
@@ -297,19 +299,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   triggerText: { flex: 1, fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.medium, color: C.textPrimary },
   dropdownOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
   dropdownModal: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
     width: '100%',
     maxWidth: 420,
     alignSelf: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
   },
   dropdownHeader: {
     flexDirection: 'row',
@@ -351,10 +351,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '90%',
     maxWidth: 420,
     maxHeight: '80%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     padding: SPACING['2xl'],
     gap: SPACING.lg,
     ...SHADOWS.lg,
@@ -385,7 +383,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   addRowText: { fontSize: TYPOGRAPHY.size.base, color: C.bronze, fontWeight: TYPOGRAPHY.weight.medium },
   input: {
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: C.inputBorder,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
@@ -409,7 +407,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   colorDot: { width: 32, height: 32, borderRadius: RADIUS.full },
-  colorDotActive: { borderWidth: 3, borderColor: C.surface, ...SHADOWS.sm },
+  colorDotActive: { borderWidth: 3, borderColor: C.background, ...SHADOWS.sm },
   saveBtn: {
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.lg,

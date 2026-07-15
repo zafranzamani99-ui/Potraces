@@ -192,7 +192,7 @@ const Inventory: React.FC = () => {
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
       >
         {(lowStockProducts.length > 0 || outOfStockProducts.length > 0) && (
@@ -395,7 +395,7 @@ const Inventory: React.FC = () => {
         }}
         icon="plus"
         color={C.positive}
-        style={{ right: undefined, left: SPACING['2xl'] }}
+        style={{ right: undefined, left: SPACING['2xl'], bottom: insets.bottom + 84 }}
       />
 
       {modalVisible && (

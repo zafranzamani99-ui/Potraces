@@ -23,3 +23,61 @@
 
 **Done:** Goals, Bills (SubscriptionList/CommitmentForm), full Debt cluster, all Wallet modals + WalletManagement, shared pickers (Contact/Category/Wallet/Calendar/QuickAdd), `BottomSheet`/`FloatingModal`.
 **Not yet Onyx'd (apply on request):** BudgetPlanning, SavingsTracker/SavingsSheets, AccountOverview, Reports, FinancialPulse, MoneyChat, Import screens, Receipt modals, seller/* screens.
+
+## "Neu Key" — neumorphic icon button (LOCKED)
+
+**Neu Key** is the app's raised soft-UI icon button that presses IN on tap. When the user says **"apply Neu Key to `<button>`"**, swap that icon button to the shared `NeuIconButton` (`src/components/common/NeuIconButton.tsx`).
+
+**Recipe:**
+```tsx
+<NeuIconButton size={44} radius={14} onPress={...} accessibilityLabel="...">
+  <Feather name="maximize" size={20} color={active ? C.bronze : C.textMuted} />
+</NeuIconButton>
+```
+- **Full neu face** (`NeuSurface`, default neu) — **NOT** `faintDark` (faintDark is invisible on the near-black bg).
+- **Spring scale-down (0.92) + `neu.inset` on press** — the face physically pushes in. Never fake it with `opacity`.
+- **One-color icon carries state** (bronze / success-green / olive). No background tint — the neu face IS the surface.
+- `NeuIconButton` fires `lightTap()` itself; don't add another haptic.
+
+**Reference:** personal QR button (`greetingRow` in `src/screens/personal/Dashboard.tsx`); seller QR + shop-link buttons in `src/screens/seller/Dashboard.tsx`.
+
+Note: Neu Key uses FULL neu for standalone icon buttons — a deliberate exception to Onyx rule 3 (which uses `faintDark` for pills/chips), so the button stays visible and tactile in dark.
+
+## "Neu Select" — primary CTA button (LOCKED)
+
+**Neu Select** is the app's one primary-action button: the full-width olive (accent) pill with white icon + label. It's the shared `NeuButton` (`src/components/common/NeuButton.tsx`). Use it for every primary CTA (Save, Create, Add, Repay, Transfer, Confirm…) so they all read the same.
+
+**Recipe:**
+```tsx
+<NeuButton icon="check" label="save" onPress={handleSave} />
+```
+- **Olive `C.accent` fill + `neu.raisedSoft`** — the raised soft drop-shadow stays ON the whole time.
+- **Press = spring scale-down (0.95) + opacity dip (0.92). NO inset, shadow never drops.** This is the deliberate opposite of Neu Key — a neu **inset** reads muddy over the solid olive fill, so Neu Select never presses IN; it just shrinks.
+- **White icon + label** (`C.onAccent`).
+- `NeuButton` fires `lightTap()` itself; don't add another haptic.
+
+**Reference:** Bills save button (`NeuButton` in `src/components/commitments/CommitmentForm.tsx`).
+
+Neu family: **Neu Key** = icon button, presses IN (inset). **Neu Select** = primary olive CTA, shadow stays, just scales down.
+
+## "Neu Pills" — faintDark selector pills (LOCKED)
+
+**Neu Pills** are the app's tappable filter/selector pills (e.g. Bills' all / upcoming / overdue). This is literally **Onyx rule 3** given a name — a faintDark neu pill that fills olive when selected.
+
+**Recipe:**
+```tsx
+const neu = useNeu(undefined, { faintDark: true });
+<TouchableOpacity style={[styles.statusPill, neu.raised, active && styles.statusPillActive]}>
+  <Text style={[styles.statusPillText, active && styles.statusPillTextActive]}>{label}</Text>
+</TouchableOpacity>
+// statusPill:        { borderRadius: RADIUS.full, backgroundColor: withAlpha(C.textPrimary, 0.03) }
+// statusPillActive:  { backgroundColor: C.accent }
+// statusPillText:    { color: C.textSecondary }
+// statusPillTextActive: { color: C.onAccent, fontWeight: bold }
+```
+- **Idle** → `neu.raised` (faintDark) over a `withAlpha(C.textPrimary, 0.03)` base.
+- **Selected** → olive `C.accent` fill + bold `C.onAccent` text. Does **NOT** inset and does **NOT** drop the neu — no press-in.
+
+**Reference:** Bills status pills (`statusPill` in `src/screens/personal/SubscriptionList.tsx`).
+
+Neu family recap: **Neu Key** = icon button, presses IN. **Neu Select** = primary olive CTA, shadow stays + scales down. **Neu Pills** = faintDark selector pills, raised idle / olive-filled when selected.

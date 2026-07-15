@@ -19,6 +19,8 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import { useNeu } from '../../components/common/neu';
+import NeuButton from '../../components/common/NeuButton';
 import { warningNotification } from '../../services/haptics';
 import { Season } from '../../types';
 
@@ -102,6 +104,7 @@ const PastSeasons: React.FC = () => {
   const bizLoss = semantic(BIZ_SAFE.loss, isDark);
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const { seasons, orders, ingredientCosts, addSeason, useSeasonTemplate } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
@@ -319,16 +322,15 @@ const PastSeasons: React.FC = () => {
             <Text style={styles.emptyHint}>
               {t.seller.seasonsEmptyHint}
             </Text>
-            <TouchableOpacity
-              style={styles.emptyCTA}
-              activeOpacity={0.7}
-              onPress={() => setShowAdd(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Start your first season"
-            >
-              <Feather name="plus" size={18} color={C.onAccent} />
-              <Text style={styles.emptyCTAText}>{t.seller.startFirstSeason}</Text>
-            </TouchableOpacity>
+            <View style={{ alignSelf: 'stretch' }}>
+              <NeuButton
+                icon="plus"
+                label={t.seller.startFirstSeason}
+                color={C.deepOliveBiz}
+                onPress={() => setShowAdd(true)}
+                accessibilityLabel="Start your first season"
+              />
+            </View>
           </View>
         }
         removeClippedSubviews
@@ -373,7 +375,7 @@ const PastSeasons: React.FC = () => {
                   <Text style={styles.templateLabel}>{t.seller.copyFromPrev}</Text>
                   <View style={styles.templatePills}>
                     <TouchableOpacity
-                      style={[styles.templatePill, templateSeasonId === null && styles.templatePillActive]}
+                      style={[styles.templatePill, neuF.raised, templateSeasonId === null && styles.templatePillActive]}
                       onPress={() => setTemplateSeasonId(null)}
                       activeOpacity={0.7}
                     >
@@ -384,7 +386,7 @@ const PastSeasons: React.FC = () => {
                     {pastSeasons.slice(0, 3).map((s) => (
                       <TouchableOpacity
                         key={s.id}
-                        style={[styles.templatePill, templateSeasonId === s.id && styles.templatePillActive]}
+                        style={[styles.templatePill, neuF.raised, templateSeasonId === s.id && styles.templatePillActive]}
                         onPress={() => setTemplateSeasonId(s.id)}
                         activeOpacity={0.7}
                       >
@@ -612,25 +614,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  emptyCTA: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: C.deepOliveBiz,
-    borderRadius: RADIUS.xl,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-    alignSelf: 'stretch',
-    marginTop: SPACING.md,
-    minHeight: 48,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
-  },
-  emptyCTAText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
 
   // -- Bottom-anchored add button -----------------------------------
   addButtonWrapper: {
@@ -662,7 +645,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING['2xl'],               // 24pt
   },
   modalContent: {
-    backgroundColor: C.surface,         // #FFFFFF
+    backgroundColor: C.background,       // Onyx: sheet on #121212 in dark
     borderRadius: RADIUS.lg,               // 14
     padding: SPACING.xl,                   // 24pt
     width: '100%',
@@ -726,6 +709,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.xs,
   },
   templatePill: {
+    backgroundColor: C.background,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 6,
     borderRadius: RADIUS.full,

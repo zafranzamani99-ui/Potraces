@@ -26,6 +26,7 @@ import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 import CategoryIcon from '../../components/common/CategoryIcon';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SaleItem } from '../../types';
 import { useToast } from '../../context/ToastContext';
 import { successNotification } from '../../services/haptics';
@@ -37,6 +38,7 @@ const CART_EXPANDED_WIDTH = SCREEN_WIDTH * 0.9;
 
 const POS: React.FC = () => {
   const C = useCalm();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const { products, addSale } = useBusinessStore();
@@ -349,7 +351,7 @@ const POS: React.FC = () => {
           {/* Product grid */}
           <ScrollView
             style={styles.productsScroll}
-            contentContainerStyle={styles.productsGrid}
+            contentContainerStyle={[styles.productsGrid, { paddingBottom: insets.bottom + 88 }]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
@@ -532,7 +534,7 @@ const POS: React.FC = () => {
 
           {/* Cart footer */}
           <Pressable
-            style={styles.cartFooter}
+            style={[styles.cartFooter, { paddingBottom: insets.bottom + 84 }]}
             onPress={!cartExpanded && cart.length > 0 ? expandCart : undefined}
             disabled={cartExpanded || cart.length === 0}
           >

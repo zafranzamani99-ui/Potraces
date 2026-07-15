@@ -35,7 +35,10 @@ const NeuButton: React.FC<Props> = ({ onPress, label, icon, disabled, color, acc
 
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
-  const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
+  // opacity must fold in `disabled` here: this animated style is applied AFTER
+  // `disabled && styles.disabled` in the array, so `opacity.value` would otherwise
+  // override the disabled 0.5 and the button would never dim.
+  const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: disabled ? 0.5 : opacity.value }));
 
   const onIn = useCallback(() => {
     scale.value = withSpring(0.95, SPRING);

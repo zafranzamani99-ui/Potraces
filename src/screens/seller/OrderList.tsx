@@ -38,6 +38,7 @@ import { usePendingPaymentsStore } from '../../store/pendingPaymentsStore';
 import { scheduleUnpaidQrReminder, cancelUnpaidQrReminder } from '../../services/qrPaymentReminder';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct, DepositEntry } from '../../types';
 import CalendarPicker from '../../components/common/CalendarPicker';
@@ -627,6 +628,7 @@ const OrderList: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
   const orders = useSellerStore((s) => s.orders);
   const products = useSellerStore((s) => s.products);
@@ -1955,7 +1957,7 @@ const OrderList: React.FC = () => {
           )}
         </View>
         <TouchableOpacity
-          style={[styles.sortButton, modalHasAdvancedFilters && styles.sortButtonActive]}
+          style={[styles.sortButton, neuF.raised, modalHasAdvancedFilters && styles.sortButtonActive]}
           activeOpacity={0.7}
           onPress={() => { lightTap(); setShowSortMenu(true); }}
           accessibilityRole="button"
@@ -1966,7 +1968,7 @@ const OrderList: React.FC = () => {
         </TouchableOpacity>
         <TouchableOpacity
           activeOpacity={0.7}
-          style={styles.viewModeToggle}
+          style={[styles.viewModeToggle, neuF.raised]}
           onPress={() => { selectionChanged(); setViewMode(v => v === 'grouped' ? 'list' : 'grouped'); }}
           accessibilityRole="button"
           accessibilityLabel={`View mode: ${viewMode}`}
@@ -1985,7 +1987,7 @@ const OrderList: React.FC = () => {
         >
           {/* All */}
           <TouchableOpacity
-            style={[styles.quickChip, activeChip === 'all' && styles.quickChipActive]}
+            style={[styles.quickChip, neuF.raised, activeChip === 'all' && styles.quickChipActive]}
             activeOpacity={0.7}
             onPress={() => { selectionChanged(); setDeliveryFilter('all'); setPaymentFilter('all'); setOnlineOnly(false); setOverdueOnly(false); }}
           >
@@ -1994,7 +1996,7 @@ const OrderList: React.FC = () => {
 
           {/* Pending */}
           <TouchableOpacity
-            style={[styles.quickChip, activeChip === 'pending' && styles.quickChipActive]}
+            style={[styles.quickChip, neuF.raised, activeChip === 'pending' && styles.quickChipActive]}
             activeOpacity={0.7}
             onPress={() => { selectionChanged(); setDeliveryFilter('pending'); setPaymentFilter('all'); setOnlineOnly(false); setOverdueOnly(false); }}
           >
@@ -2008,7 +2010,7 @@ const OrderList: React.FC = () => {
 
           {/* Unpaid */}
           <TouchableOpacity
-            style={[styles.quickChip, activeChip === 'unpaid' && styles.quickChipActive]}
+            style={[styles.quickChip, neuF.raised, activeChip === 'unpaid' && styles.quickChipActive]}
             activeOpacity={0.7}
             onPress={() => { selectionChanged(); setPaymentFilter('unpaid'); setDeliveryFilter('all'); setOnlineOnly(false); setOverdueOnly(false); }}
           >
@@ -2022,7 +2024,7 @@ const OrderList: React.FC = () => {
 
           {/* Online */}
           <TouchableOpacity
-            style={[styles.quickChip, activeChip === 'online' && styles.quickChipActive]}
+            style={[styles.quickChip, neuF.raised, activeChip === 'online' && styles.quickChipActive]}
             activeOpacity={0.7}
             onPress={() => { selectionChanged(); setOnlineOnly(true); setDeliveryFilter('all'); setPaymentFilter('all'); setOverdueOnly(false); }}
           >
@@ -2041,7 +2043,7 @@ const OrderList: React.FC = () => {
                 <Text style={styles.unseenHintText}>{unreadCount} new</Text>
               </View>
               <TouchableOpacity
-                style={styles.markAllSeenBtn}
+                style={[neuF.raised, styles.markAllSeenBtn]}
                 activeOpacity={0.7}
                 onPress={() => { markAllOnlineSeen(); selectionChanged(); }}
               >
@@ -2052,7 +2054,7 @@ const OrderList: React.FC = () => {
 
           {/* Overdue */}
           <TouchableOpacity
-            style={[styles.quickChip, activeChip === 'overdue' && styles.quickChipActive]}
+            style={[styles.quickChip, neuF.raised, activeChip === 'overdue' && styles.quickChipActive]}
             activeOpacity={0.7}
             onPress={() => { selectionChanged(); setOverdueOnly(true); setDeliveryFilter('all'); setPaymentFilter('all'); setOnlineOnly(false); }}
           >
@@ -2097,7 +2099,7 @@ const OrderList: React.FC = () => {
         data={(viewMode === 'grouped' ? groupedData : filteredOrders) as any[]}
         renderItem={viewMode === 'grouped' ? renderGroup as any : renderOrder}
         keyExtractor={listKeyExtractor}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
         ListEmptyComponent={listEmptyComponent}
         removeClippedSubviews
         windowSize={5}
@@ -2110,7 +2112,7 @@ const OrderList: React.FC = () => {
 
       {/* ─── Bulk select floating bar ─── */}
       {selectMode && (
-        <View style={styles.bulkBar}>
+        <View style={[styles.bulkBar, { marginBottom: insets.bottom + 80 }]}>
           <TouchableOpacity
             style={styles.bulkCancelButton}
             activeOpacity={0.7}
@@ -2202,7 +2204,7 @@ const OrderList: React.FC = () => {
                   return (
                     <TouchableOpacity
                       key={opt.value}
-                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      style={[styles.filterPill, neuF.raised, isActive && styles.filterPillActive]}
                       activeOpacity={0.7}
                       onPress={() => { selectionChanged(); setSortBy(opt.value); }}
                     >
@@ -2224,7 +2226,7 @@ const OrderList: React.FC = () => {
                   return (
                     <TouchableOpacity
                       key={`d_${tab.value}`}
-                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      style={[styles.filterPill, neuF.raised, isActive && styles.filterPillActive]}
                       activeOpacity={0.7}
                       onPress={() => { selectionChanged(); setDeliveryFilter(tab.value); setOverdueOnly(false); }}
                     >
@@ -2250,7 +2252,7 @@ const OrderList: React.FC = () => {
                   return (
                     <TouchableOpacity
                       key={`p_${pv}`}
-                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      style={[styles.filterPill, neuF.raised, isActive && styles.filterPillActive]}
                       activeOpacity={0.7}
                       onPress={() => { selectionChanged(); setPaymentFilter(pv); }}
                     >
@@ -2275,7 +2277,7 @@ const OrderList: React.FC = () => {
                   return (
                     <TouchableOpacity
                       key={`t_${pf.value}`}
-                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      style={[styles.filterPill, neuF.raised, isActive && styles.filterPillActive]}
                       activeOpacity={0.7}
                       onPress={() => { selectionChanged(); setPeriodFilter(pf.value); }}
                     >
@@ -2291,7 +2293,7 @@ const OrderList: React.FC = () => {
               <Text style={styles.filterSectionLabel}>toggles</Text>
               <View style={styles.filterSectionPills}>
                 <TouchableOpacity
-                  style={[styles.filterPill, overdueOnly && styles.filterPillOverdue]}
+                  style={[styles.filterPill, neuF.raised, overdueOnly && styles.filterPillOverdue]}
                   activeOpacity={0.7}
                   onPress={() => { selectionChanged(); setOverdueOnly(!overdueOnly); }}
                 >
@@ -2301,7 +2303,7 @@ const OrderList: React.FC = () => {
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.filterPill, onlineOnly && styles.filterPillActive]}
+                  style={[styles.filterPill, neuF.raised, onlineOnly && styles.filterPillActive]}
                   activeOpacity={0.7}
                   onPress={() => { selectionChanged(); setOnlineOnly(!onlineOnly); }}
                 >
@@ -2333,7 +2335,7 @@ const OrderList: React.FC = () => {
         animationType="fade"
         onRequestClose={() => { setPendingPayOrder(null); setBulkPayIds([]); setSelectedPaymentMethod(null); setPaymentNote(''); }}
       >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }}>
         <TouchableOpacity
           style={[styles.sortOverlay, { backgroundColor: 'transparent' }]}
           activeOpacity={1}
@@ -2388,7 +2390,7 @@ const OrderList: React.FC = () => {
                   <TouchableOpacity
                     key={m.value}
                     activeOpacity={0.7}
-                    style={[styles.paymentPill, active && styles.paymentPillActive]}
+                    style={[styles.paymentPill, neuF.raised, active && styles.paymentPillActive]}
                     onPress={() => { selectionChanged(); setSelectedPaymentMethod(m.value); }}
                     accessibilityRole="button"
                     accessibilityLabel={`Pay by ${m.label}`}
@@ -2964,7 +2966,7 @@ const OrderList: React.FC = () => {
                       {/* Row 3: Send */}
                       <TouchableOpacity
                         activeOpacity={0.7}
-                        style={[styles.gridAction, { width: undefined }]}
+                        style={[styles.gridAction, neuF.raised, { width: undefined }]}
                         onPress={() => {
                           lightTap();
                           const options: { text: string; onPress: () => void }[] = [];
@@ -3212,7 +3214,7 @@ const OrderList: React.FC = () => {
                   <TouchableOpacity
                     key={m.value}
                     activeOpacity={0.7}
-                    style={[styles.paymentPill, active && styles.paymentPillActive]}
+                    style={[styles.paymentPill, neuF.raised, active && styles.paymentPillActive]}
                     onPress={() => { selectionChanged(); setDepositMethod(m.value); }}
                     accessibilityRole="button"
                     accessibilityLabel={`Deposit via ${m.label}`}
@@ -3376,7 +3378,7 @@ const OrderList: React.FC = () => {
                             <TouchableOpacity
                               key={m.value}
                               activeOpacity={0.7}
-                              style={[styles.paymentPill, active && styles.paymentPillActive]}
+                              style={[styles.paymentPill, neuF.raised, active && styles.paymentPillActive]}
                               onPress={() => { lightTap(); setEditPayMethod(m.value as SellerPaymentMethod); }}
                             >
                               <Feather name={m.icon} size={13} color={active ? semantic(BIZ_SAFE.success, isDark) : C.textSecondary} />
@@ -3607,7 +3609,7 @@ const OrderList: React.FC = () => {
                   <TouchableOpacity
                     key={chip.label}
                     activeOpacity={0.7}
-                    style={[styles.quickFillChip, depositAmount === chip.value && chip.value !== '' && styles.quickFillChipActive]}
+                    style={[styles.quickFillChip, neuF.raised, depositAmount === chip.value && chip.value !== '' && styles.quickFillChipActive]}
                     onPress={() => { lightTap(); setDepositAmount(chip.value); }}
                     accessibilityRole="button"
                     accessibilityLabel={`Fill ${chip.label} amount`}
@@ -3640,7 +3642,7 @@ const OrderList: React.FC = () => {
                   <TouchableOpacity
                     key={m.value}
                     activeOpacity={0.7}
-                    style={[styles.paymentPill, active && styles.paymentPillActive]}
+                    style={[styles.paymentPill, neuF.raised, active && styles.paymentPillActive]}
                     onPress={() => { selectionChanged(); setDepositMethod(m.value); }}
                     accessibilityRole="button"
                     accessibilityLabel={`Payment via ${m.label}`}
@@ -3748,7 +3750,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3798,7 +3800,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
     justifyContent: 'center',
   },
   quickChipActive: {
@@ -3841,7 +3843,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3854,7 +3856,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
   },
   filterPillActive: {
     backgroundColor: withAlpha(C.bronze, 0.1),
@@ -4355,7 +4357,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Sort modal ──
   sortOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -4395,7 +4397,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Filter + sort modal ──
   filterSortSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
@@ -4443,7 +4445,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Payment picker modal ──
   paymentSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
@@ -4459,7 +4461,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     textTransform: 'uppercase',
   },
   paymentContext: {
-    backgroundColor: withAlpha(C.textMuted, 0.04),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     borderRadius: RADIUS.md,
     padding: SPACING.sm + 2,
     marginBottom: SPACING.md,
@@ -4501,7 +4503,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: 2,
     paddingVertical: SPACING.sm + 2,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.background,
     minHeight: 52,
   },
   paymentPillActive: {
@@ -4568,7 +4570,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.1),
+    backgroundColor: C.background,
   },
   quickFillChipActive: {
     backgroundColor: withAlpha(C.accent, 0.15),
@@ -4670,7 +4672,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Delete item confirmation ──
   deleteConfirmCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     marginHorizontal: SPACING.xl,
@@ -5185,7 +5187,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Delivery date keyboard modal ──
   dateModalSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.xl,
     paddingHorizontal: SPACING['2xl'],

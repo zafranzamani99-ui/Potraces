@@ -25,11 +25,13 @@ import { useWalletStore } from '../../store/walletStore';
 import { useCategoryStore } from '../../store/categoryStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePlaybookStore } from '../../store/playbookStore';
-import { CALM, CALM_DARK, SHADOWS, withAlpha, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
+import { CALM, CALM_DARK, SHADOWS, withAlpha, RADIUS, SPACING, TYPOGRAPHY, DEBT_TYPES_SAFE, semantic } from '../../constants';
 import WalletLogo from './WalletLogo';
 import CategoryIcon from './CategoryIcon';
 import ModalToastHost from './ModalToastHost';
 import { NeuSurface, useNeu } from './neu';
+import NeuButton from './NeuButton';
+import NeuIconButton from './NeuIconButton';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { lightTap, successNotification } from '../../services/haptics';
@@ -115,10 +117,11 @@ const NumpadKey = React.memo(
     keyStyle: any;
     keyTextStyle: any;
   }) => (
-    <TouchableOpacity
+    <NeuIconButton
+      size={50}
+      radius={25}
       style={keyStyle}
-      onPress={() => { lightTap(); onPress(label); }}
-      activeOpacity={0.5}
+      onPress={() => onPress(label)}
       accessibilityLabel={label === '⌫' ? 'backspace' : label}
     >
       {label === '⌫' ? (
@@ -126,7 +129,7 @@ const NumpadKey = React.memo(
       ) : (
         <Text style={keyTextStyle}>{label}</Text>
       )}
-    </TouchableOpacity>
+    </NeuIconButton>
   ),
 );
 
@@ -142,6 +145,10 @@ const QuickAddExpense = forwardRef<QuickAddExpenseHandle, QuickAddExpenseProps>(
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const neuF = useNeu(undefined, { faintDark: true });
+  // Direction colors mirror the debt screens: "went out" = i-owe terracotta,
+  // "came in" = they-owe olive (WCAG-safe per-theme via semantic()).
+  const iOweColor = semantic(DEBT_TYPES_SAFE[0].color, isDark);
+  const theyOweColor = semantic(DEBT_TYPES_SAFE[1].color, isDark);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const currency = useSettingsStore((s) => s.currency);
@@ -418,7 +425,6 @@ const QuickAddExpense = forwardRef<QuickAddExpenseHandle, QuickAddExpenseProps>(
   const handleAmountNext = useCallback(() => {
     const parsed = parseFloat(amount);
     if (!parsed || parsed <= 0) return;
-    lightTap();
     animateTo('category');
   }, [amount, animateTo]);
 
@@ -601,7 +607,6 @@ const QuickAddExpense = forwardRef<QuickAddExpenseHandle, QuickAddExpenseProps>(
 
   const handleCategorySelect = useCallback(
     (catId: string) => {
-      lightTap();
       setCategoryId(catId);
       if (!hasMultipleWallets) {
         const cat = categories.find((c) => c.id === catId);
@@ -710,7 +715,7 @@ const QuickAddExpense = forwardRef<QuickAddExpenseHandle, QuickAddExpenseProps>(
           </TouchableWithoutFeedback>
           <Animated.View style={{ opacity: bgCardOpacity }}>
           <Animated.View
-            style={[styles.card, { transform: [{ scale: cardScale }, { scale: bgCardScale }], opacity: cardOpacity }, neuF.raisedSoft]}
+            style={[styles.card, { transform: [{ scale: cardScale }, { scale: bgCardScale }], opacity: cardOpacity }]}
             onStartShouldSetResponder={() => true}
           >
             {/* ── Header row ──────────────────────────── */}
@@ -765,54 +770,57 @@ const QuickAddExpense = forwardRef<QuickAddExpenseHandle, QuickAddExpenseProps>(
 
                   {/* Type toggle */}
                   <View style={styles.typeToggle} accessibilityRole="radiogroup">
-                    <TouchableOpacity
-                      style={[styles.typePill, neuF.raised, txType === 'expense' && styles.typePillActive]}
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.typePill,
+                        txType === 'expense'
+                          ? { backgroundColor: withAlpha(iOweColor, 0.16) }
+                          : (pressed ? neuF.insetSoft : neuF.raised),
+                      ]}
                       onPress={() => { lightTap(); setTxType('expense'); }}
-                      activeOpacity={0.7}
                       hitSlop={HITSLOP_10}
                       accessibilityRole="radio"
                       accessibilityState={{ selected: txType === 'expense' }}
                       accessibilityLabel={t.quickAdd.wentOut}
                     >
-                      <Ionicons name="arrow-up" size={14} color={txType === 'expense' ? C.onAccent : C.textMuted} />
-                      <Text style={[styles.typePillText, txType === 'expense' && styles.typePillTextActive]}>{t.quickAdd.wentOut}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.typePill, neuF.raised, txType === 'income' && styles.typePillActiveIncome]}
+                      <Ionicons name="arrow-up" size={14} color={txType === 'expense' ? iOweColor : C.textMuted} />
+                      <Text style={[styles.typePillText, txType === 'expense' && { color: iOweColor, fontWeight: '600' }]}>{t.quickAdd.wentOut}</Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.typePill,
+                        txType === 'income'
+                          ? { backgroundColor: withAlpha(theyOweColor, 0.16) }
+                          : (pressed ? neuF.insetSoft : neuF.raised),
+                      ]}
                       onPress={() => { lightTap(); setTxType('income'); }}
-                      activeOpacity={0.7}
                       hitSlop={HITSLOP_10}
                       accessibilityRole="radio"
                       accessibilityState={{ selected: txType === 'income' }}
                       accessibilityLabel={t.quickAdd.cameIn}
                     >
-                      <Ionicons name="arrow-down" size={14} color={txType === 'income' ? C.onAccent : C.textMuted} />
-                      <Text style={[styles.typePillText, txType === 'income' && styles.typePillTextActive]}>{t.quickAdd.cameIn}</Text>
-                    </TouchableOpacity>
+                      <Ionicons name="arrow-down" size={14} color={txType === 'income' ? theyOweColor : C.textMuted} />
+                      <Text style={[styles.typePillText, txType === 'income' && { color: theyOweColor, fontWeight: '600' }]}>{t.quickAdd.cameIn}</Text>
+                    </Pressable>
                   </View>
 
                   {/* Numpad */}
                   <View style={styles.pad}>
                     {[['1','2','3'],['4','5','6'],['7','8','9'],['.','0','⌫']].map((row, ri) => (
                       <View key={ri} style={styles.padRow}>
-                        {row.map((k) => <NumpadKey key={k} label={k} onPress={handleNumpad} mutedColor={C.textMuted} keyStyle={[styles.numKey, neuF.raised]} keyTextStyle={styles.numKeyText} />)}
+                        {row.map((k) => <NumpadKey key={k} label={k} onPress={handleNumpad} mutedColor={C.textMuted} keyStyle={styles.numKey} keyTextStyle={styles.numKeyText} />)}
                       </View>
                     ))}
                   </View>
 
                   {/* Next */}
-                  <TouchableOpacity
-                    style={[styles.cta, parsedAmount <= 0 && { opacity: 0.25 }]}
+                  <NeuButton
+                    label={t.quickAdd.next}
                     onPress={handleAmountNext}
                     disabled={parsedAmount <= 0}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: parsedAmount <= 0 }}
                     accessibilityLabel={t.a11y.forward}
-                  >
-                    <Text style={styles.ctaText}>{t.quickAdd.next}</Text>
-                    <Ionicons name="arrow-forward" size={16} color={C.onAccent} />
-                  </TouchableOpacity>
+                    style={styles.nextBtn}
+                  />
                 </View>
 
                 {/* ── STEP 2: Category ────────────────── */}
@@ -824,19 +832,17 @@ const QuickAddExpense = forwardRef<QuickAddExpenseHandle, QuickAddExpenseProps>(
 
                   <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={styles.catGrid} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                     {categories.map((cat) => (
-                      <TouchableOpacity
-                        key={cat.id}
-                        style={styles.catCell}
-                        onPress={() => guardedCategorySelect(cat.id)}
-                        activeOpacity={0.55}
-                        accessibilityRole="button"
-                        accessibilityLabel={cat.name}
-                      >
-                        <View style={[styles.catIcon, { backgroundColor: withAlpha(cat.color, 0.1) }]}>
+                      <View key={cat.id} style={styles.catCell}>
+                        <NeuIconButton
+                          size={50}
+                          radius={18}
+                          onPress={() => guardedCategorySelect(cat.id)}
+                          accessibilityLabel={cat.name}
+                        >
                           <CategoryIcon icon={cat.icon || 'tag'} size={22} color={cat.color} />
-                        </View>
+                        </NeuIconButton>
                         <Text style={styles.catLabel} numberOfLines={2}>{cat.name}</Text>
-                      </TouchableOpacity>
+                      </View>
                     ))}
                   </ScrollView>
                 </View>
@@ -856,11 +862,10 @@ const QuickAddExpense = forwardRef<QuickAddExpenseHandle, QuickAddExpenseProps>(
 
                     <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                       {[...wallets].sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0)).map((w) => (
-                        <TouchableOpacity
+                        <Pressable
                           key={w.id}
-                          style={[styles.walletRow, neuF.raisedSoft]}
+                          style={({ pressed }) => [styles.walletRow, pressed ? neuF.insetSoft : neuF.raisedSoft]}
                           onPress={() => guardedWalletSelect(w.id)}
-                          activeOpacity={0.55}
                           accessibilityRole="button"
                           accessibilityLabel={`${w.name} · ${currency} ${w.balance.toFixed(2)}`}
                         >
@@ -875,7 +880,7 @@ const QuickAddExpense = forwardRef<QuickAddExpenseHandle, QuickAddExpenseProps>(
                             <Ionicons name="star" size={15} color={w.color || C.accent} />
                           )}
                           <Ionicons name="chevron-forward" size={16} color={C.border} />
-                        </TouchableOpacity>
+                        </Pressable>
                       ))}
                     </ScrollView>
                   </View>
@@ -1172,21 +1177,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: 20,
     // neu.raised (bg + shadow) spread at the call site
   },
-  typePillActive: {
-    backgroundColor: C.accent,
-    borderColor: C.accent,
-  },
-  typePillActiveIncome: {
-    backgroundColor: C.positive,
-    borderColor: C.positive,
-  },
   typePillText: {
     fontSize: 13,
     fontWeight: '500',
     color: C.textMuted,
-  },
-  typePillTextActive: {
-    color: C.onAccent,
   },
 
   /* ── Numpad ──────────────────────────────── */
@@ -1203,16 +1197,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  /* ── CTA button ──────────────────────────── */
-  cta: {
-    flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center',
-    gap: 8,
-    backgroundColor: C.accent,
-    paddingVertical: 14,
-    borderRadius: 14,
-  },
-  ctaText: { fontSize: 15, fontWeight: '600', color: C.onAccent, letterSpacing: -0.2 },
+  // next button — pinned to the numpad width (234) so it lines up, not full-bleed
+  nextBtn: { width: 234, alignSelf: 'center' },
 
   /* ── Summary badge ───────────────────────── */
   badge: {
@@ -1234,11 +1220,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: CONTENT_WIDTH / 3,
     alignItems: 'center',
     paddingVertical: 10,
-  },
-  catIcon: {
-    width: 50, height: 50, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 6,
+    gap: 6,
   },
   catLabel: {
     fontSize: 11, fontWeight: '500',
@@ -1252,6 +1234,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 13, paddingHorizontal: 14,
     borderRadius: 16, gap: 12, marginBottom: 4,
+    // marginHorizontal gives the neu drop shadow room so the ScrollView doesn't
+    // clip it into a hard vertical line at the row edges (matches WalletPicker).
+    marginHorizontal: 10,
     backgroundColor: C.background,
   },
   walletIco: {

@@ -42,6 +42,7 @@ import FinancialPulse from '../screens/personal/FinancialPulse';
 import { useBusinessStore } from '../store/businessStore';
 import BusinessSetup from '../screens/business/Setup';
 import Settings from '../screens/shared/Settings';
+import BusinessProfile from '../screens/business/BusinessProfile';
 import LogIncome from '../screens/business/LogIncome';
 import ClientList from '../screens/business/ClientList';
 import RiderCostsScreen from '../screens/business/RiderCosts';
@@ -470,6 +471,11 @@ const RootNavigator: React.FC = () => {
           name="SettingsDetail"
           component={Settings}
           options={makeBackHeader(C, mode, 'Settings')}
+        />
+        <Stack.Screen
+          name="BusinessProfile"
+          component={BusinessProfile}
+          options={makeBackHeader(C, mode, 'Business Profile')}
         />
         <Stack.Screen
           name="PastSeasons"

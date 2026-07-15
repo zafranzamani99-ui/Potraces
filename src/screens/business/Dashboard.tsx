@@ -13,7 +13,7 @@ import { useT } from '../../i18n';
 import type { BusinessTransaction, RiderCost } from '../../types';
 import { explainBusinessMonth } from '../../utils/explainBusinessMonth';
 import WeekBar from '../../components/common/WeekBar';
-import ModeToggle from '../../components/common/ModeToggle';
+import GlassModeToggle from '../../components/common/GlassModeToggle';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
 
@@ -144,7 +144,7 @@ const BusinessDashboard: React.FC = () => {
   if (!businessSetupComplete || !incomeType) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + SPACING.md }]}>
-        <ModeToggle />
+        <GlassModeToggle />
       </View>
     );
   }
@@ -262,7 +262,7 @@ const BusinessDashboard: React.FC = () => {
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -276,7 +276,7 @@ const BusinessDashboard: React.FC = () => {
           />
         }
       >
-        <ModeToggle />
+        <GlassModeToggle />
         {/* Zone 1 — Net (canonical hero) */}
         <BusinessHeroNumber
           amount={incomeType === 'rider' ? net : totalIncome}

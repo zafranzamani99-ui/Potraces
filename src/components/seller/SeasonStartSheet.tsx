@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSellerStore } from '../../store/sellerStore';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { lightTap, successNotification } from '../../services/haptics';
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
 const SeasonStartSheet: React.FC<Props> = ({ visible, onClose, onStarted, onViewPast }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const { seasons, addSeason, useSeasonTemplate } = useSellerStore();
 
   const [name, setName] = useState('');
@@ -91,7 +93,7 @@ const SeasonStartSheet: React.FC<Props> = ({ visible, onClose, onStarted, onView
               scrollEventThrottle={16}
               contentContainerStyle={styles.scrollContent}
             >
-              <View style={styles.fieldCard}>
+              <View style={[styles.fieldCard, neuF.raisedSoft]}>
                 <Text style={styles.fieldLabel}>season name</Text>
                 <TextInput
                   style={styles.fieldInput}
@@ -105,7 +107,7 @@ const SeasonStartSheet: React.FC<Props> = ({ visible, onClose, onStarted, onView
                 />
               </View>
 
-              <View style={styles.fieldCard}>
+              <View style={[styles.fieldCard, neuF.raisedSoft]}>
                 <View style={styles.fieldLabelRow}>
                   <Text style={styles.fieldLabel}>income target</Text>
                   <Text style={styles.fieldHintInline}>optional</Text>
@@ -123,7 +125,7 @@ const SeasonStartSheet: React.FC<Props> = ({ visible, onClose, onStarted, onView
               </View>
 
               {pastSeasons.length > 0 && (
-                <View style={styles.fieldCard}>
+                <View style={[styles.fieldCard, neuF.raisedSoft]}>
                   <Text style={styles.fieldLabel}>copy from previous</Text>
                   <View style={styles.templateRow}>
                     {pastSeasons.map((s) => (
@@ -131,6 +133,7 @@ const SeasonStartSheet: React.FC<Props> = ({ visible, onClose, onStarted, onView
                         key={s.id}
                         style={({ pressed }) => [
                           styles.templatePill,
+                          neuF.raised,
                           templateId === s.id && styles.templatePillActive,
                           pressed && { opacity: 0.7 },
                         ]}
@@ -242,10 +245,8 @@ const makeStyles = (C: typeof CALM) =>
       paddingBottom: SPACING.md,
     },
     fieldCard: {
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.textPrimary, 0.08),
       paddingHorizontal: SPACING.md + 2,
       paddingVertical: SPACING.sm + 4,
       marginBottom: SPACING.sm + 2,
@@ -284,9 +285,7 @@ const makeStyles = (C: typeof CALM) =>
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
       borderRadius: RADIUS.full,
-      backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.06 : 0.03),
-      borderWidth: 1,
-      borderColor: withAlpha(C.textPrimary, 0.06),
+      backgroundColor: C.background,
     },
     templatePillActive: {
       backgroundColor: withAlpha(C.bronze, 0.12),

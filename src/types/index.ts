@@ -616,6 +616,9 @@ export interface StallState {
 }
 
 // Navigation Types
+/** Settings sub-pages, selected via the `section` route param. */
+export type SettingsSection = 'preferences' | 'money' | 'data' | 'security' | 'about';
+
 export type RootStackParamList = {
   PersonalMain: undefined;
   BusinessMain: undefined;
@@ -645,8 +648,10 @@ export type RootStackParamList = {
   FinancialPulse: undefined;
   ReceiptHistory: undefined;
   ReceiptDetail: { receiptId: string };
-  Settings: { scrollTo?: string } | undefined;
+  Settings: { section?: SettingsSection; scrollTo?: string } | undefined;
   SellerSettings: undefined;
+  SettingsDetail: { section?: SettingsSection; scrollTo?: string } | undefined;
+  BusinessProfile: undefined;
   // Stall screens
   StallSessionSetup: undefined;
   StallCloseSession: undefined;

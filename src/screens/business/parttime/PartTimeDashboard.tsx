@@ -19,7 +19,7 @@ import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { explainPartTimeMonth } from '../../../utils/explainPartTimeMonth';
 import WeekBar from '../../../components/common/WeekBar';
-import ModeToggle from '../../../components/common/ModeToggle';
+import GlassModeToggle from '../../../components/common/GlassModeToggle';
 import PartTimeSetup from './PartTimeSetup';
 import BusinessHeroNumber from '../../../components/business/BusinessHeroNumber';
 
@@ -167,7 +167,7 @@ const PartTimeDashboard: React.FC = () => {
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -181,7 +181,7 @@ const PartTimeDashboard: React.FC = () => {
           />
         }
       >
-        <ModeToggle />
+        <GlassModeToggle />
         {/* Zone 1 — Hero Number */}
         <BusinessHeroNumber
           amount={totalIncome}
@@ -312,7 +312,7 @@ const PartTimeDashboard: React.FC = () => {
 
       {/* FAB — Log Income */}
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: insets.bottom + 80 + SPACING.sm }]}
         onPress={() => navigation.getParent()?.navigate('PartTimeAddIncome')}
         activeOpacity={0.7}
       >

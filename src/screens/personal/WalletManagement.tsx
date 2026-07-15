@@ -9,6 +9,7 @@ import {
   Animated,
   Easing,
   InteractionManager,
+  FlatList,
 } from 'react-native';
 import { ScrollView, Gesture } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -54,8 +55,77 @@ import EchoFab from '../../components/wallet/EchoFab';
 import { useEchoFabPan } from '../../hooks/useEchoFabPan';
 import RepayPickerModal from '../../components/wallet/RepayPickerModal';
 import DeleteConfirmModal from '../../components/wallet/DeleteConfirmModal';
+import FloatingModal from '../../components/common/FloatingModal';
+import TimeRangePills from '../../components/common/TimeRangePills';
+import { getRange, type RangeKey } from '../../utils/insights';
+import { isWithinInterval, isValid } from 'date-fns';
 
 const HARD_SWIPE = 120;
+
+// One recent-activity row (transfer / repayment). Extracted so the section and the
+// "see all" modal render identical rows. Mirrors WalletSwipeAction's styles-as-prop.
+type TransferRowItem = {
+  id: string;
+  kind?: string;
+  fromWalletId: string;
+  toWalletId: string;
+  amount: number;
+  date: Date | string;
+  note?: string;
+};
+
+const TransferRow: React.FC<{
+  item: TransferRowItem;
+  styles: ReturnType<typeof makeStyles>;
+  t: ReturnType<typeof useT>;
+  currency: string;
+  C: typeof CALM;
+  getWalletName: (id: string) => string;
+  onDelete: (id: string) => void;
+  card?: boolean;
+}> = ({ item, styles, t, currency, C, getWalletName, onDelete, card }) => {
+  const isRepayment = item.kind === 'repayment';
+  const neuF = useNeu(undefined, { faintDark: true });
+  return (
+    <TouchableOpacity
+      style={card ? [styles.transferRowCard, neuF.raisedSoft] : styles.transferRow}
+      onLongPress={() => {
+        lightTap();
+        Alert.alert(
+          isRepayment ? t.wallets.deleteRepayment : t.wallets.deleteTransfer,
+          `${getWalletName(item.fromWalletId)} → ${getWalletName(item.toWalletId)} · ${currency} ${item.amount.toFixed(2)}${isRepayment ? '' : '\n\n' + t.wallets.bothBalancesReversed}`,
+          [
+            { text: t.common.cancel, style: 'cancel' },
+            { text: t.common.delete, style: 'destructive', onPress: () => onDelete(item.id) },
+          ],
+        );
+      }}
+      delayLongPress={400}
+      accessibilityRole="button"
+      accessibilityLabel={isRepayment ? t.wallets.repayCredit : t.wallets.transfer}
+    >
+      <Feather name={isRepayment ? 'corner-down-left' : 'repeat'} size={14} color={isRepayment ? C.accent : C.textMuted} />
+      <View style={styles.transferInfo}>
+        <Text style={styles.transferDesc}>
+          {isRepayment
+            ? `${t.wallets.repaidPrefix} ${getWalletName(item.toWalletId)}`
+            : `${getWalletName(item.fromWalletId)} → ${getWalletName(item.toWalletId)}`}
+        </Text>
+        <Text style={styles.transferTimestamp}>
+          {(() => {
+            const d = item.date instanceof Date ? item.date : new Date(item.date);
+            const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}, ${time}`;
+          })()}
+        </Text>
+        {item.note && <Text style={styles.transferNote}>{item.note}</Text>}
+      </View>
+      <Text style={styles.transferAmt}>
+        {currency} {item.amount.toFixed(2)}
+      </Text>
+    </TouchableOpacity>
+  );
+};
 
 // [width, height] overrides for logos with excessive transparent padding
 const LOGO_SIZE: Record<string, [number, number]> = {
@@ -338,9 +408,27 @@ const WalletManagement: React.FC = () => {
   );
 
   const recentTransfers = useMemo(
-    () => transfers.slice(0, 5),
+    () => transfers.slice(0, 3),
     [transfers]
   );
+
+  // ─── "See all" activity modal: all transfers, filterable by date ───
+  const [activityModalVisible, setActivityModalVisible] = useState(false);
+  const [activityRange, setActivityRange] = useState<RangeKey>('this_month');
+  const activityRangeLabels = useMemo<Record<RangeKey, string>>(() => ({
+    this_month: t.reports.rangeThisMonth,
+    last_month: t.reports.rangeLastMonth,
+    '3m': t.reports.range3m,
+    '6m': t.reports.range6m,
+    year: t.reports.rangeYear,
+  }), [t]);
+  const filteredTransfers = useMemo(() => {
+    const { start, end } = getRange(activityRange);
+    return transfers.filter((tx) => {
+      const d = tx.date instanceof Date ? tx.date : new Date(tx.date);
+      return isValid(d) && isWithinInterval(d, { start, end });
+    });
+  }, [transfers, activityRange]);
 
   const navigation = useNavigation<any>();
   const subscriptions = usePersonalStore((s) => s.subscriptions);
@@ -1426,7 +1514,7 @@ const WalletManagement: React.FC = () => {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
               <Text style={styles.transfersSectionTitle}>{t.wallets.recentActivity}</Text>
               <TouchableOpacity
-                onPress={() => navigation.navigate('TransactionsList' as any)}
+                onPress={() => { lightTap(); setActivityModalVisible(true); }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={t.wallets.seeAll}
@@ -1434,57 +1522,18 @@ const WalletManagement: React.FC = () => {
                 <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.accent, fontWeight: TYPOGRAPHY.weight.medium }}>{t.wallets.seeAll}</Text>
               </TouchableOpacity>
             </View>
-            {recentTransfers.map((item) => {
-              const isRepayment = item.kind === 'repayment';
-              return (
-              <TouchableOpacity
+            {recentTransfers.map((item) => (
+              <TransferRow
                 key={item.id}
-                style={styles.transferRow}
-                onLongPress={() => {
-                  lightTap();
-                  Alert.alert(
-                    isRepayment ? t.wallets.deleteRepayment : t.wallets.deleteTransfer,
-                    `${getWalletName(item.fromWalletId)} → ${getWalletName(item.toWalletId)} · ${currency} ${item.amount.toFixed(2)}${isRepayment ? '' : '\n\n' + t.wallets.bothBalancesReversed}`,
-                    [
-                      { text: t.common.cancel, style: 'cancel' },
-                      {
-                        text: t.common.delete,
-                        style: 'destructive',
-                        onPress: () => deleteTransfer(item.id),
-                      },
-                    ],
-                  );
-                }}
-                delayLongPress={400}
-                accessibilityRole="button"
-                accessibilityLabel={isRepayment ? t.wallets.repayCredit : t.wallets.transfer}
-              >
-                <Feather
-                  name={isRepayment ? 'corner-down-left' : 'repeat'}
-                  size={14}
-                  color={isRepayment ? C.accent : C.textMuted}
-                />
-                <View style={styles.transferInfo}>
-                  <Text style={styles.transferDesc}>
-                    {isRepayment
-                      ? `${t.wallets.repaidPrefix} ${getWalletName(item.toWalletId)}`
-                      : `${getWalletName(item.fromWalletId)} → ${getWalletName(item.toWalletId)}`}
-                  </Text>
-                  <Text style={styles.transferTimestamp}>
-                    {(() => {
-                      const d = item.date instanceof Date ? item.date : new Date(item.date);
-                      const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      return `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}, ${time}`;
-                    })()}
-                  </Text>
-                  {item.note && <Text style={styles.transferNote}>{item.note}</Text>}
-                </View>
-                <Text style={styles.transferAmt}>
-                  {currency} {item.amount.toFixed(2)}
-                </Text>
-              </TouchableOpacity>
-              );
-            })}
+                item={item}
+                styles={styles}
+                t={t}
+                currency={currency}
+                C={C}
+                getWalletName={getWalletName}
+                onDelete={deleteTransfer}
+              />
+            ))}
           </View>
         )}
       </ScrollView>
@@ -1497,6 +1546,50 @@ const WalletManagement: React.FC = () => {
         color={C.accent}
         style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md) }}
       />
+
+      {/* ─── "See all" activity modal — all transfers, date-filterable ─── */}
+      <FloatingModal visible={activityModalVisible} onClose={() => setActivityModalVisible(false)}>
+        <View style={{ paddingBottom: SPACING.lg, flexShrink: 1 }}>
+          <View style={styles.activityTitleZone}>
+            <Text style={styles.activityTitle}>
+              recent <Text style={styles.activityTitleAccent}>activity</Text>
+            </Text>
+          </View>
+          <TimeRangePills
+            value={activityRange}
+            onChange={setActivityRange}
+            labels={activityRangeLabels}
+            edgeBg={C.background}
+            neu
+            containerStyle={{ marginTop: SPACING.md, marginBottom: SPACING.lg, marginLeft: SPACING.xl, marginRight: 0 }}
+          />
+          {filteredTransfers.length > 0 ? (
+            <FlatList
+              data={filteredTransfers}
+              keyExtractor={(item) => item.id}
+              style={{ flexShrink: 1 }}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: SPACING.xl, paddingTop: SPACING.xs, paddingBottom: SPACING.sm }}
+              renderItem={({ item }) => (
+                <TransferRow
+                  item={item}
+                  styles={styles}
+                  t={t}
+                  currency={currency}
+                  C={C}
+                  getWalletName={getWalletName}
+                  onDelete={deleteTransfer}
+                  card
+                />
+              )}
+            />
+          ) : (
+            <Text style={{ textAlign: 'center', color: C.textMuted, fontSize: TYPOGRAPHY.size.sm, paddingVertical: SPACING.xl, paddingHorizontal: SPACING.xl }}>
+              {t.wallets.noActivityInRange}
+            </Text>
+          )}
+        </View>
+      </FloatingModal>
 
       {/* ─── Add/Edit Modal ─────────────────────────────────── */}
       <AddEditWalletModal
@@ -1914,6 +2007,26 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     marginBottom: SPACING.md,
   },
+  // "See all" modal header — centered title + italic-serif accent, matching
+  // RepayModal / TransferModal / AddEditWalletModal's sheet-header pattern.
+  activityTitleZone: {
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.lg,
+  },
+  activityTitle: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: -0.4,
+    textAlign: 'center',
+  },
+  activityTitleAccent: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.accent,
+  },
   transferRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1921,6 +2034,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: C.border,
+  },
+  // Neu card variant (Onyx sheets) — borderless, raised, spaced instead of divided.
+  transferRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.sm,
+    backgroundColor: C.background,
   },
   transferInfo: {
     flex: 1,

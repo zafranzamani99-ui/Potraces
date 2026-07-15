@@ -2,6 +2,7 @@ import React, { useMemo, useCallback, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Alert, Modal, Pressable } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
@@ -11,6 +12,7 @@ import { signOut, supabaseBusiness } from '../../services/supabase';
 import { syncAll, clearProfileCache } from '../../services/sellerSync';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
 import { useT } from '../../i18n';
 import { useFadeSlide } from '../../utils/fadeSlide';
 import { lightTap } from '../../services/haptics';
@@ -22,9 +24,11 @@ const SellerManage: React.FC = () => {
   const isDark = useIsDark();
   const bizSuccess = semantic(BIZ_SAFE.success, isDark);
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neuF = useNeu(undefined, { faintDark: true });
   const { products, seasons, ingredientCosts, orders } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const incomeType = useBusinessStore((s) => s.incomeType);
   const [setupModalVisible, setSetupModalVisible] = useState(false);
@@ -90,7 +94,7 @@ const SellerManage: React.FC = () => {
     <>
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 88 }]}
       showsVerticalScrollIndicator={false}
     >
       {/* ─── Page Header ──────────────────────────────────── */}
@@ -102,7 +106,7 @@ const SellerManage: React.FC = () => {
       {/* ─── Products Card ────────────────────────────────── */}
       <Animated.View style={productsAnim}>
         <TouchableOpacity
-          style={styles.card}
+          style={[styles.card, neuF.raisedSoft]}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel={`Products. ${products.length} products. Navigate to product catalog.`}
@@ -123,7 +127,7 @@ const SellerManage: React.FC = () => {
       {/* ─── Transactions Card ─────────────────────────────── */}
       <Animated.View style={transactionsAnim}>
         <TouchableOpacity
-          style={styles.card}
+          style={[styles.card, neuF.raisedSoft]}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel={`Transactions. ${paidOrders.length} paid orders. Navigate to transaction list.`}
@@ -144,7 +148,7 @@ const SellerManage: React.FC = () => {
       {/* ─── Costs Card ────────────────────────────────────── */}
       <Animated.View style={costsAnim}>
         <TouchableOpacity
-          style={styles.card}
+          style={[styles.card, neuF.raisedSoft]}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel={`Costs. ${ingredientCosts.length} entries. Navigate to cost management.`}
@@ -170,7 +174,7 @@ const SellerManage: React.FC = () => {
       {/* ─── Seasons Card ─────────────────────────────────── */}
       <Animated.View style={seasonsAnim}>
         <TouchableOpacity
-          style={[styles.card, activeSeason && styles.cardHighlighted]}
+          style={[styles.card, neuF.raisedSoft, activeSeason && styles.cardHighlighted]}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel={`Seasons. ${seasons.length} seasons.${activeSeason ? ` Active season: ${activeSeason.name}.` : ''} Navigate to season history.`}
@@ -196,7 +200,7 @@ const SellerManage: React.FC = () => {
       {/* ─── Settings Card ────────────────────────────────── */}
       <Animated.View style={settingsAnim}>
         <TouchableOpacity
-          style={styles.card}
+          style={[styles.card, neuF.raisedSoft]}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel="Settings. Currency, preferences, and data. Navigate to settings."
@@ -259,7 +263,7 @@ const SellerManage: React.FC = () => {
           <Text style={styles.confirmSub}>{t.sellerManage.changeSetupConfirmMsg}</Text>
           <View style={styles.confirmBtns}>
             <TouchableOpacity
-              style={[styles.confirmBtn, styles.confirmCancelBtn]}
+              style={[styles.confirmBtn, styles.confirmCancelBtn, neuF.raised]}
               onPress={() => setSetupModalVisible(false)}
               activeOpacity={0.7}
               accessibilityRole="button"
@@ -313,9 +317,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // Card
   card: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.sm,
@@ -373,6 +375,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   cardHighlighted: {
+    borderWidth: 1,
     borderColor: withAlpha(C.gold, 0.3),
     backgroundColor: withAlpha(C.gold, 0.03),
   },
@@ -417,14 +420,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   confirmCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     width: '100%',
     maxWidth: 380,
     alignSelf: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
     ...SHADOWS.lg,
   },
   confirmTitle: {

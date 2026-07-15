@@ -1,0 +1,762 @@
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  Switch,
+  TouchableOpacity,
+  Alert,
+  Keyboard,
+  Modal,
+  Pressable,
+  InteractionManager,
+  Platform,
+  Share,
+} from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
+import { Feather } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import SettingRow from '../../components/common/SettingRow';
+import Card from '../../components/common/Card';
+import PaymentQrCard from '../../components/settings/PaymentQrCard';
+import SubscriptionCard from '../../components/settings/SubscriptionCard';
+import CategoryManager from '../../components/common/CategoryManager';
+import PaymentMethodManager from '../../components/common/PaymentMethodManager';
+import OcrDebugHarness from '../../components/dev/OcrDebugHarness';
+import ModalToastHost from '../../components/common/ModalToastHost';
+import { useSettingsStore } from '../../store/settingsStore';
+import { usePersonalStore } from '../../store/personalStore';
+import { useWalletStore } from '../../store/walletStore';
+import { useReceiptStore } from '../../store/receiptStore';
+import { useAppStore } from '../../store/appStore';
+import { useAuthStore } from '../../store/authStore';
+import { exportTransactionsCsv, exportWalletsCsv, exportSubscriptionsCsv, exportReceiptsCsv } from '../../services/exportService';
+import { exportMonthlyStatement, exportTaxYearPdf } from '../../services/pdfExport';
+import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
+import { getOrCreateReferralCode, referralMessage } from '../../services/referrals';
+import { loadSampleData, SAMPLE_PROFILES, type SampleBracket } from '../../utils/sampleData';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { RootStackParamList, SettingsSection } from '../../types';
+import { useToast } from '../../context/ToastContext';
+import { lightTap } from '../../services/haptics';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
+
+/**
+ * Personal-mode Settings: hub, personal money setup, personal data tools, and
+ * the personal-only danger zone (delete personal data). Nothing business-only
+ * renders here. Shared app/device settings live in AppSettings (reached via the
+ * preferences/security/about sections). Rendered by the shared Settings router.
+ */
+const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string }> = ({ section, scrollTo }) => {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
+  const C = useCalm();
+  const isDark = useIsDark();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const { showToast } = useToast();
+
+  const [ready, setReady] = useState(false);
+  const [businessInfoVisible, setBusinessInfoVisible] = useState(false);
+  const [sampleModalVisible, setSampleModalVisible] = useState(false);
+  const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
+  const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment'>('expense');
+  const [paymentMethodManagerVisible, setPaymentMethodManagerVisible] = useState(false);
+  const scrollRef = useRef<any>(null);
+  const sectionY = useRef<Record<string, number>>({});
+
+  const setMode = useAppStore((s) => s.setMode);
+  const userName = useSettingsStore((s) => s.userName);
+  const setUserName = useSettingsStore((s) => s.setUserName);
+  const currency = useSettingsStore((s) => s.currency);
+  const businessModeEnabled = useSettingsStore((s) => s.businessModeEnabled);
+  const setBusinessModeEnabled = useSettingsStore((s) => s.setBusinessModeEnabled);
+  const walletEchoHidden = useSettingsStore((s) => s.walletEchoHidden);
+  const setWalletEchoHidden = useSettingsStore((s) => s.setWalletEchoHidden);
+  const budgetEchoHidden = useSettingsStore((s) => s.budgetEchoHidden);
+  const setBudgetEchoHidden = useSettingsStore((s) => s.setBudgetEchoHidden);
+  const commitmentEchoHidden = useSettingsStore((s) => s.commitmentEchoHidden);
+  const setCommitmentEchoHidden = useSettingsStore((s) => s.setCommitmentEchoHidden);
+  const echoDailyCheckin = useSettingsStore((s) => s.echoDailyCheckin);
+  const setEchoDailyCheckin = useSettingsStore((s) => s.setEchoDailyCheckin);
+  const quickAddConfirm = useSettingsStore((s) => s.quickAddConfirm);
+  const setQuickAddConfirm = useSettingsStore((s) => s.setQuickAddConfirm);
+  const spendingAlertsEnabled = useSettingsStore((s) => s.spendingAlertsEnabled);
+  const setSpendingAlertsEnabled = useSettingsStore((s) => s.setSpendingAlertsEnabled);
+  const clearPersonalData = useSettingsStore((s) => s.clearPersonalData);
+  const isAuthenticated = useAuthStore((s) => s.personal.isAuthenticated);
+
+  // Defer heavy sub-sections until interactions settle, so opening the screen
+  // feels instant. A deep-link (scrollTo) needs them immediately, so skip the
+  // wait in that case. 400ms fallback guards against a never-firing task when
+  // navigating in from a still-animating modal.
+  useEffect(() => {
+    if (ready) return;
+    if (scrollTo) { setReady(true); return; }
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    const fallback = setTimeout(() => setReady(true), 400);
+    return () => { task.cancel(); clearTimeout(fallback); };
+  }, [scrollTo, ready]);
+
+  useEffect(() => {
+    if (!scrollTo || !ready) return;
+    const timer = setTimeout(() => {
+      if (sectionY.current[scrollTo] !== undefined) {
+        scrollRef.current?.scrollTo({ y: sectionY.current[scrollTo], animated: true });
+      }
+      navigation.setParams({ scrollTo: undefined } as never);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [scrollTo, ready, navigation]);
+
+  useEffect(() => {
+    if (!section) return;
+    const titles: Record<string, string> = {
+      money: t.settings.moneySetup,
+      data: t.settings.data,
+    };
+    if (titles[section]) navigation.setOptions({ title: titles[section] });
+  }, [section, navigation, t]);
+
+  const handleBusinessModeToggle = useCallback((value: boolean) => {
+    lightTap();
+    setBusinessModeEnabled(value);
+    if (!value) {
+      navigation.goBack();
+      setMode('personal');
+    }
+    showToast(
+      value ? t.settings.businessModeEnabledToast : t.settings.businessModeDisabledToast,
+      'success'
+    );
+  }, [setBusinessModeEnabled, navigation, setMode, showToast, t]);
+
+  const handleViewReports = useCallback(() => {
+    lightTap();
+    navigation.navigate('PersonalReports');
+  }, [navigation]);
+
+  const handleExportData = useCallback(() => {
+    lightTap();
+    const name = useSettingsStore.getState().userName;
+
+    const doCsv = async (kind: 'transactions' | 'wallets' | 'subscriptions' | 'receipts') => {
+      try {
+        if (kind === 'transactions') await exportTransactionsCsv(usePersonalStore.getState().transactions);
+        else if (kind === 'wallets') await exportWalletsCsv(useWalletStore.getState().wallets);
+        else if (kind === 'subscriptions') await exportSubscriptionsCsv(usePersonalStore.getState().subscriptions);
+        else if (kind === 'receipts') await exportReceiptsCsv(useReceiptStore.getState().receipts);
+      } catch (err: any) {
+        Alert.alert(t.settings.exportFailed, err?.message || t.settings.exportFailedMsg);
+      }
+    };
+
+    const doMonthlyPdf = async () => {
+      try {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        await exportMonthlyStatement({
+          start, end, userName: name, currency,
+          transactions: usePersonalStore.getState().transactions,
+          wallets: useWalletStore.getState().wallets,
+        });
+      } catch (err: any) {
+        Alert.alert(t.settings.exportFailed, err?.message || t.settings.couldNotGeneratePdf);
+      }
+    };
+
+    const doTaxPdf = async () => {
+      try {
+        const year = new Date().getFullYear();
+        const categoryNames = Object.fromEntries(MYTAX_CATEGORIES.map((c) => [c.id, c.name]));
+        await exportTaxYearPdf({
+          year, userName: name, currency,
+          receipts: useReceiptStore.getState().receipts,
+          categoryNames,
+        });
+      } catch (err: any) {
+        Alert.alert(t.settings.exportFailed, err?.message || t.settings.couldNotGeneratePdf);
+      }
+    };
+
+    const showCsvMenu = () => {
+      Alert.alert(t.settings.csvExport, t.settings.chooseWhatToExport, [
+        { text: t.settings.transactionsLabel, onPress: () => doCsv('transactions') },
+        { text: t.settings.wallets, onPress: () => doCsv('wallets') },
+        { text: t.settings.subscriptionsLabel, onPress: () => doCsv('subscriptions') },
+        { text: t.settings.receiptsLabel, onPress: () => doCsv('receipts') },
+        { text: t.common.cancel, style: 'cancel' },
+      ]);
+    };
+
+    Alert.alert(t.settings.exportDataTitle, t.settings.chooseFormat, [
+      { text: t.settings.monthlyPdf, onPress: doMonthlyPdf },
+      { text: t.settings.taxYearPdf.replace('{year}', String(new Date().getFullYear())), onPress: doTaxPdf },
+      { text: t.settings.csvEllipsis, onPress: showCsvMenu },
+      { text: t.common.cancel, style: 'cancel' },
+    ]);
+  }, [currency, t]);
+
+  const handleLoadSampleData = useCallback(() => {
+    lightTap();
+    setSampleModalVisible(true);
+  }, []);
+
+  const handlePickSampleProfile = useCallback((bracket: SampleBracket) => {
+    lightTap();
+    setSampleModalVisible(false);
+    setTimeout(() => {
+      try {
+        loadSampleData(bracket);
+        showToast(t.settings.loadSampleDataSuccess, 'success');
+      } catch {
+        showToast('Failed to load demo data', 'error');
+      }
+    }, 120);
+  }, [t, showToast]);
+
+  const handleDeleteAccount = useCallback(() => {
+    Alert.alert(
+      t.settings.deleteAccountTitle,
+      t.settings.deleteAccountWarning,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.settings.continueLabel,
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              t.settings.absolutelySure,
+              t.settings.absolutelySureMsg,
+              [
+                { text: t.common.cancel, style: 'cancel' },
+                {
+                  text: t.settings.deleteEverything,
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await clearPersonalData();
+                      showToast(t.settings.accountDeleted, 'success');
+                    } catch (err: any) {
+                      Alert.alert(t.settings.errorLabel, err?.message || t.settings.deletionError);
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  }, [clearPersonalData, showToast, t]);
+
+  return (
+    <View style={[styles.container, { backgroundColor: C.background }]}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
+      >
+        {/* ── HUB ── */}
+        {!section && (
+          <>
+            <Card style={styles.card}>
+              <View style={styles.settingRow}>
+                <View style={styles.settingLabelRow}>
+                  <Feather name="user" size={18} color={C.textSecondary} />
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.name}</Text>
+                </View>
+                <TextInput
+                  value={userName}
+                  onChangeText={setUserName}
+                  placeholder={t.settings.enterYourName}
+                  placeholderTextColor={C.neutral}
+                  style={[styles.input, { color: C.textPrimary }]}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={withAlpha(C.accent, 0.25)}
+                />
+              </View>
+            </Card>
+
+            {/* Mode */}
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.modeSection}</Text>
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/briefcase"
+                chipColor="#5A5320"
+                label={t.settings.businessMode}
+                sublabel={t.settings.businessModeDesc}
+                rightElement={
+                  <Switch
+                    value={businessModeEnabled}
+                    onValueChange={handleBusinessModeToggle}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                }
+              />
+              <SettingRow
+                icon="i/information-circle-outline"
+                chipColor="#6BA3BE"
+                label={t.settings.businessModeHow}
+                onPress={() => { lightTap(); setBusinessInfoVisible(true); }}
+                last
+              />
+            </Card>
+
+            {/* Account */}
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.accountSection}</Text>
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/person-circle-outline"
+                chipColor="#6BA3BE"
+                label={t.auth.acctTitle}
+                sublabel={isAuthenticated ? t.auth.acctManageEntry : t.auth.acctSignInEntry}
+                onPress={() => { lightTap(); navigation.navigate('Account' as never); }}
+                last
+              />
+            </Card>
+
+            <SubscriptionCard variant="personal" />
+
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/gift"
+                chipColor="#4F5104"
+                label={t.settings.inviteFriends}
+                onPress={async () => {
+                  lightTap();
+                  const code = await getOrCreateReferralCode();
+                  if (!code) {
+                    Alert.alert(t.settings.signInRequired, t.settings.signInRequiredInvite);
+                    return;
+                  }
+                  try {
+                    await Share.share({ message: referralMessage(code) });
+                  } catch {
+                    // ignore user-cancelled
+                  }
+                }}
+                last
+              />
+            </Card>
+
+            {/* Hub nav */}
+            <Card style={styles.card}>
+              <SettingRow
+                icon="m/tune-variant"
+                chipColor="#A688B8"
+                label={t.settings.preferences}
+                onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'preferences' }); }}
+              />
+              <SettingRow
+                icon="i/wallet"
+                chipColor="#4F5104"
+                label={t.settings.moneySetup}
+                onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'money' }); }}
+              />
+              <SettingRow
+                icon="m/database"
+                chipColor="#6BA3BE"
+                label={t.settings.data}
+                onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'data' }); }}
+              />
+              <SettingRow
+                icon="i/shield-checkmark"
+                chipColor="#9A6400"
+                label={t.settings.security}
+                onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'security' }); }}
+              />
+              <SettingRow
+                icon="i/information-circle-outline"
+                chipColor="#5A5320"
+                label={t.settings.aboutSection}
+                onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'about' }); }}
+                last
+              />
+            </Card>
+
+            <Text style={{ fontSize: TYPOGRAPHY.size.xs, lineHeight: 18, color: C.textMuted, textAlign: 'center', paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
+              {t.settings.financialDisclaimer}
+            </Text>
+
+            {/* Danger zone — personal only */}
+            <Text style={[styles.sectionHeader, { color: '#B5705A' }]}>{t.settings.dangerZone}</Text>
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/trash-outline"
+                chipColor="#B5705A"
+                label={t.settings.deleteAccount}
+                onPress={handleDeleteAccount}
+                last
+              />
+            </Card>
+          </>
+        )}
+
+        {/* ── MONEY SETUP ── */}
+        {section === 'money' && (
+          <>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.moneySetup}</Text>
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/wallet"
+                chipColor="#4F5104"
+                label={t.settings.wallets}
+                onPress={() => { lightTap(); navigation.navigate('WalletManagement'); }}
+              />
+              {Platform.OS === 'ios' && !Platform.isPad && (
+                <SettingRow
+                  icon="i/flash"
+                  chipColor="#DEAB22"
+                  label={t.settings.quickLog.row}
+                  onPress={() => { lightTap(); navigation.navigate('QuickLogSetup' as never); }}
+                />
+              )}
+
+              {ready && (
+                <View onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>
+                  <SettingRow
+                    icon="i/pricetags"
+                    chipColor="#9A6400"
+                    label={t.settings.expenseCategories}
+                    onPress={() => { lightTap(); setCategoryManagerType('expense'); setCategoryManagerVisible(true); }}
+                  />
+                  <SettingRow
+                    icon="i/trending-up"
+                    chipColor="#4F5104"
+                    label={t.settings.incomeCategories}
+                    onPress={() => { lightTap(); setCategoryManagerType('income'); setCategoryManagerVisible(true); }}
+                  />
+                  <SettingRow
+                    icon="i/pie-chart"
+                    chipColor="#A688B8"
+                    label={t.settings.investmentCategories}
+                    onPress={() => { lightTap(); setCategoryManagerType('investment'); setCategoryManagerVisible(true); }}
+                  />
+                  <SettingRow
+                    icon="i/card"
+                    chipColor="#6BA3BE"
+                    label={t.settings.paymentMethods}
+                    onPress={() => { lightTap(); setPaymentMethodManagerVisible(true); }}
+                  />
+                </View>
+              )}
+
+              <PaymentQrCard mode="personal" onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }} />
+
+              {/* Echo visibility */}
+              <View style={[styles.divider, { backgroundColor: C.border }]} />
+              <View style={{ paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xs }}>
+                <View style={styles.settingLabelRow}>
+                  <View style={{ width: 34, height: 34, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha('#B2780A', isDark ? 0.2 : 0.12) }}>
+                    <Feather name="zap" size={18} color="#B2780A" />
+                  </View>
+                  <Text style={[styles.settingLabel, { color: C.textPrimary, marginLeft: 0 }]}>{t.settings.echoVisibility}</Text>
+                </View>
+              </View>
+              <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg }]}>
+                <Text style={[styles.settingLabel, { color: C.textSecondary, flex: 1 }]}>{t.settings.echoOnWallets}</Text>
+                <Switch
+                  value={!walletEchoHidden}
+                  onValueChange={(v) => { lightTap(); setWalletEchoHidden(!v); }}
+                  trackColor={{ false: C.border, true: C.positive }}
+                  thumbColor={C.surface}
+                />
+              </View>
+              <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg }]}>
+                <Text style={[styles.settingLabel, { color: C.textSecondary, flex: 1 }]}>{t.settings.echoOnBudgets}</Text>
+                <Switch
+                  value={!budgetEchoHidden}
+                  onValueChange={(v) => { lightTap(); setBudgetEchoHidden(!v); }}
+                  trackColor={{ false: C.border, true: C.positive }}
+                  thumbColor={C.surface}
+                />
+              </View>
+              <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg }]}>
+                <Text style={[styles.settingLabel, { color: C.textSecondary, flex: 1 }]}>{t.settings.echoOnCommitments}</Text>
+                <Switch
+                  value={!commitmentEchoHidden}
+                  onValueChange={(v) => { lightTap(); setCommitmentEchoHidden(!v); }}
+                  trackColor={{ false: C.border, true: C.positive }}
+                  thumbColor={C.surface}
+                />
+              </View>
+              <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg }]}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={[styles.settingLabel, { color: C.textSecondary }]}>{t.settings.echoCheckin}</Text>
+                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2 }}>{t.settings.echoCheckinDesc}</Text>
+                </View>
+                <Switch
+                  value={echoDailyCheckin}
+                  onValueChange={(v) => { lightTap(); setEchoDailyCheckin(v); }}
+                  trackColor={{ false: C.border, true: C.positive }}
+                  thumbColor={C.surface}
+                />
+              </View>
+
+              {/* Transaction-entry preferences */}
+              <View style={[styles.divider, { backgroundColor: C.border }]} />
+              <SettingRow
+                icon="i/checkmark-circle"
+                chipColor="#4F5104"
+                label={t.settings.quickAddConfirm}
+                sublabel={t.settings.quickAddConfirmDesc}
+                rightElement={
+                  <Switch
+                    value={quickAddConfirm}
+                    onValueChange={(v) => { lightTap(); setQuickAddConfirm(v); }}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                }
+              />
+              <SettingRow
+                icon="i/trending-up"
+                chipColor="#B2780A"
+                label={t.settings.spendingAlerts}
+                sublabel={t.settings.spendingAlertsDesc}
+                rightElement={
+                  <Switch
+                    value={spendingAlertsEnabled}
+                    onValueChange={(v) => { lightTap(); setSpendingAlertsEnabled(v); }}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                }
+                last
+              />
+            </Card>
+          </>
+        )}
+
+        {/* ── DATA ── */}
+        {section === 'data' && (
+          <>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.data}</Text>
+            <Card style={styles.card}>
+              <SettingRow
+                icon="i/stats-chart"
+                chipColor="#4F5104"
+                label={t.settings.viewReports}
+                onPress={handleViewReports}
+              />
+              <SettingRow
+                icon="i/download"
+                chipColor="#9A6400"
+                label={t.settings.exportData}
+                onPress={handleExportData}
+              />
+              <SettingRow
+                icon="i/document-text-outline"
+                chipColor="#6BA3BE"
+                label={t.settings.importFromStatement}
+                onPress={() => { lightTap(); navigation.navigate('ImportFromStatement' as never); }}
+              />
+              <SettingRow
+                icon="i/document-attach-outline"
+                chipColor="#6BA3BE"
+                label={t.settings.importFromCsv}
+                onPress={() => { lightTap(); navigation.navigate('ImportFromCsv' as never); }}
+              />
+              <SettingRow
+                icon="i/cloud-upload-outline"
+                chipColor="#4F5104"
+                label={t.settings.backupsRestore}
+                onPress={() => { lightTap(); navigation.navigate('BackupRestore' as never); }}
+              />
+              <SettingRow
+                icon="m/database"
+                chipColor="#A688B8"
+                label={t.settings.loadSampleData}
+                onPress={handleLoadSampleData}
+                last
+              />
+            </Card>
+          </>
+        )}
+
+        <View style={{ height: SPACING['3xl'] }} />
+
+        {ready && (
+          <>
+            {categoryManagerVisible && (
+              <CategoryManager
+                visible
+                onClose={() => setCategoryManagerVisible(false)}
+                type={categoryManagerType}
+                mode="personal"
+              />
+            )}
+            {paymentMethodManagerVisible && (
+              <PaymentMethodManager
+                visible
+                onClose={() => setPaymentMethodManagerVisible(false)}
+              />
+            )}
+          </>
+        )}
+      </ScrollView>
+
+      {/* Business mode explainer */}
+      <Modal
+        visible={businessInfoVisible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setBusinessInfoVisible(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: withAlpha('#000000', isDark ? 0.6 : 0.4), justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}
+          onPress={() => setBusinessInfoVisible(false)}
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{ width: '100%', maxWidth: 440, backgroundColor: C.surface, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: C.border, padding: SPACING.xl }}
+          >
+            <View style={{ width: 52, height: 52, borderRadius: RADIUS.lg, backgroundColor: withAlpha(C.accent, 0.12), alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
+              <Feather name="briefcase" size={24} color={C.accent} />
+            </View>
+            <Text style={{ fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, marginBottom: SPACING.sm }}>{t.settings.businessModeInfoTitle}</Text>
+            <Text style={{ fontSize: TYPOGRAPHY.size.sm, lineHeight: 22, color: C.textSecondary, marginBottom: SPACING.lg }}>{t.settings.businessModeInfoBody}</Text>
+            <TouchableOpacity
+              onPress={() => { lightTap(); setBusinessInfoVisible(false); }}
+              style={{ backgroundColor: C.accent, paddingVertical: SPACING.md, borderRadius: RADIUS.md, alignItems: 'center' }}
+              accessibilityRole="button"
+              accessibilityLabel={t.settings.businessModeInfoGotIt}
+            >
+              <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.onAccent }}>{t.settings.businessModeInfoGotIt}</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Demo-data profile picker */}
+      <Modal
+        visible={sampleModalVisible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setSampleModalVisible(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: withAlpha('#000000', isDark ? 0.6 : 0.4), justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}
+          onPress={() => setSampleModalVisible(false)}
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{ width: '100%', maxWidth: 440, backgroundColor: C.surface, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: C.border, padding: SPACING.xl }}
+          >
+            <Text style={{ fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, marginBottom: SPACING.xs }}>{t.sampleData.pickTitle}</Text>
+            <Text style={{ fontSize: TYPOGRAPHY.size.sm, lineHeight: 20, color: C.textSecondary, marginBottom: SPACING.lg }}>{t.settings.loadSampleDataConfirm}</Text>
+
+            {SAMPLE_PROFILES.map((p, i) => {
+              const info = t.sampleData.profiles[p.id];
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  onPress={() => handlePickSampleProfile(p.id)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${info.name} · ${p.age}`}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: SPACING.md,
+                    paddingVertical: SPACING.md,
+                    paddingHorizontal: SPACING.md,
+                    borderRadius: RADIUS.lg,
+                    backgroundColor: C.background,
+                    borderWidth: 1,
+                    borderColor: C.border,
+                    marginTop: i === 0 ? 0 : SPACING.sm,
+                  }}
+                >
+                  <View style={{ width: 40, height: 40, borderRadius: RADIUS.md, backgroundColor: withAlpha(C.accent, 0.12), alignItems: 'center', justifyContent: 'center' }}>
+                    <Feather name={p.icon as keyof typeof Feather.glyphMap} size={20} color={C.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary }}>{info.name} · {p.age}</Text>
+                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, marginTop: 1 }}>{info.blurb}</Text>
+                  </View>
+                  <Feather name="chevron-right" size={18} color={C.textMuted} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Pressable>
+        <ModalToastHost />
+      </Modal>
+
+      {__DEV__ && <OcrDebugHarness />}
+    </View>
+  );
+};
+
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: C.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: SPACING.lg,
+  },
+  sectionHeader: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.md,
+    marginLeft: SPACING.xs,
+  },
+  card: {
+    marginBottom: SPACING.sm,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    minHeight: 44,
+  },
+  settingLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  settingLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  input: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    textAlign: 'right',
+    flex: 1,
+    marginLeft: SPACING.lg,
+    paddingVertical: SPACING.xs,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: C.border,
+    marginVertical: SPACING.xs,
+  },
+});
+
+export default PersonalSettings;

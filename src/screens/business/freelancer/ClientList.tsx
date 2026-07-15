@@ -10,6 +10,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { formatDistanceToNow } from 'date-fns';
 import { useFreelancerStore } from '../../../store/freelancerStore';
@@ -34,6 +35,7 @@ const FreelancerClientList: React.FC = () => {
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const currency = useSettingsStore((s) => s.currency);
   const {
@@ -168,7 +170,7 @@ const FreelancerClientList: React.FC = () => {
           data={sortedClients}
           keyExtractor={(item) => item.client.id}
           renderItem={renderClient}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews
           windowSize={5}
