@@ -1652,7 +1652,9 @@ export const ms: Translations = {
     deleted: 'Dipadam',
 
     // TransactionsList additional
-    searchPlaceholder: 'cari transaksi...',
+    searchPlaceholder: 'cari nama, dompet, jumlah...',
+    allCategories: 'Semua kategori',
+    allWallets: 'Semua dompet',
     selected: 'dipilih',
     deleteNTitle: 'Padam {n} transaksi?',
     deleteNTitlePlural: 'Padam {n} transaksi?',
@@ -2827,6 +2829,9 @@ export const ms: Translations = {
     paidOn: "dibayar pada",
     paidUndo: "dibayar · buat asal",
     payFrom: "bayar dari",
+    whosIn: "Siapa terlibat",
+    whoPaid: "Siapa bayar?",
+    noWallet: "Tiada dompet",
     payingNameBack: "bayar balik {name}",
     paymentAppliedAcross: "{currency} {amount} dikenakan merentasi {count} hutang{tipMsg}",
     paymentNoLongerExists: "bayaran tidak wujud lagi",

@@ -1656,7 +1656,9 @@ export const en = {
     deleted: 'Deleted',
 
     // TransactionsList additional
-    searchPlaceholder: 'search transactions...',
+    searchPlaceholder: 'search name, wallet, amount...',
+    allCategories: 'All categories',
+    allWallets: 'All wallets',
     selected: 'selected',
     deleteNTitle: 'Delete {n} transaction?',
     deleteNTitlePlural: 'Delete {n} transactions?',
@@ -2856,6 +2858,9 @@ export const en = {
     paidOn: "paid on",
     paidUndo: "paid · undo",
     payFrom: "pay from",
+    whosIn: "Who's in",
+    whoPaid: "Who paid?",
+    noWallet: "No wallet",
     payingNameBack: "paying {name} back",
     paymentAppliedAcross: "{currency} {amount} applied across {count} debts{tipMsg}",
     paymentNoLongerExists: "Payment no longer exists",

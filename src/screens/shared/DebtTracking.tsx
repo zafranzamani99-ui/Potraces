@@ -3021,7 +3021,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
     setWizardVisible(false);
     resetWizardForm();
-    showToast('Split created!', 'success');
+    showToast(t.debts.splitCreated, 'success');
     } catch (e) {
       // A store mutation threw mid-save — surface it and, crucially, release the
       // saving guard in finally so the Save button never dead-locks for the rest
@@ -3509,12 +3509,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             {/* Segmented control — pending / settled / optional archive */}
             <DebtSegmentedControl
               tabs={[
-                { key: 'pending' as const, label: 'pending', count: debtTabCounts.pending, color: C.accent },
-                { key: 'settled' as const, label: 'settled', count: debtTabCounts.settled, color: settledColor },
-                ...(debtsShowArchive ? [{ key: 'archive' as const, label: 'archive', count: debtTabCounts.archive, color: C.bronze }] : []),
+                { key: 'pending' as const, label: t.debts.pending, count: debtTabCounts.pending, color: C.accent },
+                { key: 'settled' as const, label: t.debts.settled, count: debtTabCounts.settled, color: settledColor },
+                ...(debtsShowArchive ? [{ key: 'archive' as const, label: t.debts.archive, count: debtTabCounts.archive, color: C.bronze }] : []),
               ]}
               active={debtTab}
-              itemNoun="debt"
+              itemNoun={t.debts.debtNoun}
               onSelect={(key) => {
                 // Defensive: only fire state setters that actually change state.
                 // Avoids stray LayoutAnimation / re-render hiccups that can
@@ -3538,7 +3538,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                 >
                   <Feather name="x" size={12} color={C.gold} />
-                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.gold, fontWeight: '600' }}>Clear</Text>
+                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.gold, fontWeight: '600' }}>{t.common.clear}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -3592,11 +3592,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   style={[styles.backChip, neu.raised, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.10 : 0.05) }]}
                   activeOpacity={0.7}
                   accessibilityRole="button"
-                  accessibilityLabel="back to splits"
+                  accessibilityLabel={t.debts.backToSplitsA11y}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
                   <Feather name="chevron-left" size={16} color={C.textSecondary} />
-                  <Text style={styles.backChipText}>back</Text>
+                  <Text style={styles.backChipText}>{t.common.back}</Text>
                 </TouchableOpacity>
                 <View style={styles.draftsTitleWrap}>
                   <Feather name="bookmark" size={14} color={C.bronze} />
@@ -3656,24 +3656,24 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 }
                 title={
                   searchQuery ? t.debts.noMatches :
-                  splitTab === 'settled' ? "nothing settled yet" :
-                  splitTab === 'youOwe' ? "you don't owe anyone" :
-                  splitTab === 'drafts' ? "no drafts saved" :
-                  "no one owes you right now"
+                  splitTab === 'settled' ? t.debts.emptySettledTitle :
+                  splitTab === 'youOwe' ? t.debts.emptyYouOweTitle :
+                  splitTab === 'drafts' ? t.debts.emptyDraftsTitle :
+                  t.debts.emptyWaitingTitle
                 }
                 message={
                   searchQuery ? `no splits matching "${searchQuery}"` :
-                  splitTab === 'settled' ? "splits move here when everyone's paid up." :
-                  splitTab === 'youOwe' ? "nothing on your tab — living free." :
-                  splitTab === 'drafts' ? "scan a receipt and save halfway — pick up later from here." :
-                  "split a bill and you'll see who owes you back here."
+                  splitTab === 'settled' ? t.debts.emptySettledMsg :
+                  splitTab === 'youOwe' ? t.debts.emptyYouOweMsg :
+                  splitTab === 'drafts' ? t.debts.emptyDraftsMsg :
+                  t.debts.emptyWaitingMsg
                 }
               />
             ) : (
               <EmptyState
                 icon="m/call-split"
-                title="no splits yet"
-                message="split a bill with friends — receipt, equal, custom, your call."
+                title={t.debts.emptyNoSplitsTitle}
+                message={t.debts.emptyNoSplitsMsg}
                 actionLabel={t.debts.splitExpense}
                 onAction={() => showSplitChoice()}
               />
@@ -3734,7 +3734,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               {/* Centered title zone — italic serif accent (also draggable) */}
               <View style={styles.dDebtTitleZone}>
                 <Text style={styles.dDebtTitle} numberOfLines={1} ellipsizeMode="tail">
-                  {editingDebtId ? 'edit ' : 'add '}
+                  {editingDebtId ? t.debts.editTitlePrefix : t.debts.addTitlePrefix}
                   <Text style={styles.dDebtTitleAccent}>
                     {editingDebtId
                       ? (debts.find((d) => d.id === editingDebtId)?.description?.toLowerCase() || 'debt')
@@ -3742,7 +3742,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   </Text>
                 </Text>
                 <Text style={styles.dDebtSubtitle}>
-                  {debtType === 'i_owe' ? 'log what you owe someone' : 'log what someone owes you'}
+                  {debtType === 'i_owe' ? t.debts.subtitleIOwe : t.debts.subtitleTheyOwe}
                 </Text>
               </View>
             </View>
@@ -3773,7 +3773,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 return (
                   <View style={[styles.dDebtFieldHeroCard, neu.raisedSoft]}>
                     <Text style={styles.dDebtFieldCardLabel}>
-                      amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                      {t.debts.amount} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                     </Text>
                     <View style={styles.dDebtFieldHeroAmountRow}>
                       <Text style={[styles.dDebtFieldHeroCurrency, { color: activeTypeColor }]} numberOfLines={1}>
@@ -3799,7 +3799,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                     {isSettled && (
                       <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, textAlign: 'center', marginTop: SPACING.xs }}>
-                        amount locked — debt is settled
+                        {t.debts.amountLockedSettled}
                       </Text>
                     )}
 
@@ -3826,7 +3826,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             ]}
                             onPress={() => {
                               if (editDebt && editDebt.payments.length > 0) {
-                                showToast('Cannot change direction after payments recorded.', 'error');
+                                showToast(t.debts.cannotChangeDirection, 'error');
                                 return;
                               }
                               setDebtType(dt.value as DebtType);
@@ -3880,12 +3880,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
               {/* What-for field card */}
               <View style={[styles.dDebtFieldCard, neu.raisedSoft]}>
-                <Text style={styles.dDebtFieldCardLabel}>what for</Text>
+                <Text style={styles.dDebtFieldCardLabel}>{t.debts.whatFor}</Text>
                 <TextInput
                   style={[styles.dDebtFieldCardInput, styles.dDebtFieldMultiline]}
                   value={debtDescription}
                   onChangeText={setDebtDescription}
-                  placeholder="e.g. nando's makan malam"
+                  placeholder={t.debts.whatForPlaceholder}
                   placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
                   multiline
                   textAlignVertical="top"
@@ -3905,7 +3905,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   selectedContacts={debtContacts}
                   onSelect={setDebtContacts}
                   mode="single"
-                  label="who *"
+                  label={t.debts.whoRequired}
                   variant="input"
                 />
               </View>
@@ -3933,11 +3933,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 onPress={() => { Keyboard.dismiss(); setDueDatePickerOpen((v) => !v); }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel="select due date"
+                accessibilityLabel={t.debts.selectDueDate}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Text style={styles.dDebtFieldCardLabel}>
-                    due date <Text style={styles.dDebtFieldOptional}>optional</Text>
+                    {t.debts.dueDate} <Text style={styles.dDebtFieldOptional}>{t.common.optional}</Text>
                   </Text>
                   {debtDueDateObj && (
                     <TouchableOpacity
@@ -3951,7 +3951,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 <View style={styles.dDebtFieldDateRow}>
                   <Feather name="calendar" size={15} color={debtDueDateObj ? C.accent : C.textMuted} />
                   <Text style={[styles.dDebtFieldDateText, !debtDueDateObj && { color: C.textMuted }]}>
-                    {debtDueDateObj ? format(debtDueDateObj, 'd MMM yyyy').toLowerCase() : 'pick a date'}
+                    {debtDueDateObj ? format(debtDueDateObj, 'd MMM yyyy').toLowerCase() : t.debts.selectDate}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -3967,12 +3967,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   }}
                   hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
                   accessibilityRole="button"
-                  accessibilityLabel="delete debt"
+                  accessibilityLabel={t.debts.deleteDebt}
                 >
                   {({ pressed }) => (
                     <View style={[styles.dDebtDeleteLinkInner, pressed && { opacity: 0.55 }]}>
                       <Feather name="trash-2" size={13} color={C.textMuted} />
-                      <Text style={styles.dDebtDeleteLinkText}>delete debt</Text>
+                      <Text style={styles.dDebtDeleteLinkText}>{t.debts.deleteDebt}</Text>
                     </View>
                   )}
                 </Pressable>
@@ -4023,7 +4023,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       dDebtSaveScale.value = withSpring(1, { damping: 18, stiffness: 240 });
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={editingDebtId ? 'save changes' : 'add debt'}
+                    accessibilityLabel={editingDebtId ? t.debts.saveChanges : t.debts.addDebt}
                     accessibilityState={{ disabled: !canSave || dDebtIsSaving, busy: dDebtIsSaving }}
                   >
                     {dDebtIsSaving ? (
@@ -4041,7 +4041,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             !canSave && styles.dDebtSaveBtnTextDisabled,
                           ]}
                         >
-                          {editingDebtId ? 'save changes' : 'add debt'}
+                          {editingDebtId ? t.debts.saveChanges : t.debts.addDebt}
                         </Text>
                       </View>
                     )}
@@ -4054,12 +4054,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   onPress={dDebtCloseSheet}
                   hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                   accessibilityRole="button"
-                  accessibilityLabel="close"
+                  accessibilityLabel={t.common.close}
                 >
                   {({ pressed }) => (
                     <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                       <Feather name="x" size={12} color={C.textMuted} />
-                      <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                      <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                     </View>
                   )}
                 </Pressable>
@@ -4120,15 +4120,15 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               </View>
               <View style={styles.dDebtTitleZone}>
                 <Text style={styles.dDebtTitle} numberOfLines={1} ellipsizeMode="tail">
-                  {editingSplitId ? 'edit ' : 'split '}
+                  {editingSplitId ? t.debts.editTitlePrefix : t.debts.splitTitlePrefix}
                   <Text style={styles.dDebtTitleAccent}>
                     {editingSplitId
                       ? (splits.find((s) => s.id === editingSplitId)?.description?.toLowerCase() || 'split')
-                      : 'expense'}
+                      : t.debts.splitTitleAccent}
                   </Text>
                 </Text>
                 <Text style={styles.dDebtSubtitle}>
-                  split a bill across friends — fair, traceable
+                  {t.debts.splitSubtitle}
                 </Text>
               </View>
             </View>
@@ -4155,7 +4155,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               return (
                 <View style={[styles.dDebtFieldHeroCard, neu.raisedSoft]}>
                   <Text style={styles.dDebtFieldCardLabel}>
-                    total amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                    {t.debts.totalAmount} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                   </Text>
                   <View style={styles.dDebtFieldHeroAmountRow}>
                     <Text style={[styles.dDebtFieldHeroCurrency, { color: C.accent }]} numberOfLines={1}>
@@ -4185,12 +4185,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
             {/* What-for / description card */}
             <View style={[styles.dDebtFieldCard, neu.raisedSoft]}>
-              <Text style={styles.dDebtFieldCardLabel}>what for</Text>
+              <Text style={styles.dDebtFieldCardLabel}>{t.debts.whatFor}</Text>
               <TextInput
                 style={[styles.dDebtFieldCardInput, styles.dDebtFieldMultiline]}
                 value={splitDescription}
                 onChangeText={setSplitDescription}
-                placeholder="dinner, trip, groceries…"
+                placeholder={t.debts.dinnerTripEtc}
                 placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
                 multiline
                 textAlignVertical="top"
@@ -4205,7 +4205,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             {/* Split method — segmented (only when adding) */}
             {!editingSplitId && (
               <View style={[styles.dDebtFieldCard, neu.raisedSoft]}>
-                <Text style={styles.dDebtFieldCardLabel}>split method</Text>
+                <Text style={styles.dDebtFieldCardLabel}>{t.debts.splitMethod}</Text>
                 <View style={[styles.dDebtTypeSegmented, { marginTop: 6 }]}>
                   {SPLIT_METHODS.map((m) => {
                     const isActive = splitMethod === m.value;
@@ -4244,7 +4244,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             {/* Participants — multi input card (type a name + add, or from contacts) */}
             <View style={{ marginBottom: SPACING.sm + 2 }}>
               <Text style={{ fontSize: 16, fontWeight: '600', color: C.textPrimary, marginBottom: SPACING.sm }}>
-                participants <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                {t.debts.participants} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
               </Text>
               <ContactPicker
                 selectedContacts={splitContacts}
@@ -4254,18 +4254,18 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 hideLabel
                 includeSelf
                 selfName={getSelfContact().name}
-                placeholder="add a name"
+                placeholder={t.debts.typeName}
               />
             </View>
 
             {/* Paid by — pick one of the participants */}
             <View style={{ marginTop: SPACING.sm, marginBottom: SPACING.xl }}>
               <Text style={{ fontSize: 16, fontWeight: '600', color: C.textPrimary, marginBottom: SPACING.sm }}>
-                paid by <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                {t.debts.paidBy} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
               </Text>
               {splitContacts.length === 0 ? (
                 <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, fontStyle: 'italic' }}>
-                  add participants first
+                  {t.debts.addParticipantsFirst}
                 </Text>
               ) : (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
@@ -4315,7 +4315,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     wallets={wallets}
                     selectedId={splitWalletId}
                     onSelect={setSplitWalletId}
-                    label="paid from wallet"
+                    label={t.debts.paidFromWallet}
                     faintNeu
                   />
                 </View>
@@ -4342,11 +4342,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               onPress={() => { Keyboard.dismiss(); setSplitDueDatePickerOpen((v) => !v); }}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="select due date"
+              accessibilityLabel={t.debts.selectDueDate}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Text style={styles.dDebtFieldCardLabel}>
-                  due date <Text style={styles.dDebtFieldOptional}>optional</Text>
+                  {t.debts.dueDate} <Text style={styles.dDebtFieldOptional}>{t.common.optional}</Text>
                 </Text>
                 {splitDueDateObj && (
                   <TouchableOpacity
@@ -4500,12 +4500,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   }}
                   hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
                   accessibilityRole="button"
-                  accessibilityLabel="delete split"
+                  accessibilityLabel={t.debts.deleteSplit}
                 >
                   {({ pressed }) => (
                     <View style={[styles.dDebtDeleteLinkInner, pressed && { opacity: 0.55 }]}>
                       <Feather name="trash-2" size={13} color={C.textMuted} />
-                      <Text style={styles.dDebtDeleteLinkText}>delete split</Text>
+                      <Text style={styles.dDebtDeleteLinkText}>{t.debts.deleteSplit}</Text>
                     </View>
                   )}
                 </Pressable>
@@ -4557,7 +4557,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       dSplitSaveScale.value = withSpring(1, { damping: 18, stiffness: 240 });
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={editingSplitId ? 'save changes' : 'create split'}
+                    accessibilityLabel={editingSplitId ? t.debts.saveChanges : t.debts.createSplit}
                     accessibilityState={{ disabled: !canSave || dSplitIsSaving, busy: dSplitIsSaving }}
                   >
                     {dSplitIsSaving ? (
@@ -4588,12 +4588,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   onPress={dSplitCloseSheet}
                   hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                   accessibilityRole="button"
-                  accessibilityLabel="close"
+                  accessibilityLabel={t.common.close}
                 >
                   {({ pressed }) => (
                     <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                       <Feather name="x" size={12} color={C.textMuted} />
-                      <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                      <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                     </View>
                   )}
                 </Pressable>
@@ -4667,7 +4667,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 dueDateText = format(dueD, 'd MMM yyyy');
                 const daysUntil = differenceInDays(dueD, new Date());
                 if (daysUntil < 0) { dueDateText += ` · overdue ${Math.abs(daysUntil)}d`; dueColor = overdueColor; }
-                else if (daysUntil <= 3) { dueDateText += daysUntil === 0 ? ' · due today' : ` · due in ${daysUntil}d`; dueColor = C.gold; }
+                else if (daysUntil <= 3) { dueDateText += daysUntil === 0 ? ` · ${t.debts.dueToday}` : ` · due in ${daysUntil}d`; dueColor = C.gold; }
               }
             }
 
@@ -4688,7 +4688,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         {debt.description ? ` · ${debt.description.toLowerCase()}` : ''}
                       </Text>
                       <Text style={styles.dDebtSubtitle}>
-                        {debt.type === 'i_owe' ? 'i owe' : 'they owe'} · {statusConfig.label.toLowerCase()} · {getDebtAge(debt.createdAt)}
+                        {debt.type === 'i_owe' ? t.debts.iOwe : t.debts.theyOwe} · {statusConfig.label.toLowerCase()} · {getDebtAge(debt.createdAt)}
                       </Text>
                     </View>
                   </View>
@@ -4730,19 +4730,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <View style={[styles.detailMetaSection, { marginTop: SPACING.md }]}>
                     {debt.description ? (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>description</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.description}</Text>
                         <Text style={[styles.detailMetaValue, { flex: 1, textAlign: 'right' }]} numberOfLines={2}>{debt.description.toLowerCase()}</Text>
                       </View>
                     ) : null}
                     {category ? (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>category</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.category}</Text>
                         <Text style={styles.detailMetaValue}>{category.name.toLowerCase()}</Text>
                       </View>
                     ) : null}
                     {debt.status === 'settled' ? (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>paid on</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.paidOn}</Text>
                         <Text style={styles.detailMetaValue}>{(() => {
                           const lastPay = debt.payments.length > 0
                             ? debt.payments.reduce((latest, p) => new Date(p.date) > new Date(latest.date) ? p : latest)
@@ -4752,12 +4752,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       </View>
                     ) : dueDateText ? (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>due date</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.dueDate}</Text>
                         <Text style={[styles.detailMetaValue, dueColor ? { color: dueColor, fontWeight: TYPOGRAPHY.weight.semibold } : null]}>{dueDateText.toLowerCase()}</Text>
                       </View>
                     ) : null}
                     <View style={styles.detailMetaRow}>
-                      <Text style={styles.detailMetaLabel}>created</Text>
+                      <Text style={styles.detailMetaLabel}>{t.debts.createdLabel}</Text>
                       <Text style={styles.detailMetaValue}>{format(new Date(debt.createdAt), 'd MMM yyyy').toLowerCase()}</Text>
                     </View>
                   </View>
@@ -4777,7 +4777,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     return (
                       <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: withAlpha(C.textPrimary, 0.06) }}>
                         <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textSecondary, marginBottom: SPACING.sm }}>
-                          breakdown
+                          {t.debts.breakdown}
                         </Text>
                         {contactItems.map((item, i) => {
                           const share = Math.round((item.amount / (item.assignedTo.length || 1)) * 100) / 100;
@@ -4790,7 +4790,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         })}
                         {taxPerPerson > 0 && (
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
-                            <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary }}>tax</Text>
+                            <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary }}>{t.debts.tax}</Text>
                             <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary, fontVariant: ['tabular-nums'] as any }}>{currency} {taxPerPerson.toFixed(2)}</Text>
                           </View>
                         )}
@@ -4804,7 +4804,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   {debt.status !== 'settled' ? (
                     <NeuButton
                       icon="plus-circle"
-                      label="record payment"
+                      label={t.debts.recordPayment}
                       onPress={() => {
                         const id = debt.id;
                         returnToDetailRef.current = id;
@@ -4815,7 +4815,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   ) : (
                     <NeuPressable
                       accessibilityRole="button"
-                      accessibilityLabel="view history"
+                      accessibilityLabel={t.debts.viewHistory}
                       style={[styles.debtPrimaryAction, neu.raisedSoft, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04) }]}
                       onPress={() => {
                         const id = debt.id;
@@ -4825,7 +4825,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       }}
                     >
                       <Feather name="clock" size={15} color={C.textSecondary} />
-                      <Text style={[styles.debtPrimaryActionText, { color: C.textSecondary }]}>view history</Text>
+                      <Text style={[styles.debtPrimaryActionText, { color: C.textSecondary }]}>{t.debts.viewHistory}</Text>
                     </NeuPressable>
                   )}
 
@@ -4859,8 +4859,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       <TouchableOpacity
                         style={[styles.debtIconChip, neu.raised]}
                         onPress={() => {
-                          if (debt.isArchived) { unarchiveDebt(debt.id); showToast('debt unarchived', 'success'); }
-                          else { archiveDebt(debt.id); showToast('debt archived', 'success'); }
+                          if (debt.isArchived) { unarchiveDebt(debt.id); showToast(t.debts.debtUnarchived, 'success'); }
+                          else { archiveDebt(debt.id); showToast(t.debts.debtArchived, 'success'); }
                           setDetailDebtId(null);
                         }}
                         activeOpacity={0.7}
@@ -4922,12 +4922,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={dDetailCloseSheet}
                     hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                     accessibilityRole="button"
-                    accessibilityLabel="close"
+                    accessibilityLabel={t.common.close}
                   >
                     {({ pressed }) => (
                       <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                         <Feather name="x" size={12} color={C.textMuted} />
-                        <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                        <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                       </View>
                     )}
                   </Pressable>
@@ -5016,11 +5016,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           </Text>
                           {allSettled ? (
                             <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, marginTop: 4 }}>
-                              {groupWasMixed ? 'settled up' : `${group.debts[0].type === 'i_owe' ? 'i owe' : 'they owe'} · settled`}
+                              {groupWasMixed ? t.debts.settledUp : `${group.debts[0].type === 'i_owe' ? t.debts.iOwe : t.debts.theyOwe} · settled`}
                             </Text>
                           ) : isMixed ? (
                             <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, marginTop: 4 }}>
-                              net · {netDirection === 'i_owe' ? 'i owe' : 'they owe'}
+                              net · {netDirection === 'i_owe' ? t.debts.iOwe : t.debts.theyOwe}
                             </Text>
                           ) : null}
                           {(() => {
@@ -5143,7 +5143,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       {/* Record payment — primary CTA */}
                       <NeuButton
                         icon="plus-circle"
-                        label="record all payment"
+                        label={t.debts.recordAllPayment}
                         onPress={() => {
                           const firstUnsettled = group.debts.find((d) => d.status !== 'settled');
                           if (firstUnsettled) {
@@ -5215,12 +5215,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               let msg = `Hey ${group.contactName}, you owe me ${currency} ${displayAmt.toFixed(2)}\n`;
 
                               if (isMixed) {
-                                msg += '\nYou owe me:';
+                                msg += `\n${t.debts.msgYouOweMeList}`;
                                 theyOweItems.forEach((d) => {
                                   msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
                                 });
                                 if (theyOweItems.length > 1) msg += `\n  subtotal: ${currency} ${theyOweTotal.toFixed(2)}`;
-                                msg += '\n\nI owe you:';
+                                msg += `\n\n${t.debts.msgIOweYouList}`;
                                 iOweItems.forEach((d) => {
                                   msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
                                 });
@@ -5231,7 +5231,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                   msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
                                 });
                               }
-                              msg += '\n\nCan you settle when free? Thank you!';
+                              msg += `\n\n${t.debts.msgSettleWhenFree}`;
                               const gId = group.contactId;
                               returnToGroupRef.current = gId;
                               setDetailGroupId(null);
@@ -5269,12 +5269,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               let msg = `Hey ${group.contactName}, ${headline}\n`;
 
                               if (isMixed) {
-                                msg += '\nYou owe me:';
+                                msg += `\n${t.debts.msgYouOweMeList}`;
                                 theyOweItems.forEach((d) => {
                                   msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
                                 });
                                 if (theyOweItems.length > 1) msg += `\n  subtotal: ${currency} ${theyOweTotal.toFixed(2)}`;
-                                msg += '\n\nI owe you:';
+                                msg += `\n\n${t.debts.msgIOweYouList}`;
                                 iOweItems.forEach((d) => {
                                   msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
                                 });
@@ -5336,12 +5336,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={dGroupDetailCloseSheet}
                       hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                       accessibilityRole="button"
-                      accessibilityLabel="close"
+                      accessibilityLabel={t.common.close}
                     >
                       {({ pressed }) => (
                         <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                           <Feather name="x" size={12} color={C.textMuted} />
-                          <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                          <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                         </View>
                       )}
                     </Pressable>
@@ -5390,12 +5390,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={dGroupDetailCloseSheet}
                       hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                       accessibilityRole="button"
-                      accessibilityLabel="close"
+                      accessibilityLabel={t.common.close}
                     >
                       {({ pressed }) => (
                         <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                           <Feather name="x" size={12} color={C.textMuted} />
-                          <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                          <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                         </View>
                       )}
                     </Pressable>
@@ -5462,7 +5462,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       </View>
                       <View style={styles.dDebtTitleZone}>
                         <Text style={styles.dDebtTitle} numberOfLines={1} ellipsizeMode="tail">
-                          edit <Text style={styles.dDebtTitleAccent}>payment</Text>
+                          {t.debts.editTitlePrefix}<Text style={styles.dDebtTitleAccent}>{t.debts.paymentNoun}</Text>
                         </Text>
                         <Text style={styles.dDebtSubtitle}>
                           {currency} {payDetailPayment.amount.toFixed(2)} · {dateStr.toLowerCase()}
@@ -5483,19 +5483,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     <View style={styles.detailMetaSection}>
                       {wallet && (
                         <View style={styles.detailMetaRow}>
-                          <Text style={styles.detailMetaLabel}>wallet</Text>
+                          <Text style={styles.detailMetaLabel}>{t.debts.wallet}</Text>
                           <Text style={styles.detailMetaValue}>{wallet.name.toLowerCase()}</Text>
                         </View>
                       )}
                       {payDetailPayment.linkedTransactionId && (
                         <View style={styles.detailMetaRow}>
-                          <Text style={styles.detailMetaLabel}>linked</Text>
-                          <Text style={styles.detailMetaValue}>transaction · synced on save</Text>
+                          <Text style={styles.detailMetaLabel}>{t.debts.linkedLabel}</Text>
+                          <Text style={styles.detailMetaValue}>{t.debts.transactionSyncedOnSave}</Text>
                         </View>
                       )}
                       {payDetailPayment.tipAmount ? (
                         <View style={styles.detailMetaRow}>
-                          <Text style={styles.detailMetaLabel}>tip</Text>
+                          <Text style={styles.detailMetaLabel}>{t.debts.tip}</Text>
                           <Text style={styles.detailMetaValue}>
                             {currency} {payDetailPayment.tipAmount.toFixed(2)}
                           </Text>
@@ -5515,7 +5515,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       return (
                         <View style={[styles.dDebtFieldHeroCard, neu.raisedSoft]}>
                           <Text style={styles.dDebtFieldCardLabel}>
-                            amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                            {t.debts.amount} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                           </Text>
                           <View style={styles.dDebtFieldHeroAmountRow}>
                             <Text style={[styles.dDebtFieldHeroCurrency, { color: typeConfig.color }]} numberOfLines={1}>
@@ -5543,7 +5543,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     {/* Note card */}
                     <View style={[styles.dDebtFieldCard, neu.raisedSoft]}>
                       <Text style={styles.dDebtFieldCardLabel}>
-                        note <Text style={styles.dDebtFieldOptional}>optional</Text>
+                        {t.debts.note} <Text style={styles.dDebtFieldOptional}>{t.common.optional}</Text>
                       </Text>
                       <TextInput
                         style={[styles.dDebtFieldCardInput, styles.dDebtFieldMultiline]}
@@ -5645,12 +5645,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       }}
                       hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
                       accessibilityRole="button"
-                      accessibilityLabel="delete payment"
+                      accessibilityLabel={t.debts.deletePayment}
                     >
                       {({ pressed }) => (
                         <View style={[styles.dDebtDeleteLinkInner, pressed && { opacity: 0.55 }]}>
                           <Feather name="trash-2" size={13} color={C.textMuted} />
-                          <Text style={styles.dDebtDeleteLinkText}>delete payment</Text>
+                          <Text style={styles.dDebtDeleteLinkText}>{t.debts.deletePayment}</Text>
                         </View>
                       )}
                     </Pressable>
@@ -5715,9 +5715,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     </View>
                     <View style={styles.dDebtTitleZone}>
                       <Text style={styles.dDebtTitle} numberOfLines={1} ellipsizeMode="tail">
-                        {paymentViewOnly ? 'payment ' : 'record '}
+                        {paymentViewOnly ? t.debts.paymentTitlePrefix : t.debts.recordTitlePrefix}
                         <Text style={styles.dDebtTitleAccent}>
-                          {paymentViewOnly ? 'history' : 'payment'}
+                          {paymentViewOnly ? t.debts.history : t.debts.paymentNoun}
                         </Text>
                       </Text>
                       <Text style={styles.dDebtSubtitle}>
@@ -5766,17 +5766,17 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           {grpIsMixed ? (
                             <View style={styles.dPayContextAmounts}>
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>i owe</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.debts.iOwe}</Text>
                                 <Text style={styles.dPayContextAmountValue}>{currency} {iOweRem.toFixed(2)}</Text>
                               </View>
                               <View style={styles.dPayContextDivider} />
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>they owe</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.debts.theyOwe}</Text>
                                 <Text style={styles.dPayContextAmountValue}>{currency} {theyOweRem.toFixed(2)}</Text>
                               </View>
                               <View style={styles.dPayContextDivider} />
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>net</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.debts.netLabel}</Text>
                                 <Text style={[styles.dPayContextAmountValue, { color: typeConfig.color, fontWeight: '700' as const }]}>
                                   {currency} {netRem.toFixed(2)}
                                 </Text>
@@ -5785,19 +5785,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           ) : (
                             <View style={styles.dPayContextAmounts}>
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>total</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.common.total}</Text>
                                 <Text style={styles.dPayContextAmountValue}>{currency} {(iOweRem + theyOweRem).toFixed(2)}</Text>
                               </View>
                               <View style={styles.dPayContextDivider} />
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>paid</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.debts.paid}</Text>
                                 <Text style={[styles.dPayContextAmountValue, { color: settledColor }]}>
                                   {currency} {unsettled.reduce((s, d) => s + d.paidAmount, 0).toFixed(2)}
                                 </Text>
                               </View>
                               <View style={styles.dPayContextDivider} />
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>left</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.debts.remaining}</Text>
                                 <Text style={[styles.dPayContextAmountValue, { color: typeConfig.color, fontWeight: '700' as const }]}>
                                   {currency} {(iOweRem + theyOweRem).toFixed(2)}
                                 </Text>
@@ -5913,7 +5913,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       {/* Amount card — hero style */}
                       <View style={[styles.dDebtFieldHeroCard, neu.raisedSoft]}>
                         <Text style={styles.dDebtFieldCardLabel}>
-                          amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                          {t.debts.amount} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                         </Text>
                         <View style={styles.dDebtFieldHeroAmountRow}>
                           <Text style={[styles.dDebtFieldHeroCurrency, { color: typeConfig.color }]} numberOfLines={1}>
@@ -5939,8 +5939,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       <View style={styles.dPayQuickChipRow}>
                         {[
                           { label: '¼', frac: 0.25 },
-                          { label: 'half', frac: 0.5 },
-                          { label: 'full', frac: 1.0 },
+                          { label: t.debts.quickHalf, frac: 0.5 },
+                          { label: t.debts.quickFull, frac: 1.0 },
                         ].map((chip) => {
                           const fillAmount = +(remaining * chip.frac).toFixed(2);
                           const isActive = Math.abs(parseFloat(paymentAmount || '0') - fillAmount) < 0.01;
@@ -6004,7 +6004,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       {/* Note card */}
                       <View style={[styles.dDebtFieldCard, neu.raisedSoft]}>
                         <Text style={styles.dDebtFieldCardLabel}>
-                          note <Text style={styles.dDebtFieldOptional}>optional</Text>
+                          {t.debts.note} <Text style={styles.dDebtFieldOptional}>{t.common.optional}</Text>
                         </Text>
                         <TextInput
                           style={[styles.dDebtFieldCardInput, styles.dDebtFieldMultiline]}
@@ -6137,7 +6137,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                     <Text style={styles.payHistoryAmount}>{currency} {batch.total.toFixed(2)}</Text>
                                     <Text style={styles.payHistoryDate}>{safeFormatDate(firstNP.date, 'MMM dd, HH:mm', '—')}</Text>
                                   </View>
-                                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.bronze }}>offset · no cash exchanged</Text>
+                                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.bronze }}>{t.debts.offsetNoCash}</Text>
                                   {descs.length > 0 && (
                                     <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 1 }}>{descs.join(' ↔ ')}</Text>
                                   )}
@@ -6284,12 +6284,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={dPayCloseSheet}
                     hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                     accessibilityRole="button"
-                    accessibilityLabel="close"
+                    accessibilityLabel={t.common.close}
                   >
                     {({ pressed }) => (
                       <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                         <Feather name="x" size={12} color={C.textMuted} />
-                        <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                        <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                       </View>
                     )}
                   </Pressable>
@@ -6333,7 +6333,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <Feather name="gift" size={22} color={C.bronze} />
                 </View>
 
-                <Text style={styles.tipModalTitle}>includes extra</Text>
+                <Text style={styles.tipModalTitle}>{t.debts.includesExtra}</Text>
                 <Text style={styles.tipModalDesc}>
                   {`${currency} ${tipConfirmData.tip.toFixed(2)} more than the remaining balance`}
                 </Text>
@@ -6341,11 +6341,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 {/* Amount breakdown — two stacked rows */}
                 <View style={styles.tipModalBreakdown}>
                   <View style={styles.tipModalBreakdownRow}>
-                    <Text style={styles.tipModalBreakdownLabel}>remaining balance</Text>
+                    <Text style={styles.tipModalBreakdownLabel}>{t.debts.remainingBalance}</Text>
                     <Text style={styles.tipModalBreakdownValue}>{currency} {(tipConfirmData.amount - tipConfirmData.tip).toFixed(2)}</Text>
                   </View>
                   <View style={[styles.tipModalBreakdownRow, styles.tipModalBreakdownRowLast]}>
-                    <Text style={styles.tipModalBreakdownLabel}>recording</Text>
+                    <Text style={styles.tipModalBreakdownLabel}>{t.debts.recordingLabel}</Text>
                     <Text style={[styles.tipModalBreakdownValue, { fontWeight: '700' as any }]}>{currency} {tipConfirmData.amount.toFixed(2)}</Text>
                   </View>
                   <View style={styles.tipModalExtraRow}>
@@ -6371,14 +6371,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   }}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.tipModalConfirmText}>record with tip</Text>
+                  <Text style={styles.tipModalConfirmText}>{t.debts.recordWithTip}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.tipModalCancelBtn}
                   onPress={() => { setTipConfirmVisible(false); setTipConfirmData(null); }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.tipModalCancelText}>cancel</Text>
+                  <Text style={styles.tipModalCancelText}>{t.common.cancel}</Text>
                 </TouchableOpacity>
               </View>
             </Reanimated.View>
@@ -6402,11 +6402,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               </View>
               <View style={styles.dDebtTitleZone}>
                 <Text style={styles.dDebtTitle}>
-                  split <Text style={styles.dDebtTitleAccent}>summary</Text>
+                  {t.debts.splitTitlePrefix}<Text style={styles.dDebtTitleAccent}>{t.debts.summary}</Text>
                 </Text>
                 {selectedSplit && (
                   <Text style={styles.dDebtSubtitle}>
-                    {selectedSplit.description.toLowerCase()} · {selectedSplit.participants.length} {selectedSplit.participants.length === 1 ? 'person' : 'people'}
+                    {selectedSplit.description.toLowerCase()} · {selectedSplit.participants.length} {selectedSplit.participants.length === 1 ? t.debts.personSingular : t.debts.personPlural}
                   </Text>
                 )}
               </View>
@@ -6434,7 +6434,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 const taxPerPerson = Math.round((selectedSplit.taxAmount / (participantsWithAmount.length || 1)) * 100) / 100;
                 participantsWithAmount.forEach((p) => {
                   const list = itemBreakdown.get(p.contact.id);
-                  if (list) list.push({ name: 'Tax', amount: taxPerPerson, shared: true });
+                  if (list) list.push({ name: t.debts.tax, amount: taxPerPerson, shared: true });
                 });
               }
 
@@ -6463,14 +6463,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <View style={styles.detailMetaSection}>
                     {selectedSplit.paidBy && (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>paid by</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.paidBy}</Text>
                         <Text style={styles.detailMetaValue}>
-                          {selectedSplit.paidBy.id === '__self__' ? 'you' : selectedSplit.paidBy.name.toLowerCase()}
+                          {selectedSplit.paidBy.id === '__self__' ? t.debts.youLabel : selectedSplit.paidBy.name.toLowerCase()}
                         </Text>
                       </View>
                     )}
                     <View style={styles.detailMetaRow}>
-                      <Text style={styles.detailMetaLabel}>when</Text>
+                      <Text style={styles.detailMetaLabel}>{t.debts.when}</Text>
                       <Text style={styles.detailMetaValue}>
                         {safeFormatDate(selectedSplit.createdAt, 'MMM dd, yyyy', '—').toLowerCase()}
                       </Text>
@@ -6479,7 +6479,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       const dd = new Date((selectedSplit as any).dueDate);
                       return isValid(dd) ? (
                         <View style={styles.detailMetaRow}>
-                          <Text style={styles.detailMetaLabel}>due</Text>
+                          <Text style={styles.detailMetaLabel}>{t.debts.due}</Text>
                           <Text style={styles.detailMetaValue}>
                             {format(dd, 'MMM dd, yyyy').toLowerCase()}
                           </Text>
@@ -6490,23 +6490,23 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       const w = wallets.find((wl) => wl.id === selectedSplit.walletId);
                       return w ? (
                         <View style={styles.detailMetaRow}>
-                          <Text style={styles.detailMetaLabel}>wallet</Text>
+                          <Text style={styles.detailMetaLabel}>{t.debts.wallet}</Text>
                           <Text style={styles.detailMetaValue}>{w.name.toLowerCase()}</Text>
                         </View>
                       ) : null;
                     })()}
                     {selectedSplit.taxAmount != null && selectedSplit.taxAmount > 0 && (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>tax</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.tax}</Text>
                         <Text style={styles.detailMetaValue}>
-                          {currency} {selectedSplit.taxAmount.toFixed(2)} · {selectedSplit.taxHandling === 'divide' ? 'split equally' : 'waived'}
+                          {currency} {selectedSplit.taxAmount.toFixed(2)} · {selectedSplit.taxHandling === 'divide' ? t.debts.splitEqually : t.debts.waived}
                         </Text>
                       </View>
                     )}
                   </View>
 
                   {/* Per person section */}
-                  <Text style={styles.detailSectionLabel}>per person</Text>
+                  <Text style={styles.detailSectionLabel}>{t.debts.perPerson}</Text>
                   {selectedSplit.participants.map((p) => {
                     const items = itemBreakdown.get(p.contact.id) || [];
                     const isPaid = p.isPaid;
@@ -6525,10 +6525,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             </View>
                             <View style={{ flex: 1, minWidth: 0 }}>
                               <Text style={styles.detailPersonName} numberOfLines={1}>
-                                {isSelf ? 'you' : p.contact.name.toLowerCase()}
+                                {isSelf ? t.debts.youLabel : p.contact.name.toLowerCase()}
                               </Text>
                               <Text style={styles.detailPersonStatus}>
-                                {isSelf ? 'your share' : isPaid ? 'paid' : 'unpaid'}
+                                {isSelf ? t.debts.yourShare : isPaid ? t.debts.paid : t.debts.unpaid}
                               </Text>
                             </View>
                             <Text style={[styles.detailPersonAmount, { color: participantColor }]}>
@@ -6551,7 +6551,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             >
                               <Feather name={isPaid ? 'check-circle' : 'circle'} size={13} color={isPaid ? settledColor : pendingColor} />
                               <Text style={[styles.detailPersonActionText, { color: isPaid ? settledColor : pendingColor }]}>
-                                {isPaid ? 'paid · undo' : 'mark paid'}
+                                {isPaid ? t.debts.paidUndo : t.debts.markPaidChip}
                               </Text>
                             </TouchableOpacity>
                           )}
@@ -6561,7 +6561,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               {items.map((share, idx) => (
                                 <View key={idx} style={styles.detailItemRow}>
                                   <Text style={styles.detailItemName} numberOfLines={1}>
-                                    {share.name.toLowerCase()}{share.shared ? ' · shared' : ''}
+                                    {share.name.toLowerCase()}{share.shared ? ` · ${t.debts.sharedLabel}` : ''}
                                   </Text>
                                   <Text style={styles.detailItemAmount}>
                                     {currency} {share.amount.toFixed(2)}
@@ -6604,11 +6604,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         if (isAr) {
                           unarchiveSplit(sid);
                           linkedDebts.forEach((d) => unarchiveDebt(d.id));
-                          showToast('split unarchived', 'success');
+                          showToast(t.debts.splitUnarchived, 'success');
                         } else {
                           archiveSplit(sid);
                           linkedDebts.forEach((d) => archiveDebt(d.id));
-                          showToast('split archived', 'success');
+                          showToast(t.debts.splitArchived, 'success');
                         }
                       }, 100);
                     }}
@@ -6623,12 +6623,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 onPress={dSplitDetailCloseSheet}
                 hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                 accessibilityRole="button"
-                accessibilityLabel="close"
+                accessibilityLabel={t.common.close}
               >
                 {({ pressed }) => (
                   <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                     <Feather name="x" size={12} color={C.textMuted} />
-                    <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                    <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                   </View>
                 )}
               </Pressable>
@@ -7063,7 +7063,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             onPress={() => { setWizardDueDate(null); setWizardDueDatePickerOpen(false); }}
                             style={{ alignSelf: 'center', paddingVertical: SPACING.xs }}
                           >
-                            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>clear due date</Text>
+                            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>{t.debts.clearDueDate}</Text>
                           </TouchableOpacity>
                         )}
                       </View>
@@ -7093,7 +7093,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       {person.itemShares.map((share, idx) => (
                         <View key={idx} style={styles.wizardShareRow}>
                           <Text style={styles.wizardShareName} numberOfLines={1}>
-                            {share.name}{share.shared ? ' (shared)' : ''}
+                            {share.name}{share.shared ? ` ${t.debts.sharedSuffix}` : ''}
                           </Text>
                           <Text style={styles.wizardShareAmount}>
                             {currency} {share.amount.toFixed(2)}
@@ -7600,12 +7600,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={dReminderCloseSheet}
                     hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                     accessibilityRole="button"
-                    accessibilityLabel="close"
+                    accessibilityLabel={t.common.close}
                   >
                     {({ pressed }) => (
                       <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                         <Feather name="x" size={12} color={C.textMuted} />
-                        <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                        <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                       </View>
                     )}
                   </Pressable>
@@ -7765,12 +7765,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={dReqCloseSheet}
                     hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                     accessibilityRole="button"
-                    accessibilityLabel="close"
+                    accessibilityLabel={t.common.close}
                   >
                     {({ pressed }) => (
                       <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                         <Feather name="x" size={12} color={C.textMuted} />
-                        <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                        <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                       </View>
                     )}
                   </Pressable>
