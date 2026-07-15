@@ -99,6 +99,10 @@
    sage chart panel, quiet numbered sections, two-column FAQs, cream final CTA.
    Everything below is page-local; --app-* rules live INSIDE phone frames only. */
 
+/* ── chapter views: clear the fixed nav when a chapter (not home) is open ── */
+body.chapter main{padding-top:var(--nav-h)}
+main section[id],#top{scroll-margin-top:var(--nav-h)}
+
 /* ── quiet numbered index marks (the book's numbering, kept as a quiet label) ── */
 .sec-mark{display:flex;justify-content:center;align-items:baseline;gap:10px;font-family:var(--font-mono);font-size:var(--text-xs);font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45);margin-bottom:var(--space-lg)}
 .sec-mark .no::after{content:"·";margin-left:10px;color:var(--sage-deep)}
@@ -315,7 +319,20 @@
 .persona .help{font-size:.94rem;color:var(--ink-65);margin-top:7px;line-height:1.55}
 .persona .help b{color:var(--ink);font-weight:var(--fw-semibold)}
 
-/* ── №10 COLOPHON ── */
+/* ── №10 NEXT PAGES — available now vs coming in V1.2 ── */
+.roadmap-grid{display:grid;gap:22px;align-items:stretch}
+@media (min-width:860px){.roadmap-grid{grid-template-columns:1fr 1fr}}
+.roadmap-card{display:flex;flex-direction:column}
+.roadmap-card .badge{align-self:flex-start}
+.roadmap-card h3{font-size:var(--text-lg);font-weight:var(--fw-medium);margin:14px 0 4px}
+.roadmap-card ul{list-style:none;display:flex;flex-direction:column;gap:10px;margin:12px 0 0;padding:0}
+.roadmap-card li{display:flex;gap:9px;font-size:.92rem;color:var(--ink-65);align-items:flex-start;line-height:1.55}
+.roadmap-card li svg{width:15px;height:15px;flex-shrink:0;margin-top:3px;stroke:var(--sage-deep);fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.roadmap-card--soon li svg{stroke:var(--gold-deep)}
+.badge--v12{color:var(--gold-deep);background:var(--gold-pale)}
+.roadmap-card .rc-note{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);margin-top:14px}
+
+/* ── №11 COLOPHON ── */
 .story-inner{max-width:620px;margin:0 auto;display:flex;flex-direction:column;align-items:center;text-align:center;gap:20px}
 .story-wau{width:88px;height:88px;border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-md)}
 .story-wau svg{width:100%;height:100%;display:block}
@@ -323,7 +340,7 @@
 .story-text p{font-size:var(--text-md);line-height:var(--leading-relaxed);color:var(--ink-65);margin-bottom:12px}
 .story-text p:last-child{margin-bottom:0}
 
-/* ── №11 PRIVATE RECORDS ── */
+/* ── №12 PRIVATE RECORDS ── */
 .sec-grid{display:grid;gap:18px}
 @media (min-width:760px){.sec-grid{grid-template-columns:1fr 1fr}}
 .sec-item{display:flex;gap:14px}
@@ -340,7 +357,7 @@
 .pricing-card h3{font-size:var(--text-xl);font-weight:var(--fw-medium);margin:0 0 6px}
 .pricing-card p{color:var(--ink-65);line-height:1.6}
 
-/* ── №12 FAQ — two-column (kit .faq-2col) ── */
+/* ── №13 FAQ — two-column (kit .faq-2col) ── */
 .faq-left .eyebrow{margin-bottom:var(--space-sm)}
 
 /* ── FINAL CTA — cream giant-radius panel ── */
@@ -448,7 +465,7 @@
 <span id="top"></span>
 
 <!-- ════════════ HERO — the studied pattern: badge eyebrow · giant H1 with ONE italic word · pill form · real phone ════════════ -->
-<section class="hero hero-center">
+<section class="hero hero-center" data-view="home">
   <div class="container">
     <span class="eyebrow">
       <span class="ic" aria-hidden="true" id="herowau"></span>
@@ -596,7 +613,7 @@
 </section>
 
 <!-- ════════════ TICKER — quiet trust strip (#marquee mechanics preserved) ════════════ -->
-<section class="marquee-band reveal" aria-label="Plays nice with your money">
+<section class="marquee-band reveal" aria-label="Plays nice with your money" data-view="home">
   <div class="container">
     <div class="marquee-lbl" data-en="Plays nice with your money" data-bm="Sesuai dengan duit korang">Plays nice with your money</div>
   </div>
@@ -623,7 +640,7 @@
 </section>
 
 <!-- ════════════ №01 · THE ONE INK SECTION — the real app, showcased ════════════ -->
-<section class="showcase">
+<section class="showcase" data-view="home">
   <div class="container-wide">
     <div class="panel panel--ink">
       <p class="sec-mark"><span class="no">No. 01</span><span class="ttl" data-en="From the book to the phone" data-bm="Dari buku ke telefon">From the book to the phone</span></p>
@@ -690,7 +707,7 @@
 </section>
 
 <!-- ════════════ №02 · EXTRA LEAVES — the remaining screens, floating ════════════ -->
-<section class="extra">
+<section class="extra" data-view="features">
   <div class="container">
     <p class="sec-mark"><span class="no">No. 02</span><span class="ttl" data-en="Extra leaves" data-bm="Lagi helaian">Extra leaves</span></p>
     <div class="phones-row reveal">
@@ -753,7 +770,7 @@
 </section>
 
 <!-- ════════════ №03 · THE BALANCE — sage giant-radius panel: benefits, month card, calm chart ════════════ -->
-<section class="balance">
+<section class="balance" data-view="features">
   <div class="container-wide">
     <div class="panel panel--sage-radial">
       <p class="sec-mark"><span class="no">No. 03</span><span class="ttl" data-en="The balance" data-bm="Baki">The balance</span></p>
@@ -847,7 +864,7 @@
 </section>
 
 <!-- ════════════ №04 · THE CATALOGUE (FEATURES) ════════════ -->
-<section class="catalog" id="features">
+<section class="catalog" id="features" data-view="features">
   <div class="container">
     <p class="sec-mark"><span class="no">No. 04</span><span class="ttl" data-en="The catalogue" data-bm="Katalog">The catalogue</span></p>
     <div class="section-head reveal">
@@ -953,7 +970,7 @@
 </section>
 
 <!-- ════════════ №05 · ASK & ANSWER — Echo, on a soft wash ════════════ -->
-<section class="askecho">
+<section class="askecho" data-view="features">
   <div class="container-wide">
     <div class="panel panel--soft">
       <p class="sec-mark"><span class="no">No. 05</span><span class="ttl" data-en="Ask & answer" data-bm="Tanya & jawab">Ask &amp; answer</span></p>
@@ -986,7 +1003,7 @@
 </section>
 
 <!-- ════════════ №06 · TWO MODES ════════════ -->
-<section class="modes">
+<section class="modes" data-view="features">
   <div class="container">
     <p class="sec-mark"><span class="no">No. 06</span><span class="ttl" data-en="Two books" data-bm="Dua buku">Two books</span></p>
     <div class="section-head reveal">
@@ -1040,7 +1057,7 @@
 </section>
 
 <!-- ════════════ №07 · THREE STEPS — white cards on a cream wash ════════════ -->
-<section class="how" id="how">
+<section class="how" id="how" data-view="how">
   <div class="container-wide">
     <div class="panel panel--cream">
       <p class="sec-mark"><span class="no">No. 07</span><span class="ttl" data-en="Three steps" data-bm="Tiga langkah">Three steps</span></p>
@@ -1054,12 +1071,12 @@
         <article class="card step-card reveal" style="--d:0ms">
           <div class="si" aria-hidden="true"><span>01</span><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></div>
           <h3 data-en="Add it your way" data-bm="Tambah ikut gaya kau">Add it your way</h3>
-          <p data-en="Snap a receipt, type a line, or just ask." data-bm="Snap resit, taip satu baris, atau tanya je.">Snap a receipt, type a line, or just ask.</p>
+          <p data-en="Snap a receipt, type a line, or just ask Echo to log it." data-bm="Snap resit, taip satu baris, atau suruh Echo je log-kan.">Snap a receipt, type a line, or just ask Echo to log it.</p>
         </article>
         <article class="card step-card reveal" style="--d:90ms">
           <div class="si" aria-hidden="true"><span>02</span><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
           <h3 data-en="We sort it" data-bm="Kami susun">We sort it</h3>
-          <p data-en="Amount, category and wallet, filled in for you." data-bm="Jumlah, kategori & dompet, kami isikan.">Amount, category and wallet, filled in for you.</p>
+          <p data-en="Amount, category and wallet, filled in for you — or customise your own." data-bm="Jumlah, kategori & dompet, kami isikan — atau set sendiri ikut kau.">Amount, category and wallet, filled in for you — or customise your own.</p>
         </article>
         <article class="card step-card reveal" style="--d:180ms">
           <div class="si" aria-hidden="true"><span>03</span><svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
@@ -1072,7 +1089,7 @@
 </section>
 
 <!-- ════════════ №08 · ATTACHMENTS — a look inside ════════════ -->
-<section class="gallery">
+<section class="gallery" data-view="how">
   <div class="container">
     <p class="sec-mark"><span class="no">No. 08</span><span class="ttl" data-en="Attachments" data-bm="Lampiran">Attachments</span></p>
     <div class="section-head reveal">
@@ -1133,7 +1150,7 @@
 </section>
 
 <!-- ════════════ №09 · WHO IT'S FOR ════════════ -->
-<section class="who" id="who">
+<section class="who" id="who" data-view="who">
   <div class="container">
     <p class="sec-mark"><span class="no">No. 09</span><span class="ttl" data-en="The book's owners" data-bm="Pemilik buku">The book's owners</span></p>
     <div class="section-head reveal">
@@ -1177,10 +1194,49 @@
   </div>
 </section>
 
-<!-- ════════════ №10 · COLOPHON — why a kite ════════════ -->
-<section class="story">
+<!-- ════════════ №10 · NEXT PAGES — available now vs coming in V1.2 ════════════ -->
+<section class="roadmap" data-view="who">
   <div class="container">
-    <p class="sec-mark"><span class="no">No. 10</span><span class="ttl" data-en="Colophon" data-bm="Kolofon">Colophon</span></p>
+    <p class="sec-mark"><span class="no">No. 10</span><span class="ttl" data-en="The next pages" data-bm="Helaian seterusnya">The next pages</span></p>
+    <div class="section-head reveal">
+      <span class="eyebrow" data-en="In the app today vs V1.2" data-bm="Dalam app hari ni vs V1.2">In the app today vs V1.2</span>
+      <h2>
+        <span data-en="Here now. Coming next." data-bm="Dah ada. Akan datang." class="block">Here now. Coming next.</span>
+      </h2>
+      <p data-en="Everything on the left is in the beta today. The right column lands in V1.2." data-bm="Semua di kiri dah ada dalam beta hari ni. Senarai kanan sampai dalam V1.2.">Everything on the left is in the beta today. The right column lands in V1.2.</p>
+    </div>
+    <div class="roadmap-grid">
+      <article class="card roadmap-card reveal" style="--d:0ms">
+        <span class="badge badge--sage" data-en="Available in the beta" data-bm="Dah ada dalam beta">Available in the beta</span>
+        <h3 data-en="What you can use today" data-bm="Apa yang boleh guna hari ni">What you can use today</h3>
+        <ul>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Quick log — type it, snap a receipt, or ask Echo" data-bm="Log pantas — taip, snap resit, atau tanya Echo">Quick log — type it, snap a receipt, or ask Echo</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Wallets for cash, bank & e-wallet" data-bm="Dompet untuk tunai, bank & e-wallet">Wallets for cash, bank &amp; e-wallet</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Soft budgets, goals & bills" data-bm="Bajet lembut, matlamat & bil">Soft budgets, goals &amp; bills</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Debts & splits — who owes who" data-bm="Hutang & pecah bil — sapa hutang sapa">Debts &amp; splits — who owes who</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Ask Echo in English, BM or Manglish" data-bm="Tanya Echo dalam English, BM atau Manglish">Ask Echo in English, BM or Manglish</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Seller mode — shop link + DuitNow QR" data-bm="Mod penjual — link kedai + DuitNow QR">Seller mode — shop link + DuitNow QR</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Works offline, CSV & statement import" data-bm="Guna offline, import CSV & penyata">Works offline, CSV &amp; statement import</span></li>
+        </ul>
+      </article>
+      <article class="card roadmap-card roadmap-card--soon reveal" style="--d:90ms">
+        <span class="badge badge--v12" data-en="Coming in V1.2" data-bm="Akan datang dalam V1.2">Coming in V1.2</span>
+        <h3 data-en="What lands next" data-bm="Apa yang sampai lepas ni">What lands next</h3>
+        <ul>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span data-en="Back Tap quick log — log without opening the app" data-bm="Log pantas Back Tap — log tanpa buka app">Back Tap quick log — log without opening the app</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span data-en="A dedicated Savings & Investments space" data-bm="Ruang khas Simpanan & Pelaburan">A dedicated Savings &amp; Investments space</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span data-en="Multi-device sync across your phones" data-bm="Sync merentas semua phone kau">Multi-device sync across your phones</span></li>
+        </ul>
+        <p class="rc-note" data-en="Order may shift a little — beta life." data-bm="Susunan boleh ubah sikit — maklumlah, beta.">Order may shift a little — beta life.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ №11 · COLOPHON — why a kite ════════════ -->
+<section class="story" data-view="home">
+  <div class="container">
+    <p class="sec-mark"><span class="no">No. 11</span><span class="ttl" data-en="Colophon" data-bm="Kolofon">Colophon</span></p>
     <div class="story-inner">
       <div class="story-wau reveal" aria-hidden="true" id="storywau"></div>
       <div class="story-text reveal">
@@ -1193,10 +1249,10 @@
   </div>
 </section>
 
-<!-- ════════════ №11 · PRIVATE RECORDS — privacy ════════════ -->
-<section class="security" id="privacy">
+<!-- ════════════ №12 · PRIVATE RECORDS — privacy ════════════ -->
+<section class="security" id="privacy" data-view="privacy">
   <div class="container">
-    <p class="sec-mark"><span class="no">No. 11</span><span class="ttl" data-en="Private records" data-bm="Rekod peribadi">Private records</span></p>
+    <p class="sec-mark"><span class="no">No. 12</span><span class="ttl" data-en="Private records" data-bm="Rekod peribadi">Private records</span></p>
     <div class="section-head reveal">
       <span class="eyebrow" data-en="Your data, your call" data-bm="Data kau, kau yang tentukan">Your data, your call</span>
       <h2>
@@ -1240,7 +1296,7 @@
 </section>
 
 <!-- ════════════ PRICING — an honest card ════════════ -->
-<section class="pricing" style="padding-top:0">
+<section class="pricing" style="padding-top:0" data-view="privacy">
   <div class="container">
     <div class="card card-lg pricing-card reveal">
       <span class="badge badge--sage" data-en="Free during beta" data-bm="Free masa beta">Free during beta</span>
@@ -1250,10 +1306,10 @@
   </div>
 </section>
 
-<!-- ════════════ №12 · FAQ — two-column: big label left, hairline accordion right ════════════ -->
-<section class="faq" id="faq">
+<!-- ════════════ №13 · FAQ — two-column: big label left, hairline accordion right ════════════ -->
+<section class="faq" id="faq" data-view="faq">
   <div class="container">
-    <p class="sec-mark"><span class="no">No. 12</span><span class="ttl" data-en="Q & A" data-bm="Soal jawab">Q &amp; A</span></p>
+    <p class="sec-mark"><span class="no">No. 13</span><span class="ttl" data-en="Q & A" data-bm="Soal jawab">Q &amp; A</span></p>
     <div class="faq-2col">
       <div class="faq-left reveal">
         <div><span class="eyebrow" data-en="FAQ" data-bm="Soalan">FAQ</span></div>
@@ -1296,7 +1352,7 @@
 </section>
 
 <!-- ════════════ FINAL CTA — cream giant-radius panel ════════════ -->
-<section class="final-cta" id="join">
+<section class="final-cta" id="join" data-view="all">
   <div class="container-wide">
     <div class="panel panel--cream cta-panel">
       <div class="cta-wau" aria-hidden="true" id="ctawau"></div>
@@ -1493,6 +1549,39 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   btn.addEventListener('click', function(){ setOpen(!sheet.classList.contains('open')); });
   sheet.querySelectorAll('a').forEach(function(a){ a.addEventListener('click', function(){ setOpen(false); }); });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') setOpen(false); });
+})();
+
+/* ── chapter views — nav links open one chapter at a time instead of one long scroll.
+   Each <section data-view="…"> belongs to a view (home / features / how / who / privacy / faq);
+   "all" shows on every view (final CTA). No JS (crawlers) = the full page, unchanged. ── */
+(function(){
+  var VIEWS=['features','how','who','privacy','faq'];
+  var sections=document.querySelectorAll('main section[data-view]');
+  var links=document.querySelectorAll('.nav-links a[href^="#"], .mobile-sheet a[href^="#"]');
+  function setView(v, scroll){
+    sections.forEach(function(s){
+      var tags=(s.getAttribute('data-view')||'').split(' ');
+      s.style.display = (tags.indexOf('all')>-1 || tags.indexOf(v)>-1) ? '' : 'none';
+    });
+    links.forEach(function(a){
+      a.classList.toggle('active', a.getAttribute('href')==='#'+v);
+    });
+    document.body.classList.toggle('chapter', v!=='home');
+    if(scroll) window.scrollTo(0,0);
+  }
+  window.addEventListener('hashchange', function(){
+    var h=(location.hash||'').replace('#','');
+    if(VIEWS.indexOf(h)>-1){ setView(h, true); }
+    else if(h==='' || h==='top'){ setView('home', false); }
+    /* other anchors (#main, #join) keep the current view and just scroll */
+  });
+  var h0=(location.hash||'').replace('#','');
+  setView(VIEWS.indexOf(h0)>-1 ? h0 : 'home', false);
+  /* a chapter link opens at the top of its chapter, even on a direct load —
+     override the browser's native jump to the mid-chapter anchor */
+  if(VIEWS.indexOf(h0)>-1){
+    window.addEventListener('load', function(){ window.scrollTo(0,0); });
+  }
 })();
 
 /* ── scroll reveal ── */
