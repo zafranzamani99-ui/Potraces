@@ -63,7 +63,19 @@ function triggerDateFor(sub: Subscription, daysBefore = DEFAULT_DAYS_BEFORE): Da
   const trigger = new Date(billing.getTime());
   trigger.setDate(trigger.getDate() - daysBefore);
   trigger.setHours(NOTIFY_HOUR, NOTIFY_MINUTE, 0, 0);
-  return trigger.getTime() > Date.now() ? trigger : null;
+  if (trigger.getTime() > Date.now()) return trigger;
+  // The reminder window has already passed — the bill is imminent (due within a day)
+  // or overdue. These are exactly the bills that most need a nudge, so instead of
+  // going silent (returning null), fire once at the next 09:00. We DON'T do this for
+  // a far-future bill whose window merely passed because reminderDays was set huge.
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  if (billing.getTime() <= Date.now() + ONE_DAY) {
+    const soon = new Date();
+    soon.setHours(NOTIFY_HOUR, NOTIFY_MINUTE, 0, 0);
+    if (soon.getTime() <= Date.now()) soon.setDate(soon.getDate() + 1);
+    return soon;
+  }
+  return null;
 }
 
 export async function cancelForSubscription(subId: string): Promise<void> {
@@ -79,13 +91,22 @@ export async function scheduleForSubscription(sub: Subscription): Promise<void> 
   await cancelForSubscription(sub.id);
 
   if (!sub.isActive || sub.isPaused) return;
+  // A finished installment plan no longer bills — its nextBillingDate points at a
+  // phantom cycle, so don't keep nagging the user about a loan they've paid off.
+  if (sub.isInstallment && sub.totalInstallments && (sub.completedInstallments ?? 0) >= sub.totalInstallments) return;
+  // A non-finite amount would render "RM NaN" in the body — skip it.
+  if (!Number.isFinite(sub.amount)) return;
   const daysBefore = Math.max(0, sub.reminderDays ?? DEFAULT_DAYS_BEFORE);
   const trigger = triggerDateFor(sub, daysBefore);
   if (!trigger) return;
 
   const currency = useSettingsStore.getState().currency ?? 'RM';
-  const title = `${sub.name} is due soon`;
-  const body = `${currency} ${sub.amount.toFixed(2)} due on ${formatDueDate(sub.nextBillingDate)}.`;
+  const billing = sub.nextBillingDate instanceof Date ? sub.nextBillingDate : new Date(sub.nextBillingDate as any);
+  const overdue = !isNaN(billing.getTime()) && billing.getTime() < Date.now();
+  const title = overdue ? `${sub.name} is overdue` : `${sub.name} is due soon`;
+  const body = overdue
+    ? `${currency} ${sub.amount.toFixed(2)} was due ${formatDueDate(sub.nextBillingDate)}.`
+    : `${currency} ${sub.amount.toFixed(2)} due on ${formatDueDate(sub.nextBillingDate)}.`;
 
   try {
     await Notifications.scheduleNotificationAsync({

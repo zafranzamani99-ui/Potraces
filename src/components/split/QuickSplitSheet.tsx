@@ -102,7 +102,7 @@ const QuickSplitSheet: React.FC<Props> = ({ visible, total, onClose, onCreated }
             {titleLead ? titleLead + ' ' : ''}
             <Text style={styles.titleAccent}>{titleTail}</Text>
           </Text>
-          <Text style={styles.subtitle}>split a bill evenly</Text>
+          <Text style={styles.subtitle}>{t.debts.subtitle}</Text>
         </View>
       }
     >
@@ -130,7 +130,7 @@ const QuickSplitSheet: React.FC<Props> = ({ visible, total, onClose, onCreated }
             style={[styles.fieldInput, styles.fieldMultiline]}
             value={description}
             onChangeText={setDescription}
-            placeholder="e.g. dinner, groceries"
+            placeholder={t.debts.descriptionPlaceholder}
             placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
             multiline
             textAlignVertical="top"
@@ -139,7 +139,7 @@ const QuickSplitSheet: React.FC<Props> = ({ visible, total, onClose, onCreated }
 
         {/* Who's in — single input card (avatar + placeholder + contacts pill + recent chips) */}
         <View style={styles.pickerWrap}>
-          <Text style={styles.pickerLabel}>{"who's in "}<Text style={styles.requiredStar}>*</Text></Text>
+          <Text style={styles.pickerLabel}>{t.debts.whosIn}<Text style={styles.requiredStar}>*</Text></Text>
           <ContactPicker
             selectedContacts={participants}
             onSelect={handleParticipantsChange}
@@ -148,13 +148,13 @@ const QuickSplitSheet: React.FC<Props> = ({ visible, total, onClose, onCreated }
             selfName={selfName}
             variant="input"
             hideLabel
-            placeholder="add a name"
+            placeholder={t.debts.addNamePlaceholder}
           />
         </View>
 
         {/* Who paid — pick one of the people in the split */}
         <View style={styles.pickerWrap}>
-          <Text style={styles.pickerLabel}>who paid <Text style={styles.requiredStar}>*</Text></Text>
+          <Text style={styles.pickerLabel}>{t.debts.whoPaid}<Text style={styles.requiredStar}>*</Text></Text>
           <View style={styles.payerChips}>
             {participants.map((c) => {
               const active = payerId === c.id;
@@ -163,7 +163,7 @@ const QuickSplitSheet: React.FC<Props> = ({ visible, total, onClose, onCreated }
                   key={c.id}
                   onPress={() => selectPayer(c.id)}
                   accessibilityRole="button"
-                  accessibilityLabel={`paid by ${c.name}`}
+                  accessibilityLabel={t.debts.paidByA11y.replace('{name}', c.name)}
                   accessibilityState={{ selected: active }}
                 >
                   <View style={[styles.payerChip, neuS.raised, active && styles.payerChipActive]}>
@@ -184,8 +184,8 @@ const QuickSplitSheet: React.FC<Props> = ({ visible, total, onClose, onCreated }
               onSelect={setWalletId}
               onClear={() => setWalletId(null)}
               allowNone
-              noneLabel="no wallet"
-              label="pay from"
+              noneLabel={t.debts.noWallet}
+              label={t.debts.payFrom}
               faintNeu
             />
           </View>

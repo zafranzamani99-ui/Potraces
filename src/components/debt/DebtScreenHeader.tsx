@@ -5,6 +5,7 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../c
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
+import { formatAmount } from '../../utils/formatters';
 import type { DebtFilter, DebtTypeFilter, DebtSort } from '../../screens/shared/debt/useDebtFilters';
 
 type TabType = 'debts' | 'splits' | 'shared';
@@ -78,6 +79,9 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
       <View style={styles.heroRow}>
         <TouchableOpacity
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t.debts.a11yFilterYouOwe.replace('{amount}', formatAmount(balanceSummary.youOwe, currency))}
+          accessibilityState={{ selected: debtTypeFilter === 'i_owe' }}
           onPress={() => {
             setDebtTypeFilter(debtTypeFilter === 'i_owe' ? null : 'i_owe');
             setDebtFilter(debtFilter === 'pending' ? null : 'pending');
@@ -91,16 +95,19 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
         >
           <Text style={styles.heroTileLabel}>{t.debts.youOwe}</Text>
           <Text style={[styles.heroTileAmount, { color: iOweColor }]}>
-            {currency} {balanceSummary.youOwe.toFixed(2)}
+            {formatAmount(balanceSummary.youOwe, currency)}
           </Text>
           {balanceSummary.paid > 0 && (
             <Text style={[styles.heroTileSub, { color: settledColor }]}>
-              {balanceSummary.paid.toFixed(2)} paid
+              {t.debts.amountPaid.replace('{amount}', balanceSummary.paid.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
             </Text>
           )}
         </TouchableOpacity>
         <TouchableOpacity
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t.debts.a11yFilterOwedToYou.replace('{amount}', formatAmount(balanceSummary.owedToYou, currency))}
+          accessibilityState={{ selected: debtTypeFilter === 'they_owe' }}
           onPress={() => {
             setDebtTypeFilter(debtTypeFilter === 'they_owe' ? null : 'they_owe');
             setDebtFilter(debtFilter === 'pending' ? null : 'pending');
@@ -114,11 +121,11 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
         >
           <Text style={styles.heroTileLabel}>{t.debts.owedToYou}</Text>
           <Text style={[styles.heroTileAmount, { color: theyOweColor }]}>
-            {currency} {balanceSummary.owedToYou.toFixed(2)}
+            {formatAmount(balanceSummary.owedToYou, currency)}
           </Text>
           {balanceSummary.collected > 0 && (
             <Text style={[styles.heroTileSub, { color: settledColor }]}>
-              {balanceSummary.collected.toFixed(2)} collected
+              {t.sharedSubs.collected.replace('{amount}', balanceSummary.collected.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
             </Text>
           )}
         </TouchableOpacity>
@@ -131,18 +138,20 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
           style={styles.searchInput}
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder={activeTab === 'debts' ? 'Search debts...' : 'Search splits...'}
+          placeholder={activeTab === 'debts' ? t.debts.searchDebts : t.debts.searchSplits}
           placeholderTextColor={C.textMuted}
           returnKeyType="search"
           keyboardAppearance={isDark ? 'dark' : 'light'}
           selectionColor={withAlpha(C.accent, 0.25)}
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={t.debts.a11yClearSearch} onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Feather name="x-circle" size={16} color={C.textMuted} />
           </TouchableOpacity>
         )}
         <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={t.debts.a11ySortFilter}
           onPress={() => setSortModalVisible(true)}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           style={{ paddingLeft: SPACING.xs }}
@@ -159,6 +168,9 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
       {/* Tab Toggle */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel={t.debts.a11yDebtsTab}
+          accessibilityState={{ selected: activeTab === 'debts' }}
           style={[styles.tab, activeTab === 'debts' && styles.tabActive]}
           onPress={() => {
             if (selectionMode) exitSelectionMode();
@@ -168,7 +180,7 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
         >
           <Feather name="users" size={16} color={activeTab === 'debts' ? C.accent : C.textSecondary} />
           <Text style={[styles.tabText, activeTab === 'debts' && styles.tabTextActive]}>
-            Debts
+            {t.debts.debtsLabel}
           </Text>
           <View style={{
             backgroundColor: activeTab === 'debts' ? C.accent : withAlpha(C.textSecondary, 0.15),
@@ -184,6 +196,9 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
           </View>
         </TouchableOpacity>
         <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel={t.debts.a11ySplitsTab}
+          accessibilityState={{ selected: activeTab === 'splits' }}
           style={[styles.tab, activeTab === 'splits' && styles.tabActive]}
           onPress={() => {
             if (selectionMode) exitSelectionMode();
@@ -193,7 +208,7 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
         >
           <Feather name="scissors" size={16} color={activeTab === 'splits' ? C.accent : C.textSecondary} />
           <Text style={[styles.tabText, activeTab === 'splits' && styles.tabTextActive]}>
-            Splits
+            {t.debts.splitsLabel}
           </Text>
           <View style={{
             backgroundColor: activeTab === 'splits' ? C.accent : withAlpha(C.textSecondary, 0.15),
@@ -209,6 +224,9 @@ const DebtScreenHeader: React.FC<DebtScreenHeaderProps> = ({
           </View>
         </TouchableOpacity>
         <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel={t.debts.a11ySharedTab}
+          accessibilityState={{ selected: activeTab === 'shared' }}
           style={[styles.tab, activeTab === 'shared' && styles.tabActive]}
           onPress={() => {
             if (selectionMode) exitSelectionMode();

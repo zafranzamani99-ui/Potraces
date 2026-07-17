@@ -1,6 +1,6 @@
 import { format, differenceInDays, isValid } from 'date-fns';
 import { DEBT_TYPES_SAFE, DEBT_STATUSES_SAFE, semantic } from '../constants';
-import { Contact, Debt, SplitExpense } from '../types';
+import { Debt, SplitExpense } from '../types';
 
 /**
  * Normalize a free-typed amount string: strip commas + non-numeric chars,
@@ -115,22 +115,6 @@ export function computeBalanceSummary(modeDebts: Debt[]): {
     .reduce((sum, d) => sum + d.payments.filter((p) => p.note !== 'netted').reduce((s, p) => s + p.amount, 0), 0);
 
   return { youOwe, owedToYou, collected, paid };
-}
-
-/** Up to 8 most-recent unique people from existing debts (quick-pick chips). */
-export function getRecentDebtPeople(debts: Debt[]): Contact[] {
-  const seen = new Set<string>();
-  const out: Contact[] = [];
-  const sorted = [...debts].sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
-  for (const d of sorted) {
-    const c = d.contact;
-    const key = c?.name?.trim().toLowerCase();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(c);
-    if (out.length >= 8) break;
-  }
-  return out;
 }
 
 /** Date label for a contact's debt group: "settled MMM d" / "since MMM d" / null. */

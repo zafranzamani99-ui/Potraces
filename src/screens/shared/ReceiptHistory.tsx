@@ -8,12 +8,12 @@ import {
   Alert,
   Pressable,
 } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { format, getYear } from 'date-fns';
-import { Swipeable } from 'react-native-gesture-handler';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReceiptStore } from '../../store/receiptStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -32,7 +32,7 @@ type NavigationProp = StackNavigationProp<RootStackParamList>;
 
 const ReceiptHistory: React.FC = () => {
   const C = useCalm();
-  const neu = useNeu();
+  const neu = useNeu(undefined, { faintDark: true }); // Onyx: faint dark neu
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -214,25 +214,24 @@ const ReceiptHistory: React.FC = () => {
           </View>
         )}
 
-        {/* ── Receipt List (wallet-style groupCard) ── */}
+        {/* ── Receipt List — one card per receipt (transaction-list style) ── */}
         {hasReceipts ? (
-          <View style={[styles.groupCardShadow, neu.raisedSoft]}>
-            <View style={styles.groupCard}>
-            {filteredReceipts.map((item, index) => {
+          <>
+            {filteredReceipts.map((item) => {
               const taxCat = MYTAX_CATEGORIES.find((c) => c.id === item.myTaxCategory);
-              const isLast = index === filteredReceipts.length - 1;
               return (
-                <View key={item.id}>
-                  <Swipeable
+                <View key={item.id} style={[styles.groupCardShadow, neu.raisedSoft]}>
+                  <ReanimatedSwipeable
                     renderRightActions={() => (
-                      <TouchableOpacity
-                        style={styles.swipeAction}
-                        onPress={() => handleDelete(item.id, item.title)}
-                      >
-                        <Feather name="trash-2" size={18} color={C.bronze} />
-                      </TouchableOpacity>
+                      <GestureDetector gesture={Gesture.Tap().runOnJS(true).onEnd(() => handleDelete(item.id, item.title))}>
+                        <View style={styles.swipeAction}>
+                          <Feather name="trash-2" size={20} color={C.surface} />
+                        </View>
+                      </GestureDetector>
                     )}
                     overshootRight={false}
+                    friction={1}
+                    rightThreshold={40}
                   >
                     <Pressable
                       onPress={() => navigation.navigate('ReceiptDetail', { receiptId: item.id })}
@@ -267,13 +266,11 @@ const ReceiptHistory: React.FC = () => {
                         <Text style={styles.receiptSavedDate}>saved {format(item.createdAt, 'dd MMM yyyy, h:mm a')}</Text>
                       </View>
                     </Pressable>
-                  </Swipeable>
-                  {!isLast && <View style={styles.divider} />}
+                  </ReanimatedSwipeable>
                 </View>
               );
             })}
-            </View>
-          </View>
+          </>
         ) : (
           <View style={styles.emptyContainer}>
             <View style={[styles.emptyIconCircle, neu.raised, { backgroundColor: withAlpha(C.accent, 0.06) }]}>
@@ -283,12 +280,17 @@ const ReceiptHistory: React.FC = () => {
             <Text style={styles.emptyMessage}>
               {t.receipts.scanReceiptHint}
             </Text>
-            <NeuButton
-              onPress={() => navigation.navigate('ReceiptScanner')}
-              label={t.receipts.scanReceipt}
-              icon="camera"
-              accessibilityLabel={t.receipts.scanReceipt}
-            />
+            {/* Width wrapper: NeuButton's inner width:100% only fills when its
+                parent stretches — a center-aligned column collapses it to content
+                width. The wrapper gives it a real width (capped + centered). */}
+            <View style={styles.emptyCtaWrap}>
+              <NeuButton
+                onPress={() => navigation.navigate('ReceiptScanner')}
+                label={t.receipts.scanReceipt}
+                icon="camera"
+                accessibilityLabel={t.receipts.scanReceipt}
+              />
+            </View>
           </View>
         )}
       </ScrollView>
@@ -445,10 +447,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Grouped card (wallet-style) ──
   groupCardShadow: {
-    // neu.raisedSoft (bg + soft shadow) is spread here at the call site. This wrapper
-    // is UNCLIPPED so the shadow isn't cut into a hard seam by the inner card's
-    // overflow:'hidden' (the documented rowShadow gotcha).
+    // One card per receipt (transaction-list style). neu.raisedSoft (bg + soft
+    // shadow) is spread here at the call site. This wrapper is UNCLIPPED so the
+    // shadow isn't cut into a hard seam by the inner card's overflow:'hidden'
+    // (the documented rowShadow gotcha).
     borderRadius: RADIUS.xl,
+    marginBottom: SPACING.sm + 6, // gap so the soft shadow can breathe (matches the transaction list)
   },
   groupCard: {
     // transparent inner card — clips the Swipeable delete-reveal to the rounded
@@ -458,11 +462,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // ── Receipt row (inside groupCard) ──
+  // The card surface + fill (ReanimatedSwipeable clips its own children, so no
+  // overflow wrapper is needed — mirrors the transaction list's `card`).
   receiptRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: SPACING.md,
     paddingVertical: SPACING.md,
+    backgroundColor: C.background,
+    borderRadius: RADIUS.xl,
   },
   receiptThumb: {
     width: 36,
@@ -527,12 +535,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginLeft: 36 + SPACING.md + SPACING.md,
   },
 
-  // ── Swipe action ──
+  // ── Swipe action (matches the transaction list's swipeDeleteBtn) ──
   swipeAction: {
+    backgroundColor: C.neutral,
     justifyContent: 'center',
     alignItems: 'center',
     width: 56,
-    paddingHorizontal: SPACING.sm,
+    marginLeft: SPACING.sm,
+    borderRadius: RADIUS.xl,
   },
 
   // ── Empty state (budget pattern) ──
@@ -565,6 +575,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.xl,
     lineHeight: TYPOGRAPHY.size.sm * TYPOGRAPHY.lineHeight.normal,
   },
+  emptyCtaWrap: { width: '100%', maxWidth: 256 },
 });
 
 export default ReceiptHistory;

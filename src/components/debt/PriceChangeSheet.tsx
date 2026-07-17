@@ -149,11 +149,14 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
     const activeMembers = sub.members.filter((m) => m.isActive);
     if (activeMembers.length === 0) return;
     const n = activeMembers.length;
-    const perPerson = Number((newTotalNum / n).toFixed(2));
+    // Floor the base share so accumulated round-ups across n-1 members can never
+    // push the last member's remainder negative (e.g. RM0.06 / 11 people). The
+    // remainder is always ≥ base, so the total still sums exactly.
+    const perPerson = Math.floor((newTotalNum / n) * 100) / 100;
     const shares: Record<string, string> = {};
     activeMembers.forEach((m, i) => {
       // Give the last member the rounding remainder so shares sum EXACTLY to total.
-      const amount = i === n - 1 ? newTotalNum - perPerson * (n - 1) : perPerson;
+      const amount = i === n - 1 ? Math.max(0, newTotalNum - perPerson * (n - 1)) : perPerson;
       shares[m.contact.id] = amount.toFixed(2);
     });
     setMemberShares(shares);
@@ -164,7 +167,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
     if (!sub || newTotalNum <= 0) return;
     if (!sumMatches) {
       scrollRef.current?.scrollTo?.({ y: sumCheckY.current, animated: true });
-      showToast('amounts must add up to total', 'error');
+      showToast(t.sharedSubs.amountsMustAddUp, 'error');
       lightTap();
       return;
     }
@@ -209,8 +212,8 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
             </View>
             <View style={styles.titleZone}>
               <Text style={styles.title}>
-                {isAdjust ? 'adjust ' : ''}
-                <Text style={styles.titleAccent}>{isAdjust ? 'amounts' : t.sharedSubs.priceChange}</Text>
+                {isAdjust ? t.sharedSubs.adjustPrefix : ''}
+                <Text style={styles.titleAccent}>{isAdjust ? t.sharedSubs.amounts : t.sharedSubs.priceChange}</Text>
               </Text>
               <Text style={styles.subtitle}>
                 {sub.name} · {isAdjust
@@ -274,7 +277,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
               <Text style={styles.fieldLabel}>{t.sharedSubs.shareAmount}</Text>
               <TouchableOpacity onPress={handleEqualSplit} style={[styles.splitEvenBtn, neu.raised, { backgroundColor: withAlpha(C.accent, 0.1) }]} activeOpacity={0.7}>
                 <Feather name="divide" size={12} color={C.accent} />
-                <Text style={styles.splitEvenText}>split even</Text>
+                <Text style={styles.splitEvenText}>{t.sharedSubs.splitEven}</Text>
               </TouchableOpacity>
             </View>
 
@@ -291,7 +294,13 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
                     <TextInput
                       style={styles.shareInput}
                       value={memberShares[m.contact.id] ?? ''}
-                      onChangeText={(v) => setMemberShares((prev) => ({ ...prev, [m.contact.id]: v }))}
+                      onChangeText={(raw) => {
+                        // Digits + a single decimal only — block pasted negative/exponent shares.
+                        const stripped = raw.replace(/,/g, '').replace(/[^\d.]/g, '');
+                        const fd = stripped.indexOf('.');
+                        const v = fd === -1 ? stripped : stripped.slice(0, fd + 1) + stripped.slice(fd + 1).replace(/\./g, '');
+                        setMemberShares((prev) => ({ ...prev, [m.contact.id]: v }));
+                      }}
                       placeholder="0.00"
                       placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
                       keyboardType="decimal-pad"
@@ -312,7 +321,7 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
               />
               <Text style={[styles.sumText, { color: sumMatches ? C.accent : C.bronze }]}>
                 {currency}{sharesSum.toFixed(2)} / {currency}{newTotalNum.toFixed(2)}
-                {' — '}{sumMatches ? 'balanced' : 'doesn\'t add up'}
+                {' — '}{sumMatches ? t.sharedSubs.balanced : t.sharedSubs.doesntAddUp}
               </Text>
             </View>
           </View>
@@ -323,9 +332,9 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
           <Reanimated.View style={saveAnimStyle}>
             <NeuButton
               icon="check"
-              label={isAdjust ? 'update amounts' : 'apply price change'}
+              label={isAdjust ? t.sharedSubs.updateAmounts : t.sharedSubs.applyPriceChange}
               onPress={handleSave}
-              accessibilityLabel="apply price change"
+              accessibilityLabel={t.sharedSubs.applyPriceChange}
             />
           </Reanimated.View>
 
@@ -334,12 +343,12 @@ const PriceChangeSheet: React.FC<PriceChangeSheetProps> = ({ visible, onClose, s
             onPress={closeSheet}
             hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
             accessibilityRole="button"
-            accessibilityLabel="close"
+            accessibilityLabel={t.common.close}
           >
             {({ pressed }) => (
               <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
                 <Feather name="x" size={12} color={C.textMuted} />
-                <Text style={styles.closeLinkText}>close</Text>
+                <Text style={styles.closeLinkText}>{t.common.close}</Text>
               </View>
             )}
           </Pressable>

@@ -5,7 +5,8 @@ import { PersonalState, Transfer } from '../types';
 import { useWalletStore } from './walletStore';
 import { useTombstoneStore } from './tombstoneStore';
 import { newId } from '../utils/id';
-import { roundMoney } from '../utils/money';
+import { roundMoney, applyGoalContribution } from '../utils/money';
+import { advanceBillingDate } from '../utils/billing';
 
 export const usePersonalStore = create<PersonalState>()(
   persist(
@@ -116,11 +117,18 @@ export const usePersonalStore = create<PersonalState>()(
       },
 
       addSubscription: (subscription) => {
-        if (subscription.amount <= 0) return;
+        // Reject non-finite (NaN/Infinity) amounts too — the chat/LLM creation path
+        // forwards action.amount unchecked, and `NaN <= 0` is false, so a bare
+        // `<= 0` guard would let a "RM NaN" bill through. Round at the write site.
+        if (!Number.isFinite(subscription.amount) || subscription.amount <= 0) return;
         set((state) => ({
           subscriptions: [
             {
               ...subscription,
+              amount: roundMoney(subscription.amount),
+              ...(subscription.outstandingBalance !== undefined
+                ? { outstandingBalance: roundMoney(subscription.outstandingBalance) }
+                : {}),
               id: newId(),
               createdAt: new Date(),
               updatedAt: new Date(),
@@ -131,11 +139,30 @@ export const usePersonalStore = create<PersonalState>()(
       },
 
       addBudget: (budget) => {
-        if (budget.allocatedAmount <= 0) return;
+        // Reject non-finite (NaN/Infinity) or non-positive allocations — the chat/LLM
+        // creation path forwards allocatedAmount unchecked, and an Infinity/NaN would
+        // persist then crash BudgetPlanning's toFixed. Round at the write site.
+        if (!Number.isFinite(budget.allocatedAmount) || budget.allocatedAmount <= 0) return;
+        // Belt-and-braces upsert: if a budget for this category already exists, merge
+        // the new allocation into it instead of creating a duplicate.
+        const existing = (usePersonalStore.getState() as PersonalState).budgets.find(
+          (b) => b.category.toLowerCase() === budget.category.toLowerCase()
+        );
+        if (existing) {
+          set((state) => ({
+            budgets: state.budgets.map((b) =>
+              b.id === existing.id
+                ? { ...b, allocatedAmount: roundMoney(budget.allocatedAmount), updatedAt: new Date() }
+                : b
+            ),
+          }));
+          return;
+        }
         set((state) => ({
           budgets: [
             {
               ...budget,
+              allocatedAmount: roundMoney(budget.allocatedAmount),
               id: newId(),
               spentAmount: 0,
               createdAt: new Date(),
@@ -146,20 +173,41 @@ export const usePersonalStore = create<PersonalState>()(
         }));
       },
 
-      updateBudget: (id, updates) =>
+      updateBudget: (id, updates) => {
+        // Sanitize a money write: the chat/LLM path can forward allocatedAmount as a
+        // raw string or Infinity, which later crashes BudgetPlanning's toFixed. Coerce
+        // + validate, and DROP an invalid allocation change rather than persist it
+        // (mirrors updateSubscription's round-at-write-site).
+        const safe: typeof updates = { ...updates };
+        if (safe.allocatedAmount !== undefined) {
+          const n = Number(safe.allocatedAmount);
+          if (Number.isFinite(n) && n > 0) safe.allocatedAmount = roundMoney(n);
+          else delete safe.allocatedAmount;
+        }
         set((state) => ({
           budgets: state.budgets.map((budget) =>
             budget.id === id
-              ? { ...budget, ...updates, updatedAt: new Date() }
+              ? { ...budget, ...safe, updatedAt: new Date() }
               : budget
           ),
-        })),
+        }));
+      },
 
       updateSubscription: (id, updates) =>
         set((state) => ({
           subscriptions: state.subscriptions.map((subscription) =>
             subscription.id === id
-              ? { ...subscription, ...updates, updatedAt: new Date() }
+              ? {
+                  ...subscription,
+                  ...updates,
+                  // Round money at the write site (sub-sen inputs otherwise drift
+                  // into wallet debits / outstanding math).
+                  ...(updates.amount !== undefined ? { amount: roundMoney(updates.amount) } : {}),
+                  ...(updates.outstandingBalance !== undefined && updates.outstandingBalance !== null
+                    ? { outstandingBalance: roundMoney(updates.outstandingBalance) }
+                    : {}),
+                  updatedAt: new Date(),
+                }
               : subscription
           ),
         })),
@@ -170,6 +218,17 @@ export const usePersonalStore = create<PersonalState>()(
           _deletedSubscriptionIds: [...(state._deletedSubscriptionIds ?? []), id],
         }));
         useTombstoneStore.getState().addTombstones([id]);
+        // Clear the back-link from any shared subscription that pointed at this
+        // commitment — a dangling subscriptionId routes the shared-sub owner to a
+        // deleted bill and blocks them from marking themselves paid. (lazy require:
+        // matches the cross-store pattern in walletStore to avoid an import cycle.)
+        try {
+          const { useDebtStore } = require('./debtStore');
+          const ds = useDebtStore.getState();
+          ds.sharedSubscriptions
+            .filter((s: any) => s.subscriptionId === id)
+            .forEach((s: any) => ds.updateSharedSubscription(s.id, { subscriptionId: undefined }));
+        } catch {}
       },
 
       deleteBudget: (id) => {
@@ -220,16 +279,7 @@ export const usePersonalStore = create<PersonalState>()(
               const x = new Date(d);
               return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
             };
-            const advance = (d: Date) => {
-              const n = new Date(d);
-              switch (sub.billingCycle) {
-                case 'weekly':    n.setDate(n.getDate() + 7);    break;
-                case 'quarterly': n.setMonth(n.getMonth() + 3);  break;
-                case 'yearly':    n.setFullYear(n.getFullYear() + 1); break;
-                default:          n.setMonth(n.getMonth() + 1);  break;
-              }
-              return n;
-            };
+            const advance = (d: Date) => advanceBillingDate(d, sub.billingCycle);
             // Advance to the next due cycle, SKIPPING any cycle already settled by an
             // active payment (can happen after an out-of-order undo leaves a paid cycle
             // ahead of the pointer) — so nextBillingDate never lands on a paid cycle.
@@ -243,12 +293,15 @@ export const usePersonalStore = create<PersonalState>()(
             const newCompleted = sub.isInstallment
               ? Math.min((sub.completedInstallments || 0) + 1, sub.totalInstallments || 9999)
               : sub.completedInstallments;
-            const newOutstanding = sub.outstandingBalance !== undefined
+            // Only an installment plan draws down an outstanding balance. Gating on
+            // isInstallment stops a bill whose installment flag was later turned off
+            // (leaving a stale outstandingBalance) from silently eating it down.
+            const newOutstanding = sub.isInstallment && sub.outstandingBalance !== undefined
               ? roundMoney(Math.max(sub.outstandingBalance - sub.amount, 0))
-              : undefined;
+              : sub.outstandingBalance;
             // Exact amount taken off outstandingBalance (clamps at 0), so undo restores
             // precisely instead of always adding back the full sub.amount.
-            const appliedToOutstanding = sub.outstandingBalance !== undefined && newOutstanding !== undefined
+            const appliedToOutstanding = sub.isInstallment && sub.outstandingBalance !== undefined && newOutstanding !== undefined
               ? roundMoney(sub.outstandingBalance - newOutstanding)
               : undefined;
             return {
@@ -294,16 +347,7 @@ export const usePersonalStore = create<PersonalState>()(
             const x = new Date(d);
             return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
           };
-          const advanceCycle = (d: Date) => {
-            const n = new Date(d);
-            switch (sub.billingCycle) {
-              case 'weekly':    n.setDate(n.getDate() + 7);    break;
-              case 'quarterly': n.setMonth(n.getMonth() + 3);  break;
-              case 'yearly':    n.setFullYear(n.getFullYear() + 1); break;
-              default:          n.setMonth(n.getMonth() + 1);  break;
-            }
-            return n;
-          };
+          const advanceCycle = (d: Date) => advanceBillingDate(d, sub.billingCycle);
 
           const clearedKeys = new Set(active.map((p) => dayKey(p.periodDate ?? p.paidAt)));
           // Every cycle ever billed (has a payment record), ascending.
@@ -414,6 +458,16 @@ export const usePersonalStore = create<PersonalState>()(
         })),
 
       deleteGoal: (id) => {
+        // Refund any wallet-funded contributions/withdrawals back to their wallets
+        // and remove the linked transactions, so deleting a goal doesn't strand
+        // real money or leave orphaned, permanently-locked 'savings' transactions.
+        // deleteTransaction reverses the wallet delta per tx; contribute (expense)
+        // and withdraw (income) txs net out correctly.
+        const goal = usePersonalStore.getState().goals.find((g) => g.id === id);
+        const linkedTxIds = (goal?.contributions ?? [])
+          .map((c) => c.transactionId)
+          .filter((tid): tid is string => !!tid);
+        linkedTxIds.forEach((tid) => usePersonalStore.getState().deleteTransaction(tid));
         set((state) => ({
           goals: state.goals.filter((g) => g.id !== id),
           _deletedGoalIds: [...(state._deletedGoalIds ?? []), id],
@@ -426,17 +480,19 @@ export const usePersonalStore = create<PersonalState>()(
         set((state) => ({
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
-            const remaining = roundMoney(goal.targetAmount - goal.currentAmount);
-            const actualAmount = remaining > 0 ? Math.min(amount, remaining) : amount;
+            // Cap to the room left (pure, unit-tested). A full/over-target goal
+            // absorbs nothing — no phantom contribution, no wallet leak. Callers
+            // pre-cap their wallet debit to this same actualAmount.
+            const { actualAmount, newCurrentAmount } = applyGoalContribution(goal.currentAmount, goal.targetAmount, amount);
+            if (actualAmount <= 0) return goal;
             const newContribution = {
               id: newId(),
-              amount: roundMoney(actualAmount),
+              amount: actualAmount,
               note,
               date: new Date(),
               walletId,
               transactionId,
             };
-            const newCurrentAmount = roundMoney(Math.min(goal.currentAmount + actualAmount, goal.targetAmount));
             const updatedMilestones = goal.milestones.map((m) => {
               if (!m.reached && newCurrentAmount >= (m.percentage / 100) * goal.targetAmount) {
                 return { ...m, reached: true, reachedAt: new Date() };
@@ -561,6 +617,7 @@ export const usePersonalStore = create<PersonalState>()(
             ...p,
             paidAt: p.paidAt instanceof Date ? p.paidAt.toISOString() : p.paidAt,
             periodDate: p.periodDate instanceof Date ? p.periodDate.toISOString() : p.periodDate,
+            undoneAt: p.undoneAt instanceof Date ? p.undoneAt.toISOString() : p.undoneAt,
           })),
           createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
           updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
@@ -616,6 +673,9 @@ export const usePersonalStore = create<PersonalState>()(
               // Older payments predate periodDate — fall back to paidAt so they still
               // load (we can't reconstruct the true cycle for historical data).
               periodDate: p.periodDate ? sd(p.periodDate) : sd(p.paidAt),
+              // Rehydrate undoneAt to a real Date (was left a string) so any
+              // date comparison on it is safe, not just truthiness checks.
+              undoneAt: p.undoneAt ? sd(p.undoneAt) : undefined,
             })),
             createdAt: sd(s.createdAt),
             updatedAt: sd(s.updatedAt),

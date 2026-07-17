@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SavingsState, SavingsSortBy, SnapshotType } from '../types';
+import { SavingsState, SavingsSortBy } from '../types';
 import { useTombstoneStore } from './tombstoneStore';
 import { newId } from '../utils/id';
 import { roundMoney } from '../utils/money';
 import { VALID_TYPE_IDS } from '../screens/personal/savings/investmentTypes';
+import { nextBasis } from '../screens/personal/savings/savingsMath';
 
 export const useSavingsStore = create<SavingsState>()(
   persist(
@@ -21,8 +22,8 @@ export const useSavingsStore = create<SavingsState>()(
       addAccount: (account) =>
         set((state) => {
           const id = newId();
-          const cur = roundMoney(account.currentValue);
-          const init = roundMoney(account.initialInvestment);
+          const cur = roundMoney(Number.isFinite(account.currentValue) ? account.currentValue : 0);
+          const init = roundMoney(Number.isFinite(account.initialInvestment) ? account.initialInvestment : 0);
           return {
             accounts: [
               {
@@ -44,6 +45,9 @@ export const useSavingsStore = create<SavingsState>()(
               ...state.accounts,
             ],
             accountOrder: [id, ...state.accountOrder],
+            // Shift the "since last check" baseline by the new account's value so
+            // adding an account never registers as a value gain.
+            lastOpenedValue: state.lastOpenedValue != null ? roundMoney(state.lastOpenedValue + cur) : state.lastOpenedValue,
           };
         }),
 
@@ -63,36 +67,47 @@ export const useSavingsStore = create<SavingsState>()(
         }),
 
       deleteAccount: (id) => {
-        set((state) => ({
-          accounts: state.accounts.filter((a) => a.id !== id),
-          accountOrder: state.accountOrder.filter((oid) => oid !== id),
-          _deletedSavingsIds: [...(state._deletedSavingsIds ?? []), id],
-        }));
+        set((state) => {
+          const survivors = state.accounts.filter((a) => a.id !== id);
+          return {
+            accounts: survivors,
+            accountOrder: state.accountOrder.filter((oid) => oid !== id),
+            _deletedSavingsIds: [...(state._deletedSavingsIds ?? []), id],
+            // Deleting is a structural change — re-baseline "since last check" to the
+            // surviving total so it reads 0, not a phantom delta. (Subtracting only
+            // the deleted account's CURRENT value would leak its in-session change
+            // into the pill, since the baseline captured its value at the last open.)
+            lastOpenedValue: state.lastOpenedValue != null ? roundMoney(survivors.reduce((s, a) => s + a.currentValue, 0)) : state.lastOpenedValue,
+          };
+        });
         useTombstoneStore.getState().addTombstones([id]);
       },
 
       addSnapshot: (accountId, value, note, snapshotType) => {
+        if (!Number.isFinite(value)) return; // reject Infinity/NaN before it poisons the portfolio
         const v = roundMoney(value);
+        const st = snapshotType || 'manual';
         set((state) => ({
-          accounts: state.accounts.map((a) =>
-            a.id === accountId
-              ? {
-                  ...a,
-                  currentValue: v,
-                  history: [
-                    ...a.history,
-                    {
-                      id: newId(),
-                      value: v,
-                      note,
-                      date: new Date(),
-                      snapshotType: snapshotType || 'manual',
-                    },
-                  ],
-                  updatedAt: new Date(),
-                }
-              : a
-          ),
+          accounts: state.accounts.map((a) => {
+            if (a.id !== accountId) return a;
+            // Capital moves adjust the cost basis (deposit adds what was put in;
+            // withdrawal removes basis proportionally to the value taken out);
+            // dividend/manual are pure revaluations. The signed basis change is stored
+            // on the snapshot so a multi-device merge can re-derive the basis by
+            // replaying moves in date order (see savingsMath.replayCapitalMoves).
+            const newBasis = nextBasis(a.initialInvestment, a.currentValue, v, st);
+            const delta = roundMoney(newBasis - a.initialInvestment);
+            return {
+              ...a,
+              currentValue: v,
+              initialInvestment: newBasis,
+              history: [
+                ...a.history,
+                { id: newId(), value: v, note, date: new Date(), snapshotType: st, ...(delta !== 0 ? { capitalDelta: delta } : {}) },
+              ],
+              updatedAt: new Date(),
+            };
+          }),
         }));
       },
 

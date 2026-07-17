@@ -624,7 +624,7 @@ export type RootStackParamList = {
   BusinessMain: undefined;
   PersonalReports: undefined;
   BusinessReports: undefined;
-  TransactionsList: undefined;
+  TransactionsList: { filterWallet?: string } | undefined;
   SubscriptionList: undefined;
   SupplierList: undefined;
   DebtTracking: { receiptData?: { vendor: string; total: number; items: { name: string; amount: number }[] } } | undefined;
@@ -1377,7 +1377,7 @@ export interface DebtState {
   updateSharedSubscription: (id: string, updates: Partial<Pick<SharedSubscription, 'name' | 'iconName' | 'imageUri' | 'billingDay' | 'billingCycle' | 'isActive' | 'note' | 'subscriptionId'>>) => void;
   deleteSharedSubscription: (id: string) => void;
   addSharedSubMember: (subId: string, member: SharedSubMember) => void;
-  updateSharedSubMember: (subId: string, contactId: string, updates: Partial<Pick<SharedSubMember, 'tag' | 'shareAmount'>>) => void;
+  updateSharedSubMember: (subId: string, contactId: string, updates: Partial<Pick<SharedSubMember, 'tag' | 'shareAmount' | 'isActive'>>) => void;
   removeSharedSubMember: (subId: string, contactId: string) => void;
   ensureMonthRecord: (subId: string, month: string) => void;
   markSharedSubPayment: (subId: string, month: string, contactId: string) => void;
@@ -1407,7 +1407,9 @@ export interface ChartData {
 // Savings / Investment Types (string to support custom investment categories)
 export type SavingsAccountType = string;
 
-export type SnapshotType = 'manual' | 'dividend' | 'withdrawal';
+// 'deposit'/'withdrawal' move CAPITAL (adjust the cost basis); 'dividend'/'manual'
+// are pure revaluations (basis unchanged) — see savingsStore.addSnapshot.
+export type SnapshotType = 'manual' | 'deposit' | 'dividend' | 'withdrawal';
 
 export interface SavingsSnapshot {
   id: string;
@@ -1415,6 +1417,10 @@ export interface SavingsSnapshot {
   note?: string;
   date: Date;
   snapshotType?: SnapshotType;
+  /** Signed capital moved by this snapshot (+deposit, −withdrawal; absent for
+   *  manual/dividend). Stored so a multi-device merge can re-derive the cost basis
+   *  order-independently instead of recomputing deltas from merge-reordered values. */
+  capitalDelta?: number;
 }
 
 export interface SavingsAccount {
@@ -1523,6 +1529,7 @@ export interface PremiumState {
   resetAiCallsIfNeeded: () => void;
   canCreateWallet: (currentCount: number) => boolean;
   canCreateBudget: (currentCount: number) => boolean;
+  canCreateSavingsAccount: (currentCount: number) => boolean;
   canScanReceipt: () => boolean;
   getRemainingScans: () => number;
   canUseAI: () => boolean;

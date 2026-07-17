@@ -12,7 +12,11 @@ import {
   LayoutChangeEvent,
   useWindowDimensions,
   ScrollView,
+  Platform,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import RAnimated, {
   useSharedValue,
   useAnimatedScrollHandler,
@@ -37,8 +41,16 @@ import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
 import { loadSampleData, SAMPLE_PROFILES, DEFAULT_SAMPLE_BRACKET, type SampleBracket } from '../../utils/sampleData';
 import { SkyBackdrop, FlyingWau } from '../../components/common/WauScene';
+import { useNeu } from '../../components/common/neu';
+import NeuButton from '../../components/common/NeuButton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Liquid-glass gating (same rules as GlassModeToggle / the nav bar): iOS 26 →
+// Apple's genuine system segmented control (real Liquid Glass, text-only);
+// Android / iOS < 26 → an expo-blur glass capsule with a non-glass selection pill.
+const GLASS = isLiquidGlassAvailable();
+const NATIVE_SEGMENTED = Platform.OS === 'ios' && GLASS;
 
 // The wau's flight area on the welcome page. The sky itself is the whole
 // screen (SkyBackdrop); this just bounds where the kite can roam.
@@ -144,13 +156,6 @@ const WARM_SHADOW = {
   shadowOffset: { width: 0, height: 6 },
   elevation: 4,
 } as const;
-const WARM_SHADOW_SM = {
-  shadowColor: '#7A6238',
-  shadowOpacity: 0.18,
-  shadowRadius: 6,
-  shadowOffset: { width: 0, height: 2 },
-  elevation: 2,
-} as const;
 const NO_SHADOW = {
   shadowColor: 'transparent',
   shadowOpacity: 0,
@@ -158,6 +163,27 @@ const NO_SHADOW = {
   shadowOffset: { width: 0, height: 0 },
   elevation: 0,
 } as const;
+
+// Neu Select (footer CTA) shadow override. The kit's default raisedSoft reads too
+// heavy on the sky — the drop separated from the pill and made it look thin. This
+// is a tighter, grounded drop that hugs the pill: soft near-black on the night
+// sky, warm umber on the cream day sky. Applied via NeuButton's `style` prop,
+// which overrides raisedSoft's boxShadow (onboarding only — the global button is
+// unchanged). Cast to any: boxShadow isn't in this RN version's ViewStyle types.
+const CTA_SHADOW: Record<'dark' | 'light', any> = {
+  dark: { boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 6, color: 'rgba(0,0,0,0.45)' }] },
+  light: { boxShadow: [{ offsetX: 0, offsetY: 3, blurRadius: 8, color: 'rgba(122,98,56,0.16)' }] },
+};
+
+// Neu Pills (start-choice cards / profile rows) LIGHT-mode shadow. The neu kit's
+// light raisedSoft uses a near-white #FFFFFF highlight that glows on the warm cream
+// sky and flares during the sunrise/sunset transition (a white halo, not native to
+// this screen's warm-shadow design). On the DAY sky the cards use this warm umber
+// drop instead — no white highlight; DARK keeps neu.raisedSoft (soft black drop).
+// #7A6238 = the sky's WARM_SHADOW umber. Cast to any (boxShadow not in ViewStyle types).
+const CARD_SHADOW_LIGHT: any = {
+  boxShadow: [{ offsetX: 0, offsetY: 3, blurRadius: 10, color: 'rgba(122,98,56,0.16)' }],
+};
 
 // Night-bright versions of the slide accents — the day olive/bronze/brown
 // disappear on the navy sky (olive #4F5104 on #232B40 ≈ 1.3:1).
@@ -594,44 +620,78 @@ const WelcomePage = React.memo<{
               />
             </View>
 
-            {/* Language — sliding segmented control */}
+            {/* Language — liquid-glass segmented control. iOS 26 → the genuine
+                system control (real Liquid Glass, text-only); Android / iOS<26 →
+                a glass capsule with a non-glass sliding selection pill. */}
             <View style={[styles.sectionLabelRow, { marginTop: SPACING.xl }]}>
               <Feather name="globe" size={13} color={sky.sub} />
               <Text style={styles.welcomeLabel}>{t.onboarding.language}</Text>
             </View>
-            <View style={styles.segTrack} onLayout={onSegLayout}>
-              {segW > 0 && (
-                <Animated.View
-                  style={[
-                    styles.segThumb,
-                    {
-                      width: (segW - 6) / 2,
-                      transform: [
-                        { translateX: segAnim.interpolate({ inputRange: [0, 1], outputRange: [3, 3 + (segW - 6) / 2] }) },
-                      ],
-                    },
-                  ]}
-                />
-              )}
-              <Pressable
-                style={styles.segItem}
-                onPress={() => handleLangChange('en')}
-                accessibilityRole="button"
-                accessibilityLabel="English"
-                accessibilityState={{ selected: selectedLang === 'en' }}
-              >
-                <Text style={[styles.segText, selectedLang === 'en' && styles.segTextActive]}>English</Text>
-              </Pressable>
-              <Pressable
-                style={styles.segItem}
-                onPress={() => handleLangChange('ms')}
-                accessibilityRole="button"
-                accessibilityLabel="Bahasa Melayu"
-                accessibilityState={{ selected: selectedLang === 'ms' }}
-              >
-                <Text style={[styles.segText, selectedLang === 'ms' && styles.segTextActive]}>Bahasa Melayu</Text>
-              </Pressable>
-            </View>
+            {NATIVE_SEGMENTED ? (
+              <SegmentedControl
+                style={styles.langNative}
+                values={['English', 'Bahasa Melayu']}
+                selectedIndex={selectedLang === 'ms' ? 1 : 0}
+                onChange={(e) => handleLangChange(e.nativeEvent.selectedSegmentIndex === 1 ? 'ms' : 'en')}
+                appearance={skyDark ? 'dark' : 'light'}
+                fontStyle={{ color: sky.sub, fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold as any }}
+                activeFontStyle={{ color: sky.accent, fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold as any }}
+              />
+            ) : (
+              <View style={[styles.langCapsule, !GLASS && styles.langCapsuleClip]}>
+                {/* ── The single glass surface ── */}
+                {GLASS ? (
+                  <GlassView
+                    style={[StyleSheet.absoluteFill, styles.langCapsuleShape]}
+                    glassEffectStyle="regular"
+                  />
+                ) : (
+                  <>
+                    <BlurView
+                      style={[StyleSheet.absoluteFill, styles.langCapsuleShape]}
+                      intensity={skyDark ? 30 : 40}
+                      tint={skyDark ? 'dark' : 'light'}
+                      experimentalBlurMethod="dimezisBlurView"
+                    />
+                    <View style={[StyleSheet.absoluteFill, styles.langCapsuleShape, styles.langFallbackTint]} />
+                  </>
+                )}
+                <View style={styles.langTrack} onLayout={onSegLayout}>
+                  {/* Non-glass sliding selection pill (glass-on-glass is Apple's anti-pattern) */}
+                  {segW > 0 && (
+                    <Animated.View
+                      style={[
+                        styles.langPill,
+                        {
+                          width: (segW - 6) / 2,
+                          transform: [
+                            { translateX: segAnim.interpolate({ inputRange: [0, 1], outputRange: [3, 3 + (segW - 6) / 2] }) },
+                          ],
+                        },
+                      ]}
+                    />
+                  )}
+                  <Pressable
+                    style={styles.segItem}
+                    onPress={() => handleLangChange('en')}
+                    accessibilityRole="button"
+                    accessibilityLabel="English"
+                    accessibilityState={{ selected: selectedLang === 'en' }}
+                  >
+                    <Text style={[styles.segText, selectedLang === 'en' && styles.segTextActive]}>English</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.segItem}
+                    onPress={() => handleLangChange('ms')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Bahasa Melayu"
+                    accessibilityState={{ selected: selectedLang === 'ms' }}
+                  >
+                    <Text style={[styles.segText, selectedLang === 'ms' && styles.segTextActive]}>Bahasa Melayu</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
 
           </View>
         </View>
@@ -673,9 +733,19 @@ const StartChoicePage = React.memo<{
   onPickBracket: (b: SampleBracket) => void;
   listW: number;
   sky: SkyPalette;
+  skyDark: boolean;
   styles: Styles;
   t: Translations;
-}>(({ active, selected, onPick, bracket, onPickBracket, listW, sky, styles, t }) => (
+}>(({ active, selected, onPick, bracket, onPickBracket, listW, sky, skyDark, styles, t }) => {
+  // Neu Pills: the choice cards / profile rows are tappable selectors — faintDark
+  // neu raised (blends into the sky glass), olive fill when selected. Base is the
+  // sky's translucent field fill so the card reads as glass on the sky, not an
+  // app-toned slab. In dark this also adds depth the old NO_SHADOW cards lacked.
+  // DARK → neu.raisedSoft (soft black drop). DAY → a warm umber drop (CARD_SHADOW_LIGHT)
+  // instead of neu's white highlight, which glows on the cream sky (see that const).
+  const neu = useNeu(sky.fieldBg, { faintDark: true });
+  const cardShadow = skyDark ? neu.raisedSoft : CARD_SHADOW_LIGHT;
+  return (
   <View style={[styles.page, { width: listW }]}>
     {/* Scrollable — picking "demo" reveals four profiles, which can overflow a
         short screen; a vertical scroll (opposite axis to the pager) is safe. */}
@@ -696,7 +766,7 @@ const StartChoicePage = React.memo<{
             return (
               <Reveal key={opt.id} active={active} delay={180 + i * 120} from={18}>
                 <TouchableOpacity
-                  style={[styles.choiceCard, isActive && styles.choiceCardActive]}
+                  style={[styles.choiceCard, cardShadow, isActive && styles.choiceCardActive]}
                   onPress={() => onPick(opt.id)}
                   activeOpacity={0.7}
                   accessibilityRole="button"
@@ -733,7 +803,7 @@ const StartChoicePage = React.memo<{
                 return (
                   <TouchableOpacity
                     key={p.id}
-                    style={[styles.profileRow, on && styles.choiceCardActive]}
+                    style={[styles.profileRow, cardShadow, on && styles.choiceCardActive]}
                     onPress={() => onPickBracket(p.id)}
                     activeOpacity={0.7}
                     accessibilityRole="button"
@@ -763,7 +833,8 @@ const StartChoicePage = React.memo<{
       </View>
     </ScrollView>
   </View>
-));
+  );
+});
 StartChoicePage.displayName = 'StartChoicePage';
 
 const Onboarding: React.FC = () => {
@@ -799,20 +870,6 @@ const Onboarding: React.FC = () => {
   // The onboarding's own WCAG-validated palette (see docs/DARK_MODE_READABILITY.md).
   const sky = skyDark ? SKY_NIGHT : SKY_DAY;
   const styles = useMemo(() => makeStyles(skyDark, sky), [skyDark, sky]);
-
-  // CTA arrow nudge — a gentle "go on" gesture.
-  const nudge = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(nudge, { toValue: 1, duration: 650, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(nudge, { toValue: 0, duration: 650, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.delay(700),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [nudge]);
 
   const PAGES: OnboardingPage[] = useMemo(() => [
     { ...SLIDE_META[0], title: t.onboarding.trackMoney, description: t.onboarding.trackMoneyDesc },
@@ -893,6 +950,18 @@ const Onboarding: React.FC = () => {
     }
   }, [PAGE_COUNT, listW, settleIndex, handleComplete, scrollRef, startChoice, sampleBracket]);
 
+  // Skip = skip the TOUR, not onboarding. It jumps to the final start-choice page
+  // (reusing handleNext's advance pattern) rather than committing "start fresh"
+  // immediately — so every user makes the explicit fresh-vs-demo decision (demo
+  // data is the main first-run engagement lever). The StartChoicePage CTA is then
+  // the only commit; canSkip=false there hides Skip, so there's no dead-end.
+  const handleSkip = useCallback(() => {
+    lightTap();
+    const last = PAGE_COUNT - 1;
+    settleIndex(last);
+    scrollRef.current?.scrollTo({ x: last * listW, animated: true });
+  }, [PAGE_COUNT, settleIndex, scrollRef, listW]);
+
   const handleStartPick = useCallback((choice: StartChoice) => {
     lightTap();
     setStartChoice(choice);
@@ -900,8 +969,9 @@ const Onboarding: React.FC = () => {
 
   const isLastPage = currentIndex === PAGE_COUNT - 1;
   // FIRSTRUN-C4 — skip available on every page except the final start-choice
-  // (where the button IS the commit). Welcome inputs are persisted on change,
-  // so skipping from there is safe; skipping means starting fresh.
+  // (where the CTA IS the commit). Skip now lands on that page (handleSkip) so the
+  // fresh-vs-demo choice is never bypassed; welcome inputs persist on change, so
+  // jumping past them loses nothing.
   const canSkip = !isLastPage;
 
   return (
@@ -924,7 +994,7 @@ const Onboarding: React.FC = () => {
         />
         {canSkip ? (
           <TouchableOpacity
-            onPress={() => handleComplete(null, sampleBracket)}
+            onPress={handleSkip}
             style={styles.skipButton}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
@@ -983,6 +1053,7 @@ const Onboarding: React.FC = () => {
             onPickBracket={setSampleBracket}
             listW={listW}
             sky={sky}
+            skyDark={skyDark}
             styles={styles}
             t={t}
           />
@@ -1008,32 +1079,22 @@ const Onboarding: React.FC = () => {
               : isLastPage
                 ? t.onboarding.getStarted
                 : t.common.next;
+          // Neu Select: the app's one primary CTA. Per-slide accent via `color`;
+          // sky ink via `textColor` (night's gold fill needs near-black ink, not
+          // the app's white onAccent). Check icon only on the committing page.
           return (
-            <TouchableOpacity
-              style={[
-                styles.button,
-                { backgroundColor: buttonAccent, shadowColor: buttonAccent },
-                disabled && styles.buttonDisabled,
-              ]}
-              onPress={handleNext}
-              activeOpacity={0.8}
-              disabled={disabled}
-              accessibilityRole="button"
-              accessibilityLabel={label}
-              accessibilityState={{ disabled }}
-            >
-              <Text style={styles.buttonText}>{label}</Text>
-              {!isLastPage && (
-                <Animated.View
-                  style={{
-                    marginLeft: SPACING.xs,
-                    transform: [{ translateX: nudge.interpolate({ inputRange: [0, 1], outputRange: [0, 4] }) }],
-                  }}
-                >
-                  <Feather name="arrow-right" size={18} color={sky.ctaInk} />
-                </Animated.View>
-              )}
-            </TouchableOpacity>
+            <View style={styles.ctaWrap}>
+              <NeuButton
+                label={label}
+                icon={isLastPage ? 'check' : undefined}
+                color={buttonAccent}
+                textColor={sky.ctaInk}
+                onPress={handleNext}
+                disabled={disabled}
+                accessibilityLabel={label}
+                style={CTA_SHADOW[skyDark ? 'dark' : 'light']}
+              />
+            </View>
           );
         })()}
       </View>
@@ -1118,26 +1179,10 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.xl,
   },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING['3xl'],
-    borderRadius: RADIUS.lg,
+  // Constrains the full-width Neu Select CTA and centers it (footer alignItems).
+  ctaWrap: {
     width: '100%',
     maxWidth: 320,
-    ...(skyDark
-      ? NO_SHADOW
-      : { shadowOpacity: 0.22, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6 }),
-  },
-  buttonDisabled: {
-    opacity: 0.45,
-  },
-  buttonText: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: sky.ctaInk,
   },
 
   // ── Welcome page ──
@@ -1204,24 +1249,44 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.lg,
     color: sky.ink,
   },
-  // iOS-style segmented control: groove pressed into the sky, elevated thumb.
-  segTrack: {
-    flexDirection: 'row',
+  // Liquid-glass language toggle. iOS 26 → the genuine system segmented control.
+  langNative: {
+    width: '100%',
+    height: 40,
+    marginTop: 2,
+  },
+  // Fallback capsule (Android / iOS<26): a single glass surface (GlassView or
+  // BlurView) with a non-glass sliding selection pill on top.
+  langCapsule: {
     height: 52,
     borderRadius: 14,
-    backgroundColor: sky.segTrack,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  // Fallback-only: BlurView needs clipping; native GlassView must NOT be masked.
+  langCapsuleClip: { overflow: 'hidden' },
+  langCapsuleShape: { borderRadius: 14 },
+  langFallbackTint: {
+    backgroundColor: withAlpha(sky.cardBg, 0.4),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha('#FFFFFF', skyDark ? 0.14 : 0.5),
+  },
+  langTrack: {
+    flexDirection: 'row',
+    height: '100%',
     alignItems: 'center',
   },
-  segThumb: {
+  // Non-glass selection pill — a neutral bubble on the glass (like the system
+  // tab bar's selection); the accent lives in the bold active label.
+  langPill: {
     position: 'absolute',
     top: 3,
     left: 0,
     height: 46,
     borderRadius: 11,
-    backgroundColor: sky.segThumb,
+    backgroundColor: withAlpha('#FFFFFF', skyDark ? 0.14 : 0.7),
     borderWidth: 1,
-    borderColor: sky.segThumbBorder,
-    ...(skyDark ? NO_SHADOW : { ...WARM_SHADOW_SM, elevation: 0 }),
+    borderColor: withAlpha('#FFFFFF', skyDark ? 0.2 : 0.85),
   },
   segItem: {
     flex: 1,
@@ -1256,7 +1321,11 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     borderColor: sky.choiceBorder,
     gap: SPACING.md,
     minHeight: 72,
-    ...(skyDark ? NO_SHADOW : { ...WARM_SHADOW_SM, elevation: 0 }),
+    // Depth comes from Neu Pills (neu.raisedSoft spread at the call site), not a shadow here.
+    // Inset from the ScrollView edges so the soft neu drop-shadow renders into slack
+    // instead of being clipped at the scroll bounds → avoids the "neu vertical error"
+    // seam (docs/neu-vertical-error.md). md (16) ≥ light-mode shadow reach (~15px).
+    marginHorizontal: SPACING.md,
   },
   choiceCardActive: {
     borderColor: sky.accent,
@@ -1336,7 +1405,10 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     borderColor: sky.choiceBorder,
     gap: SPACING.sm,
     minHeight: 56,
-    ...(skyDark ? NO_SHADOW : { ...WARM_SHADOW_SM, elevation: 0 }),
+    // Depth comes from Neu Pills (neu.raisedSoft spread at the call site), not a shadow here.
+    // Inset so the neu drop-shadow isn't clipped at the ScrollView edge (the "neu
+    // vertical error" seam — docs/neu-vertical-error.md).
+    marginHorizontal: SPACING.md,
   },
   profileIconWrap: {
     width: 32,

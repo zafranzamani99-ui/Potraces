@@ -13,7 +13,7 @@ import { useCalm } from '../../hooks/useCalm';
 import { FREE_TIER, PREMIUM_CONFIG } from '../../constants/premium';
 import { usePremiumStore } from '../../store/premiumStore';
 
-type PaywallFeature = 'wallet' | 'budget' | 'scan' | 'ai';
+type PaywallFeature = 'wallet' | 'budget' | 'savings' | 'scan' | 'ai';
 
 interface PaywallModalProps {
   visible: boolean;
@@ -35,6 +35,12 @@ const FEATURE_CONFIG: Record<PaywallFeature, { title: string; icon: keyof typeof
     icon: 'pie-chart',
     freeLimit: FREE_TIER.maxBudgets,
     unit: 'budgets',
+  },
+  savings: {
+    title: 'Savings Account Limit Reached',
+    icon: 'bookmark',
+    freeLimit: FREE_TIER.maxSavingsAccounts,
+    unit: 'savings accounts',
   },
   scan: {
     title: 'Scan Limit Reached',
@@ -130,6 +136,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
                 <View style={styles.tierFeatures}>
                   <TierRow icon="credit-card" text={`${FREE_TIER.maxWallets} wallets`} />
                   <TierRow icon="pie-chart" text={`${FREE_TIER.maxBudgets} budgets`} />
+                  <TierRow icon="bookmark" text={`${FREE_TIER.maxSavingsAccounts} savings`} />
                   <TierRow icon="camera" text={`${FREE_TIER.maxScansPerMonth} scans/mo`} />
                   <TierRow icon="cpu" text={`${FREE_TIER.maxAiCallsPerMonth} ai calls/mo`} />
                   <TierRow icon="download" text="Export data" check />
@@ -145,6 +152,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
                 <View style={styles.tierFeatures}>
                   <TierRow icon="credit-card" text="Unlimited wallets" check />
                   <TierRow icon="pie-chart" text="Unlimited budgets" check />
+                  <TierRow icon="bookmark" text="Unlimited savings" check />
                   <TierRow icon="camera" text="Unlimited scans" check />
                   <TierRow icon="cpu" text="Unlimited ai calls" check />
                   <TierRow icon="download" text="Export data" check />

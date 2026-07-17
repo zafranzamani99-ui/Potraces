@@ -126,5 +126,11 @@ export function computeNextBillingDate(from: Date, cycle: BillingCycle, dueDay?:
     }
     return candidate;
   }
-  return advance(today, cycle);
+  const base = advance(today, cycle);
+  // Honour a stated day-of-month for quarterly/yearly too (weekly has no month
+  // day) — "yearly, due 15hb" should land on the 15th, not today's day-of-month.
+  if (dueDay && cycle !== 'weekly') {
+    return setDate(base, Math.min(dueDay, getDaysInMonth(base)));
+  }
+  return base;
 }

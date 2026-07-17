@@ -147,7 +147,7 @@ const RepayModal: React.FC<RepayModalProps> = ({
               </View>
               <View style={styles.sheetTitleZone}>
                 <Text style={styles.sheetTitle}>
-                  repay <Text style={styles.sheetTitleAccent}>credit</Text>
+                  {t.wallets.repay.toLowerCase()} <Text style={styles.sheetTitleAccent}>{t.wallets.creditWord}</Text>
                 </Text>
               </View>
             </View>
@@ -230,7 +230,7 @@ const RepayModal: React.FC<RepayModalProps> = ({
               {({ pressed }: { pressed: boolean }) => (
                 <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
                   <Feather name="x" size={12} color={C.textMuted} />
-                  <Text style={styles.closeLinkText}>close</Text>
+                  <Text style={styles.closeLinkText}>{t.common.close.toLowerCase()}</Text>
                 </View>
               )}
             </Pressable>

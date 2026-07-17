@@ -1,10 +1,9 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, Pressable, Modal, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { CALM, RADIUS, SPACING, TYPOGRAPHY, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, RADIUS, SPACING, TYPOGRAPHY, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
-import { useNeu } from '../common/neu';
 import { lightTap } from '../../services/haptics';
 import { DebtFilter, DebtTypeFilter, DebtSort } from '../../screens/shared/debt/useDebtFilters';
 
@@ -25,8 +24,9 @@ interface DebtSortFilterMenuProps {
 }
 
 // Centered float modal matching the Goals / Bills filter modals: scrim +
-// neu.raisedSoft card, uppercase section titles, icon+label+check rows with
-// an accent-tinted active state, and a hairline-topped "clear filters" link.
+// plain card (regular drop shadow, no neu/outline), uppercase section titles,
+// icon+label+check rows with an accent-tinted active state, and a
+// hairline-topped "clear filters" link.
 const DebtSortFilterMenu: React.FC<DebtSortFilterMenuProps> = ({
   visible,
   onClose,
@@ -42,7 +42,6 @@ const DebtSortFilterMenu: React.FC<DebtSortFilterMenuProps> = ({
 }) => {
   const C = useCalm();
   const t = useT();
-  const neu = useNeu(undefined, { faintDark: true });
   const styles = useMemo(() => makeStyles(C), [C]);
 
   if (!visible) return null;
@@ -69,7 +68,7 @@ const DebtSortFilterMenu: React.FC<DebtSortFilterMenuProps> = ({
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={styles.overlayCenter} onPress={onClose}>
-        <View style={[styles.card, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
+        <View style={styles.card} onStartShouldSetResponder={() => true}>
           {/* Filter by Type — debts tab only */}
           {activeTab === 'debts' && (
             <>
@@ -129,12 +128,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
   },
   card: {
+    // no neu, no outline — plain card with a regular drop shadow for elevation
     width: '80%',
     maxWidth: 320,
     backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   sectionTitle: {
     fontSize: TYPOGRAPHY.size.sm,

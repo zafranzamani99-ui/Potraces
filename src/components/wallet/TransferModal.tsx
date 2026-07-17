@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -26,17 +26,18 @@ import Reanimated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   CALM,
-  CALM_DARK,
   SPACING,
   RADIUS,
   TYPOGRAPHY,
   withAlpha,
 } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
 import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
 import WalletPicker from '../common/WalletPicker';
 import WalletLogo from '../common/WalletLogo';
+import KeyboardDoneFab from '../common/KeyboardDoneFab';
 import { lightTap } from '../../services/haptics';
 import type { Wallet } from '../../types';
 
@@ -83,6 +84,10 @@ const TransferModal: React.FC<TransferModalProps> = ({
   const styles = useMemo(() => makeStyles(C), [C]);
   // Sheet is now C.background (Goals/Debt standard) — cards use the soft dark neu tier.
   const neu = useNeu(undefined, { faintDark: true });
+
+  // Multi-line note field → gold keyboard-done FAB (numeric keypad has its own Done).
+  const [multilineFocused, setMultilineFocused] = useState(false);
+  const { keyboardVisible, keyboardHeight } = useKeyboardVisible(() => setMultilineFocused(false));
 
   // ── Drag-to-dismiss ──
   const sheetY = useSharedValue(SCREEN_H);
@@ -183,9 +188,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
                 <View style={styles.sheetHandle} />
               </View>
               <View style={styles.sheetTitleZone}>
-                <Text style={styles.sheetTitle}>
-                  transfer <Text style={styles.sheetTitleAccent}>funds</Text>
-                </Text>
+                <Text style={styles.sheetTitle}>{t.wallets.transfer.toLowerCase()} <Text style={styles.sheetTitleAccent}>{t.wallets.fundsWord}</Text></Text>
               </View>
             </View>
           </GestureDetector>
@@ -250,7 +253,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
               const fromAfter = fromW.balance - amt;
               const toAfter = toW.balance + amt;
               return (
-                <View style={styles.transferPreview}>
+                <View style={[styles.transferPreview, neu.raisedSoft]}>
                   <View style={styles.transferPreviewRow}>
                     <WalletLogo wallet={fromW} size={16} />
                     <Text style={styles.transferPreviewName} numberOfLines={1}>{fromW.name}</Text>
@@ -274,7 +277,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
                 {t.wallets.noteOptional.toLowerCase()}
               </Text>
               <TextInput
-                style={styles.fieldInput}
+                style={[styles.fieldInput, styles.noteInput]}
                 value={transferNote}
                 onChangeText={setTransferNote}
                 placeholder={t.wallets.topUpPlaceholder}
@@ -282,6 +285,10 @@ const TransferModal: React.FC<TransferModalProps> = ({
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={withAlpha(C.accent, 0.25)}
                 accessibilityLabel={t.wallets.noteOptional.toLowerCase()}
+                multiline
+                textAlignVertical="top"
+                onFocus={() => setMultilineFocused(true)}
+                onBlur={() => setMultilineFocused(false)}
               />
             </View>
           </KeyboardAwareScrollView>
@@ -297,7 +304,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
               {({ pressed }: { pressed: boolean }) => (
                 <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
                   <Feather name="x" size={12} color={C.textMuted} />
-                  <Text style={styles.closeLinkText}>close</Text>
+                  <Text style={styles.closeLinkText}>{t.common.close.toLowerCase()}</Text>
                 </View>
               )}
             </Pressable>
@@ -305,6 +312,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
         </Reanimated.View>
       </GestureHandlerRootView>
       <ModalToastHost />
+      <KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />
     </Modal>
   );
 };
@@ -407,13 +415,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 2,
     minHeight: 22,
   },
+  noteInput: {
+    minHeight: 64,
+  },
   transferPreview: {
     marginBottom: SPACING.sm + 2,
     padding: SPACING.md,
-    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.06 : 0.03),
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     gap: SPACING.sm,
   },
   transferPreviewRow: {

@@ -52,7 +52,7 @@ const AccountCard: React.FC<Props> = ({ account, derived, currency, onEdit, onUp
           <CategoryIcon icon={typeInfo.icon} size={20} color={typeInfo.color} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.name} numberOfLines={1}>{account.name}</Text>
+          <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={1.3}>{account.name}</Text>
           <Text style={styles.typeLine} numberOfLines={1}>{rateLine}</Text>
         </View>
         <TouchableOpacity
@@ -67,9 +67,10 @@ const AccountCard: React.FC<Props> = ({ account, derived, currency, onEdit, onUp
 
       {/* Value + return pill */}
       <View style={styles.valueRow}>
-        <Text style={styles.value}>{fmt(account.currentValue)}</Text>
+        <Text style={styles.value} maxFontSizeMultiplier={1.3}>{fmt(account.currentValue)}</Text>
         <View style={[styles.retPill, { backgroundColor: withAlpha(positive ? accentPos : C.neutral, 0.14) }]}>
-          <Text style={[styles.retPillText, { color: positive ? accentPos : C.neutral }]}>
+          {!positive && <Feather name="trending-down" size={11} color={C.neutral} style={styles.retPillIcon} />}
+          <Text style={[styles.retPillText, { color: positive ? accentPos : C.neutral }]} maxFontSizeMultiplier={1.3}>
             {positive ? '+' : ''}{returnPct.toFixed(1)}%
           </Text>
         </View>
@@ -88,13 +89,12 @@ const AccountCard: React.FC<Props> = ({ account, derived, currency, onEdit, onUp
         </View>
       )}
 
-      {/* Projected earnings */}
+      {/* Projected earnings — label left, emphasized amount right */}
       {projectedAnnual != null && projectedAnnual > 0 && (
-        <View style={styles.earnPill}>
-          <Feather name="sun" size={13} color={C.gold} />
-          <Text style={styles.earnText}>
-            {t.savings.estEarningsLine.replace('{amount}', fmt(projectedAnnual))}
-          </Text>
+        <View style={styles.earnRow}>
+          <View style={styles.earnIcon}><Feather name="sun" size={12} color={C.gold} /></View>
+          <Text style={styles.earnLabel} numberOfLines={1}>{t.savings.estEarningsThisYear.replace(/\n/g, ' ')}</Text>
+          <Text style={styles.earnAmount}>{fmt(projectedAnnual)}</Text>
         </View>
       )}
 
@@ -116,9 +116,13 @@ const AccountCard: React.FC<Props> = ({ account, derived, currency, onEdit, onUp
 
       {/* Footer */}
       <View style={styles.footer}>
-        <View style={styles.when}>
+        <View
+          style={styles.when}
+          accessibilityLabel={isStale ? t.savings.notUpdatedDays.replace('{name}', account.name).replace('{days}', String(staleDays)) : undefined}
+        >
           {isStale ? <View style={styles.staleDot} /> : <Feather name="clock" size={12} color={C.textMuted} />}
-          <Text style={styles.whenText}>{formatDistanceToNow(lastDate, { addSuffix: true })}</Text>
+          {isStale && <Text style={styles.staleLabel}>{t.savings.noUpdates}</Text>}
+          <Text style={styles.whenText} numberOfLines={1}>{formatDistanceToNow(lastDate, { addSuffix: true })}</Text>
         </View>
         <Pressable onPress={() => { lightTap(); onUpdate(account); }} style={[styles.btn, neu.raised]} accessibilityRole="button" accessibilityLabel={t.savings.update}>
           <Feather name="refresh-cw" size={13} color={C.accent} />
@@ -141,14 +145,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   typeLine: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '600', color: C.textMuted, marginTop: 1 },
   valueRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 14 },
   value: { fontSize: TYPOGRAPHY.size['2xl'], fontWeight: '700', color: C.textPrimary, letterSpacing: -0.3, fontVariant: ['tabular-nums'] },
-  retPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: RADIUS.full },
+  retPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, paddingVertical: 4, borderRadius: RADIUS.full },
+  retPillIcon: { marginRight: 3 },
   retPillText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '700', fontVariant: ['tabular-nums'] },
   subRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
   subMuted: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, fontVariant: ['tabular-nums'] },
   subGain: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '700', fontVariant: ['tabular-nums'] },
   spark: { marginTop: 12, marginHorizontal: -2 },
-  earnPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12, backgroundColor: C.pillBg, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 8 },
-  earnText: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, fontWeight: '600', flex: 1 },
+  earnRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, backgroundColor: withAlpha(C.gold, 0.09), borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: withAlpha(C.gold, 0.18) },
+  earnIcon: { width: 22, height: 22, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(C.gold, 0.15) },
+  earnLabel: { flex: 1, fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, fontWeight: '600' },
+  earnAmount: { fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary, fontWeight: '700', fontVariant: ['tabular-nums'] },
   goalWrap: { marginTop: 13 },
   goalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 },
   goalLabel: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '600', color: C.textSecondary, flex: 1, marginRight: 8 },
@@ -159,7 +166,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   footer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingTop: 13, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border },
   when: { flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 },
   staleDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.gold },
-  whenText: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, fontWeight: '600' },
+  staleLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.gold, fontWeight: '700' },
+  whenText: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, fontWeight: '600', flexShrink: 1 },
   btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.full, backgroundColor: C.background },
   btnText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '700' },
 });

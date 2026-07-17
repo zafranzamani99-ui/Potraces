@@ -14,6 +14,7 @@ import {
   Animated as RNAnimated,
   useWindowDimensions,
   AccessibilityInfo,
+  AppState,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -37,14 +38,16 @@ import {
   startOfMonth, endOfMonth,
   startOfWeek, endOfWeek,
   startOfYear, endOfYear,
+  subMonths, subWeeks, subYears,
   isWithinInterval,
+  isSameDay,
   differenceInDays,
   getDaysInMonth,
   getDate,
 } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, SHADOWS, withAlpha, ensureContrastOnDark } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useEchoFabPan } from '../../hooks/useEchoFabPan';
@@ -52,10 +55,13 @@ import EchoDragHideZone from '../../components/wallet/EchoDragHideZone';
 import { useCategories } from '../../hooks/useCategories';
 import { FREE_TIER } from '../../constants/premium';
 import CategoryPicker from '../../components/common/CategoryPicker';
+import CategoryIcon from '../../components/common/CategoryIcon';
+import { useNeu } from '../../components/common/neu';
 import CircularProgress from '../../components/common/CircularProgress';
 import HalfGauge from '../../components/common/HalfGauge';
 import PaywallModal from '../../components/common/PaywallModal';
 import EmptyState from '../../components/common/EmptyState';
+import NeuButton from '../../components/common/NeuButton';
 import BudgetPlannerSheet from '../../components/common/BudgetPlannerSheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
@@ -69,6 +75,7 @@ import EchoInlineChat from '../../components/common/EchoInlineChat';
 import TypewriterText from '../../components/common/TypewriterText';
 import { usePlaybookStore } from '../../store/playbookStore';
 import { computePlaybookStats, isOverspent, getOverspentAmount, isPlaybookStale } from '../../utils/playbookStats';
+import { getPeriodInterval, computeBudgetRow, computeHeroMoney } from './budgetMath';
 import PlaybookNotebook from '../../components/playbook/PlaybookNotebook';
 import { format } from 'date-fns';
 
@@ -85,17 +92,15 @@ const getPaceColor = (paceRatio: number, C: typeof CALM) => {
   return C.bronze; // bronze — hot, same as over-budget
 };
 
-const getPeriodInterval = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
-  switch (period) {
-    case 'weekly':
-      return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
-    case 'yearly':
-      return { start: startOfYear(now), end: endOfYear(now) };
-    case 'monthly':
-    default:
-      return { start: startOfMonth(now), end: endOfMonth(now) };
-  }
-};
+// Installment plans that are fully paid off should drop out of "upcoming bills".
+// Same predicate as SubscriptionList's isInstallmentComplete — inlined here
+// (it isn't exported) rather than reaching across files.
+const isInstallmentComplete = (sub: {
+  isInstallment?: boolean;
+  totalInstallments?: number;
+  completedInstallments?: number;
+}): boolean =>
+  !!(sub.isInstallment && sub.totalInstallments && (sub.completedInstallments || 0) >= sub.totalInstallments);
 
 const getPeriodDates = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
   switch (period) {
@@ -109,12 +114,18 @@ const getPeriodDates = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
   }
 };
 
+// Playbook ships in v1.2.0. Until then the whole tab is a locked "coming soon"
+// state — no create FAB, no active/past list. Flip to false to enable the feature.
+const PLAYBOOK_COMING_SOON = true;
+
 // ─── Component ─────────────────────────────────────────────
 const BudgetPlanning: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // "Soft neu dark" tier — Onyx rule 3 lift for the commitments card.
+  const neuF = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
   // ScreenGuide spotlight target — the empty-state "add budget" hero pill
   // (present on first visit; the guide falls back to inline points if not).
@@ -393,7 +404,19 @@ const BudgetPlanning: React.FC = () => {
   const reopenPlaybookAction = usePlaybookStore((s) => s.reopenPlaybook);
   const canCreatePb = usePlaybookStore((s) => s.canCreatePlaybook);
 
-  const now = useMemo(() => new Date(), []);
+  // ── Day-refreshing clock ──
+  // Period windows / day counts must roll over without an app restart. `now` is
+  // state, but the ref only changes when the calendar day actually changes, so
+  // the heavy budget/hero memos below don't re-run on every focus/foreground.
+  const [now, setNow] = useState(() => new Date());
+  const refreshClock = useCallback(() => {
+    setNow((prev) => { const next = new Date(); return isSameDay(prev, next) ? prev : next; });
+  }, []);
+  useFocusEffect(useCallback(() => { refreshClock(); }, [refreshClock]));
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') refreshClock(); });
+    return () => sub.remove();
+  }, [refreshClock]);
 
   // ── Reduce-motion check ──
   useEffect(() => {
@@ -431,21 +454,10 @@ const BudgetPlanning: React.FC = () => {
   }, [expenseCategories]);
 
   // ─── Compute spent per budget from transactions (no stale useEffect) ───
-  const budgetsWithSpent = useMemo(() => {
-    return budgets.map((budget) => {
-      const { start, end } = getPeriodInterval(budget.period, now);
-      const spent = transactions
-        .filter(
-          (t) =>
-            t.type === 'expense' &&
-            t.category === budget.category &&
-            isWithinInterval(t.date, { start, end })
-        )
-        .reduce((sum, t) => sum + (Number.isFinite(t.amount) ? t.amount : 0), 0);
-
-      return { ...budget, spentAmount: spent };
-    });
-  }, [budgets, transactions, now]);
+  const budgetsWithSpent = useMemo(
+    () => budgets.map((budget) => ({ ...budget, ...computeBudgetRow(budget, transactions, now) })),
+    [budgets, transactions, now]
+  );
 
   // Live detail-sheet entity derived from the id — stays fresh as spent changes.
   const detailBudget = useMemo(
@@ -474,137 +486,21 @@ const BudgetPlanning: React.FC = () => {
       )
       .reduce((sum, t) => sum + (Number.isFinite(t.amount) ? t.amount : 0), 0);
 
-    // Baseline: sum of budgeted allocations, normalized to a monthly-equivalent so
-    // weekly/yearly budgets contribute consistently to the hero math. weekly → ×52/12,
-    // yearly → ÷12, monthly → as-is. Both the allocation AND that budget's spent are
-    // normalized by the same factor so the ratio (spent/allocated) is preserved.
-    const monthlyFactor = (period: 'weekly' | 'monthly' | 'yearly') =>
-      period === 'weekly' ? 52 / 12 : period === 'yearly' ? 1 / 12 : 1;
-    const totalAllocated = budgetsWithSpent.reduce((sum, b) => {
-      const f = monthlyFactor(b.period);
-      return sum + (Number.isFinite(b.allocatedAmount) ? b.allocatedAmount * f : 0);
-    }, 0);
-    const totalBudgetSpent = budgetsWithSpent.reduce((sum, b) => {
-      const f = monthlyFactor(b.period);
-      return sum + (Number.isFinite(b.spentAmount) ? b.spentAmount * f : 0);
-    }, 0);
-
-    const overBudgets = budgetsWithSpent.filter((b) => b.spentAmount > b.allocatedAmount);
-    const totalOverBy = overBudgets.reduce((s, b) => s + (b.spentAmount - b.allocatedAmount), 0);
-
-    const totalSpent = totalExpenses;
-    // Use BUDGET baseline for "left to spend" (not income — income might not be tracked)
-    const budgetLeft = Math.max(totalAllocated - totalBudgetSpent, 0);
-    const freeToSpend = totalAllocated > 0 ? budgetLeft : Math.max(totalIncome - totalExpenses, 0);
-
-    const daysInMonth = getDaysInMonth(now);
-    const dayOfMonth = getDate(now);
-    const daysRemaining = Math.max(daysInMonth - dayOfMonth + 1, 1);
-    const dailyAllowance = freeToSpend > 0 ? freeToSpend / daysRemaining : 0;
-
-    const percentElapsed = dayOfMonth / daysInMonth;
-    // Percent spent is now budget-relative (with income fallback)
-    const percentSpent = totalAllocated > 0
-      ? totalBudgetSpent / totalAllocated
-      : totalIncome > 0 ? totalSpent / totalIncome : 0;
-    const paceRatio = percentElapsed > 0 ? percentSpent / percentElapsed : 0;
-
-    // Runway prediction — uses BUDGET baseline (not income).
-    // Floor the burn denominator at 3 so a single early-month purchase doesn't
-    // predict "runs out on day 2-3". Honest later in the month (dayOfMonth wins).
-    const daysElapsed = Math.max(dayOfMonth, 3);
-    const runwayBaseline = totalAllocated > 0 ? totalAllocated : totalIncome;
-    const runwayBurn = totalAllocated > 0
-      ? totalBudgetSpent / daysElapsed
-      : totalExpenses / daysElapsed;
-    const dailyBurn = runwayBurn;
-    const runwayDays = runwayBurn > 0 && runwayBaseline > 0
-      ? Math.floor(runwayBaseline / runwayBurn)
-      : daysInMonth + 10;
-    const runsOutOnDay = Math.min(runwayDays, daysInMonth + 5);
-    const stretchesWholeMonth = overBudgets.length === 0 && runwayDays >= daysInMonth;
-    const runwayOverage = Math.max(runwayDays - daysInMonth, 0);
-    const alreadyOver = overBudgets.length > 0;
-
-    // ─── Smart daily allowance ───
-    // Considers: upcoming subscriptions, active goal contributions, safety buffer
-    // Returns: RM per day the user should spend to stay on plan
-    const upcomingBillsTotal = subscriptions
-      .filter((s) => s.isActive && !s.isPaused)
-      .reduce((sum, s) => {
-        const next = s.nextBillingDate instanceof Date ? s.nextBillingDate : new Date(s.nextBillingDate);
-        if (next >= now && next <= monthEnd) return sum + s.amount;
-        return sum;
-      }, 0);
-    const upcomingBillsCount = subscriptions.filter((s) => {
-      if (!s.isActive || s.isPaused) return false;
-      const next = s.nextBillingDate instanceof Date ? s.nextBillingDate : new Date(s.nextBillingDate);
-      return next >= now && next <= monthEnd;
-    }).length;
-
-    // Active goals still being contributed to — reserve ~5% of remaining target per month.
-    // Exclude archived/paused goals and guard targetAmount (finite > 0) so reserves can't NaN.
-    const isLiveGoal = (g: typeof goals[number]) => {
-      if (g.isArchived || g.isPaused) return false;
-      if (!Number.isFinite(g.targetAmount) || g.targetAmount <= 0) return false;
-      const contributed = (g.contributions || []).reduce(
-        (s, c) => s + (Number.isFinite(c.amount) ? c.amount : 0), 0);
-      return contributed < g.targetAmount;
-    };
-    const activeGoalReserve = goals
-      .filter(isLiveGoal)
-      .reduce((sum, g) => {
-        const contributed = (g.contributions || []).reduce(
-          (s, c) => s + (Number.isFinite(c.amount) ? c.amount : 0), 0);
-        const remaining = Math.max(g.targetAmount - contributed, 0);
-        return sum + Math.min(remaining * 0.05, remaining);
-      }, 0);
-    const activeGoalCount = goals.filter(isLiveGoal).length;
-
-    // 10% safety buffer on remaining free money
-    const rawFree = Math.max(budgetLeft > 0 ? budgetLeft : freeToSpend, 0);
-    const safetyBuffer = rawFree * 0.10;
-
-    // Spendable after commitments + reserves + buffer
-    const spendablePool = Math.max(rawFree - upcomingBillsTotal - activeGoalReserve - safetyBuffer, 0);
-    const smartDaily = daysRemaining > 0 ? spendablePool / daysRemaining : 0;
-
-    // Confidence signal
-    const naiveDaily = rawFree / daysRemaining;
-    const smartVsNaive = naiveDaily > 0 ? smartDaily / naiveDaily : 1;
+    // Headline = BUDGETED MONEY ONLY (pure math in ./budgetMath, unit-tested in
+    // scripts/test-budget-math.ts). Allocations normalize to a monthly-equivalent;
+    // spend is REAL calendar-month RM (no extrapolation); bills/goals are NOT
+    // subtracted here (they live in the commitments card for awareness).
+    const money = computeHeroMoney(budgetsWithSpent, now, { totalIncome, totalExpenses });
 
     return {
-      freeToSpend,
-      dailyAllowance,
-      daysRemaining,
-      daysInMonth,
-      percentSpent,
-      percentElapsed,
-      totalIncome,
-      totalSpent,
-      totalAllocated,
-      paceRatio,
-      dailyBurn,
-      runwayDays,
-      runsOutOnDay,
-      stretchesWholeMonth,
-      runwayOverage,
-      dayOfMonth,
-      smartDaily,
-      smartVsNaive,
-      upcomingBillsTotal,
-      upcomingBillsCount,
-      activeGoalReserve,
-      activeGoalCount,
-      safetyBuffer,
-      alreadyOver,
-      overBudgets,
-      totalOverBy,
-      budgetLeft,
-      totalBudgetSpent,
-      paceColor: getPaceColor(dayOfMonth < 5 && percentSpent <= 1 ? Math.min(paceRatio, 1.0) : paceRatio, C),
+      ...money,
+      dailyAllowance: money.dailyFigure, // alias — the one headline number, kept name-compatible
+      paceColor: getPaceColor(
+        money.dayOfMonth < 5 && money.percentSpent <= 1 ? Math.min(money.paceRatio, 1.0) : money.paceRatio,
+        C
+      ),
     };
-  }, [transactions, budgetsWithSpent, now, subscriptions, goals, C]);
+  }, [transactions, budgetsWithSpent, now, C]);
 
   // ── Time-of-day greeting (after heroData) ──
   const resolveGreeting = useCallback(() => {
@@ -621,8 +517,7 @@ const BudgetPlanning: React.FC = () => {
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     AsyncStorage.setItem(HERO_ANIM_KEY, todayStr).catch(() => {});
     setWakeUpGreeting(resolveGreeting());
-    const dailyFigureSnap = heroData.smartDaily > 0 ? heroData.smartDaily : heroData.dailyAllowance;
-    const target = Math.round(dailyFigureSnap);
+    const target = Math.round(heroData.dailyFigure);
     const steps = 40;
     const stepMs = 850 / steps;
     let step = 0;
@@ -649,7 +544,9 @@ const BudgetPlanning: React.FC = () => {
   // ─── Handlers ────────────────────────────────────────────
   const handleAdd = useCallback(() => {
     // Strict: digits with up to 2 decimals only — rejects "12.34.56" and blank.
-    const trimmed = amount.trim();
+    // On a decimal pad the comma IS the decimal point (many MY keyboards), so
+    // normalize "12,50" → "12.50" before validating. Not a thousands separator.
+    const trimmed = amount.trim().replace(/,/g, '.');
     const MAX_BUDGET = 100000000;
     if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
       showToast('enter a valid amount', 'error');
@@ -762,13 +659,16 @@ const BudgetPlanning: React.FC = () => {
   // togglePbExpand removed — cards tap-to-open notebook directly
 
   // ─── Budget row helper ───────────────────────────────────
-  const getBudgetMeta = useCallback((budget: Budget & { spentAmount: number }) => {
+  const getBudgetMeta = useCallback((budget: Budget & { spentAmount: number; effectiveAmount?: number }) => {
     const { start, end } = getPeriodInterval(budget.period, now);
     const totalDays = Math.max(differenceInDays(end, start) + 1, 1);
     const elapsed = Math.max(differenceInDays(now, start) + 1, 1);
     const remaining = Math.max(totalDays - elapsed + 1, 1);
 
-    const percentSpent = budget.allocatedAmount > 0 ? budget.spentAmount / budget.allocatedAmount : 0;
+    // The limit is the EFFECTIVE amount (allocation + rollover carry) — so a
+    // carried cushion actually shows up in the ring / % / left figure.
+    const limit = Number.isFinite(budget.effectiveAmount) ? (budget.effectiveAmount as number) : budget.allocatedAmount;
+    const percentSpent = limit > 0 ? budget.spentAmount / limit : 0;
     const percentElapsed = elapsed / totalDays;
     const paceRatio = percentElapsed > 0 ? percentSpent / percentElapsed : 0;
 
@@ -777,7 +677,7 @@ const BudgetPlanning: React.FC = () => {
     // budget — the over-budget ring/colour is handled separately.
     const colorPaceRatio = elapsed < 5 && percentSpent <= 1 ? Math.min(paceRatio, 1.0) : paceRatio;
 
-    const leftAmount = Math.max(budget.allocatedAmount - budget.spentAmount, 0);
+    const leftAmount = Math.max(limit - budget.spentAmount, 0);
     const dailyBudget = remaining > 0 ? leftAmount / remaining : 0;
 
     const cat = categoryMap.get(budget.category);
@@ -809,62 +709,76 @@ const BudgetPlanning: React.FC = () => {
   // ─── Smart insight — observes patterns and narrates them ───
   const smartInsight = useMemo(() => {
     if (heroData.overBudgets.length > 0) {
-      const worst = [...heroData.overBudgets].sort((a, b) => (b.spentAmount - b.allocatedAmount) - (a.spentAmount - a.allocatedAmount))[0];
-      const overBy = worst.spentAmount - worst.allocatedAmount;
+      const worst = [...heroData.overBudgets].sort((a, b) => (b.spentAmount - b.effectiveAmount) - (a.spentAmount - a.effectiveAmount))[0];
+      const overBy = worst.spentAmount - worst.effectiveAmount;
       const cat = categoryMap.get(worst.category);
       const biggest = transactions
         .filter((tx) => tx.category === worst.category && tx.type === 'expense' && tx.date >= startOfMonth(now))
         .sort((a, b) => b.amount - a.amount)[0];
       return {
         mode: 'over' as const,
-        title: `${cat?.name || worst.category} went ${currency} ${overBy.toFixed(0)} past the line`,
+        title: t.budget.insightOverTitle
+          .replace('{{category}}', cat?.name || worst.category)
+          .replace('{{currency}}', currency)
+          .replace('{{amount}}', overBy.toFixed(0)),
         subtitle: biggest && biggest.description
-          ? `biggest single hit was ${currency} ${biggest.amount.toFixed(0)} on "${biggest.description}". unusual, or a pattern building?`
+          ? t.budget.insightOverSubDesc
+              .replace('{{currency}}', currency).replace('{{amount}}', biggest.amount.toFixed(0)).replace('{{desc}}', biggest.description)
           : biggest
-          ? `biggest single hit was ${currency} ${biggest.amount.toFixed(0)}. want echo to walk through what pushed it past?`
-          : `want echo to scan what pushed it past the line?`,
+          ? t.budget.insightOverSubAmount
+              .replace('{{currency}}', currency).replace('{{amount}}', biggest.amount.toFixed(0))
+          : t.budget.insightOverSubNone,
       };
     }
     const close = budgetsWithSpent.filter((b) => {
-      const pct = b.allocatedAmount > 0 ? b.spentAmount / b.allocatedAmount : 0;
+      const pct = b.effectiveAmount > 0 ? b.spentAmount / b.effectiveAmount : 0;
       return pct >= 0.85 && pct < 1;
     });
     if (close.length > 0) {
       const nearest = close[0];
       const cat = categoryMap.get(nearest.category);
-      const leftAmt = nearest.allocatedAmount - nearest.spentAmount;
+      const leftAmt = nearest.effectiveAmount - nearest.spentAmount;
       const dailyLeft = leftAmt / Math.max(heroData.daysRemaining, 1);
       return {
         mode: 'close' as const,
-        title: `${cat?.name || nearest.category} is brushing the ceiling`,
-        subtitle: `${currency} ${leftAmt.toFixed(0)} left — that's ${currency} ${dailyLeft.toFixed(0)}/day through day ${heroData.daysInMonth}. careful with weekend plans.`,
+        title: t.budget.insightCloseTitle.replace('{{category}}', cat?.name || nearest.category),
+        subtitle: t.budget.insightCloseSub
+          .replace('{{currency}}', currency).replace('{{left}}', leftAmt.toFixed(0))
+          .replace('{{currency}}', currency).replace('{{perDay}}', dailyLeft.toFixed(0))
+          .replace('{{day}}', String(heroData.daysInMonth)),
       };
     }
     if (!heroData.stretchesWholeMonth) {
       return {
         mode: 'tight' as const,
-        title: `money runs out on day ${heroData.runsOutOnDay} of ${heroData.daysInMonth}`,
-        subtitle: heroData.smartDaily > 0
-          ? `burning ${currency} ${heroData.dailyBurn.toFixed(0)}/day. slowing to ${currency} ${heroData.smartDaily.toFixed(0)}/day keeps you through month end.`
-          : `burning ${currency} ${heroData.dailyBurn.toFixed(0)}/day. set a budget per category for a sharper daily pace.`,
+        title: t.budget.insightTightTitle
+          .replace('{{day}}', String(heroData.runsOutOnDay)).replace('{{total}}', String(heroData.daysInMonth)),
+        subtitle: heroData.dailyFigure > 0
+          ? t.budget.insightTightSub
+              .replace('{{currency}}', currency).replace('{{burn}}', heroData.dailyBurn.toFixed(0))
+              .replace('{{currency}}', currency).replace('{{pace}}', heroData.dailyFigure.toFixed(0))
+          : t.budget.insightTightSubNoBudget
+              .replace('{{currency}}', currency).replace('{{burn}}', heroData.dailyBurn.toFixed(0)),
       };
     }
-    const cushion = [...budgetsWithSpent].sort((a, b) => (b.allocatedAmount - b.spentAmount) - (a.allocatedAmount - a.spentAmount))[0];
-    if (cushion && cushion.allocatedAmount - cushion.spentAmount > 0) {
+    const cushion = [...budgetsWithSpent].sort((a, b) => (b.effectiveAmount - b.spentAmount) - (a.effectiveAmount - a.spentAmount))[0];
+    if (cushion && cushion.effectiveAmount - cushion.spentAmount > 0) {
       const cat = categoryMap.get(cushion.category);
-      const left = cushion.allocatedAmount - cushion.spentAmount;
+      const left = cushion.effectiveAmount - cushion.spentAmount;
       return {
         mode: 'healthy' as const,
-        title: `you're on pace through day ${heroData.daysInMonth}`,
-        subtitle: `${cat?.name || cushion.category} has ${currency} ${left.toFixed(0)} unused — a cushion if anything else runs hot.`,
+        title: t.budget.insightHealthyTitle.replace('{{day}}', String(heroData.daysInMonth)),
+        subtitle: t.budget.insightHealthySub
+          .replace('{{category}}', cat?.name || cushion.category)
+          .replace('{{currency}}', currency).replace('{{amount}}', left.toFixed(0)),
       };
     }
     return {
       mode: 'empty' as const,
-      title: `add a budget to unlock coaching`,
-      subtitle: `echo works best when there's something to measure against. start with your biggest category.`,
+      title: t.budget.insightEmptyTitle,
+      subtitle: t.budget.insightEmptySub,
     };
-  }, [heroData, budgetsWithSpent, transactions, categoryMap, now, currency]);
+  }, [heroData, budgetsWithSpent, transactions, categoryMap, now, currency, t.budget]);
 
   // ─── Psychology-driven chip pool (Gollwitzer, Thaler, Hershfield, MI) ───
   // STING: loss aversion, regret, mental accounting — reflective framing
@@ -878,10 +792,10 @@ const BudgetPlanning: React.FC = () => {
       : 'healthy';
 
     // Context injection — user's actual worst category, name-qualified
-    const topOver = [...budgetsWithSpent].sort((a, b) => (b.spentAmount - b.allocatedAmount) - (a.spentAmount - a.allocatedAmount))[0];
+    const topOver = [...budgetsWithSpent].sort((a, b) => (b.spentAmount - b.effectiveAmount) - (a.spentAmount - a.effectiveAmount))[0];
     const topCatName = ((topOver ? categoryMap.get(topOver.category) : undefined)?.name || topOver?.category || 'spending').toLowerCase();
     const overBy = heroData.totalOverBy;
-    const deficit = Math.max((heroData.dailyBurn - heroData.smartDaily) * heroData.daysRemaining, 100);
+    const deficit = Math.max((heroData.dailyBurn - heroData.dailyFigure) * heroData.daysRemaining, 100);
 
     type Bucket = 'sting' | 'spark' | 'plan';
     type ChipDef = { bucket: Bucket; states: ('over' | 'tight' | 'healthy')[]; build: () => { label: string; question: string } };
@@ -985,21 +899,24 @@ const BudgetPlanning: React.FC = () => {
 
   // ─── Upcoming bills this week (next 7 days) ───
   const upcomingBillsThisWeek = useMemo(() => {
-    const today = new Date();
+    // Window slides on the same day-refresh signal as the rest of the screen.
+    const today = new Date(now);
     today.setHours(0, 0, 0, 0);
     const sevenDaysOut = new Date(today);
     sevenDaysOut.setDate(sevenDaysOut.getDate() + 7);
     const bills = subscriptions
-      .filter((s) => s.isActive && !s.isPaused)
+      // Exclude finished installment plans — they have no more due dates.
+      .filter((s) => s.isActive && !s.isPaused && !isInstallmentComplete(s))
       .map((s) => ({
         ...s,
         nextDate: s.nextBillingDate instanceof Date ? s.nextBillingDate : new Date(s.nextBillingDate),
       }))
-      .filter((s) => s.nextDate >= today && s.nextDate <= sevenDaysOut)
+      // Far end is EXCLUSIVE so the window is exactly today..today+6.
+      .filter((s) => s.nextDate >= today && s.nextDate < sevenDaysOut)
       .sort((a, b) => a.nextDate.getTime() - b.nextDate.getTime());
     const total = bills.reduce((sum, b) => sum + b.amount, 0);
     return { bills, total, count: bills.length };
-  }, [subscriptions]);
+  }, [subscriptions, now]);
 
   // ─── Top active savings goal (connects budget defense with saving offense) ───
   const topGoal = useMemo(() => {
@@ -1060,31 +977,33 @@ const BudgetPlanning: React.FC = () => {
     lines.push(`Total allocated across budgets: ${currency} ${heroData.totalAllocated.toFixed(0)}`);
     lines.push(`Total spent so far: ${currency} ${heroData.totalBudgetSpent.toFixed(0)} (${(heroData.percentSpent * 100).toFixed(0)}% of allocated, day ${heroData.dayOfMonth}/${heroData.daysInMonth})`);
     lines.push(`Daily burn rate: ${currency} ${heroData.dailyBurn.toFixed(0)}/day`);
-    if (heroData.smartDaily > 0) {
-      lines.push(`Remaining budget pace: ${currency} ${heroData.smartDaily.toFixed(0)}/day would keep me on plan`);
+    if (heroData.dailyFigure > 0) {
+      lines.push(`Free to spend: ${currency} ${heroData.dailyFigure.toFixed(0)}/day keeps me within budget through month end`);
     }
     lines.push('');
-    if (heroData.upcomingBillsCount > 0 || heroData.activeGoalCount > 0) {
+    // Commitments awareness — from the real cards (bills this week + goals),
+    // no longer baked into the daily headline.
+    if (upcomingBillsThisWeek.count > 0 || goalsSummary) {
       lines.push(`--- Commitments ahead ---`);
-      if (heroData.upcomingBillsCount > 0) {
-        lines.push(`• ${heroData.upcomingBillsCount} upcoming bill${heroData.upcomingBillsCount > 1 ? 's' : ''} totaling ${currency} ${heroData.upcomingBillsTotal.toFixed(0)} due before month end`);
+      if (upcomingBillsThisWeek.count > 0) {
+        lines.push(`• ${upcomingBillsThisWeek.count} bill${upcomingBillsThisWeek.count > 1 ? 's' : ''} totaling ${currency} ${upcomingBillsThisWeek.total.toFixed(0)} due in the next 7 days`);
       }
-      if (heroData.activeGoalCount > 0) {
-        lines.push(`• ${heroData.activeGoalCount} active savings goal${heroData.activeGoalCount > 1 ? 's' : ''} (reserving ~${currency} ${heroData.activeGoalReserve.toFixed(0)}/month)`);
+      if (goalsSummary) {
+        lines.push(`• ${goalsSummary.count} active savings goal${goalsSummary.count > 1 ? 's' : ''} (${currency} ${goalsSummary.totalContributed.toFixed(0)} of ${currency} ${goalsSummary.totalTarget.toFixed(0)} saved)`);
       }
       lines.push('');
     }
     lines.push(`--- Category breakdown (worst first) ---`);
     const sorted = [...budgetsWithSpent].sort((a, b) => {
-      const aPct = a.allocatedAmount > 0 ? a.spentAmount / a.allocatedAmount : 0;
-      const bPct = b.allocatedAmount > 0 ? b.spentAmount / b.allocatedAmount : 0;
+      const aPct = a.effectiveAmount > 0 ? a.spentAmount / a.effectiveAmount : 0;
+      const bPct = b.effectiveAmount > 0 ? b.spentAmount / b.effectiveAmount : 0;
       return bPct - aPct;
     });
     sorted.forEach((b) => {
       const meta = getBudgetMeta(b);
       const pct = (meta.percentSpent * 100).toFixed(0);
       const catName = meta.cat?.name || b.category;
-      const leftAmt = b.allocatedAmount - b.spentAmount;
+      const leftAmt = b.effectiveAmount - b.spentAmount;
       const statusTag = meta.percentSpent > 1
         ? `OVER by ${currency} ${Math.abs(leftAmt).toFixed(0)}`
         : meta.percentSpent >= 0.85
@@ -1092,10 +1011,10 @@ const BudgetPlanning: React.FC = () => {
         : meta.percentSpent >= 0.4
         ? 'on track'
         : 'plenty of room';
-      lines.push(`• ${catName}: spent ${currency} ${b.spentAmount.toFixed(0)} / ${currency} ${b.allocatedAmount.toFixed(0)} (${pct}%) — ${statusTag}`);
+      lines.push(`• ${catName}: spent ${currency} ${b.spentAmount.toFixed(0)} / ${currency} ${b.effectiveAmount.toFixed(0)} (${pct}%) — ${statusTag}`);
     });
     return lines.join('\n');
-  }, [heroData, budgetsWithSpent, currency, getBudgetMeta]);
+  }, [heroData, budgetsWithSpent, currency, getBudgetMeta, upcomingBillsThisWeek, goalsSummary]);
 
   const handleAskEcho = useCallback((specificQuestion?: string) => {
     lightTap();
@@ -1371,9 +1290,16 @@ const BudgetPlanning: React.FC = () => {
               onPress={() => { lightTap(); setViewMode('playbook'); }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.segmentText, viewMode === 'playbook' && styles.segmentTextActive]}>
-                {t.budget.playbookTab}
-              </Text>
+              <View style={styles.segmentChipInner}>
+                <Text style={[styles.segmentText, viewMode === 'playbook' && styles.segmentTextActive]}>
+                  {t.budget.playbookTab}
+                </Text>
+                {PLAYBOOK_COMING_SOON && (
+                  <View style={styles.segmentSoonBadge}>
+                    <Text style={styles.segmentSoonText}>soon</Text>
+                  </View>
+                )}
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -1382,7 +1308,7 @@ const BudgetPlanning: React.FC = () => {
 
         {/* ── Hero: daily-allowance arc card ── */}
         {hasBudgets ? (() => {
-          const dailyFigure = heroData.smartDaily > 0 ? heroData.smartDaily : heroData.dailyAllowance;
+          const dailyFigure = heroData.dailyFigure;
 
           return (
           <View style={styles.heroOpenV3}>
@@ -1465,27 +1391,21 @@ const BudgetPlanning: React.FC = () => {
               <View style={styles.heroLabelStack}>
                 <Text style={styles.heroGaugeSub}>{t.budget.heroDailyLabel}</Text>
 
-                {(() => {
-                  const bills = Math.round(heroData.upcomingBillsTotal);
-                  const goalsAmt = Math.round(heroData.activeGoalReserve);
-                  let line: string | null = null;
-                  if (bills > 0 && goalsAmt > 0) {
-                    line = t.budget.heroTrustLine
-                      .replace('{{currency}}', currency)
-                      .replace('{{bills}}', String(bills))
-                      .replace('{{currency}}', currency)
-                      .replace('{{goals}}', String(goalsAmt));
-                  } else if (bills > 0) {
-                    line = t.budget.heroTrustLineBillsOnly
-                      .replace('{{currency}}', currency)
-                      .replace('{{bills}}', String(bills));
-                  } else if (goalsAmt > 0) {
-                    line = t.budget.heroTrustLineGoalsOnly
-                      .replace('{{currency}}', currency)
-                      .replace('{{goals}}', String(goalsAmt));
-                  }
-                  return line ? <Text style={styles.heroTrustLine}>{line}</Text> : null;
-                })()}
+                {/* Free pace verdict — one honest read for ALL users (the headline no
+                    longer subtracts bills/goals, so this replaces the old trust line).
+                    The Echo chat/coaching panel stays premium; only this line is free.
+                    Subtitle is hidden when it references Echo, so free users never see
+                    a premium hook here. Copy is localized via t.budget.insight*. */}
+                {budgetsWithSpent.length > 0 && !!smartInsight.title && (
+                  <Text style={styles.heroVerdictTitle} numberOfLines={2}>
+                    {smartInsight.title}
+                  </Text>
+                )}
+                {budgetsWithSpent.length > 0 && !!smartInsight.subtitle && !/echo/i.test(smartInsight.subtitle) && (
+                  <Text style={styles.heroVerdictSub} numberOfLines={2}>
+                    {smartInsight.subtitle}
+                  </Text>
+                )}
 
                 <Text style={styles.heroResetsTomorrow}>{t.budget.heroResetsTomorrow}</Text>
 
@@ -1503,60 +1423,86 @@ const BudgetPlanning: React.FC = () => {
               </View>
             </View>
 
-            {/* ── Bills this week — awareness strip ── */}
-            {upcomingBillsThisWeek.count > 0 && (
-              <View style={styles.billsStrip}>
-                <View style={styles.billsStripIcon}>
-                  <Feather name="calendar" size={13} color={C.bronze} />
-                </View>
-                <View style={styles.billsStripContent}>
-                  <Text style={styles.billsStripTitle}>
-                    {upcomingBillsThisWeek.count} {upcomingBillsThisWeek.count > 1 ? t.budget.heroBillsPlural : t.budget.heroBillsSingular} · {currency} {upcomingBillsThisWeek.total.toFixed(0)}
-                  </Text>
-                  <Text style={styles.billsStripNames} numberOfLines={1}>
-                    {upcomingBillsThisWeek.bills
-                      .slice(0, 3)
-                      .map((b) => `${b.name} ${currency}${b.amount.toFixed(0)}`)
-                      .join('  ·  ')}
-                  </Text>
-                </View>
-              </View>
-            )}
+            {/* ── Commitments — bills due + savings goals, one quiet block.
+                Itemizes the hero trust line above; typography carries the
+                hierarchy, the neu lift carries the separation (no tint, no
+                outline — Onyx rules 2/3). Both rows share one grammar:
+                glyph · title/sub · trailing datum · chevron. ── */}
+            {(upcomingBillsThisWeek.count > 0 || !!goalsSummary) && (
+              <View style={[styles.commitCard, neuF.raisedSoft]}>
+                {upcomingBillsThisWeek.count > 0 && (
+                  <TouchableOpacity
+                    style={styles.commitRow}
+                    onPress={() => { lightTap(); navigation.navigate('SubscriptionList'); }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${upcomingBillsThisWeek.count} ${upcomingBillsThisWeek.count > 1 ? t.budget.heroBillsPlural : t.budget.heroBillsSingular}, ${currency} ${upcomingBillsThisWeek.total.toFixed(0)}`}
+                  >
+                    <View style={styles.commitGlyph}>
+                      <Feather name="calendar" size={15} color={C.bronze} />
+                    </View>
+                    <View style={styles.commitBody}>
+                      <Text style={styles.commitTitle} numberOfLines={1}>
+                        {upcomingBillsThisWeek.count} {upcomingBillsThisWeek.count > 1 ? t.budget.heroBillsPlural : t.budget.heroBillsSingular}
+                      </Text>
+                      <Text style={styles.commitSub} numberOfLines={1}>
+                        {upcomingBillsThisWeek.bills
+                          .slice(0, 3)
+                          .map((b) => `${b.name} ${currency}${b.amount.toFixed(0)}`)
+                          .join(' · ')}
+                      </Text>
+                    </View>
+                    <View style={styles.commitTrail}>
+                      <Text style={[styles.commitValue, { color: C.bronze }]}>
+                        {currency} {upcomingBillsThisWeek.total.toFixed(0)}
+                      </Text>
+                      <Feather name="chevron-right" size={14} color={withAlpha(C.textMuted, 0.55)} />
+                    </View>
+                  </TouchableOpacity>
+                )}
 
-            {/* ── Savings — single named goal, or a summary card that scales to any number ── */}
-            {goalsSummary && (
-              <TouchableOpacity
-                style={[styles.goalStrip, { backgroundColor: withAlpha(C.accent, 0.07), borderColor: withAlpha(C.accent, 0.2) }]}
-                onPress={() => { lightTap(); navigation.navigate('Goals'); }}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel={goalsSummary.count === 1 && topGoal ? `Open ${topGoal.goal.name} goal` : `Open ${goalsSummary.count} savings goals`}
-              >
-                <CircularProgress
-                  size={44}
-                  strokeWidth={4}
-                  percentage={goalsSummary.pct * 100}
-                  color={C.accent}
-                  trackColor={withAlpha(C.accent, 0.2)}
-                >
-                  <Feather name="target" size={16} color={C.accent} />
-                </CircularProgress>
-                <View style={styles.goalStripContent}>
-                  <Text style={[styles.goalStripEyebrow, { color: withAlpha(C.accent, 0.7) }]}>{t.budget.savingTowards}</Text>
-                  <Text style={styles.goalStripName} numberOfLines={1}>
-                    {goalsSummary.count === 1 && topGoal
-                      ? topGoal.goal.name
-                      : t.budget.goalsCount.replace('{{n}}', String(goalsSummary.count))}
-                  </Text>
-                  <Text style={styles.goalStripAmount}>
-                    {currency} {goalsSummary.totalContributed.toFixed(0)} {t.budget.ofWord} {currency} {goalsSummary.totalTarget.toFixed(0)}
-                  </Text>
-                </View>
-                <View style={styles.goalStripPctWrap}>
-                  <Text style={[styles.goalStripPct, { color: C.accent }]}>{Math.round(goalsSummary.pct * 100)}%</Text>
-                  <Feather name="chevron-right" size={16} color={withAlpha(C.accent, 0.5)} />
-                </View>
-              </TouchableOpacity>
+                {upcomingBillsThisWeek.count > 0 && !!goalsSummary && (
+                  <View style={styles.commitDivider} />
+                )}
+
+                {goalsSummary && (
+                  <TouchableOpacity
+                    style={styles.commitRow}
+                    onPress={() => { lightTap(); navigation.navigate('Goals'); }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={goalsSummary.count === 1 && topGoal ? `Open ${topGoal.goal.name} goal` : `Open ${goalsSummary.count} savings goals`}
+                  >
+                    <View style={styles.commitGlyph}>
+                      <Feather name="target" size={15} color={C.accent} />
+                    </View>
+                    <View style={styles.commitBody}>
+                      <Text style={styles.commitTitle} numberOfLines={1}>
+                        {goalsSummary.count === 1 && topGoal
+                          ? topGoal.goal.name
+                          : t.budget.goalsCount.replace('{{n}}', String(goalsSummary.count))}
+                      </Text>
+                      <Text style={styles.commitSub} numberOfLines={1}>
+                        {t.budget.savingTowards} · {currency} {goalsSummary.totalContributed.toFixed(0)} {t.budget.ofWord} {currency} {goalsSummary.totalTarget.toFixed(0)}
+                      </Text>
+                      <View style={styles.commitBarTrack}>
+                        <View
+                          style={[
+                            styles.commitBarFill,
+                            { width: `${Math.round(Math.min(goalsSummary.pct, 1) * 100)}%` },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.commitTrail}>
+                      <Text style={[styles.commitValue, { color: C.accent }]}>
+                        {Math.round(goalsSummary.pct * 100)}%
+                      </Text>
+                      <Feather name="chevron-right" size={14} color={withAlpha(C.textMuted, 0.55)} />
+                    </View>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
 
             {/* ── Reward good behaviour gently: "you kept RM__ here" ──
@@ -1627,10 +1573,17 @@ const BudgetPlanning: React.FC = () => {
           const renderCatRow = (budget: typeof budgetsWithSpent[0], isLast: boolean, rowIndex: number) => {
             const meta = getBudgetMeta(budget);
             const isOver = meta.percentSpent > 1;
-            const leftAmount = Math.max(budget.allocatedAmount - budget.spentAmount, 0);
-            const overAmount = Math.max(budget.spentAmount - budget.allocatedAmount, 0);
+            // Left / over vs the EFFECTIVE limit — so a rollover cushion reads the
+            // same way here as it does in the ring (driven by meta.percentSpent).
+            const leftAmount = Math.max(budget.effectiveAmount - budget.spentAmount, 0);
+            const overAmount = Math.max(budget.spentAmount - budget.effectiveAmount, 0);
             const catColor = meta.cat?.color || C.accent;
-            const catIcon = (meta.cat?.icon || 'circle') as keyof typeof Feather.glyphMap;
+            // Ring follows the ICON colour (not spend-pace) so each row reads as
+            // "this category". Match CategoryIcon's dark-mode lightening exactly
+            // (ensureContrastOnDark, same default target) so the arc is the same
+            // bright hue as the glyph — never a dim, muddy version of it.
+            const ringBase = isOver ? C.bronze : catColor;
+            const ringColor = isDark ? ensureContrastOnDark(ringBase) : ringBase;
 
             return (
               <Reanimated.View
@@ -1640,32 +1593,39 @@ const BudgetPlanning: React.FC = () => {
                 <Pressable
                   onPress={() => openBudgetDetail(budget)}
                   style={({ pressed }) => [styles.catRowV3, pressed && { backgroundColor: withAlpha(C.textMuted, 0.04) }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${meta.cat?.name || budget.category}: ${currency} ${budget.spentAmount.toFixed(0)} ${t.budget.ofWord} ${currency} ${(budget.effectiveAmount ?? budget.allocatedAmount).toFixed(0)}, ${currency} ${(isOver ? overAmount : leftAmount).toFixed(0)} ${isOver ? t.budget.overLabel : t.budget.leftLabel}`}
                 >
                   {/* Avatar — category icon wrapped in a spend-progress ring, tinted by category colour */}
                   <CircularProgress
                     size={52}
                     strokeWidth={5}
                     percentage={meta.percentSpent * 100}
-                    color={isOver ? C.bronze : meta.paceColor}
-                    trackColor={withAlpha(isOver ? C.bronze : catColor, 0.22)}
+                    color={ringColor}
+                    trackColor={withAlpha(ringColor, 0.22)}
                   >
                     <View
                       style={[
                         styles.catAvatarV3,
-                        { backgroundColor: withAlpha(isOver ? C.bronze : catColor, 0.2) },
+                        { backgroundColor: withAlpha(ringColor, 0.2) },
                       ]}
                     >
-                      <Feather name={catIcon} size={19} color={isOver ? C.bronze : catColor} />
+                      {/* CategoryIcon (not raw Feather) — category icons are lib-prefixed
+                          (m/, i/, fa/); Feather alone renders "?" for non-Feather names.
+                          Passing the RAW colour: CategoryIcon lightens it in dark to the
+                          same value as ringColor above, so glyph + ring match exactly. */}
+                      <CategoryIcon icon={meta.cat?.icon || 'circle'} size={19} color={isOver ? C.bronze : catColor} />
                     </View>
                   </CircularProgress>
 
                   {/* Name + spent subtitle */}
                   <View style={styles.catRowMidV3}>
                     <Text style={styles.catRowNameV3} numberOfLines={1}>
-                      {meta.cat?.name || budget.category}
+                      {/* orphaned budget never shows a raw custom_<ts> id */}
+                      {meta.cat?.name || t.budget.deletedCategory}
                     </Text>
                     <Text style={styles.catRowSubV3} numberOfLines={1}>
-                      {currency} {budget.spentAmount.toFixed(0)} {t.budget.ofWord} {currency} {budget.allocatedAmount.toFixed(0)}
+                      {currency} {budget.spentAmount.toFixed(0)} {t.budget.ofWord} {currency} {budget.effectiveAmount.toFixed(0)}
                     </Text>
                   </View>
 
@@ -1694,7 +1654,7 @@ const BudgetPlanning: React.FC = () => {
                 <Text style={styles.categoriesHeaderTextV3}>{t.budget.budgetCategories}</Text>
                 <Text style={styles.categoriesCountV3}>{sorted.length}</Text>
               </View>
-              <View style={styles.categoriesCardV3}>
+              <View style={[styles.categoriesCardV3, neuF.raisedSoft]}>
                 {sorted.map((b, i) => renderCatRow(b, i === sorted.length - 1, i))}
               </View>
             </View>
@@ -1710,17 +1670,14 @@ const BudgetPlanning: React.FC = () => {
             <Text style={styles.emptyMessage}>
               {t.budget.emptyHeroSub}
             </Text>
-            <TouchableOpacity
-              ref={guideTargetRef}
-              style={styles.emptyButton}
-              onPress={openAddModal}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel={t.budget.addBudget}
-            >
-              <Feather name="plus" size={18} color={C.onAccent} />
-              <Text style={styles.emptyButtonText}>{t.budget.addBudget.toLowerCase()}</Text>
-            </TouchableOpacity>
+            <View ref={guideTargetRef} collapsable={false} style={styles.emptyCtaWrap}>
+              <NeuButton
+                onPress={openAddModal}
+                label={t.budget.addBudget.toLowerCase()}
+                icon="plus"
+                accessibilityLabel={t.budget.addBudget}
+              />
+            </View>
             <TouchableOpacity
               style={styles.emptyPlanLink}
               onPress={() => { lightTap(); setBudgetPlannerVisible(true); }}
@@ -1737,7 +1694,13 @@ const BudgetPlanning: React.FC = () => {
         </>)}
 
         {/* ══════════════ PLAYBOOK VIEW ══════════════ */}
-        {viewMode === 'playbook' && (<>
+        {viewMode === 'playbook' && (PLAYBOOK_COMING_SOON ? (
+          <EmptyState
+            icon="i/book-outline"
+            title="playbooks — coming soon"
+            message="this arrives in version 1.2.0. you'll be able to plan each paycheck and track where every ringgit goes."
+          />
+        ) : (<>
 
           {/* Active / Past tabs */}
           <View style={styles.pbTabRow}>
@@ -1860,7 +1823,7 @@ const BudgetPlanning: React.FC = () => {
                 </View>
 
                 {/* ── Active playbook rows (ring-avatar anatomy) ── */}
-                <View style={styles.categoriesCardV3}>
+                <View style={[styles.categoriesCardV3, neuF.raisedSoft]}>
                   {activePlaybooks.map((pb, index) => {
                     const stats = playbookStatsMap[pb.id];
                     if (!stats) return null;
@@ -1946,7 +1909,7 @@ const BudgetPlanning: React.FC = () => {
           {/* ── Past tab ── */}
           {playbookTab === 'past' && (<>
             {closedPlaybooks.length > 0 ? (
-              <View style={styles.categoriesCardV3}>
+              <View style={[styles.categoriesCardV3, neuF.raisedSoft]}>
                 {closedPlaybooks.map((pb, index) => {
                   const stats = playbookStatsMap[pb.id];
                   if (!stats) return null;
@@ -2024,7 +1987,7 @@ const BudgetPlanning: React.FC = () => {
             )}
           </>)}
 
-        </>)}
+        </>))}
 
       </ScrollView>
 
@@ -2056,84 +2019,40 @@ const BudgetPlanning: React.FC = () => {
               <Text style={styles.mathTitle}>
                 {t.budget.mathSheetTitle
                   .replace('{{currency}}', currency)
-                  .replace('{{n}}', Math.round(heroData.smartDaily > 0 ? heroData.smartDaily : heroData.dailyAllowance).toString())}
+                  .replace('{{n}}', Math.round(heroData.dailyFigure).toString())}
               </Text>
 
-              {/* Receipt waterfall */}
+              {/* Receipt waterfall — budgeted-money-only. Each row chains to the
+                  next: allocated − spent = budget left ÷ days = daily figure.
+                  Bills + goals are NOT subtracted here anymore (they live in the
+                  commitments card). */}
               <View style={styles.mathRows}>
-                {/* Row: money in budgets */}
+                {/* Row: total budgeted (monthly-equivalent) */}
                 <View style={styles.mathRow}>
                   <Text style={styles.mathRowLabel}>{t.budget.mathMoneyInBudgets}</Text>
-                  <Text style={styles.mathRowAmount}>{currency} {Math.round(heroData.budgetLeft + heroData.totalBudgetSpent)}</Text>
+                  <Text style={styles.mathRowAmount}>{currency} {Math.round(heroData.totalAllocated)}</Text>
                 </View>
 
-                {/* Row: bills coming up */}
-                {heroData.upcomingBillsTotal > 0 && (
-                  <View style={styles.mathRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.mathRowLabel}>
-                        {'− '}{t.budget.mathBillsComing}
-                      </Text>
-                      {heroData.upcomingBillsCount > 0 && (
-                        <Text style={styles.mathRowSub}>
-                          {t.budget.mathBillsCount.replace('{{n}}', String(heroData.upcomingBillsCount))}
-                        </Text>
-                      )}
-                    </View>
-                    <Text style={[styles.mathRowAmount, { color: C.bronze }]}>
-                      − {currency} {Math.round(heroData.upcomingBillsTotal)}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Row: goals */}
-                {heroData.activeGoalReserve > 0 && (
-                  <View style={styles.mathRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.mathRowLabel}>
-                        {'− '}{t.budget.mathSetAsideGoals}
-                      </Text>
-                      {heroData.activeGoalCount > 0 && (
-                        <Text style={styles.mathRowSub}>
-                          {t.budget.mathGoalsCount.replace('{{n}}', String(heroData.activeGoalCount))}
-                        </Text>
-                      )}
-                    </View>
-                    <Text style={[styles.mathRowAmount, { color: C.bronze }]}>
-                      − {currency} {Math.round(heroData.activeGoalReserve)}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Row: safety cushion */}
-                {heroData.safetyBuffer > 0 && (
-                  <View style={styles.mathRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.mathRowLabel}>
-                        {'− '}{t.budget.mathSafetyBuffer}
-                      </Text>
-                      <Text style={styles.mathRowSub}>{t.budget.mathBufferWhy}</Text>
-                    </View>
-                    <Text style={[styles.mathRowAmount, { color: C.bronze }]}>
-                      − {currency} {Math.round(heroData.safetyBuffer)}
-                    </Text>
-                  </View>
-                )}
+                {/* Row: minus spent so far this month */}
+                <View style={styles.mathRow}>
+                  <Text style={styles.mathRowLabel}>{`− ${t.budget.mathSpentSoFar}`}</Text>
+                  <Text style={[styles.mathRowAmount, { color: C.bronze }]}>
+                    − {currency} {Math.round(heroData.totalBudgetSpent)}
+                  </Text>
+                </View>
 
                 {/* Divider */}
                 <View style={styles.mathDivider} />
 
-                {/* Row: left over days */}
+                {/* Row: = budget left */}
                 <View style={styles.mathRow}>
-                  <Text style={styles.mathRowLabel}>
-                    {t.budget.mathLeftOverDays.replace('{{days}}', String(heroData.daysRemaining))}
-                  </Text>
+                  <Text style={styles.mathRowLabel}>{t.budget.mathBudgetLeft}</Text>
                   <Text style={styles.mathRowAmount}>
-                    = {currency} {Math.round(Math.max(heroData.budgetLeft - heroData.upcomingBillsTotal - heroData.activeGoalReserve - heroData.safetyBuffer, 0))}
+                    = {currency} {Math.round(heroData.budgetLeft)}
                   </Text>
                 </View>
 
-                {/* Row: divide days */}
+                {/* Row: divide by days remaining → daily figure */}
                 <View style={styles.mathRow}>
                   <Text style={styles.mathRowLabel}>
                     {t.budget.mathDivideDays.replace('{{days}}', String(heroData.daysRemaining))}
@@ -2141,7 +2060,7 @@ const BudgetPlanning: React.FC = () => {
                   <Text style={[styles.mathRowAmount, { color: C.accent, fontWeight: TYPOGRAPHY.weight.semibold as any }]}>
                     {t.budget.mathDailyResult
                       .replace('{{currency}}', currency)
-                      .replace('{{n}}', Math.round(heroData.smartDaily > 0 ? heroData.smartDaily : heroData.dailyAllowance).toString())}
+                      .replace('{{n}}', Math.round(heroData.dailyFigure).toString())}
                   </Text>
                 </View>
               </View>
@@ -2166,11 +2085,15 @@ const BudgetPlanning: React.FC = () => {
         const dBudget = detailBudget; // non-null snapshot for deferred-action closures
         const dMeta = getBudgetMeta(detailBudget);
         const dCatColor = dMeta.cat?.color || C.accent;
-        const dCatIcon = (dMeta.cat?.icon || 'circle') as keyof typeof Feather.glyphMap;
         const dIsOver = dMeta.percentSpent > 1;
-        const dRingColor = dIsOver ? C.bronze : dMeta.paceColor;
-        const dLeft = Math.max(detailBudget.allocatedAmount - detailBudget.spentAmount, 0);
-        const dOver = Math.max(detailBudget.spentAmount - detailBudget.allocatedAmount, 0);
+        // Ring + icon + progress bar follow the category colour (lightened in dark
+        // to match the glyph), consistent with the category list rows — so tapping
+        // a row doesn't jump from a category-coloured ring to a pace-coloured one.
+        const dRingBase = dIsOver ? C.bronze : dCatColor;
+        const dRingColor = isDark ? ensureContrastOnDark(dRingBase) : dRingBase;
+        // Left / over vs the EFFECTIVE limit — so rollover carry shows here too.
+        const dLeft = Math.max(detailBudget.effectiveAmount - detailBudget.spentAmount, 0);
+        const dOver = Math.max(detailBudget.spentAmount - detailBudget.effectiveAmount, 0);
         const { start, end } = getPeriodInterval(detailBudget.period, now);
         const dTxnsAll = transactions
           .filter((tx) => tx.type === 'expense' && tx.category === detailBudget.category && isWithinInterval(tx.date, { start, end }))
@@ -2196,6 +2119,10 @@ const BudgetPlanning: React.FC = () => {
                   <View style={styles.modalHandle} />
                 </View>
 
+                {/* Summary — one lifted Onyx panel (borderless C.background + neu,
+                    no outline): ring + name, over/left figure, and the pace bar. */}
+                <View style={styles.bdHeroWrap}>
+                <View style={[styles.bdHeroCard, neuF.raisedSoft]}>
                 {/* Header — ring + name + spent-of */}
                 <View style={styles.bdHeader}>
                   <CircularProgress
@@ -2206,17 +2133,17 @@ const BudgetPlanning: React.FC = () => {
                     trackColor={withAlpha(dCatColor, 0.18)}
                   >
                     <View style={[styles.bdAvatar, { backgroundColor: withAlpha(dCatColor, 0.16) }]}>
-                      <Feather name={dCatIcon} size={22} color={dRingColor} />
+                      <CategoryIcon icon={dMeta.cat?.icon || 'circle'} size={22} color={dRingColor} />
                     </View>
                   </CircularProgress>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.bdName} numberOfLines={1}>{dMeta.cat?.name || detailBudget.category}</Text>
+                    <Text style={styles.bdName} numberOfLines={1}>{dMeta.cat?.name || t.budget.deletedCategory}</Text>
                     <Text style={styles.bdSub}>
                       {t.budget.detailSpentOf
                         .replace('{{currency}}', currency)
                         .replace('{{spent}}', detailBudget.spentAmount.toFixed(0))
                         .replace('{{currency}}', currency)
-                        .replace('{{allocated}}', detailBudget.allocatedAmount.toFixed(0))}
+                        .replace('{{allocated}}', detailBudget.effectiveAmount.toFixed(0))}
                     </Text>
                   </View>
                 </View>
@@ -2240,6 +2167,8 @@ const BudgetPlanning: React.FC = () => {
                       .replace('{{days}}', String(dMeta.remaining))}
                   </Text>
                 )}
+                </View>
+                </View>
               </View>
             </GestureDetector>
 
@@ -2273,8 +2202,18 @@ const BudgetPlanning: React.FC = () => {
               {dTxns.length > 0 && (
                 <TouchableOpacity
                   style={styles.bdSeeAll}
-                  onPress={() => dCloseSheet(() => navigation.getParent()?.navigate('TransactionsList', { filterCategory: dBudget.category }))}
+                  onPress={() => dCloseSheet(() => navigation.navigate('TransactionsList', {
+                    filterCategory: dBudget.category,
+                    // period → TransactionsList date range; weekly has no matching preset, so omit.
+                    filterDateRange: dBudget.period === 'monthly' ? 'this_month'
+                      : dBudget.period === 'yearly' ? 'this_year'
+                      : undefined,
+                  }))}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={dTxnsHasMore
+                    ? t.budget.detailSeeAllCount.replace('{{n}}', String(dTxnsAll.length))
+                    : t.budget.detailSeeAll}
                 >
                   <Text style={styles.bdSeeAllText}>
                     {dTxnsHasMore
@@ -2299,7 +2238,7 @@ const BudgetPlanning: React.FC = () => {
                 <Text style={styles.bdEditBtnText}>{t.common.edit.toLowerCase()}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.bdDeleteBtn}
+                style={[styles.bdDeleteBtn, neuF.raised]}
                 onPress={() => dCloseSheet(() => handleDelete(dBudget), dBudget.id)}
                 activeOpacity={0.7}
                 accessibilityRole="button"
@@ -2330,15 +2269,15 @@ const BudgetPlanning: React.FC = () => {
               </View>
               <View style={styles.modalTitleZone}>
                 <Text style={styles.modalTitle} numberOfLines={1}>
-                  {editingBudget ? 'edit ' : 'add '}
+                  {editingBudget ? `${t.budget.sheetEditPrefix} ` : `${t.budget.sheetAddPrefix} `}
                   <Text style={styles.modalTitleAccent}>
                     {editingBudget
-                      ? (categoryMap.get(editingBudget.category)?.name?.toLowerCase() || 'budget')
-                      : 'budget'}
+                      ? (categoryMap.get(editingBudget.category)?.name?.toLowerCase() || t.budget.sheetBudgetWord)
+                      : t.budget.sheetBudgetWord}
                   </Text>
                 </Text>
                 <Text style={styles.modalSubtitle}>
-                  {editingBudget ? 'update your spending limit' : 'set a monthly spending limit'}
+                  {editingBudget ? t.budget.sheetEditSubtitle : t.budget.sheetAddSubtitle}
                 </Text>
               </View>
             </View>
@@ -2356,9 +2295,9 @@ const BudgetPlanning: React.FC = () => {
               contentContainerStyle={styles.modalScrollContent}
               keyboardDismissMode="on-drag"
             >
-              <View style={styles.modalHeroCard}>
+              <View style={[styles.modalHeroCard, neuF.raisedSoft]}>
                 <Text style={styles.modalFieldLabel}>
-                  amount <Text style={styles.modalFieldRequired}>*</Text>
+                  {t.budget.amountLabel} <Text style={styles.modalFieldRequired}>*</Text>
                 </Text>
                 <View style={styles.modalHeroAmountRow}>
                   <Text style={[styles.modalHeroCurrency, { color: C.accent }]}>{currency}</Text>
@@ -2382,7 +2321,7 @@ const BudgetPlanning: React.FC = () => {
 
               <View style={styles.modalDivider} />
 
-              <View style={styles.modalFieldCard}>
+              <View style={[styles.modalFieldCard, neuF.raisedSoft]}>
                 <Text style={styles.modalFieldLabel}>{t.budget.category.toLowerCase()}</Text>
                 <CategoryPicker
                   categories={expenseCategories}
@@ -2392,7 +2331,7 @@ const BudgetPlanning: React.FC = () => {
                 />
               </View>
 
-              <View style={styles.modalFieldCard}>
+              <View style={[styles.modalFieldCard, neuF.raisedSoft]}>
                 <Text style={styles.modalFieldLabel}>{t.budget.period.toLowerCase()}</Text>
                 <View style={styles.periodRow}>
                   {BUDGET_PERIODS.map((p) => {
@@ -2400,7 +2339,7 @@ const BudgetPlanning: React.FC = () => {
                     return (
                       <TouchableOpacity
                         key={p.value}
-                        style={[styles.periodChip, isActive && styles.periodChipActive]}
+                        style={[styles.periodChip, neuF.raised, isActive && styles.periodChipActive]}
                         onPress={() => { lightTap(); setPeriod(p.value as typeof period); }}
                         activeOpacity={0.7}
                         accessibilityRole="button"
@@ -2416,11 +2355,11 @@ const BudgetPlanning: React.FC = () => {
                 </View>
               </View>
 
-              <View style={[styles.modalFieldCard, styles.rolloverRow]}>
+              <View style={[styles.modalFieldCard, styles.rolloverRow, neuF.raisedSoft]}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalFieldLabelBase}>{t.budget.rollover}</Text>
                   <Text style={styles.modalFieldHint}>
-                    carry leftover to next period
+                    {t.budget.rolloverHint}
                   </Text>
                 </View>
                 <Switch
@@ -2460,12 +2399,12 @@ const BudgetPlanning: React.FC = () => {
               ]}
               onPress={handleAdd}
               accessibilityRole="button"
-              accessibilityLabel={editingBudget ? 'save changes' : 'add budget'}
+              accessibilityLabel={editingBudget ? t.budget.saveChanges : t.budget.addBudgetCta}
             >
               <View style={styles.modalSaveBtnInner}>
                 <Feather name="check" size={16} color={C.surface} />
                 <Text style={styles.modalSaveBtnText}>
-                  {editingBudget ? 'save changes' : 'add budget'}
+                  {editingBudget ? t.budget.saveChanges : t.budget.addBudgetCta}
                 </Text>
               </View>
             </Pressable>
@@ -2512,7 +2451,7 @@ const BudgetPlanning: React.FC = () => {
       />
 
       {/* ── Playbook FAB ── */}
-      {viewMode === 'playbook' && playbookTab === 'active' && !createPlaybookVisible && (
+      {viewMode === 'playbook' && !PLAYBOOK_COMING_SOON && playbookTab === 'active' && !createPlaybookVisible && (
         <TouchableOpacity
           style={[styles.fab, { bottom: insets.bottom + 88 + SPACING.md }]}
           onPress={() => {
@@ -2791,20 +2730,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.xl,
     lineHeight: 20,
   },
-  emptyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: C.accent,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.full,
-  },
-  emptyButtonText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
+  // Width wrapper so the full-width Neu Select stays capped + centered (a
+  // center-aligned parent would otherwise collapse NeuButton to content width).
+  emptyCtaWrap: { width: '100%', maxWidth: 256 },
 
   // FAB
   fab: {
@@ -2909,7 +2837,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: C.surface,
+    // Onyx rule 1: sheets sit on C.background (#121212), never the C.surface
+    // gray slab. Separation from content comes from the neu cards inside.
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '92%',
@@ -2930,12 +2860,26 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // ─── Category detail sheet ───
+  // Summary hero — borderless C.background panel lifted by neuF.raisedSoft
+  // (Onyx: no outline, no gray-slab fill). Insets from the sheet edges.
+  bdHeroWrap: {
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.md,
+  },
+  bdHeroCard: {
+    // Faint fill + neuF.raisedSoft (spread in JSX) — mirrors Debt's detailHeroCard
+    // so the panel reads as a distinct, lifted surface on the black sheet.
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.05 : 0.03),
+    borderRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.lg,
+  },
   bdHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-    paddingBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
   bdAvatar: {
     width: 42,
@@ -2956,7 +2900,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'] as any,
   },
   bdFigure: {
-    paddingHorizontal: SPACING.xl,
     fontSize: 34,
     fontWeight: TYPOGRAPHY.weight.bold,
     letterSpacing: -1,
@@ -2977,7 +2920,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(C.textMuted, 0.12),
     borderRadius: RADIUS.full,
     overflow: 'hidden',
-    marginHorizontal: SPACING.xl,
     marginTop: SPACING.md,
   },
   bdBarFill: {
@@ -2985,7 +2927,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   bdPace: {
-    paddingHorizontal: SPACING.xl,
     marginTop: SPACING.sm,
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
@@ -3014,7 +2955,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.md,
     paddingVertical: SPACING.sm + 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
+    borderBottomColor: withAlpha(C.textPrimary, 0.06),
   },
   bdTxnDesc: {
     fontSize: TYPOGRAPHY.size.base,
@@ -3052,7 +2993,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.border,
+    borderTopColor: withAlpha(C.textPrimary, 0.06),
   },
   bdEditBtn: {
     flex: 1,
@@ -3070,15 +3011,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.onAccent,
     textTransform: 'lowercase',
   },
+  // Secondary action — Onyx neu chip (faintDark raised, no outline/tint); the
+  // bronze icon alone carries the destructive meaning. Mirrors debtIconChip.
   bdDeleteBtn: {
     width: 48,
     height: 48,
     borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(C.bronze, 0.1),
-    borderWidth: 1,
-    borderColor: withAlpha(C.bronze, 0.25),
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.06 : 0.03),
   },
   // Centered title zone with italic serif accent (mirrors dDebtTitleZone)
   modalTitleZone: {
@@ -3110,12 +3051,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     paddingBottom: SPACING.md,
   },
-  // Hero amount card (mirrors dDebtFieldHeroCard)
+  // Hero amount card (mirrors dDebtFieldHeroCard) — borderless C.background
+  // lifted by neuF.raisedSoft (Onyx: no outline, no gray-slab fill).
   modalHeroCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
@@ -3147,12 +3087,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.10 : 0.06),
     marginVertical: SPACING.sm,
   },
-  // Generic field card (mirrors dDebtFieldCard)
+  // Generic field card (mirrors dDebtFieldCard) — borderless C.background + neu.
   modalFieldCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
     marginBottom: SPACING.sm + 2,
@@ -3188,26 +3126,25 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.sm,
     marginTop: SPACING.xs,
   },
+  // Neu Pills (Onyx rule 3): faintDark neu over a barely-there base, olive-filled
+  // when selected. neuF.raised is spread at the call site; no border.
   periodChip: {
     flex: 1,
     paddingVertical: SPACING.sm,
     alignItems: 'center',
     borderRadius: RADIUS.md,
-    backgroundColor: C.background,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
   },
   periodChipActive: {
-    backgroundColor: withAlpha(C.accent, 0.08),
-    borderColor: C.accent,
+    backgroundColor: C.accent,
   },
   periodChipText: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
   },
   periodChipTextActive: {
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.onAccent,
   },
 
   // Rollover row — extends modalFieldCard
@@ -3216,14 +3153,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
   },
 
-  // Anchored save zone (mirrors dDebtSaveZone)
+  // Anchored save zone (mirrors dDebtSaveZone) — sits on C.background like the
+  // sheet, not the C.surface slab (Onyx rule 1).
   modalSaveZone: {
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.06),
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   modalSaveBtn: {
     width: '100%',
@@ -3380,6 +3318,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   segmentTextActive: {
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.accent,
+  },
+  segmentChipInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  segmentSoonBadge: {
+    backgroundColor: withAlpha(C.bronze, 0.16),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  segmentSoonText: {
+    fontSize: 9,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
 
   // ─── Playbook Tabs ────────────────────────────────────────
@@ -3598,14 +3554,23 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.1,
     textTransform: 'lowercase',
   },
-  // Trust line — "after RMx bills + RMy savings"
-  heroTrustLine: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    marginTop: 4,
+  // Free pace verdict — one honest line under the gauge (replaces the trust line)
+  heroVerdictTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    marginTop: SPACING.xs,
     letterSpacing: 0.05,
     textAlign: 'center',
-    fontVariant: ['tabular-nums'] as any,
+    textTransform: 'lowercase',
+  },
+  heroVerdictSub: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: 3,
+    letterSpacing: 0.05,
+    textAlign: 'center',
+    lineHeight: 16,
   },
   // "resets tomorrow" — small, muted temporal anchor
   heroResetsTomorrow: {
@@ -3706,23 +3671,27 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 2,
     borderRadius: RADIUS.full,
   },
+  // Onyx: borderless C.background list card lifted by neuF.raisedSoft (spread at
+  // the call sites). Rows are transparent so the card's rounded corners + neu
+  // shadow read cleanly without an overflow:hidden clip — which would sever the
+  // faintDark shadow into a hard seam (see SubscriptionList's rowShadow note).
   categoriesCardV3: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C === CALM_DARK ? C.border : withAlpha(C.bronze, 0.14),
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   catRowV3: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    paddingLeft: SPACING.xs,
+    // Symmetric with paddingRight so the avatar doesn't hug the left edge, and so
+    // the text start (paddingLeft + 52 + gap = 84) matches catRowDividerV3.marginLeft.
+    paddingLeft: SPACING.md,
     paddingRight: SPACING.md,
     paddingVertical: SPACING.lg,
     minHeight: 80,
-    backgroundColor: C.surface,
+    // Transparent — the neu card behind supplies the C.background surface, so its
+    // rounded corners stay visible (no opaque row squaring off the card edges).
+    backgroundColor: 'transparent',
   },
   catAvatarV3: {
     width: 40,
@@ -3758,7 +3727,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   catRowDividerV3: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: C.border,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
     marginLeft: 52 + SPACING.md + SPACING.md,
   },
 
@@ -3813,87 +3782,78 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // ─── Bills this week strip ───
-  billsStrip: {
+  // ─── Commitments block (replaces billsStrip* + goalStrip*) ───
+  // One borderless card on C.background — separation comes from neuF.raisedSoft
+  // (spread at the call site), never a border or tinted fill (Onyx rules 2/3).
+  // Light mode: the same raisedSoft spread renders the soft dual-shadow card.
+  commitCard: {
     marginTop: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    backgroundColor: C.background,
+  },
+  commitRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.sm + 2,
+    alignItems: 'flex-start',
+    gap: SPACING.sm + 4,
     paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(C.bronze, 0.08),
-    borderRadius: RADIUS.md,
-    borderLeftWidth: 3,
-    borderLeftColor: C.bronze,
+    paddingVertical: SPACING.md - 2,
   },
-  billsStripIcon: {
-    width: 22,
+  commitGlyph: {
+    width: 20,
     alignItems: 'center',
+    marginTop: 2, // optically centers the 15px glyph on the title cap height
   },
-  billsStripContent: {
+  commitBody: {
     flex: 1,
     minWidth: 0,
   },
-  billsStripTitle: {
+  commitTitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  billsStripNames: {
-    marginTop: 1,
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontVariant: ['tabular-nums'] as any,
-  },
-
-  // ─── Top goal strip ───
-  goalStrip: {
-    marginTop: SPACING.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
-  },
-  goalStripContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-  goalStripEyebrow: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 1,
-  },
-  goalStripName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     textTransform: 'lowercase',
+    letterSpacing: 0.1,
   },
-  goalStripAmount: {
+  commitSub: {
+    marginTop: 3,
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
-    marginTop: 1,
     fontVariant: ['tabular-nums'] as any,
   },
-  goalStripPctWrap: {
+  // Trailing datum + chevron — row-level (not in the title line) so it stays
+  // vertically centered against the goal row's 3-line body.
+  commitTrail: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    alignSelf: 'center',
+    gap: 3,
+    flexShrink: 0,
   },
-  goalStripPct: {
+  commitValue: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
+  },
+  // iOS-style inset hairline: starts at the text column (pad + glyph + gap).
+  commitDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: withAlpha(C.textPrimary, 0.08),
+    marginLeft: SPACING.md + 20 + SPACING.sm + 4,
+  },
+  // 3px hairline gauge — replaces the 44px CircularProgress ring; track alpha
+  // deliberately matches the hero gauge track so the two rhyme.
+  commitBarTrack: {
+    marginTop: SPACING.sm,
+    height: 3,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.accent, C === CALM_DARK ? 0.14 : 0.10),
+    overflow: 'hidden',
+  },
+  commitBarFill: {
+    height: '100%',
+    borderRadius: RADIUS.full,
+    backgroundColor: C.accent,
   },
 
   // ─── Math receipt sheet (how we got this) ───

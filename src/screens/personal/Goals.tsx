@@ -43,6 +43,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { calcHub } from '../../utils/calcHub';
 import { useWalletStore } from '../../store/walletStore';
 import {
   CALM,
@@ -281,7 +282,17 @@ function computeGoalInsight(
   }
 
   if (!hasDeadline) {
-    const avgContrib = goal.currentAmount / goal.contributions!.length;
+    const avgContrib = goal.currentAmount > 0 ? goal.currentAmount / goal.contributions!.length : 0;
+    // Net-zero balance (e.g. contributed then fully withdrawn) → avg is 0. Avoid
+    // dividing by it (would render "Infinity more deposits"); show the fresh-start copy.
+    if (avgContrib <= 0) {
+      return {
+        mode: 'noContributions',
+        title: `${c} ${fmtAmt(remaining)} for ${name}.`,
+        subtitle: 'no rush — but the first deposit always makes it real.',
+        chips: baseChips,
+      };
+    }
     const contribsNeeded = Math.ceil(remaining / avgContrib);
     return {
       mode: 'noDeadline',
@@ -394,17 +405,67 @@ type GoalSort = 'manual' | 'deadline' | 'progress';
 // ── CIRCULAR PROGRESS RING ───────────────────────────────────
 const MAX_GOALS = 10;
 
+// Memoized grid card. All props are referentially stable across the parent's
+// keystroke/state re-renders (styles/neu useMemo'd, C is a module constant,
+// onPress is a useCallback, currency/cardWidth are primitives), so React.memo
+// skips the whole grid — including its SVG rings — while a sheet is open on top.
+const GoalCard = React.memo(function GoalCard({
+  goal, cardWidth, C, neu, styles, currency, onPress,
+}: {
+  goal: Goal & { percentage: number };
+  cardWidth: number;
+  C: any;
+  neu: any;
+  styles: any;
+  currency: string;
+  onPress: (g: Goal & { percentage: number }) => void;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.goalCard,
+        neu.raisedSoft,
+        { width: cardWidth },
+        goal.isPaused && { opacity: 0.5 },
+        pressed && { opacity: goal.isPaused ? 0.3 : 0.7 },
+      ]}
+      onPress={() => onPress(goal)}
+    >
+      <CircularProgress
+        size={48}
+        strokeWidth={3.5}
+        percentage={goal.isPaused ? 0 : goal.percentage}
+        color={goal.isPaused ? C.neutral : goal.color}
+        trackColor={withAlpha(C.textPrimary, 0.1)}
+      >
+        {goal.imageUri
+          ? <Image source={{ uri: goal.imageUri }} style={{ width: 30, height: 30, borderRadius: 15 }} />
+          : renderGoalIcon(goal.icon || 'f/target', 18, goal.isPaused ? C.neutral : goal.color)}
+      </CircularProgress>
+      <Text style={[styles.goalCardName, goal.isPaused && { color: C.neutral }]}>
+        {goal.name}
+      </Text>
+      <Text style={styles.goalCardAmount}>
+        {currency} {goal.currentAmount % 1 === 0 ? goal.currentAmount.toLocaleString() : goal.currentAmount.toFixed(2)}
+      </Text>
+      <Text style={styles.goalCardTarget}>
+        {currency} {goal.targetAmount % 1 === 0 ? goal.targetAmount.toLocaleString() : goal.targetAmount.toFixed(2)}
+      </Text>
+    </Pressable>
+  );
+});
+
 // ── MAIN COMPONENT ────────────────────────────────────────────
 const Goals: React.FC = () => {
   const C = useCalm();
   // faintDark: the "soft neu dark" tier (single gentle drop, no highlight) — the
   // same tier the bills / commitments / debt screens use, so cards + pills match.
   const neu = useNeu(undefined, { faintDark: true });    // base = screen C.background
-  const neuS = useNeu(undefined, { faintDark: true });   // base = C.background (centered modals sit on the scrim's C.background card)
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
+  const cardWidth = useMemo(() => Math.min((SCREEN_W - SPACING.xl * 2 - SPACING.md) / 2, 220), [SCREEN_W]);
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
@@ -479,6 +540,10 @@ const Goals: React.FC = () => {
   const [contributeNote, setContributeNote] = useState('');
   const [contributeWalletId, setContributeWalletId] = useState<string | undefined>(undefined);
   const [isWithdrawMode, setIsWithdrawMode] = useState(false);
+  // Stable props so the memoized WalletPicker isn't re-rendered on every keystroke.
+  const creditFreeWallets = useMemo(() => wallets.filter((w) => w.type !== 'credit'), [wallets]);
+  const selectContribWallet = useCallback((id: string) => setContributeWalletId(id), []);
+  const clearContribWallet = useCallback(() => setContributeWalletId(undefined), []);
   const [walletPickerOpen, setWalletPickerOpen] = useState(false);
   const contribAmountRef = useRef<TextInput>(null);
   const contribScrollRef = useRef<any>(null);
@@ -647,36 +712,41 @@ const Goals: React.FC = () => {
     goalSheetY.value = withTiming(SCREEN_H, { duration: 220 }, (finished) => {
       if (finished) runOnJS(goalFinishClose)();
     });
+    // Fallback so an interrupted close animation can't leave the sheet mounted
+    // with its backdrop trapping touches.
+    setTimeout(() => { if (goalClosingRef.current) goalFinishClose(); }, 300);
   }, [SCREEN_H, goalSheetY, goalFinishClose]);
 
   const contribGoalRef = useRef<Goal | null>(null);
-  const reopenDetailRef = useRef<((goal: Goal) => void) | null>(null);
   // True when the contribute sheet was opened by a Calculator "Put toward a goal"
   // hand-off. When set, closing pops back to the Calculator and does NOT reopen the
   // goal detail sheet (there was never a detail sheet underneath).
   const arrivedViaContribPrefillRef = useRef(false);
+  // Set true right before closing when a contribution/withdrawal was actually saved,
+  // so a Calculator hand-off returns WITHOUT reopening the hub (avoids a re-contribute).
+  const contribSavedRef = useRef(false);
 
   const contribFinishClose = useCallback(() => {
     if (!contribClosingRef.current) return;
     contribClosingRef.current = false;
-    const goalId = contribGoalRef.current?.id;
     const handedOff = arrivedViaContribPrefillRef.current;
+    const saved = contribSavedRef.current;
     arrivedViaContribPrefillRef.current = false;
+    contribSavedRef.current = false;
     setContributeModalVisible(false);
     setContributingGoal(null);
     setIsWithdrawMode(false);
     contribGoalRef.current = null;
     if (handedOff) {
       // Calculator hand-off: return to the Calculator; skip the detail-sheet reopen.
+      // Reopen the hub only if the user cancelled (a save is "done").
+      calcHub.reopenOnReturn = !saved;
       if (navigation.canGoBack()) navigation.goBack();
       return;
     }
-    if (goalId) {
-      const fresh = usePersonalStore.getState().goals.find((g) => g.id === goalId);
-      if (fresh) {
-        setTimeout(() => reopenDetailRef.current?.(fresh), 80);
-      }
-    }
+    // Intentionally do NOT reopen the detail sheet here. Presenting a second Modal
+    // into the contribute Modal's dismissal traps all touches on iOS ("can't tap
+    // anywhere"). Contributing returns to the (now-updated) goals list instead.
   }, [navigation]);
 
   const closeContributeModal = useCallback(() => {
@@ -702,6 +772,9 @@ const Goals: React.FC = () => {
     historySheetY.value = withTiming(SCREEN_H, { duration: 220 }, (finished) => {
       if (finished) runOnJS(historyFinishClose)();
     });
+    // Fallback so an interrupted close animation can't leave the sheet mounted
+    // with its backdrop trapping touches.
+    setTimeout(() => { if (historyClosingRef.current) historyFinishClose(); }, 300);
   }, [SCREEN_H, historySheetY, historyFinishClose]);
 
   // ── Open Add Modal ──
@@ -856,7 +929,13 @@ const Goals: React.FC = () => {
     }
 
     const remaining = contributingGoal.targetAmount - contributingGoal.currentAmount;
-    const amount = remaining > 0 ? Math.min(rawAmount, remaining) : rawAmount;
+    // Never contribute (or debit a wallet) more than the room left — a full/
+    // over-target goal would otherwise take the money without advancing progress.
+    const amount = Math.min(rawAmount, Math.max(0, remaining));
+    if (amount <= 0) {
+      showToast(t.goals.goalAlreadyComplete, 'error');
+      return;
+    }
 
     const milestonesBefore = contributingGoal.milestones
       ? contributingGoal.milestones.filter((m) => m.reached).length
@@ -915,6 +994,7 @@ const Goals: React.FC = () => {
       showToast(t.goals.contributionAdded, 'success');
     }
 
+    contribSavedRef.current = true; // real contribution → don't reopen the calc hub
     closeContributeModal();
   }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, contributeToGoal, addTransaction, closeContributeModal, showToast, currency, t]);
   const guardedContribute = useSubmitGuard(handleContribute);
@@ -933,34 +1013,57 @@ const Goals: React.FC = () => {
       return;
     }
 
-    let linkedTxId: string | undefined;
-    if (contributeWalletId) {
-      linkedTxId = addTransaction({
-        amount: capped,
-        category: 'savings_return',
-        description: contributingGoal.name,
-        date: new Date(),
-        type: 'income',
-        mode: 'personal',
-        walletId: contributeWalletId,
-        inputMethod: 'manual',
-        linkedGoalId: contributingGoal.id,
-      }) || undefined;
-      useWalletStore.getState().addToWallet(contributeWalletId, capped);
-    }
+    const goal = contributingGoal;
+    const doWithdraw = (walletId?: string, toDest?: string) => {
+      let linkedTxId: string | undefined;
+      if (walletId) {
+        linkedTxId = addTransaction({
+          amount: capped,
+          category: 'savings_return',
+          description: goal.name,
+          date: new Date(),
+          type: 'income',
+          mode: 'personal',
+          walletId,
+          inputMethod: 'manual',
+          linkedGoalId: goal.id,
+        }) || undefined;
+        useWalletStore.getState().addToWallet(walletId, capped);
+      }
 
-    withdrawFromGoal(
-      contributingGoal.id,
-      capped,
-      contributeNote.trim() || undefined,
-      contributeWalletId || undefined,
-      linkedTxId,
+      withdrawFromGoal(goal.id, capped, contributeNote.trim() || undefined, walletId, linkedTxId);
+
+      lightTap();
+      showToast(
+        toDest
+          ? `${currency} ${capped.toFixed(2)} → ${toDest}`
+          : `${currency} ${capped.toFixed(2)} ${t.goals.withdrawn}`,
+        'success',
+      );
+      contribSavedRef.current = true; // real withdrawal → don't reopen the calc hub
+      closeContributeModal();
+    };
+
+    // Explicit wallet chosen → return the money there.
+    if (contributeWalletId) { doWithdraw(contributeWalletId); return; }
+
+    // No wallet chosen. Prefer routing to a Cash wallet so net worth reconciles
+    // (the money is tracked, not lost). Only fall back to an untracked cash-out
+    // (with an explicit prompt) when there is no cash wallet to receive it.
+    const cashWallet = wallets.find((w) => w.type === 'cash');
+    if (cashWallet) { doWithdraw(cashWallet.id, cashWallet.name); return; }
+
+    Alert.alert(
+      t.goals.withdrawAsCashTitle,
+      t.goals.withdrawAsCashMsg
+        .replace('{amount}', `${currency} ${capped.toFixed(2)}`)
+        .replace('{name}', goal.name),
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.goals.withdrawAsCash, onPress: () => doWithdraw() },
+      ],
     );
-
-    lightTap();
-    showToast(`${currency} ${capped.toFixed(2)} ${t.goals.withdrawn}`, 'success');
-    closeContributeModal();
-  }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, withdrawFromGoal, addTransaction, closeContributeModal, showToast, currency, t]);
+  }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, wallets, withdrawFromGoal, addTransaction, closeContributeModal, showToast, currency, t]);
   const guardedWithdraw = useSubmitGuard(handleWithdraw);
 
   // ── Handle undo contribution ──
@@ -1119,6 +1222,11 @@ const Goals: React.FC = () => {
     detailSheetY.value = withTiming(SCREEN_H, { duration: 220 }, (finished) => {
       if (finished) runOnJS(detailFinishClose)();
     });
+    // Fallback: if the close animation is interrupted (finished=false), the
+    // callback never fires — the sheet would stay mounted and its backdrop would
+    // trap every tap. Force-finish after the animation window (mirrors the
+    // contribute/history sheets).
+    setTimeout(() => { if (detailClosingRef.current) detailFinishClose(); }, 300);
   }, [SCREEN_H, detailSheetY, detailFinishClose]);
 
   const openGoalDetail = useCallback((goal: Goal) => {
@@ -1127,7 +1235,6 @@ const Goals: React.FC = () => {
     detailSheetY.value = SCREEN_H;
     setDetailGoal(goal);
   }, [SCREEN_H, detailSheetY]);
-  reopenDetailRef.current = openGoalDetail;
 
   useEffect(() => {
     if (detailGoal) {
@@ -1439,34 +1546,24 @@ const Goals: React.FC = () => {
           <>
             {/* ── Filter & Sort Pills ── */}
             <View style={styles.filterRowOuter}>
-              <View style={styles.filterScrollWrap}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.filterRowContent}
-                  keyboardShouldPersistTaps="handled"
+              {filterOptions.map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.filterChip, neu.raised, filter === opt.key && styles.filterChipActive]}
+                  onPress={() => { selectionChanged(); setFilter(opt.key); }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={opt.label}
+                  accessibilityState={{ selected: filter === opt.key }}
                 >
-                  {filterOptions.map((opt) => (
-                    <TouchableOpacity
-                      key={opt.key}
-                      style={[styles.filterChip, neu.raised, filter === opt.key && styles.filterChipActive]}
-                      onPress={() => { selectionChanged(); setFilter(opt.key); }}
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={opt.label}
-                      accessibilityState={{ selected: filter === opt.key }}
-                    >
-                      <Text style={[styles.filterChipText, filter === opt.key && styles.filterChipTextActive]}>
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-                <LinearGradient colors={[withAlpha(C.background, 0), C.background]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.hScrollFade} pointerEvents="none" />
-              </View>
+                  <Text style={[styles.filterChipText, filter === opt.key && styles.filterChipTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
               <TouchableOpacity
-                style={[styles.sortPill, neu.raised, sort !== 'manual' && styles.sortPillActive]}
+                style={[styles.sortPill, neu.raised, { marginLeft: 'auto' as const }, sort !== 'manual' && styles.sortPillActive]}
                 onPress={() => setShowSortMenu(true)}
                 activeOpacity={0.7}
                 hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
@@ -1481,43 +1578,18 @@ const Goals: React.FC = () => {
             {/* ── Goal Cards (grid) ── */}
             {enrichedGoals.length > 0 ? (
               <Reanimated.View entering={FadeInDown.duration(300).delay(100)} style={styles.goalGrid}>
-                {enrichedGoals.map((goal) => {
-                  const { percentage, isCompleted } = goal;
-                  return (
-                    <Pressable
-                      key={goal.id}
-                      style={({ pressed }) => [
-                        styles.goalCard,
-                        neu.raisedSoft,
-                        { width: Math.min((SCREEN_W - SPACING.xl * 2 - SPACING.md) / 2, 220) },
-                        goal.isPaused && { opacity: 0.5 },
-                        pressed && { opacity: goal.isPaused ? 0.3 : 0.7 },
-                      ]}
-                      onPress={() => openGoalDetail(goal)}
-                    >
-                      <CircularProgress
-                        size={48}
-                        strokeWidth={3.5}
-                        percentage={goal.isPaused ? 0 : percentage}
-                        color={goal.isPaused ? C.neutral : goal.color}
-                        trackColor={withAlpha(C.textPrimary, 0.1)}
-                      >
-                        {goal.imageUri
-                          ? <Image source={{ uri: goal.imageUri }} style={{ width: 30, height: 30, borderRadius: 15 }} />
-                          : renderGoalIcon(goal.icon || 'f/target', 18, goal.isPaused ? C.neutral : goal.color)}
-                      </CircularProgress>
-                      <Text style={[styles.goalCardName, goal.isPaused && { color: C.neutral }]}>
-                        {goal.name}
-                      </Text>
-                      <Text style={styles.goalCardAmount}>
-                        {currency} {goal.currentAmount % 1 === 0 ? goal.currentAmount.toLocaleString() : goal.currentAmount.toFixed(2)}
-                      </Text>
-                      <Text style={styles.goalCardTarget}>
-                        {currency} {goal.targetAmount % 1 === 0 ? goal.targetAmount.toLocaleString() : goal.targetAmount.toFixed(2)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                {enrichedGoals.map((goal) => (
+                  <GoalCard
+                    key={goal.id}
+                    goal={goal}
+                    cardWidth={cardWidth}
+                    C={C}
+                    neu={neu}
+                    styles={styles}
+                    currency={currency}
+                    onPress={openGoalDetail}
+                  />
+                ))}
               </Reanimated.View>
             ) : (
               <View style={styles.noResults}>
@@ -1527,47 +1599,6 @@ const Goals: React.FC = () => {
               </View>
             )}
 
-            {/* ── Archived ── */}
-            {archivedGoals.length > 0 && (
-              <CollapsibleSection
-                title={t.goals.archived}
-                subtitle={`${archivedGoals.length} ${archivedGoals.length > 1 ? t.goals.goals : t.goals.goal}`}
-              >
-                <View style={[styles.groupCard, neu.raisedSoft]}>
-                  {archivedGoals.map((goal, index) => {
-                    const pct = goal.targetAmount > 0 ? Math.round((goal.currentAmount / goal.targetAmount) * 100) : 0;
-                    return (
-                      <React.Fragment key={goal.id}>
-                        {index > 0 && <View style={styles.cardDivider} />}
-                        <View style={styles.archivedItem}>
-                          <View style={[styles.goalIconWrap, { backgroundColor: withAlpha(goal.color, 0.08), overflow: 'hidden' }]}>
-                            {goal.imageUri
-                              ? <Image source={{ uri: goal.imageUri }} style={{ width: 36, height: 36, borderRadius: RADIUS.md }} />
-                              : renderGoalIcon(goal.icon || 'f/target', 16, goal.color)}
-                          </View>
-                          <View style={styles.goalContent}>
-                            <Text style={styles.archivedName} numberOfLines={1}>{goal.name}</Text>
-                            <Text style={styles.archivedAmount}>
-                              {currency} {goal.currentAmount.toLocaleString()} / {currency} {goal.targetAmount.toLocaleString()} · {pct}%
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            style={styles.restoreBtn}
-                            onPress={() => handleUnarchive(goal.id)}
-                            activeOpacity={0.7}
-                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                            accessibilityRole="button"
-                            accessibilityLabel={t.goals.restore}
-                          >
-                            <Feather name="rotate-ccw" size={14} color={C.accent} />
-                          </TouchableOpacity>
-                        </View>
-                      </React.Fragment>
-                    );
-                  })}
-                </View>
-              </CollapsibleSection>
-            )}
           </>
         ) : (
           /* ── Empty State ── */
@@ -1579,6 +1610,48 @@ const Goals: React.FC = () => {
             actionRef={guideTargetRef}
             onAction={() => { lightTap(); openAddGoal(); }}
           />
+        )}
+
+        {/* ── Archived (outside the active/empty ternary so it stays reachable even with 0 active goals) ── */}
+        {archivedGoals.length > 0 && (
+          <CollapsibleSection
+            title={t.goals.archived}
+            subtitle={`${archivedGoals.length} ${archivedGoals.length > 1 ? t.goals.goals : t.goals.goal}`}
+          >
+            <View style={[styles.groupCard, neu.raisedSoft]}>
+              {archivedGoals.map((goal, index) => {
+                const pct = goal.targetAmount > 0 ? Math.round((goal.currentAmount / goal.targetAmount) * 100) : 0;
+                return (
+                  <React.Fragment key={goal.id}>
+                    {index > 0 && <View style={styles.cardDivider} />}
+                    <View style={styles.archivedItem}>
+                      <View style={[styles.goalIconWrap, { backgroundColor: withAlpha(goal.color, 0.08), overflow: 'hidden' }]}>
+                        {goal.imageUri
+                          ? <Image source={{ uri: goal.imageUri }} style={{ width: 36, height: 36, borderRadius: RADIUS.md }} />
+                          : renderGoalIcon(goal.icon || 'f/target', 16, goal.color)}
+                      </View>
+                      <View style={styles.goalContent}>
+                        <Text style={styles.archivedName} numberOfLines={1}>{goal.name}</Text>
+                        <Text style={styles.archivedAmount}>
+                          {currency} {goal.currentAmount.toLocaleString()} / {currency} {goal.targetAmount.toLocaleString()} · {pct}%
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.restoreBtn}
+                        onPress={() => handleUnarchive(goal.id)}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.goals.restore}
+                      >
+                        <Feather name="rotate-ccw" size={14} color={C.accent} />
+                      </TouchableOpacity>
+                    </View>
+                  </React.Fragment>
+                );
+              })}
+            </View>
+          </CollapsibleSection>
         )}
       </ScrollView>
 
@@ -1607,10 +1680,12 @@ const Goals: React.FC = () => {
                 {/* Title */}
                 <View style={styles.gfTitleZone}>
                   <Text style={styles.gfTitleText} numberOfLines={1} ellipsizeMode="tail">
-                    {editingGoal ? t.goals.edit.toLowerCase() + ' ' : 'new '}
-                    <Text style={styles.gfTitleAccent}>
-                      {editingGoal ? editingGoal.name.toLowerCase() : 'goal'}
-                    </Text>
+                    {editingGoal ? (
+                      <>
+                        {t.goals.edit.toLowerCase() + ' '}
+                        <Text style={styles.gfTitleAccent}>{editingGoal.name.toLowerCase()}</Text>
+                      </>
+                    ) : t.goals.newGoal}
                   </Text>
                   <Text style={styles.gfSubtitleText}>
                     {t.goals.setGoalWatch}
@@ -1663,7 +1738,7 @@ const Goals: React.FC = () => {
                       />
                     </View>
                     <Text style={styles.gfHeroHint}>
-                      {goalTarget && parseFloat(goalTarget) > 0 ? 'target amount' : 'how much do you need?'}
+                      {goalTarget && parseFloat(goalTarget) > 0 ? t.goals.targetAmount.toLowerCase() : t.goals.howMuchNeed}
                     </Text>
                   </View>
                 </View>
@@ -1723,7 +1798,7 @@ const Goals: React.FC = () => {
                     activeOpacity={0.7}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     accessibilityRole="button"
-                    accessibilityLabel="add photo or choose icon"
+                    accessibilityLabel={t.goals.addPhotoOrIcon}
                   >
                     <View style={[styles.gfIconPickerCircle, { backgroundColor: withAlpha(goalColorLegible, 0.12) }]}>
                       {goalImageUri
@@ -1735,7 +1810,7 @@ const Goals: React.FC = () => {
                     </View>
                   </TouchableOpacity>
                   <View style={styles.gfFieldFlex}>
-                    <Text style={styles.gfFieldLabel}>name</Text>
+                    <Text style={styles.gfFieldLabel}>{t.goals.name}</Text>
                     <TextInput
                       style={styles.gfFieldInput}
                       value={goalName}
@@ -1762,9 +1837,9 @@ const Goals: React.FC = () => {
                     <Feather name="calendar" size={14} color={goalColor} />
                   </View>
                   <View style={styles.gfFieldFlex}>
-                    <Text style={styles.gfFieldLabel}>deadline</Text>
+                    <Text style={styles.gfFieldLabel}>{t.goals.deadline.toLowerCase()}</Text>
                     <Text style={styles.gfFieldValue}>
-                      {goalDeadline ? format(goalDeadline, 'MMM d, yyyy') : 'none (optional)'}
+                      {goalDeadline ? format(goalDeadline, 'MMM d, yyyy') : t.goals.noneOptional}
                     </Text>
                   </View>
                   <Feather name="chevron-right" size={16} color={withAlpha(C.textMuted, 0.5)} />
@@ -1805,7 +1880,7 @@ const Goals: React.FC = () => {
                 {({ pressed }) => (
                   <View style={[styles.gfSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                     <Feather name="x" size={12} color={C.textMuted} />
-                    <Text style={styles.gfSecondaryLinkText}>close</Text>
+                    <Text style={styles.gfSecondaryLinkText}>{t.goals.close}</Text>
                   </View>
                 )}
               </Pressable>
@@ -1824,7 +1899,7 @@ const Goals: React.FC = () => {
               <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]} pointerEvents="box-none">
                 <View style={styles.ipCard} onStartShouldSetResponder={() => true}>
                   <View style={styles.ipHeader}>
-                    <Text style={styles.ipTitle}>deadline</Text>
+                    <Text style={styles.ipTitle}>{t.goals.deadline.toLowerCase()}</Text>
                     <TouchableOpacity onPress={() => setShowCalendar(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                       <Feather name="x" size={16} color={C.textMuted} />
                     </TouchableOpacity>
@@ -1832,7 +1907,7 @@ const Goals: React.FC = () => {
                   <CalendarPicker value={goalDeadline || new Date()} minimumDate={new Date()} onChange={(date) => { setGoalDeadline(date); }} />
                   <NeuButton
                     icon="check"
-                    label="done"
+                    label={t.goals.done}
                     color={goalColor}
                     onPress={() => setShowCalendar(false)}
                     style={[FLAT_BTN, { marginTop: SPACING.md }]}
@@ -1865,7 +1940,7 @@ const Goals: React.FC = () => {
               >
                 <View style={styles.ipCard} onStartShouldSetResponder={() => true}>
                   <View style={styles.ipHeader}>
-                    <Text style={styles.ipTitle}>choose icon</Text>
+                    <Text style={styles.ipTitle}>{t.goals.chooseIcon}</Text>
                     <TouchableOpacity onPress={() => setIconPickerVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                       <Feather name="x" size={16} color={C.textMuted} />
                     </TouchableOpacity>
@@ -1873,7 +1948,7 @@ const Goals: React.FC = () => {
 
                   {suggestedIcons.length > 0 && (
                     <>
-                      <Text style={styles.ipSectionLabel}>suggested</Text>
+                      <Text style={styles.ipSectionLabel}>{t.goals.suggested}</Text>
                       <View style={styles.ipGrid}>
                         {suggestedIcons.map(icon => {
                           const sel = pickerSelection === icon;
@@ -1892,7 +1967,7 @@ const Goals: React.FC = () => {
                     </>
                   )}
 
-                  <Text style={styles.ipSectionLabel}>common</Text>
+                  <Text style={styles.ipSectionLabel}>{t.goals.common}</Text>
                   <ScrollView
                     showsVerticalScrollIndicator={false}
                     style={{ maxHeight: 180 }}
@@ -1920,17 +1995,17 @@ const Goals: React.FC = () => {
 
                   <TouchableOpacity style={styles.ipGalleryRow} onPress={pickGoalImage} activeOpacity={0.7}>
                     <Feather name="image" size={16} color={C.textPrimary} />
-                    <Text style={[styles.ipGalleryText, { color: C.textPrimary }]}>choose from gallery</Text>
+                    <Text style={[styles.ipGalleryText, { color: C.textPrimary }]}>{t.goals.chooseFromGallery}</Text>
                   </TouchableOpacity>
 
-                  <NeuButton icon="check" label="save" color={goalColor} onPress={saveIconSelection} style={[FLAT_BTN, { marginTop: SPACING.md }]} />
+                  <NeuButton icon="check" label={t.goals.save} color={goalColor} onPress={saveIconSelection} style={[FLAT_BTN, { marginTop: SPACING.md }]} />
 
                   {(goalImageUri || pickerSelection) && (
                     <Pressable style={styles.ipRemoveBtn} onPress={() => { setGoalImageUri(undefined); setPickerSelection('f/target'); }}>
                       {({ pressed }) => (
                         <View style={[styles.ipRemoveBtnInner, pressed && { opacity: 0.55 }]}>
                           <Feather name="x" size={12} color={C.textMuted} />
-                          <Text style={styles.ipRemoveText}>remove</Text>
+                          <Text style={styles.ipRemoveText}>{t.goals.remove}</Text>
                         </View>
                       )}
                     </Pressable>
@@ -2027,7 +2102,7 @@ const Goals: React.FC = () => {
                               if (!isWithdrawMode && newPct >= 100) return t.goals.goalWillBeReached;
                               return `→ ${newPct.toFixed(0)}%${remaining > 0 ? ` · ${currency} ${remaining.toFixed(2)} ${t.goals.toGo}` : ''}`;
                             })()
-                          : isWithdrawMode ? 'how much to withdraw?' : 'how much to add?'}
+                          : isWithdrawMode ? t.goals.howMuchToWithdraw : t.goals.howMuchToAdd}
                       </Text>
                     </View>
                   </View>
@@ -2059,10 +2134,10 @@ const Goals: React.FC = () => {
               {/* ── Wallet ── */}
               {wallets.length > 0 && (
                 <WalletPicker
-                  wallets={wallets.filter((w) => w.type !== 'credit')}
+                  wallets={creditFreeWallets}
                   selectedId={contributeWalletId || null}
-                  onSelect={(id) => setContributeWalletId(id)}
-                  onClear={() => setContributeWalletId(undefined)}
+                  onSelect={selectContribWallet}
+                  onClear={clearContribWallet}
                   allowNone
                   noneLabel={t.goals.none}
                   label={isWithdrawMode ? t.goals.returnToWallet : t.goals.walletOptional}
@@ -2148,8 +2223,10 @@ const Goals: React.FC = () => {
                 </View>
                 <View style={styles.detailTitleZone}>
                   {historyGoal && (
-                    <View style={[styles.detailIconWrap, { backgroundColor: withAlpha(historyGoal.color, 0.12) }]}>
-                      <Feather name={(historyGoal.icon as keyof typeof Feather.glyphMap) || 'target'} size={24} color={historyGoal.color} />
+                    <View style={[styles.detailIconWrap, { backgroundColor: withAlpha(historyGoal.color, 0.12), overflow: 'hidden' }]}>
+                      {historyGoal.imageUri
+                        ? <Image source={{ uri: historyGoal.imageUri }} style={{ width: 48, height: 48, borderRadius: RADIUS.lg }} />
+                        : renderGoalIcon(historyGoal.icon || 'f/target', 24, historyGoal.color)}
                     </View>
                   )}
                   <Text style={styles.detailTitle} numberOfLines={1}>{historyGoal?.name || t.goals.history}</Text>
@@ -2234,7 +2311,7 @@ const Goals: React.FC = () => {
       {showSortMenu && (
         <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setShowSortMenu(false)}>
           <Pressable style={styles.sortMenuBackdrop} onPress={() => setShowSortMenu(false)}>
-            <View style={[styles.sortMenuCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+            <View style={styles.sortMenuCard} onStartShouldSetResponder={() => true}>
               <Text style={styles.sortMenuTitle}>{t.goals.sortBy ?? 'sort by'}</Text>
               {sortOptions.map((opt) => {
                 const active = sort === opt.key;
@@ -2259,7 +2336,7 @@ const Goals: React.FC = () => {
                   onPress={() => { lightTap(); setSort('manual'); setShowSortMenu(false); }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.sortMenuClearText}>clear sort</Text>
+                  <Text style={styles.sortMenuClearText}>{t.goals.clearSort}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -2313,7 +2390,7 @@ const Goals: React.FC = () => {
                           color={g.isPaused ? C.neutral : g.color}
                           trackColor={C.border}
                         >
-                          <Text style={styles.detailRingAmt}>{currency} {g.currentAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</Text>
+                          <Text style={styles.detailRingAmt} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{currency} {g.currentAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</Text>
                           <Text style={styles.detailRingPctSmall}>{pct.toFixed(0)}%</Text>
                         </CircularProgress>
                         <View style={styles.detailRingBadgeWrap}>
@@ -2349,7 +2426,7 @@ const Goals: React.FC = () => {
                           <Text style={styles.dtSummaryValue}>
                             {currency} {(g.targetAmount - g.currentAmount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                           </Text>
-                          <Text style={styles.dtSummaryLabel}>remaining</Text>
+                          <Text style={styles.dtSummaryLabel}>{t.goals.remaining}</Text>
                         </View>
                         {g.deadline && daysLeft !== null && (
                           <View style={[styles.dtSummaryStat, styles.dtSummaryStatBorder]}>
@@ -2357,9 +2434,9 @@ const Goals: React.FC = () => {
                               {daysLeft < 0
                                 ? t.goals.dOverdue.replace('{n}', String(Math.abs(daysLeft)))
                                 : daysLeft === 0 ? t.goals.dueToday
-                                : `${daysLeft} days`}
+                                : t.goals.nDays.replace('{n}', String(daysLeft))}
                             </Text>
-                            <Text style={styles.dtSummaryLabel}>{daysLeft < 0 ? 'overdue' : t.goals.remaining}</Text>
+                            <Text style={styles.dtSummaryLabel}>{daysLeft < 0 ? t.goals.overdue : t.goals.remaining}</Text>
                           </View>
                         )}
                         {paceM !== null && paceM > 0 && (
@@ -2367,7 +2444,7 @@ const Goals: React.FC = () => {
                             <Text style={styles.dtSummaryValue}>
                               ~{currency} {Math.ceil(paceM).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                             </Text>
-                            <Text style={styles.dtSummaryLabel}>per month</Text>
+                            <Text style={styles.dtSummaryLabel}>{t.goals.perMonthLabel}</Text>
                           </View>
                         )}
                       </View>
@@ -2388,7 +2465,7 @@ const Goals: React.FC = () => {
                   >
                     <View style={styles.echoTipRow}>
                       <Text style={styles.echoTipTag}>echo</Text>
-                      <Text style={styles.echoTipAsk}>talk to echo  ›</Text>
+                      <Text style={styles.echoTipAsk}>{t.goals.talkToEcho}  ›</Text>
                     </View>
                     <Text style={styles.echoTipTitle}>{goalInsight.title}</Text>
                     {!!goalInsight.subtitle && <Text style={styles.echoTipSubtitle}>{goalInsight.subtitle}</Text>}
@@ -2442,7 +2519,7 @@ const Goals: React.FC = () => {
                               <View style={styles.dtActivityRow}>
                                 <View style={[styles.dtActivityDot, { backgroundColor: isW ? C.neutral : (g.isPaused ? C.neutral : withAlpha(g.color, 0.5)) }]} />
                                 <View style={styles.dtActivityContent}>
-                                  <Text style={styles.dtActivityNote}>{c.note || (isW ? 'withdrawal' : 'contribution')}</Text>
+                                  <Text style={styles.dtActivityNote}>{c.note || (isW ? t.goals.withdrawn : t.goals.contribution.toLowerCase())}</Text>
                                   <Text style={styles.dtActivityDate}>{isValid(d) ? format(d, 'MMM d') : '—'}</Text>
                                 </View>
                                 <Text style={[styles.dtActivityAmt, !isW && { color: g.isPaused ? C.neutral : g.color }]}>
@@ -2612,16 +2689,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.sm,
     marginBottom: SPACING.lg,
   },
-  filterScrollWrap: {
-    flex: 1,
-    position: 'relative',
-  },
-  filterRowContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingRight: SPACING.xl,
-  },
   filterChip: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs + 2,
@@ -2666,12 +2733,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center' as const,
   },
   sortMenuCard: {
+    // no neu, no outline — plain card with a regular drop shadow for elevation
     width: '80%' as any,
     maxWidth: 320,
     backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   sortMenuTitle: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -3635,6 +3704,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
     letterSpacing: -0.5,
+    // Cap to the ring's inner width (size 150 − 2×stroke 12 ≈ 126, minus padding)
+    // so a long amount auto-shrinks (adjustsFontSizeToFit) instead of hitting the ring.
+    maxWidth: 122,
+    textAlign: 'center',
   },
   detailRingPctSmall: {
     fontSize: 11,

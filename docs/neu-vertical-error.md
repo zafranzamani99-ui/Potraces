@@ -42,3 +42,4 @@ The shared `WalletPicker` ([[neu-key]]) already does this — its `item` style h
 - `src/components/common/QuickAddExpense.tsx` — wallet-step rows (first hit).
 - `src/screens/personal/WalletManagement.tsx` — the "Recent Activity" see-all `FloatingModal` (FlatList `contentContainerStyle` paddingHorizontal for cards).
 - `src/components/common/TimeRangePills.tsx` — the opt-in `neu` path (`contentNeu` paddingVertical for pills).
+- `src/screens/shared/Onboarding.tsx` — `StartChoicePage` ("how do you want to start?") choice cards + demo profile rows: `neu.raisedSoft` rows inside the vertical `startScroll` ScrollView. Fixed with `marginHorizontal: SPACING.md` on `choiceCard` / `profileRow`.

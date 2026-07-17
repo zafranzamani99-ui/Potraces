@@ -40,9 +40,9 @@ const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
       header={
         <View style={styles.dDebtTitleZone}>
           <Text style={styles.dDebtTitle}>
-            view <Text style={styles.dDebtTitleAccent}>settings</Text>
+            <Text style={styles.dDebtTitleAccent}>{t.debts.viewSettings}</Text>
           </Text>
-          <Text style={styles.dDebtSubtitle}>tweak what shows up on this screen</Text>
+          <Text style={styles.dDebtSubtitle}>{t.debts.viewSettingsSub}</Text>
         </View>
       }
     >
@@ -55,9 +55,9 @@ const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
           accessibilityState={{ checked: debtsShowArchive }}
         >
           <View style={{ flex: 1 }}>
-            <Text style={styles.dSettingsRowTitle}>show archive tab</Text>
+            <Text style={styles.dSettingsRowTitle}>{t.debts.showArchiveTab}</Text>
             <Text style={styles.dSettingsRowSub}>
-              keeps an extra tab for debts and splits you've stashed away. tap any item's "archive" action to move it there.
+              {t.debts.showArchiveTabSub}
             </Text>
           </View>
           <View style={[
@@ -79,9 +79,9 @@ const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
           accessibilityState={{ checked: debtsShowReminder }}
         >
           <View style={{ flex: 1 }}>
-            <Text style={styles.dSettingsRowTitle}>show reminder button</Text>
+            <Text style={styles.dSettingsRowTitle}>{t.debts.showReminderButton}</Text>
             <Text style={styles.dSettingsRowSub}>
-              adds a reminder button on "they owe" debts so you can nudge people with a friendly message.
+              {t.debts.showReminderButtonSub}
             </Text>
           </View>
           <View style={[
@@ -102,7 +102,7 @@ const DebtViewSettingsModal: React.FC<DebtViewSettingsModalProps> = ({
           activeOpacity={0.7}
         >
           <Feather name="help-circle" size={16} color={C.accent} />
-          <Text style={styles.dHowButtonText}>how it works</Text>
+          <Text style={styles.dHowButtonText}>{t.debts.howItWorks}</Text>
           <Feather name="chevron-right" size={14} color={C.textMuted} />
         </TouchableOpacity>
 

@@ -34,6 +34,12 @@ interface FloatingModalProps {
   maxWidth?: number;
   showDragHandle?: boolean;
   swipeToDismiss?: boolean;
+  /**
+   * Entrance style. 'slide' (default) springs up from the bottom like a sheet.
+   * 'fade' fades + scales in place like a centered dialog (matches the Repay
+   * Credit picker) — swipe-to-dismiss is inert in this mode; tap-outside closes.
+   */
+  entrance?: 'slide' | 'fade';
   children: React.ReactNode;
 }
 
@@ -43,35 +49,50 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
   maxWidth = 520,
   showDragHandle = true,
   swipeToDismiss = true,
+  entrance = 'slide',
   children,
 }) => {
   const C = useCalm();
   const { height: SCREEN_H } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const fadeMode = entrance === 'fade';
 
   const sheetY = useSharedValue(SCREEN_H);
+  const fade = useSharedValue(0);
   const dragStart = useSharedValue(0);
   const thresholdCrossed = useSharedValue(false);
 
   useEffect(() => {
     if (visible) {
-      sheetY.value = SCREEN_H;
-      sheetY.value = withSpring(0, SPRING_OPEN);
+      if (fadeMode) {
+        fade.value = 0;
+        fade.value = withTiming(1, { duration: 200 });
+      } else {
+        sheetY.value = SCREEN_H;
+        sheetY.value = withSpring(0, SPRING_OPEN);
+      }
     }
-  }, [visible, SCREEN_H]);
+  }, [visible, SCREEN_H, fadeMode]);
 
   const dismiss = useCallback(() => {
+    if (fadeMode) {
+      fade.value = withTiming(0, { duration: CLOSE_DURATION }, (finished) => {
+        'worklet';
+        if (finished) runOnJS(onClose)();
+      });
+      return;
+    }
     sheetY.value = withTiming(SCREEN_H, { duration: CLOSE_DURATION }, (finished) => {
       'worklet';
       if (finished) runOnJS(onClose)();
     });
-  }, [SCREEN_H, onClose]);
+  }, [SCREEN_H, onClose, fadeMode]);
 
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
         .activeOffsetY([10, 9999])
-        .enabled(swipeToDismiss)
+        .enabled(swipeToDismiss && !fadeMode)
         .onStart(() => {
           'worklet';
           dragStart.value = sheetY.value;
@@ -105,13 +126,20 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
     [swipeToDismiss, SCREEN_H, onClose],
   );
 
-  const sheetAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: sheetY.value }],
-  }));
+  const sheetAnimatedStyle = useAnimatedStyle(() =>
+    fadeMode
+      ? {
+          opacity: fade.value,
+          transform: [{ scale: interpolate(fade.value, [0, 1], [0.96, 1], Extrapolation.CLAMP) }],
+        }
+      : { transform: [{ translateY: sheetY.value }] },
+  );
 
-  const backdropAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(sheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP),
-  }));
+  const backdropAnimatedStyle = useAnimatedStyle(() =>
+    fadeMode
+      ? { opacity: fade.value }
+      : { opacity: interpolate(sheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP) },
+  );
 
   if (!visible) return null;
 

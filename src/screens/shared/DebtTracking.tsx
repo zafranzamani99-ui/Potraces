@@ -106,6 +106,7 @@ import CalendarPicker from '../../components/common/CalendarPicker';
 import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { newId } from '../../utils/id';
+import { calcHub } from '../../utils/calcHub';
 import {
   Contact,
   Debt,
@@ -192,7 +193,7 @@ const DebtTracking: React.FC = () => {
 
   const getSelfContact = useCallback((): Contact => ({
     id: '__self__',
-    name: userName?.trim() || 'me',
+    name: userName?.trim() || t.debts.selfNameFallback,
     isFromPhone: false,
   }), [userName]);
 
@@ -247,7 +248,7 @@ const DebtTracking: React.FC = () => {
 
   // Inline category manager (avoids navigating-from-modal blocking bug)
   const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment' | null>(null);
-  const categoryManagerCallerRef = useRef<'debt' | 'payment'>('debt');
+  const categoryManagerCallerRef = useRef<'debt' | 'payment' | 'split'>('debt');
 
   // Keyboard visibility tracking — drives the floating gold "done" FAB inside modals.
   // FAB shows only when a multiline text input is focused — numeric keypads have their
@@ -321,6 +322,7 @@ const DebtTracking: React.FC = () => {
   const [newItemName, setNewItemName] = useState('');
   const [newItemAmount, setNewItemAmount] = useState('');
   const [splitWalletId, setSplitWalletId] = useState<string | null>(null);
+  const [splitCategory, setSplitCategory] = useState('');
   const [splitDueDateObj, setSplitDueDateObj] = useState<Date | null>(null);
   const [splitDueDatePickerOpen, setSplitDueDatePickerOpen] = useState(false);
 
@@ -472,7 +474,7 @@ const DebtTracking: React.FC = () => {
         <TouchableOpacity
           onPress={() => setSettingsModalVisible(true)}
           accessibilityRole="button"
-          accessibilityLabel="settings"
+          accessibilityLabel={t.common.settings}
           style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
         >
           <Feather name="settings" size={20} color={C.textPrimary} />
@@ -603,9 +605,13 @@ const DebtTracking: React.FC = () => {
   // (via the prefillSplitAmount param). When set, closing/saving the modal pops
   // back to the Calculator instead of stranding the user on this pushed screen.
   const arrivedViaSplitPrefillRef = useRef(false);
-  const returnToCallerIfHandedOff = useCallback(() => {
+  // `saved` = a real split was committed. Return to the Calculator either way, but
+  // only ask it to reopen the "What next?" hub when the user CANCELLED — reopening
+  // it after a save would show the same amount and invite a duplicate split.
+  const returnToCallerIfHandedOff = useCallback((saved: boolean) => {
     if (!arrivedViaSplitPrefillRef.current) return;
     arrivedViaSplitPrefillRef.current = false;
+    calcHub.reopenOnReturn = !saved; // reopen the calc hub on cancel, not after a save
     if (navigation.canGoBack()) navigation.goBack();
   }, [navigation]);
 
@@ -615,7 +621,7 @@ const DebtTracking: React.FC = () => {
     dSplitClosingRef.current = false;
     setSplitModalVisible(false);
     setTimeout(() => resetSplitForm(), 0);
-    returnToCallerIfHandedOff();
+    returnToCallerIfHandedOff(false); // closed without saving → reopen the hub
   }, [returnToCallerIfHandedOff]);
 
   const dSplitCloseSheet = useCallback(() => {
@@ -686,6 +692,9 @@ const DebtTracking: React.FC = () => {
       setInPayDetail(false);
       setPayDetailPayment(null);
       setGroupPaymentId(null);
+      // Clear the split-return marker on dismiss-without-recording, or a later
+      // unrelated payment would wrongly re-open this stale split's detail sheet.
+      setReturnToSplitId(null);
       paymentSavingRef.current = false;
     }, 0);
     const willReturnToDetail = !!returnToDetailRef.current;
@@ -1089,8 +1098,12 @@ const DebtTracking: React.FC = () => {
       setTimeout(() => {
         setDetailDebtId(hid);
       }, 300);
+      // Consume the param — otherwise this effect (which also depended on `debts`)
+      // re-fired on every debt mutation, force-switching back to the Debts tab and
+      // re-opening the highlighted detail sheet for the screen's whole lifetime.
+      navigation.setParams({ highlightId: undefined } as any);
     }
-  }, [route.params?.highlightId, debts]);
+  }, [route.params?.highlightId, navigation]);
 
   // Scroll to highlighted debt card via callback ref
   const highlightDebtRef = useCallback((node: View | null) => {
@@ -1130,7 +1143,7 @@ const DebtTracking: React.FC = () => {
 
   const handleEditDebt = useCallback((debt: Debt) => {
     if (debt.isArchived) {
-      showToast('Unarchive this debt before editing.', 'error');
+      showToast(t.debts.unarchiveBeforeEdit, 'error');
       return;
     }
     setEditingDebtId(debt.id);
@@ -1156,11 +1169,11 @@ const DebtTracking: React.FC = () => {
   const handleSaveDebt = useCallback(() => {
     if (debtSavingRef.current) return;
     if (debtContacts.length === 0) {
-      showToast('Please select a contact', 'error');
+      showToast(t.debts.pleaseSelectContact, 'error');
       return;
     }
     if (!debtAmount || isNaN(parseFloat(debtAmount)) || parseFloat(debtAmount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+      showToast(t.debts.enterValidAmount, 'error');
       return;
     }
     debtSavingRef.current = true;
@@ -1171,7 +1184,7 @@ const DebtTracking: React.FC = () => {
       const newTotal = parseFloat(debtAmount);
 
       if (existingDebt && debtType !== existingDebt.type && existingDebt.payments.length > 0) {
-        showToast('Cannot change debt direction after payments have been recorded.', 'error');
+        showToast(t.debts.cannotChangeDirection, 'error');
         debtSavingRef.current = false;
         return;
       }
@@ -1180,14 +1193,14 @@ const DebtTracking: React.FC = () => {
         const contactChanged = debtContacts[0]?.id !== existingDebt.contact.id ||
           debtContacts[0]?.name !== existingDebt.contact.name;
         if (contactChanged) {
-          showToast('Cannot change contact after payments have been recorded.', 'error');
+          showToast(t.debts.cannotChangeContact, 'error');
           debtSavingRef.current = false;
           return;
         }
       }
 
       if (existingDebt && existingDebt.paidAmount >= existingDebt.totalAmount && newTotal !== existingDebt.totalAmount) {
-        showToast('Cannot change amount on a settled debt.', 'error');
+        showToast(t.debts.cannotChangeSettledAmount, 'error');
         debtSavingRef.current = false;
         return;
       }
@@ -1195,7 +1208,7 @@ const DebtTracking: React.FC = () => {
       if (existingDebt && newTotal < existingDebt.paidAmount) {
         Alert.alert(
           t.debts.amountBelowPaid,
-          `New amount (${currency} ${newTotal.toFixed(2)}) is less than already paid (${currency} ${existingDebt.paidAmount.toFixed(2)}). The debt will be marked as settled.`,
+          t.debts.amountBelowPaidMessage.replace('{currency}', currency).replace('{newTotal}', newTotal.toFixed(2)).replace('{currency}', currency).replace('{paidAmount}', existingDebt.paidAmount.toFixed(2)),
           [
             { text: t.common.cancel, style: 'cancel', onPress: () => { debtSavingRef.current = false; } },
             {
@@ -1209,7 +1222,7 @@ const DebtTracking: React.FC = () => {
                   category: debtCategory || undefined,
                   dueDate: debtDueDateObj ? debtDueDateObj.toISOString() : undefined,
                 } as any);
-                showToast('Debt updated & marked as settled', 'success');
+                showToast(t.debts.debtUpdatedSettled, 'success');
                 dDebtCloseSheet();
                 resetDebtForm();
                 maybeReturnToDetail();
@@ -1244,7 +1257,7 @@ const DebtTracking: React.FC = () => {
         dueDate: debtDueDateObj ? debtDueDateObj.toISOString() : undefined,
         ...(newGroupId ? { groupId: newGroupId } : {}),
       } as any);
-      showToast('Debt updated!', 'success');
+      showToast(t.debts.debtUpdated, 'success');
     } else {
       addDebt({
         contact: debtContacts[0],
@@ -1261,7 +1274,7 @@ const DebtTracking: React.FC = () => {
       if (contactName && debtDescription.trim()) {
         useLearningStore.getState().learnPersonAlias(debtDescription.trim(), contactName);
       }
-      showToast('Debt added!', 'success');
+      showToast(t.debts.debtAdded, 'success');
     }
 
     debtSavingRef.current = false;
@@ -1310,31 +1323,31 @@ const DebtTracking: React.FC = () => {
 
     if (hasConsolidatedSiblings) {
       Alert.alert(
-        'Cannot Delete',
-        'This debt has payments from a consolidated group payment. Remove the group payment first from payment history, then delete this debt.',
-        [{ text: 'OK' }]
+        t.debts.cannotDeleteTitle,
+        t.debts.cannotDeleteConsolidated,
+        [{ text: t.common.ok }]
       );
       return;
     }
 
     if (debt.splitId) {
       Alert.alert(
-        'Linked to Split',
-        'This debt is part of a split expense. Edit or delete the split to remove this participant.',
-        [{ text: 'OK' }]
+        t.debts.linkedToSplitTitle,
+        t.debts.linkedToSplitMessage,
+        [{ text: t.common.ok }]
       );
       return;
     }
 
-    Alert.alert('Delete Debt', 'Are you sure? Linked transactions and wallet changes will be reversed.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t.debts.deleteDebtTitle, t.debts.deleteDebtConfirm, [
+      { text: t.common.cancel, style: 'cancel' },
       {
-        text: 'Delete',
+        text: t.common.delete,
         style: 'destructive',
         onPress: () => {
           cleanupDebtPayments(debt);
           deleteDebt(id);
-          showToast('Debt deleted', 'success');
+          showToast(t.debts.debtDeleted, 'success');
         },
       },
     ]);
@@ -1344,7 +1357,7 @@ const DebtTracking: React.FC = () => {
   const openPaymentModal = useCallback((debtId: string, historyOnly = false) => {
     const debt = debts.find((d) => d.id === debtId);
     if (!historyOnly && debt?.isArchived) {
-      showToast('Unarchive this debt before recording payments.', 'error');
+      showToast(t.debts.unarchiveBeforePayment, 'error');
       return;
     }
     setPaymentDebtId(debtId);
@@ -1360,18 +1373,18 @@ const DebtTracking: React.FC = () => {
     const currentMode = useAppStore.getState().mode;
     const currentDebt = useDebtStore.getState().debts.find(d => d.id === debt.id);
     if (!currentDebt || currentDebt.status === 'settled') {
-      showToast('this debt is already settled.', 'info');
+      showToast(t.debts.debtAlreadySettled, 'info');
       return;
     }
     if (currentDebt.isArchived) {
-      showToast('Unarchive this debt before recording payments.', 'error');
+      showToast(t.debts.unarchiveBeforePayment, 'error');
       return;
     }
 
     if (paymentWalletId) {
       const walletExists = wallets.some((w) => w.id === paymentWalletId);
       if (!walletExists) {
-        showToast('Selected wallet no longer exists. Please pick another.', 'error');
+        showToast(t.debts.walletNoLongerExists, 'error');
         return;
       }
     }
@@ -1388,16 +1401,16 @@ const DebtTracking: React.FC = () => {
     });
 
     if (!paymentId) {
-      showToast('this debt is already settled.', 'info');
+      showToast(t.debts.debtAlreadySettled, 'info');
       return;
     }
 
     const txType = debt.type === 'they_owe' ? 'income' : 'expense';
     const contactName = debt.contact.name.charAt(0).toUpperCase() + debt.contact.name.slice(1);
     let txDesc = debt.type === 'they_owe'
-      ? `Debt Payment from ${contactName}`
-      : `Debt Payment to ${contactName}`;
-    if (tip > 0) txDesc += ` (incl. tip ${currency} ${tip.toFixed(2)})`;
+      ? t.debts.txDebtPaymentFrom.replace('{name}', contactName)
+      : t.debts.txDebtPaymentTo.replace('{name}', contactName);
+    if (tip > 0) txDesc += t.debts.inclTipAmount.replace('{currency}', currency).replace('{amount}', tip.toFixed(2));
 
     let linkedTransactionId: string | undefined;
     if (currentMode === 'personal') {
@@ -1458,7 +1471,7 @@ const DebtTracking: React.FC = () => {
     setPaymentModalVisible(false);
     setPaymentAmount('');
     setPaymentNote('');
-    showToast('Payment recorded!', 'success');
+    showToast(t.debts.paymentRecorded, 'success');
 
     if (returnToSplitId) {
       setTimeout(() => {
@@ -1484,7 +1497,7 @@ const DebtTracking: React.FC = () => {
     if (paymentSavingRef.current) return;
     if (!paymentDebtId) return;
     if (!paymentAmount || isNaN(parseFloat(paymentAmount)) || parseFloat(paymentAmount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+      showToast(t.debts.enterValidAmount, 'error');
       return;
     }
     paymentSavingRef.current = true;
@@ -1525,7 +1538,7 @@ const DebtTracking: React.FC = () => {
             if (!fresh || fresh.status === 'settled') continue;
             const rem = Math.max(0, fresh.totalAmount - fresh.paidAmount);
             if (rem > 0) {
-              const nId = addPayment(d.id, { amount: rem, date: new Date(), note: 'netted' });
+              const nId = addPayment(d.id, { amount: rem, date: new Date(), note: t.debts.noteNetted });
               if (nId) nettedPaymentRefs.push({ debtId: d.id, paymentId: nId });
               const after = freshDebt(d.id);
               if (after?.status === 'settled') {
@@ -1543,7 +1556,7 @@ const DebtTracking: React.FC = () => {
             const rem = Math.max(0, fresh.totalAmount - fresh.paidAmount);
             const pay = Math.min(rem, offsetLeft);
             if (pay > 0) {
-              const nId = addPayment(d.id, { amount: pay, date: new Date(), note: 'netted' });
+              const nId = addPayment(d.id, { amount: pay, date: new Date(), note: t.debts.noteNetted });
               if (nId) nettedPaymentRefs.push({ debtId: d.id, paymentId: nId });
               const after = freshDebt(d.id);
               if (after?.status === 'settled' && d.splitId) {
@@ -1553,7 +1566,7 @@ const DebtTracking: React.FC = () => {
             }
           }
           if (Math.abs(iOweRem - theyOweRem) < 0.01) {
-            showToast(`Debts netted — settled`, 'success');
+            showToast(t.debts.debtsNettedSettled, 'success');
             setGroupPaymentId(null);
             setPaymentModalVisible(false);
             paymentSavingRef.current = false;
@@ -1570,8 +1583,8 @@ const DebtTracking: React.FC = () => {
         const txType = netDir === 'they_owe' ? 'income' : 'expense';
         const cName = firstDebt.contact.name.charAt(0).toUpperCase() + firstDebt.contact.name.slice(1);
         const txDesc = netDir === 'they_owe'
-            ? `Debt Payment from ${cName} (${unsettled.length} debts)`
-            : `Debt Payment to ${cName} (${unsettled.length} debts)`;
+            ? t.debts.txDebtPaymentFromCount.replace('{name}', cName).replace('{count}', String(unsettled.length))
+            : t.debts.txDebtPaymentToCount.replace('{name}', cName).replace('{count}', String(unsettled.length));
 
         let linkedTxId: string | undefined;
         if (mode === 'personal') {
@@ -1621,7 +1634,7 @@ const DebtTracking: React.FC = () => {
               pay = Math.round(Math.min(rem, rem * ratio) * 100) / 100;
             }
             if (pay > 0) {
-              const pId = addPayment(d.id, { amount: pay, date: new Date(), note: paymentNote.trim() || 'consolidated payment', linkedTransactionId: linkedTxId, walletId: paymentWalletId || undefined });
+              const pId = addPayment(d.id, { amount: pay, date: new Date(), note: paymentNote.trim() || t.debts.noteConsolidatedPayment, linkedTransactionId: linkedTxId, walletId: paymentWalletId || undefined });
               if (!pId) continue;
               if (!firstPaymentId) firstPaymentId = pId;
               const after = freshDebt(d.id);
@@ -1639,12 +1652,15 @@ const DebtTracking: React.FC = () => {
         // Tip: if overpayment remains, attach to last payment so sum matches wallet
         const leftover = Math.round((amount - distributed) * 100) / 100;
         if (leftover > 0 && lastPaidInfo?.paymentId) {
+          // Tip only — do NOT fold leftover into amount. The last payment already
+          // sits at its debt's remaining; storing amount+leftover would double-count
+          // the tip in business-mode reconcile (amount + tipAmount). updatePayment
+          // also caps amount defensively, but keep the intent explicit here.
           updatePayment(lastPaidInfo.debtId, lastPaidInfo.paymentId, {
-            amount: lastPaidInfo.amount + leftover,
             tipAmount: leftover,
           });
           if (linkedTxId) {
-            const tipNote = ` (incl. tip ${currency} ${leftover.toFixed(2)})`;
+            const tipNote = t.debts.inclTipAmount.replace('{currency}', currency).replace('{amount}', leftover.toFixed(2));
             if (mode === 'personal') updateTransaction(linkedTxId, { description: txDesc + tipNote });
             else updateBusinessTransaction(linkedTxId, { note: txDesc + tipNote });
           }
@@ -1657,8 +1673,8 @@ const DebtTracking: React.FC = () => {
         }
 
         const tipLeftover = Math.max(0, leftover);
-        const tipMsg = tipLeftover > 0 ? ` (incl. ${currency} ${tipLeftover.toFixed(2)} tip)` : '';
-        showToast(`${currency} ${amount.toFixed(2)} applied across ${count} debts${tipMsg}`, 'success');
+        const tipMsg = tipLeftover > 0 ? t.debts.inclTipAmountToast.replace('{currency}', currency).replace('{amount}', tipLeftover.toFixed(2)) : '';
+        showToast(t.debts.paymentAppliedAcross.replace('{currency}', currency).replace('{amount}', amount.toFixed(2)).replace('{count}', String(count)).replace('{tipMsg}', tipMsg), 'success');
         setGroupPaymentId(null);
         setPaymentModalVisible(false);
         setPaymentAmount('');
@@ -1707,13 +1723,13 @@ const DebtTracking: React.FC = () => {
     const isConsolidated = siblings.length > 0;
     const totalAmount = payment.amount + siblings.reduce((s, sib) => s + sib.amount, 0);
     const msg = isConsolidated
-      ? `This was a consolidated payment of ${currency} ${totalAmount.toFixed(2)} across ${siblings.length + 1} debts. Remove all?`
-      : 'This will undo this payment and its linked transaction. Continue?';
+      ? t.debts.removeConsolidatedConfirm.replace('{currency}', currency).replace('{amount}', totalAmount.toFixed(2)).replace('{count}', String(siblings.length + 1))
+      : t.debts.removePaymentConfirm;
 
-    Alert.alert('Remove Payment', msg, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t.debts.removePayment, msg, [
+      { text: t.common.cancel, style: 'cancel' },
       {
-        text: 'Remove',
+        text: t.debts.remove,
         style: 'destructive',
         onPress: () => {
           // Delete linked transaction once
@@ -1758,7 +1774,7 @@ const DebtTracking: React.FC = () => {
             deletePayment(p.debtId, p.paymentId);
           }
 
-          showToast(isConsolidated ? `Consolidated payment of ${currency} ${totalAmount.toFixed(2)} removed` : 'Payment removed', 'success');
+          showToast(isConsolidated ? t.debts.consolidatedPaymentRemoved.replace('{currency}', currency).replace('{amount}', totalAmount.toFixed(2)) : 'Payment removed', 'success');
           dPayCloseSheet();
         },
       },
@@ -1783,7 +1799,7 @@ const DebtTracking: React.FC = () => {
     if (!payDetailDebtId || !payDetailPayment) return;
     const newAmount = parseFloat(editPayAmount);
     if (isNaN(newAmount) || newAmount <= 0) {
-      showToast('Enter a valid amount', 'error');
+      showToast(t.debts.enterValidAmount, 'error');
       return;
     }
 
@@ -1796,7 +1812,7 @@ const DebtTracking: React.FC = () => {
         d.id !== payDetailDebtId && d.payments.some((p) => p.linkedTransactionId === txId)
       );
       if (hasSiblings) {
-        showToast('Cannot edit amount on a consolidated payment. Remove and re-record instead.', 'error');
+        showToast(t.debts.cannotEditConsolidated, 'error');
         return;
       }
     }
@@ -1805,7 +1821,7 @@ const DebtTracking: React.FC = () => {
     if (amountChanged) {
       const freshDebt = useDebtStore.getState().debts.find((d) => d.id === payDetailDebtId);
       if (freshDebt?.status === 'settled') {
-        showToast('Cannot change amount on a settled debt', 'error');
+        showToast(t.debts.cannotChangeSettledAmount, 'error');
         return;
       }
 
@@ -1833,7 +1849,7 @@ const DebtTracking: React.FC = () => {
     const freshPayment = freshDebt?.payments.find((p) => p.id === payDetailPayment.id);
     if (!freshDebt || !freshPayment) {
       setPayDetailSaving(false);
-      showToast('Payment no longer exists', 'error');
+      showToast(t.debts.paymentNoLongerExists, 'error');
       handleClosePayDetail();
       return;
     }
@@ -1895,13 +1911,13 @@ const DebtTracking: React.FC = () => {
 
     setPayDetailSaving(false);
     handleClosePayDetail();
-    showToast('Payment updated', 'success');
+    showToast(t.debts.paymentUpdated, 'success');
   };
 
   // ── Split Mark Paid / Undo Handlers ──────────────────────────
   const handleSplitMarkPaid = (split: SplitExpense, participant: SplitParticipant) => {
     if ((split as any).status === 'draft') {
-      showToast('Finalize this split before recording payments.', 'error');
+      showToast(t.debts.finalizeSplitFirst, 'error');
       return;
     }
     // Find linked debt for this split + participant
@@ -1917,7 +1933,7 @@ const DebtTracking: React.FC = () => {
       const remaining = linkedDebt.totalAmount - linkedDebt.paidAmount;
       setPaymentDebtId(linkedDebt.id);
       setPaymentAmount(remaining.toFixed(2));
-      setPaymentNote(`Split: ${split.description}`);
+      setPaymentNote(t.debts.splitNotePrefix.replace('{description}', split.description));
       setPaymentWalletId(wallets.find((w) => w.isDefault)?.id || null);
       setPaymentCategory(linkedDebt.type === 'they_owe' ? 'debt_paid' : 'debt_payment');
       setPaymentModalVisible(true);
@@ -1926,18 +1942,18 @@ const DebtTracking: React.FC = () => {
       markSplitParticipantPaid(split.id, participant.contact.id);
       const freshSplit = useDebtStore.getState().splits.find((s) => s.id === split.id);
       if (freshSplit) setSelectedSplit(freshSplit);
-      showToast(`${participant.contact.name} marked as paid`, 'success');
+      showToast(t.debts.markedAsPaid.replace('{name}', participant.contact.name), 'success');
     }
   };
 
   const handleSplitUndoPaid = (split: SplitExpense, participant: SplitParticipant) => {
     Alert.alert(
-      'Undo Payment',
-      `Mark ${participant.contact.name} as unpaid? This will reverse all recorded payments for this participant.`,
+      t.debts.undoPaymentTitle,
+      t.debts.undoPaymentConfirm.replace('{name}', participant.contact.name),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Undo',
+          text: t.debts.undo,
           style: 'destructive',
           onPress: () => {
             // Find linked debt — read fresh from store (closure `debts` may be stale by Alert time)
@@ -1997,7 +2013,7 @@ const DebtTracking: React.FC = () => {
             const freshSplit = useDebtStore.getState().splits.find((s) => s.id === split.id);
             if (freshSplit) setSelectedSplit(freshSplit);
 
-            showToast(`${participant.contact.name} marked as unpaid`, 'success');
+            showToast(t.debts.markedAsUnpaid.replace('{name}', participant.contact.name), 'success');
           },
         },
       ]
@@ -2017,6 +2033,7 @@ const DebtTracking: React.FC = () => {
     setNewItemName('');
     setNewItemAmount('');
     setSplitWalletId(null);
+    setSplitCategory('');
     setSplitDueDateObj(null);
     setSplitDueDatePickerOpen(false);
   }, []);
@@ -2045,7 +2062,7 @@ const DebtTracking: React.FC = () => {
 
   const handleEditSplit = useCallback((split: SplitExpense) => {
     if (split.isArchived) {
-      showToast('Unarchive this split before editing.', 'error');
+      showToast(t.debts.unarchiveSplitBeforeEdit, 'error');
       return;
     }
     setEditingSplitId(split.id);
@@ -2055,6 +2072,7 @@ const DebtTracking: React.FC = () => {
     setSplitContacts(split.participants.map((p) => p.contact));
     setSplitPaidBy(split.paidBy ? [split.paidBy] : []);
     setSplitWalletId(split.walletId || null);
+    setSplitCategory(split.category || '');
     if (split.splitMethod === 'custom') {
       const amounts: Record<string, string> = {};
       split.participants.forEach((p) => { amounts[p.contact.id] = p.amount.toString(); });
@@ -2076,25 +2094,25 @@ const DebtTracking: React.FC = () => {
   const handleSaveSplit = useCallback(() => {
     if (splitSavingRef.current) return;
     if (!splitDescription.trim()) {
-      showToast('Please add a description', 'error');
+      showToast(t.debts.addDescription, 'error');
       return;
     }
     if (!splitAmount || isNaN(parseFloat(splitAmount)) || parseFloat(splitAmount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+      showToast(t.debts.enterValidAmount, 'error');
       return;
     }
     if (splitContacts.length < 2) {
-      showToast('Please add at least 2 participants', 'error');
+      showToast(t.debts.addTwoParticipants, 'error');
       return;
     }
     if (splitContacts.length === 0) return;
     if (!editingSplitId && splitPaidBy.length === 0) {
-      showToast('Please select who paid', 'error');
+      showToast(t.debts.selectWhoPaid, 'error');
       return;
     }
     const hasMe = splitContacts.some(c => c.id === '__self__');
     if (!hasMe) {
-      showToast('add yourself to the split first.', 'error');
+      showToast(t.debts.addYourselfFirst, 'error');
       return;
     }
     const total = parseFloat(splitAmount);
@@ -2111,9 +2129,15 @@ const DebtTracking: React.FC = () => {
         isPaid: false,
       }));
     } else if (splitMethod === 'custom') {
-      const customTotal = Object.values(customAmounts).reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
+      // Sum over the CURRENT participants only — a removed participant can leave a
+      // stale customAmounts entry that would otherwise corrupt this total.
+      const customTotal = splitContacts.reduce((sum, c) => sum + (parseFloat(customAmounts[c.id]) || 0), 0);
       if (Math.abs(customTotal - total) > 0.01) {
-        showToast(`Custom amounts must sum to ${currency} ${total.toFixed(2)}`, 'error');
+        showToast(t.debts.customAmountsMustSum.replace('{currency}', currency).replace('{total}', total.toFixed(2)), 'error');
+        return;
+      }
+      if (splitContacts.some((c) => (parseFloat(customAmounts[c.id]) || 0) < 0)) {
+        showToast(t.debts.customAmountsNegative, 'error');
         return;
       }
       participants = splitContacts.map((c) => ({
@@ -2123,12 +2147,20 @@ const DebtTracking: React.FC = () => {
       }));
     } else if (splitMethod === 'item_based') {
       if (splitItems.length === 0) {
-        showToast('Please add at least one item', 'error');
+        showToast(t.debts.addAtLeastOneItem, 'error');
         return;
       }
       const unassigned = splitItems.some((item) => item.assignedTo.length === 0);
       if (unassigned) {
-        showToast('Assign all items to at least one person', 'error');
+        showToast(t.debts.assignAllItems, 'error');
+        return;
+      }
+      // Items are the breakdown of the bill — their raw sum must equal the entered
+      // total (within a sen). A genuine mismatch would otherwise be silently dumped
+      // onto the payer below as a distorted or NEGATIVE share; block it like custom.
+      const rawItemSum = splitItems.reduce((sum, item) => sum + (parseFloat(String(item.amount)) || 0), 0);
+      if (Math.abs(rawItemSum - total) > 0.01) {
+        showToast(t.debts.itemsSumMismatch.replace('{currency}', currency).replace('{itemSum}', rawItemSum.toFixed(2)).replace('{currency}', currency).replace('{total}', total.toFixed(2)), 'error');
         return;
       }
       const perPersonMap: Record<string, number> = {};
@@ -2167,7 +2199,7 @@ const DebtTracking: React.FC = () => {
     if (zeroShareCount > 0) {
       participants = participants.filter((p) => p.amount > 0 || p.isPaid);
       if (participants.length < 2) {
-        showToast('Not enough participants with amounts assigned', 'error');
+        showToast(t.debts.notEnoughParticipantsAmounts, 'error');
         return;
       }
     }
@@ -2224,6 +2256,7 @@ const DebtTracking: React.FC = () => {
         paidBy: newPayer || undefined,
         dueDate: splitDueDateObj ? splitDueDateObj.toISOString() : undefined,
         walletId: splitWalletId || undefined,
+        category: splitCategory || undefined,
       } as any);
 
       if (paidByChanged) {
@@ -2231,9 +2264,9 @@ const DebtTracking: React.FC = () => {
         if (newPayer?.id === selfId) {
           let txId: string | undefined;
           if (mode === 'personal') {
-            txId = addTransaction({ amount: total, category: 'split_expense', description: desc, date: new Date(), type: 'expense', mode, walletId: splitWalletId || undefined, inputMethod: 'manual' });
+            txId = addTransaction({ amount: total, category: splitCategory || 'split_expense', description: desc, date: new Date(), type: 'expense', mode, walletId: splitWalletId || undefined, inputMethod: 'manual' });
           } else {
-            txId = addBusinessTransaction({ date: new Date(), amount: total, type: 'cost', category: 'split_expense', note: desc, inputMethod: 'manual' });
+            txId = addBusinessTransaction({ date: new Date(), amount: total, type: 'cost', category: splitCategory || 'split_expense', note: desc, inputMethod: 'manual' });
           }
           if (txId || splitWalletId) {
             updateSplit(editingSplitId, { linkedTransactionId: txId, walletId: splitWalletId || undefined });
@@ -2297,11 +2330,11 @@ const DebtTracking: React.FC = () => {
         });
 
         if (settledAmountBlocked) {
-          showToast('Some amounts were not updated — linked debts are already settled or have payments exceeding the new amount.', 'info');
+          showToast(t.debts.someAmountsNotUpdated, 'info');
         }
       }
 
-      showToast('Split updated!', 'success');
+      showToast(t.debts.splitUpdated, 'success');
     } else {
       commitSplit({
         description: splitDescription.trim(),
@@ -2311,19 +2344,21 @@ const DebtTracking: React.FC = () => {
         items: splitMethod === 'item_based' ? splitItems : [],
         paidBy: splitPaidBy.length > 0 ? splitPaidBy[0] : undefined,
         walletId: splitWalletId || undefined,
+        category: splitCategory || undefined,
         dueDate: splitDueDateObj || undefined,
         mode,
       });
 
-      showToast('Split created!', 'success');
+      showToast(t.debts.splitCreated, 'success');
     }
 
     setSplitModalVisible(false);
     resetSplitForm();
     splitSavingRef.current = false;
-    // Saving from a Calculator "Detailed split" hand-off returns to the Calculator.
-    returnToCallerIfHandedOff();
-  }, [splitDescription, splitAmount, splitContacts, splitPaidBy, editingSplitId, splitMethod, customAmounts, splitItems, splitDueDateObj, splitWalletId, mode, currency, addSplit, updateSplit, addDebt, updateDebt, deleteDebt, addTransaction, addBusinessTransaction, deductFromWallet, useCredit, deleteTransaction, deleteBusinessTransaction, addToWallet, resetSplitForm, showToast, returnToCallerIfHandedOff]);
+    // Saving from a Calculator "Detailed split" hand-off returns to the Calculator
+    // WITHOUT reopening the hub (the task is done — avoid a duplicate-split invite).
+    returnToCallerIfHandedOff(true);
+  }, [splitDescription, splitAmount, splitContacts, splitPaidBy, editingSplitId, splitMethod, customAmounts, splitItems, splitDueDateObj, splitWalletId, splitCategory, mode, currency, addSplit, updateSplit, addDebt, updateDebt, deleteDebt, addTransaction, addBusinessTransaction, deductFromWallet, useCredit, deleteTransaction, deleteBusinessTransaction, addToWallet, resetSplitForm, showToast, returnToCallerIfHandedOff]);
 
   const cleanupSplitTransaction = (split: SplitExpense) => {
     // Look up actual transaction amount (may differ from split.totalAmount if edited before C8 fix)
@@ -2355,14 +2390,14 @@ const DebtTracking: React.FC = () => {
     const split = splits.find((s) => s.id === id);
     const isDraft = split?.status === 'draft';
     Alert.alert(
-      isDraft ? 'Delete Draft' : 'Delete Split',
+      isDraft ? t.debts.deleteDraftTitle : t.debts.deleteSplitTitle,
       isDraft
-        ? 'Delete this draft? No debts or transactions have been created.'
-        : 'Are you sure you want to delete this split? Linked debts, transactions, and wallet changes will also be reversed.',
+        ? t.debts.deleteDraftConfirm
+        : t.debts.deleteSplitConfirm,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: t.common.delete,
           style: 'destructive',
           onPress: () => {
             const freshSplitRef = useDebtStore.getState().splits.find(s => s.id === id);
@@ -2376,7 +2411,7 @@ const DebtTracking: React.FC = () => {
             }
             deleteSplit(id);
             setSplitDetailVisible(false);
-            showToast(isDraft ? 'Draft deleted' : 'Split deleted', 'success');
+            showToast(isDraft ? t.debts.draftDeleted : t.debts.splitDeleted, 'success');
           },
         },
       ]
@@ -2425,7 +2460,7 @@ const DebtTracking: React.FC = () => {
     if (selectionMode === 'debt') {
       const splitLinked = Array.from(selectedIds).filter((id) => debts.find((d) => d.id === id)?.splitId);
       if (splitLinked.length > 0) {
-        showToast(`${splitLinked.length} debt${splitLinked.length > 1 ? 's are' : ' is'} linked to a split — delete the split instead.`, 'error');
+        showToast(t.debts.debtsLinkedToSplit.replace('{count}', String(splitLinked.length)), 'error');
         return;
       }
       const hasExternalConsolidated = Array.from(selectedIds).some((id) => {
@@ -2438,14 +2473,14 @@ const DebtTracking: React.FC = () => {
         );
       });
       if (hasExternalConsolidated) {
-        showToast('Some debts share group payments with unselected debts. Select all related debts or remove group payments first.', 'error');
+        showToast(t.debts.debtsShareGroupPayments, 'error');
         return;
       }
     }
 
     Alert.alert(
-      `Delete ${count} ${type}${count > 1 ? 's' : ''}`,
-      `Are you sure you want to delete ${count} ${type}${count > 1 ? 's' : ''}?`,
+      t.debts.deleteCountTitle.replace('{count}', String(count)).replace('{type}', type),
+      t.debts.deleteCountConfirm.replace('{count}', String(count)).replace('{type}', type),
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -2509,7 +2544,7 @@ const DebtTracking: React.FC = () => {
                 deleteSplit(id);
               }
             });
-            showToast(`${count} ${type}${count > 1 ? 's' : ''} deleted`, 'success');
+            showToast(t.debts.countDeleted.replace('{count}', String(count)).replace('{type}', type), 'success');
             exitSelectionMode();
           },
         },
@@ -2522,7 +2557,7 @@ const DebtTracking: React.FC = () => {
       const ids = Array.from(selectedIds);
       const allArchived = ids.every((id) => debts.find((d) => d.id === id)?.isArchived);
       ids.forEach((id) => allArchived ? unarchiveDebt(id) : archiveDebt(id));
-      showToast(`${ids.length} debt${ids.length > 1 ? 's' : ''} ${allArchived ? 'unarchived' : 'archived'}`, 'success');
+      showToast(t.debts.debtsArchivedToggle.replace('{count}', String(ids.length)).replace('{state}', allArchived ? 'unarchived' : 'archived'), 'success');
     } else {
       const ids = Array.from(selectedIds);
       const allArchived = ids.every((id) => splits.find((s) => s.id === id)?.isArchived);
@@ -2535,7 +2570,7 @@ const DebtTracking: React.FC = () => {
           debts.filter((d) => d.splitId === id).forEach((d) => archiveDebt(d.id));
         }
       });
-      showToast(`${ids.length} split${ids.length > 1 ? 's' : ''} ${allArchived ? 'unarchived' : 'archived'}`, 'success');
+      showToast(t.debts.splitsArchivedToggle.replace('{count}', String(ids.length)).replace('{state}', allArchived ? 'unarchived' : 'archived'), 'success');
     }
     exitSelectionMode();
   }, [selectedIds, selectionMode, debts, splits, archiveDebt, unarchiveDebt, archiveSplit, unarchiveSplit, showToast, exitSelectionMode]);
@@ -2560,7 +2595,7 @@ const DebtTracking: React.FC = () => {
 
   const handleAddItem = useCallback(() => {
     if (!newItemName.trim() || !newItemAmount || parseFloat(newItemAmount) <= 0) {
-      showToast('Please enter item name and amount', 'error');
+      showToast(t.debts.enterItemNameAmount, 'error');
       return;
     }
     setSplitItems([...splitItems, {
@@ -2589,7 +2624,7 @@ const DebtTracking: React.FC = () => {
   const handleScanReceipt = async () => {
     const premium = usePremiumStore.getState();
     if (!premium.canScanReceipt()) {
-      showToast('Scan limit reached this month', 'error');
+      showToast(t.debts.scanLimitReached, 'error');
       return;
     }
 
@@ -2604,7 +2639,7 @@ const DebtTracking: React.FC = () => {
     if (!imageUri) {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        showToast('Camera permission is required', 'error');
+        showToast(t.debts.cameraPermission, 'error');
         return;
       }
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
@@ -2632,12 +2667,12 @@ const DebtTracking: React.FC = () => {
         if (!splitDescription.trim() && receipt.vendor) {
           setSplitDescription(receipt.vendor);
         }
-        showToast(`${receipt.items.length} items scanned`, 'success');
+        showToast(t.debts.nItemsScanned.replace('{count}', String(receipt.items.length)), 'success');
       } else {
-        showToast('No items found on receipt', 'error');
+        showToast(t.debts.noItemsFound, 'error');
       }
     } catch (e: any) {
-      showToast(e.message || 'Scan failed', 'error');
+      showToast(e.message || t.debts.scanFailed, 'error');
     } finally {
       setScanningReceipt(false);
     }
@@ -2665,7 +2700,7 @@ const DebtTracking: React.FC = () => {
   const processReceiptImage = async (uri: string) => {
     const premium = usePremiumStore.getState();
     if (!premium.canScanReceipt()) {
-      showToast('Scan limit reached this month', 'error');
+      showToast(t.debts.scanLimitReached, 'error');
       return;
     }
 
@@ -2700,7 +2735,7 @@ const DebtTracking: React.FC = () => {
       premium.incrementScanCount();
       if (receipt.items.length === 0 && receipt.total === 0) {
         if (opened) setWizardVisible(false);
-        showToast('Could not read receipt', 'error');
+        showToast(t.debts.couldNotReadReceipt, 'error');
         return;
       }
       // Finalize with the authoritative parsed data (vendor/total/tax + clean items).
@@ -2724,7 +2759,7 @@ const DebtTracking: React.FC = () => {
       }
     } catch (e: any) {
       if (opened) setWizardVisible(false);
-      showToast(e.message || 'Scan failed', 'error');
+      showToast(e.message || t.debts.scanFailed, 'error');
     } finally {
       setScanningReceipt(false);
     }
@@ -2736,13 +2771,22 @@ const DebtTracking: React.FC = () => {
     if (scanner) {
       try {
         const scanResult = await scanner.scanDocument({ maxNumDocuments: 1 });
-        if (scanResult.scannedImages?.length) imageUri = scanResult.scannedImages[0];
-      } catch { /* fall through to ImagePicker */ }
+        if (scanResult.scannedImages?.length) {
+          imageUri = scanResult.scannedImages[0];
+        } else {
+          // Scanner opened and the user cancelled / captured nothing. Respect that —
+          // do NOT fall through to a SECOND (ImagePicker) camera, which made the
+          // camera appear to open twice.
+          return;
+        }
+      } catch {
+        /* scanner genuinely unavailable/errored → fall back to the ImagePicker camera */
+      }
     }
     if (!imageUri) {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        showToast('Camera permission is required', 'error');
+        showToast(t.debts.cameraPermission, 'error');
         return;
       }
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
@@ -2755,7 +2799,7 @@ const DebtTracking: React.FC = () => {
   const handleWizardGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      showToast('Gallery permission is required', 'error');
+      showToast(t.debts.galleryPermission, 'error');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -2772,13 +2816,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   const handleWizardNext = () => {
     if (wizardStep === 1) {
       if (!wizardDescription.trim()) {
-        showToast('Please enter a description', 'error');
+        showToast(t.debts.enterDescription, 'error');
         return;
       }
       setWizardStep(2);
     } else if (wizardStep === 2) {
       if (!wizardTotal || parseFloat(wizardTotal) <= 0) {
-        showToast('Please enter a valid amount', 'error');
+        showToast(t.debts.enterValidAmount, 'error');
         return;
       }
       setWizardStep(wizardHasTax ? 3 : 4);
@@ -2786,12 +2830,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       setWizardStep(4);
     } else if (wizardStep === 4) {
       if (wizardParticipants.length < 2) {
-        showToast('Add at least 2 participants', 'error');
+        showToast(t.debts.addTwoParticipants, 'error');
         return;
       }
       const unassigned = wizardItems.some((item) => item.assignedTo.length === 0);
       if (unassigned) {
-        showToast('Assign all items to at least one person', 'error');
+        showToast(t.debts.assignAllItems, 'error');
         return;
       }
       // Auto-remove participants with no items assigned
@@ -2801,14 +2845,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       if (participantsWithNoItems.length > 0) {
         const remaining = wizardParticipants.length - participantsWithNoItems.length;
         if (remaining < 2) {
-          showToast('Not enough participants have items assigned', 'error');
+          showToast(t.debts.notEnoughParticipantsItems, 'error');
           return;
         }
         setWizardParticipants((prev) =>
           prev.filter((p) => wizardItems.some((item) => item.assignedTo.some((c) => c.id === p.id)))
         );
         const names = participantsWithNoItems.map((p) => p.name).join(', ');
-        showToast(`Removed ${names} (no items assigned)`, 'info');
+        showToast(t.debts.removedNoItems.replace('{names}', names), 'info');
       }
       // Validate item totals approximately match the receipt total
       const itemSum = wizardItems.reduce((sum, item) => sum + item.amount, 0);
@@ -2818,7 +2862,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       if (itemTotalDiff > 0.05) {
         Alert.alert(
           t.debts.amountMismatch,
-          `Item totals (${currency} ${itemSum.toFixed(2)}) don't match the receipt total (${currency} ${totalToCompare.toFixed(2)}). Difference: ${currency} ${itemTotalDiff.toFixed(2)}.\n\nDo you want to continue anyway?`,
+          t.debts.itemTotalsMismatchMessage.replace('{currency}', currency).replace('{itemSum}', itemSum.toFixed(2)).replace('{currency}', currency).replace('{total}', totalToCompare.toFixed(2)).replace('{currency}', currency).replace('{diff}', itemTotalDiff.toFixed(2)),
           [
             { text: t.debts.goBack, style: 'cancel' },
             { text: t.common.confirm, onPress: () => setWizardStep(5) },
@@ -2829,7 +2873,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       setWizardStep(5);
     } else if (wizardStep === 5) {
       if (!wizardPaidBy) {
-        showToast('Please select who paid the bill', 'error');
+        showToast(t.debts.selectWhoPaidBill, 'error');
         return;
       }
       setWizardStep(6);
@@ -2876,6 +2920,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
     if (wizardSavingRef.current) return;
     if (!wizardResult || !wizardPaidBy) return;
     wizardSavingRef.current = true;
+    try {
     const splitData = {
       description: wizardDescription.trim(),
       totalAmount: wizardResult.effectiveTotal,
@@ -2974,10 +3019,17 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       }
     }
 
-    wizardSavingRef.current = false;
     setWizardVisible(false);
     resetWizardForm();
-    showToast('Split created!', 'success');
+    showToast(t.debts.splitCreated, 'success');
+    } catch (e) {
+      // A store mutation threw mid-save — surface it and, crucially, release the
+      // saving guard in finally so the Save button never dead-locks for the rest
+      // of the screen's lifetime.
+      showToast(t.debts.couldNotSaveSplit, 'error');
+    } finally {
+      wizardSavingRef.current = false;
+    }
   };
 
   // Shared builder for a draft-split payload (status: 'draft' — drafts never
@@ -2998,17 +3050,17 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
   const handleSaveAsDraft = useCallback(() => {
     if (!wizardDescription.trim()) {
-      showToast('add a description first', 'error');
+      showToast(t.debts.addDescriptionFirst, 'error');
       return;
     }
     const assignedCount = wizardItems.filter((item) => item.assignedTo.length > 0).length;
     const draftData = buildWizardDraftData(wizardDescription.trim());
     if (wizardDraftId.current) {
       updateSplit(wizardDraftId.current, draftData);
-      showToast('draft updated', 'success');
+      showToast(t.debts.draftUpdated, 'success');
     } else {
       addSplit(draftData);
-      showToast(`draft saved · ${assignedCount}/${wizardItems.length} assigned`, 'success');
+      showToast(t.debts.draftSavedAssigned.replace('{assigned}', String(assignedCount)).replace('{total}', String(wizardItems.length)), 'success');
     }
     setWizardVisible(false);
     resetWizardForm();
@@ -3028,7 +3080,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       } else {
         addSplit(draftData);
       }
-      showToast('draft saved', 'success');
+      showToast(t.debts.draftSaved, 'success');
     }
     setWizardVisible(false);
     resetWizardForm();
@@ -3113,9 +3165,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   }, [editingItemIndex]);
 
   const handleAddWizardItem = useCallback(() => {
-    setWizardItems((prev) => [...prev, { name: 'New item', amount: 0, assignedTo: [] }]);
+    setWizardItems((prev) => [...prev, { name: t.debts.newItem, amount: 0, assignedTo: [] }]);
     setEditingItemIndex(wizardItems.length);
-    setEditItemName('New item');
+    setEditItemName(t.debts.newItem);
     setEditItemAmount('0.00');
   }, [wizardItems.length]);
 
@@ -3169,7 +3221,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   const loadItemPhoneContacts = async () => {
     const { status } = await Contacts.requestPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please grant contacts permission in Settings.');
+      Alert.alert(t.debts.contactsPermissionTitle, t.debts.contactsPermissionMsg);
       return;
     }
     const { data } = await Contacts.getContactsAsync({
@@ -3180,7 +3232,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       .filter((c) => c.name)
       .map((c) => ({
         id: c.id || newId(),
-        name: c.name || 'Unknown',
+        name: c.name || t.debts.unknownContact,
         phone: c.phoneNumbers?.[0]?.number,
         isFromPhone: true,
       }));
@@ -3192,8 +3244,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   // ── Request Payment Handlers ──────────────────────────────
   const composePaymentMessage = (debt: Debt): string => {
     const remaining = Math.max(0, debt.totalAmount - debt.paidAmount);
-    const senderName = userName?.trim() || 'Me';
-    let message = `Hey ${debt.contact.name}, you owe me ${currency} ${remaining.toFixed(2)} for ${debt.description || 'untitled'}`;
+    const senderName = userName?.trim() || t.debts.senderMe;
+    let message = t.debts.msgYouOweMeFor.replace('{name}', debt.contact.name).replace('{currency}', currency).replace('{amount}', remaining.toFixed(2)).replace('{desc}', debt.description || t.debts.untitled);
 
     if (debt.splitId) {
       const linkedSplit = splits.find((s) => s.id === debt.splitId);
@@ -3202,12 +3254,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           item.assignedTo.some((c) => c.id === debt.contact.id)
         );
         if (contactItems.length > 0) {
-          message += '\n\nBreakdown:';
+          message += '\n\n' + t.debts.msgBreakdown;
           contactItems.forEach((item) => {
             const shareCount = item.assignedTo.length;
             const share = Math.round((item.amount / shareCount) * 100) / 100;
             if (shareCount > 1) {
-              message += `\n· ${item.name} — ${currency} ${share.toFixed(2)} (${shareCount} people)`;
+              message += `\n· ${item.name} — ${currency} ${share.toFixed(2)} ${t.debts.nPeople.replace('{n}', String(shareCount))}`;
             } else {
               message += `\n· ${item.name} — ${currency} ${share.toFixed(2)}`;
             }
@@ -3216,15 +3268,15 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         if (linkedSplit.taxAmount && linkedSplit.taxAmount > 0 && linkedSplit.taxHandling === 'divide') {
           const participantsWithItems = linkedSplit.participants.filter((p) => p.amount > 0);
           const taxPerPerson = Math.round((linkedSplit.taxAmount / (participantsWithItems.length || 1)) * 100) / 100;
-          message += `\n· tax — ${currency} ${taxPerPerson.toFixed(2)} per person`;
+          message += `\n· ${t.debts.msgTaxPerPerson.replace('{currency}', currency).replace('{amount}', taxPerPerson.toFixed(2))}`;
         }
       } else if (linkedSplit && linkedSplit.splitMethod === 'equal') {
-        message += `\n\nSplit equally among ${linkedSplit.participants.length} people.`;
+        message += `\n\n${t.debts.msgSplitEqually.replace('{n}', String(linkedSplit.participants.length))}`;
       }
     }
 
-    if (hasPaymentQr) message += '\n\nQR code attached for payment';
-    message += `\n\nThanks!\n-${senderName}`;
+    if (hasPaymentQr) message += '\n\n' + t.debts.msgQrAttached;
+    message += `\n\n${t.debts.msgThanks.replace('{name}', senderName)}`;
     return message;
   };
 
@@ -3269,11 +3321,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       if (qrIndex !== null && paymentQrs[qrIndex]) {
         // Copy message to clipboard, then share QR via native share sheet
         await Clipboard.setStringAsync(requestPaymentMessage);
-        showToast('Message copied — send QR then paste message', 'info');
+        showToast(t.debts.msgCopiedSendQr, 'info');
         const qrUri = paymentQrs[qrIndex].uri;
         const isAvailable = await Sharing.isAvailableAsync();
         if (isAvailable) {
-          await Sharing.shareAsync(qrUri, { mimeType: 'image/png', dialogTitle: 'Send QR' });
+          await Sharing.shareAsync(qrUri, { mimeType: 'image/png', dialogTitle: t.debts.sendQrDialogTitle });
         }
       } else {
         // No QR — just open WhatsApp with message
@@ -3285,7 +3337,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       setShowQrPicker(false);
       maybeReturnToDetail();
     } catch {
-      showToast('Could not open WhatsApp', 'error');
+      showToast(t.debts.couldNotOpenWhatsapp, 'error');
     }
   };
 
@@ -3352,7 +3404,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         setPaymentModalVisible(true);
       }, 100);
     } else {
-      showToast('generate debts first', 'info');
+      showToast(t.debts.generateDebtsFirst, 'info');
     }
   }, [debts, showToast]);
 
@@ -3373,7 +3425,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   const handleLinkCommitment = useCallback((sub: SharedSubscription) => {
     const activeSubs = subscriptions.filter((s) => s.isActive);
     if (activeSubs.length === 0) {
-      showToast('no commitments found', 'info');
+      showToast(t.debts.noCommitmentsFound, 'info');
       return;
     }
     setSharedDetailVisible(false);
@@ -3385,7 +3437,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
     updateSharedSubscription(commitmentPickerSubId, { subscriptionId });
     updateSubscription(subscriptionId, { sharedSubId: commitmentPickerSubId });
     setCommitmentPickerSubId(null);
-    showToast('linked to commitment', 'success');
+    showToast(t.debts.linkedToCommitment, 'success');
   }, [commitmentPickerSubId, updateSharedSubscription, updateSubscription, showToast]);
 
   const handleViewCommitment = useCallback((subscriptionId: string) => {
@@ -3446,8 +3498,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           setActiveTab={setActiveTab}
           selectionMode={selectionMode}
           exitSelectionMode={exitSelectionMode}
-          modeDebtsCount={modeDebts.length}
-          modeSplitsCount={modeSplits.length}
+          modeDebtsCount={debtsShowArchive ? modeDebts.length : modeDebts.filter((d) => !d.isArchived).length}
+          modeSplitsCount={debtsShowArchive ? modeSplits.length : modeSplits.filter((s) => !s.isArchived).length}
           activeSharedSubsCount={activeSharedSubs.length}
         />
 
@@ -3457,12 +3509,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             {/* Segmented control — pending / settled / optional archive */}
             <DebtSegmentedControl
               tabs={[
-                { key: 'pending' as const, label: 'pending', count: debtTabCounts.pending, color: C.accent },
-                { key: 'settled' as const, label: 'settled', count: debtTabCounts.settled, color: settledColor },
-                ...(debtsShowArchive ? [{ key: 'archive' as const, label: 'archive', count: debtTabCounts.archive, color: C.bronze }] : []),
+                { key: 'pending' as const, label: t.debts.pending, count: debtTabCounts.pending, color: C.accent },
+                { key: 'settled' as const, label: t.debts.settled, count: debtTabCounts.settled, color: settledColor },
+                ...(debtsShowArchive ? [{ key: 'archive' as const, label: t.debts.archive, count: debtTabCounts.archive, color: C.bronze }] : []),
               ]}
               active={debtTab}
-              itemNoun="debt"
+              itemNoun={t.debts.debtNoun}
               onSelect={(key) => {
                 // Defensive: only fire state setters that actually change state.
                 // Avoids stray LayoutAnimation / re-render hiccups that can
@@ -3476,7 +3528,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             {(debtTypeFilter || debtFilter) && (
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingVertical: 6 }}>
                 <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary }}>
-                  {filteredDebts.length} {filteredDebts.length === 1 ? 'debt' : 'debts'}
+                  {t.debts.debtsCount.replace('{n}', String(filteredDebts.length))}
                   {` · ${currency} `}
                   {filteredDebts.reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0).toFixed(2)}
                 </Text>
@@ -3486,7 +3538,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                 >
                   <Feather name="x" size={12} color={C.gold} />
-                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.gold, fontWeight: '600' }}>Clear</Text>
+                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.gold, fontWeight: '600' }}>{t.common.clear}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -3515,7 +3567,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               <EmptyState
                 icon={searchQuery ? 'i/search-outline' : 'i/filter-outline'}
                 title={t.debts.noMatches}
-                message={searchQuery ? `No debts matching "${searchQuery}"` : debtFilter ? `No ${debtFilter} debts` : t.debts.noMatchingDebts}
+                message={searchQuery ? t.debts.noDebtsMatching.replace('{query}', searchQuery) : debtFilter ? t.debts.noFilteredDebts.replace('{filter}', debtFilter) : t.debts.noMatchingDebts}
               />
             ) : (
               <EmptyState
@@ -3540,16 +3592,16 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   style={[styles.backChip, neu.raised, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.10 : 0.05) }]}
                   activeOpacity={0.7}
                   accessibilityRole="button"
-                  accessibilityLabel="back to splits"
+                  accessibilityLabel={t.debts.backToSplitsA11y}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
                   <Feather name="chevron-left" size={16} color={C.textSecondary} />
-                  <Text style={styles.backChipText}>back</Text>
+                  <Text style={styles.backChipText}>{t.common.back}</Text>
                 </TouchableOpacity>
                 <View style={styles.draftsTitleWrap}>
                   <Feather name="bookmark" size={14} color={C.bronze} />
                   <Text style={styles.draftsTitle}>
-                    {draftSplitCount} {draftSplitCount === 1 ? 'draft' : 'drafts'}
+                    {t.debts.draftsCount.replace('{n}', String(draftSplitCount))}
                   </Text>
                 </View>
               </View>
@@ -3604,24 +3656,24 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 }
                 title={
                   searchQuery ? t.debts.noMatches :
-                  splitTab === 'settled' ? "nothing settled yet" :
-                  splitTab === 'youOwe' ? "you don't owe anyone" :
-                  splitTab === 'drafts' ? "no drafts saved" :
-                  "no one owes you right now"
+                  splitTab === 'settled' ? t.debts.emptySettledTitle :
+                  splitTab === 'youOwe' ? t.debts.emptyYouOweTitle :
+                  splitTab === 'drafts' ? t.debts.emptyDraftsTitle :
+                  t.debts.emptyWaitingTitle
                 }
                 message={
-                  searchQuery ? `no splits matching "${searchQuery}"` :
-                  splitTab === 'settled' ? "splits move here when everyone's paid up." :
-                  splitTab === 'youOwe' ? "nothing on your tab — living free." :
-                  splitTab === 'drafts' ? "scan a receipt and save halfway — pick up later from here." :
-                  "split a bill and you'll see who owes you back here."
+                  searchQuery ? t.debts.noSplitsMatching.replace('{query}', searchQuery) :
+                  splitTab === 'settled' ? t.debts.emptySettledMsg :
+                  splitTab === 'youOwe' ? t.debts.emptyYouOweMsg :
+                  splitTab === 'drafts' ? t.debts.emptyDraftsMsg :
+                  t.debts.emptyWaitingMsg
                 }
               />
             ) : (
               <EmptyState
                 icon="m/call-split"
-                title="no splits yet"
-                message="split a bill with friends — receipt, equal, custom, your call."
+                title={t.debts.emptyNoSplitsTitle}
+                message={t.debts.emptyNoSplitsMsg}
                 actionLabel={t.debts.splitExpense}
                 onAction={() => showSplitChoice()}
               />
@@ -3682,7 +3734,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               {/* Centered title zone — italic serif accent (also draggable) */}
               <View style={styles.dDebtTitleZone}>
                 <Text style={styles.dDebtTitle} numberOfLines={1} ellipsizeMode="tail">
-                  {editingDebtId ? 'edit ' : 'add '}
+                  {editingDebtId ? t.debts.editTitlePrefix : t.debts.addTitlePrefix}
                   <Text style={styles.dDebtTitleAccent}>
                     {editingDebtId
                       ? (debts.find((d) => d.id === editingDebtId)?.description?.toLowerCase() || 'debt')
@@ -3690,7 +3742,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   </Text>
                 </Text>
                 <Text style={styles.dDebtSubtitle}>
-                  {debtType === 'i_owe' ? 'log what you owe someone' : 'log what someone owes you'}
+                  {debtType === 'i_owe' ? t.debts.subtitleIOwe : t.debts.subtitleTheyOwe}
                 </Text>
               </View>
             </View>
@@ -3721,7 +3773,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 return (
                   <View style={[styles.dDebtFieldHeroCard, neu.raisedSoft]}>
                     <Text style={styles.dDebtFieldCardLabel}>
-                      amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                      {t.debts.amount} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                     </Text>
                     <View style={styles.dDebtFieldHeroAmountRow}>
                       <Text style={[styles.dDebtFieldHeroCurrency, { color: activeTypeColor }]} numberOfLines={1}>
@@ -3738,7 +3790,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         onSubmitEditing={Keyboard.dismiss}
                         selectTextOnFocus={!isSettled}
                         editable={!isSettled}
-                        accessibilityLabel="amount"
+                        accessibilityLabel={t.debts.amount}
                         inputAccessoryViewID={Platform.OS === 'ios' ? 'dDebtModalAcc' : undefined}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
                         selectionColor={withAlpha(C.accent, 0.25)}
@@ -3747,7 +3799,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                     {isSettled && (
                       <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, textAlign: 'center', marginTop: SPACING.xs }}>
-                        amount locked — debt is settled
+                        {t.debts.amountLockedSettled}
                       </Text>
                     )}
 
@@ -3774,7 +3826,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             ]}
                             onPress={() => {
                               if (editDebt && editDebt.payments.length > 0) {
-                                showToast('Cannot change direction after payments recorded.', 'error');
+                                showToast(t.debts.cannotChangeDirection, 'error');
                                 return;
                               }
                               setDebtType(dt.value as DebtType);
@@ -3828,12 +3880,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
               {/* What-for field card */}
               <View style={[styles.dDebtFieldCard, neu.raisedSoft]}>
-                <Text style={styles.dDebtFieldCardLabel}>what for</Text>
+                <Text style={styles.dDebtFieldCardLabel}>{t.debts.whatFor}</Text>
                 <TextInput
                   style={[styles.dDebtFieldCardInput, styles.dDebtFieldMultiline]}
                   value={debtDescription}
                   onChangeText={setDebtDescription}
-                  placeholder="e.g. nando's makan malam"
+                  placeholder={t.debts.whatForPlaceholder}
                   placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
                   multiline
                   textAlignVertical="top"
@@ -3853,7 +3905,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   selectedContacts={debtContacts}
                   onSelect={setDebtContacts}
                   mode="single"
-                  label="who *"
+                  label={t.debts.whoRequired}
                   variant="input"
                 />
               </View>
@@ -3881,11 +3933,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 onPress={() => { Keyboard.dismiss(); setDueDatePickerOpen((v) => !v); }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel="select due date"
+                accessibilityLabel={t.debts.selectDueDate}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Text style={styles.dDebtFieldCardLabel}>
-                    due date <Text style={styles.dDebtFieldOptional}>optional</Text>
+                    {t.debts.dueDate} <Text style={styles.dDebtFieldOptional}>{t.common.optional}</Text>
                   </Text>
                   {debtDueDateObj && (
                     <TouchableOpacity
@@ -3899,7 +3951,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 <View style={styles.dDebtFieldDateRow}>
                   <Feather name="calendar" size={15} color={debtDueDateObj ? C.accent : C.textMuted} />
                   <Text style={[styles.dDebtFieldDateText, !debtDueDateObj && { color: C.textMuted }]}>
-                    {debtDueDateObj ? format(debtDueDateObj, 'd MMM yyyy').toLowerCase() : 'pick a date'}
+                    {debtDueDateObj ? format(debtDueDateObj, 'd MMM yyyy').toLowerCase() : t.debts.selectDate}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -3915,12 +3967,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   }}
                   hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
                   accessibilityRole="button"
-                  accessibilityLabel="delete debt"
+                  accessibilityLabel={t.debts.deleteDebt}
                 >
                   {({ pressed }) => (
                     <View style={[styles.dDebtDeleteLinkInner, pressed && { opacity: 0.55 }]}>
                       <Feather name="trash-2" size={13} color={C.textMuted} />
-                      <Text style={styles.dDebtDeleteLinkText}>delete debt</Text>
+                      <Text style={styles.dDebtDeleteLinkText}>{t.debts.deleteDebt}</Text>
                     </View>
                   )}
                 </Pressable>
@@ -3971,7 +4023,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       dDebtSaveScale.value = withSpring(1, { damping: 18, stiffness: 240 });
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={editingDebtId ? 'save changes' : 'add debt'}
+                    accessibilityLabel={editingDebtId ? t.debts.saveChanges : t.debts.addDebt}
                     accessibilityState={{ disabled: !canSave || dDebtIsSaving, busy: dDebtIsSaving }}
                   >
                     {dDebtIsSaving ? (
@@ -3989,7 +4041,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             !canSave && styles.dDebtSaveBtnTextDisabled,
                           ]}
                         >
-                          {editingDebtId ? 'save changes' : 'add debt'}
+                          {editingDebtId ? t.debts.saveChanges : t.debts.addDebt}
                         </Text>
                       </View>
                     )}
@@ -4002,12 +4054,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   onPress={dDebtCloseSheet}
                   hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                   accessibilityRole="button"
-                  accessibilityLabel="close"
+                  accessibilityLabel={t.common.close}
                 >
                   {({ pressed }) => (
                     <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                       <Feather name="x" size={12} color={C.textMuted} />
-                      <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                      <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                     </View>
                   )}
                 </Pressable>
@@ -4068,15 +4120,15 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               </View>
               <View style={styles.dDebtTitleZone}>
                 <Text style={styles.dDebtTitle} numberOfLines={1} ellipsizeMode="tail">
-                  {editingSplitId ? 'edit ' : 'split '}
+                  {editingSplitId ? t.debts.editTitlePrefix : t.debts.splitTitlePrefix}
                   <Text style={styles.dDebtTitleAccent}>
                     {editingSplitId
                       ? (splits.find((s) => s.id === editingSplitId)?.description?.toLowerCase() || 'split')
-                      : 'expense'}
+                      : t.debts.splitTitleAccent}
                   </Text>
                 </Text>
                 <Text style={styles.dDebtSubtitle}>
-                  split a bill across friends — fair, traceable
+                  {t.debts.splitSubtitle}
                 </Text>
               </View>
             </View>
@@ -4103,7 +4155,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               return (
                 <View style={[styles.dDebtFieldHeroCard, neu.raisedSoft]}>
                   <Text style={styles.dDebtFieldCardLabel}>
-                    total amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                    {t.debts.totalAmount} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                   </Text>
                   <View style={styles.dDebtFieldHeroAmountRow}>
                     <Text style={[styles.dDebtFieldHeroCurrency, { color: C.accent }]} numberOfLines={1}>
@@ -4119,7 +4171,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       returnKeyType="done"
                       onSubmitEditing={Keyboard.dismiss}
                       selectTextOnFocus
-                      accessibilityLabel="total amount"
+                      accessibilityLabel={t.debts.totalAmount}
                       inputAccessoryViewID={Platform.OS === 'ios' ? 'dSplitModalAcc' : undefined}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
                       selectionColor={withAlpha(C.accent, 0.25)}
@@ -4133,12 +4185,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
             {/* What-for / description card */}
             <View style={[styles.dDebtFieldCard, neu.raisedSoft]}>
-              <Text style={styles.dDebtFieldCardLabel}>what for</Text>
+              <Text style={styles.dDebtFieldCardLabel}>{t.debts.whatFor}</Text>
               <TextInput
                 style={[styles.dDebtFieldCardInput, styles.dDebtFieldMultiline]}
                 value={splitDescription}
                 onChangeText={setSplitDescription}
-                placeholder="dinner, trip, groceries…"
+                placeholder={t.debts.dinnerTripEtc}
                 placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
                 multiline
                 textAlignVertical="top"
@@ -4153,7 +4205,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             {/* Split method — segmented (only when adding) */}
             {!editingSplitId && (
               <View style={[styles.dDebtFieldCard, neu.raisedSoft]}>
-                <Text style={styles.dDebtFieldCardLabel}>split method</Text>
+                <Text style={styles.dDebtFieldCardLabel}>{t.debts.splitMethod}</Text>
                 <View style={[styles.dDebtTypeSegmented, { marginTop: 6 }]}>
                   {SPLIT_METHODS.map((m) => {
                     const isActive = splitMethod === m.value;
@@ -4192,7 +4244,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             {/* Participants — multi input card (type a name + add, or from contacts) */}
             <View style={{ marginBottom: SPACING.sm + 2 }}>
               <Text style={{ fontSize: 16, fontWeight: '600', color: C.textPrimary, marginBottom: SPACING.sm }}>
-                participants <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                {t.debts.participants} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
               </Text>
               <ContactPicker
                 selectedContacts={splitContacts}
@@ -4202,18 +4254,18 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 hideLabel
                 includeSelf
                 selfName={getSelfContact().name}
-                placeholder="add a name"
+                placeholder={t.debts.typeName}
               />
             </View>
 
             {/* Paid by — pick one of the participants */}
             <View style={{ marginTop: SPACING.sm, marginBottom: SPACING.xl }}>
               <Text style={{ fontSize: 16, fontWeight: '600', color: C.textPrimary, marginBottom: SPACING.sm }}>
-                paid by <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                {t.debts.paidBy} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
               </Text>
               {splitContacts.length === 0 ? (
                 <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, fontStyle: 'italic' }}>
-                  add participants first
+                  {t.debts.addParticipantsFirst}
                 </Text>
               ) : (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
@@ -4228,7 +4280,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         }}
                         activeOpacity={0.7}
                         accessibilityRole="button"
-                        accessibilityLabel={`paid by ${c.name}`}
+                        accessibilityLabel={t.debts.paidByNameA11y.replace('{name}', c.name)}
                         accessibilityState={{ selected: active }}
                         style={[
                           { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full },
@@ -4254,17 +4306,34 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               )}
             </View>
 
-            {/* Paid from wallet — only when 'you' is the fronter */}
+            {/* Paid from wallet + category — only when 'you' is the fronter (there's
+                only an expense transaction to categorise when I paid). */}
             {splitPaidBy.length > 0 && splitPaidBy[0].id === '__self__' && (
-              <View style={{ marginBottom: SPACING.sm + 2 }}>
-                <WalletPicker
-                  wallets={wallets}
-                  selectedId={splitWalletId}
-                  onSelect={setSplitWalletId}
-                  label="paid from wallet"
-                  faintNeu
-                />
-              </View>
+              <>
+                <View style={{ marginBottom: SPACING.sm + 2 }}>
+                  <WalletPicker
+                    wallets={wallets}
+                    selectedId={splitWalletId}
+                    onSelect={setSplitWalletId}
+                    label={t.debts.paidFromWallet}
+                    faintNeu
+                  />
+                </View>
+                <View style={{ marginBottom: SPACING.sm + 2 }}>
+                  <CategoryPicker
+                    categories={expenseCategories}
+                    selectedId={splitCategory}
+                    onSelect={setSplitCategory}
+                    layout="dropdown"
+                    faintDark
+                    onNavigateToSettings={() => {
+                      categoryManagerCallerRef.current = 'split';
+                      setSplitModalVisible(false);
+                      setTimeout(() => setCategoryManagerType('expense'), 50);
+                    }}
+                  />
+                </View>
+              </>
             )}
 
             {/* Due date field card */}
@@ -4273,11 +4342,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               onPress={() => { Keyboard.dismiss(); setSplitDueDatePickerOpen((v) => !v); }}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="select due date"
+              accessibilityLabel={t.debts.selectDueDate}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Text style={styles.dDebtFieldCardLabel}>
-                  due date <Text style={styles.dDebtFieldOptional}>optional</Text>
+                  {t.debts.dueDate} <Text style={styles.dDebtFieldOptional}>{t.common.optional}</Text>
                 </Text>
                 {splitDueDateObj && (
                   <TouchableOpacity
@@ -4291,7 +4360,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               <View style={styles.dDebtFieldDateRow}>
                 <Feather name="calendar" size={15} color={splitDueDateObj ? C.accent : C.textMuted} />
                 <Text style={[styles.dDebtFieldDateText, !splitDueDateObj && { color: C.textMuted }]}>
-                  {splitDueDateObj ? format(splitDueDateObj, 'd MMM yyyy').toLowerCase() : 'pick a date'}
+                  {splitDueDateObj ? format(splitDueDateObj, 'd MMM yyyy').toLowerCase() : t.debts.selectDate}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -4431,12 +4500,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   }}
                   hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
                   accessibilityRole="button"
-                  accessibilityLabel="delete split"
+                  accessibilityLabel={t.debts.deleteSplit}
                 >
                   {({ pressed }) => (
                     <View style={[styles.dDebtDeleteLinkInner, pressed && { opacity: 0.55 }]}>
                       <Feather name="trash-2" size={13} color={C.textMuted} />
-                      <Text style={styles.dDebtDeleteLinkText}>delete split</Text>
+                      <Text style={styles.dDebtDeleteLinkText}>{t.debts.deleteSplit}</Text>
                     </View>
                   )}
                 </Pressable>
@@ -4488,7 +4557,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       dSplitSaveScale.value = withSpring(1, { damping: 18, stiffness: 240 });
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={editingSplitId ? 'save changes' : 'create split'}
+                    accessibilityLabel={editingSplitId ? t.debts.saveChanges : t.debts.createSplit}
                     accessibilityState={{ disabled: !canSave || dSplitIsSaving, busy: dSplitIsSaving }}
                   >
                     {dSplitIsSaving ? (
@@ -4506,7 +4575,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             !canSave && styles.dDebtSaveBtnTextDisabled,
                           ]}
                         >
-                          {editingSplitId ? 'save changes' : 'create split'}
+                          {editingSplitId ? t.debts.saveChanges : t.debts.createSplit}
                         </Text>
                       </View>
                     )}
@@ -4519,12 +4588,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   onPress={dSplitCloseSheet}
                   hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                   accessibilityRole="button"
-                  accessibilityLabel="close"
+                  accessibilityLabel={t.common.close}
                 >
                   {({ pressed }) => (
                     <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                       <Feather name="x" size={12} color={C.textMuted} />
-                      <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                      <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                     </View>
                   )}
                 </Pressable>
@@ -4597,8 +4666,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               if (!isNaN(dueD.getTime())) {
                 dueDateText = format(dueD, 'd MMM yyyy');
                 const daysUntil = differenceInDays(dueD, new Date());
-                if (daysUntil < 0) { dueDateText += ` · overdue ${Math.abs(daysUntil)}d`; dueColor = overdueColor; }
-                else if (daysUntil <= 3) { dueDateText += daysUntil === 0 ? ' · due today' : ` · due in ${daysUntil}d`; dueColor = C.gold; }
+                if (daysUntil < 0) { dueDateText += ` · ${t.debts.overdueDays.replace('{n}', String(Math.abs(daysUntil)))}`; dueColor = overdueColor; }
+                else if (daysUntil <= 3) { dueDateText += daysUntil === 0 ? ` · ${t.debts.dueToday}` : ` · ${t.debts.dueInDays.replace('{n}', String(daysUntil))}`; dueColor = C.gold; }
               }
             }
 
@@ -4619,7 +4688,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         {debt.description ? ` · ${debt.description.toLowerCase()}` : ''}
                       </Text>
                       <Text style={styles.dDebtSubtitle}>
-                        {debt.type === 'i_owe' ? 'i owe' : 'they owe'} · {statusConfig.label.toLowerCase()} · {getDebtAge(debt.createdAt)}
+                        {debt.type === 'i_owe' ? t.debts.iOwe : t.debts.theyOwe} · {statusConfig.label.toLowerCase()} · {getDebtAge(debt.createdAt)}
                       </Text>
                     </View>
                   </View>
@@ -4638,11 +4707,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     </Text>
                     {debt.status === 'settled' ? (
                       <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: settledColor, marginTop: 4 }}>
-                        settled · {currency} {debt.totalAmount.toFixed(2)} total
+                        {t.debts.settledTotal.replace('{currency}', currency).replace('{amount}', debt.totalAmount.toFixed(2))}
                       </Text>
                     ) : debt.paidAmount > 0 ? (
                       <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, marginTop: 4 }}>
-                        of {currency} {debt.totalAmount.toFixed(2)} total
+                        {t.debts.ofTotal.replace('{currency}', currency).replace('{amount}', debt.totalAmount.toFixed(2))}
                       </Text>
                     ) : null}
                     {debt.totalAmount > 0 && (
@@ -4652,7 +4721,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     )}
                     {debt.paidAmount > 0 && debt.status !== 'settled' && (
                       <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 4 }}>
-                        {currency} {debt.paidAmount.toFixed(2)} paid · {paidPct.toFixed(0)}%
+                        {t.debts.amountPaidPercent.replace('{currency}', currency).replace('{amount}', debt.paidAmount.toFixed(2)).replace('{pct}', paidPct.toFixed(0))}
                       </Text>
                     )}
                   </View>
@@ -4661,19 +4730,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <View style={[styles.detailMetaSection, { marginTop: SPACING.md }]}>
                     {debt.description ? (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>description</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.description}</Text>
                         <Text style={[styles.detailMetaValue, { flex: 1, textAlign: 'right' }]} numberOfLines={2}>{debt.description.toLowerCase()}</Text>
                       </View>
                     ) : null}
                     {category ? (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>category</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.category}</Text>
                         <Text style={styles.detailMetaValue}>{category.name.toLowerCase()}</Text>
                       </View>
                     ) : null}
                     {debt.status === 'settled' ? (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>paid on</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.paidOn}</Text>
                         <Text style={styles.detailMetaValue}>{(() => {
                           const lastPay = debt.payments.length > 0
                             ? debt.payments.reduce((latest, p) => new Date(p.date) > new Date(latest.date) ? p : latest)
@@ -4683,12 +4752,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       </View>
                     ) : dueDateText ? (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>due date</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.dueDate}</Text>
                         <Text style={[styles.detailMetaValue, dueColor ? { color: dueColor, fontWeight: TYPOGRAPHY.weight.semibold } : null]}>{dueDateText.toLowerCase()}</Text>
                       </View>
                     ) : null}
                     <View style={styles.detailMetaRow}>
-                      <Text style={styles.detailMetaLabel}>created</Text>
+                      <Text style={styles.detailMetaLabel}>{t.debts.createdLabel}</Text>
                       <Text style={styles.detailMetaValue}>{format(new Date(debt.createdAt), 'd MMM yyyy').toLowerCase()}</Text>
                     </View>
                   </View>
@@ -4708,7 +4777,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     return (
                       <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: withAlpha(C.textPrimary, 0.06) }}>
                         <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textSecondary, marginBottom: SPACING.sm }}>
-                          breakdown
+                          {t.debts.breakdown}
                         </Text>
                         {contactItems.map((item, i) => {
                           const share = Math.round((item.amount / (item.assignedTo.length || 1)) * 100) / 100;
@@ -4721,7 +4790,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         })}
                         {taxPerPerson > 0 && (
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
-                            <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary }}>tax</Text>
+                            <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary }}>{t.debts.tax}</Text>
                             <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary, fontVariant: ['tabular-nums'] as any }}>{currency} {taxPerPerson.toFixed(2)}</Text>
                           </View>
                         )}
@@ -4735,7 +4804,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   {debt.status !== 'settled' ? (
                     <NeuButton
                       icon="plus-circle"
-                      label="record payment"
+                      label={t.debts.recordPayment}
                       onPress={() => {
                         const id = debt.id;
                         returnToDetailRef.current = id;
@@ -4746,7 +4815,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   ) : (
                     <NeuPressable
                       accessibilityRole="button"
-                      accessibilityLabel="view history"
+                      accessibilityLabel={t.debts.viewHistory}
                       style={[styles.debtPrimaryAction, neu.raisedSoft, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04) }]}
                       onPress={() => {
                         const id = debt.id;
@@ -4756,7 +4825,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       }}
                     >
                       <Feather name="clock" size={15} color={C.textSecondary} />
-                      <Text style={[styles.debtPrimaryActionText, { color: C.textSecondary }]}>view history</Text>
+                      <Text style={[styles.debtPrimaryActionText, { color: C.textSecondary }]}>{t.debts.viewHistory}</Text>
                     </NeuPressable>
                   )}
 
@@ -4790,8 +4859,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       <TouchableOpacity
                         style={[styles.debtIconChip, neu.raised]}
                         onPress={() => {
-                          if (debt.isArchived) { unarchiveDebt(debt.id); showToast('debt unarchived', 'success'); }
-                          else { archiveDebt(debt.id); showToast('debt archived', 'success'); }
+                          if (debt.isArchived) { unarchiveDebt(debt.id); showToast(t.debts.debtUnarchived, 'success'); }
+                          else { archiveDebt(debt.id); showToast(t.debts.debtArchived, 'success'); }
                           setDetailDebtId(null);
                         }}
                         activeOpacity={0.7}
@@ -4853,12 +4922,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={dDetailCloseSheet}
                     hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                     accessibilityRole="button"
-                    accessibilityLabel="close"
+                    accessibilityLabel={t.common.close}
                   >
                     {({ pressed }) => (
                       <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                         <Feather name="x" size={12} color={C.textMuted} />
-                        <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                        <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                       </View>
                     )}
                   </Pressable>
@@ -4921,7 +4990,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         {group.debts.length} debts · <Text style={styles.dDebtTitleAccent}>{group.contactName.toLowerCase()}</Text>
                       </Text>
                       <Text style={styles.dDebtSubtitle}>
-                        {isMixed ? `net ${netDirection === 'i_owe' ? 'i owe' : 'they owe'}` : `${primaryType === 'i_owe' ? 'i owe' : 'they owe'}`}
+                        {isMixed ? t.debts.netDirection.replace('{direction}', netDirection === 'i_owe' ? 'i owe' : 'they owe') : `${primaryType === 'i_owe' ? 'i owe' : 'they owe'}`}
                         {groupDateLabel ? `  ·  ${groupDateLabel}` : ''}
                       </Text>
                     </View>
@@ -4947,11 +5016,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           </Text>
                           {allSettled ? (
                             <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, marginTop: 4 }}>
-                              {groupWasMixed ? 'settled up' : `${group.debts[0].type === 'i_owe' ? 'i owe' : 'they owe'} · settled`}
+                              {groupWasMixed ? t.debts.settledUp : t.debts.directionSettled.replace('{direction}', group.debts[0].type === 'i_owe' ? t.debts.iOwe : t.debts.theyOwe)}
                             </Text>
                           ) : isMixed ? (
                             <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, marginTop: 4 }}>
-                              net · {netDirection === 'i_owe' ? 'i owe' : 'they owe'}
+                              {t.debts.netDot.replace('{direction}', netDirection === 'i_owe' ? t.debts.iOwe : t.debts.theyOwe)}
                             </Text>
                           ) : null}
                           {(() => {
@@ -4964,13 +5033,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               return (
                                 <>
                                   <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.positive, marginTop: 6, fontWeight: TYPOGRAPHY.weight.semibold, fontVariant: ['tabular-nums'] as any }}>
-                                    {currency} {groupPaid.toFixed(2)} paid
+                                    {t.debts.amountPaidShort.replace('{currency}', currency).replace('{amount}', groupPaid.toFixed(2))}
                                   </Text>
                                   <View style={{ width: '60%', height: 5, borderRadius: 3, backgroundColor: withAlpha(C.textPrimary, 0.08), marginTop: 8, overflow: 'hidden' }}>
                                     <View style={{ width: `${paidPctGroup}%`, height: '100%', borderRadius: 3, backgroundColor: C.positive }} />
                                   </View>
                                   <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 4, fontVariant: ['tabular-nums'] as any }}>
-                                    {Math.round(paidPctGroup)}% of {currency} {groupNetTotal.toFixed(2)}
+                                    {t.debts.pctOfAmount.replace('{pct}', String(Math.round(paidPctGroup))).replace('{currency}', currency).replace('{amount}', groupNetTotal.toFixed(2))}
                                   </Text>
                                 </>
                               );
@@ -4979,7 +5048,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               return (
                                 <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 6, fontVariant: ['tabular-nums'] as any }}>
                                   {isMixed || groupWasMixed
-                                    ? `they owe ${currency} ${allTheyOweTotal.toFixed(2)} − you owe ${currency} ${allIOweTotal.toFixed(2)}`
+                                    ? t.debts.theyOweMinusYouOwe.replace('{currency}', currency).replace('{a}', allTheyOweTotal.toFixed(2)).replace('{currency}', currency).replace('{b}', allIOweTotal.toFixed(2))
                                     : group.debts.map(d => (allSettled ? d.totalAmount : Math.max(0, d.totalAmount - d.paidAmount)).toFixed(2)).join(' + ')}
                                 </Text>
                               );
@@ -5002,7 +5071,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       let footerText = '';
                       let footerColor: string | null = null;
                       if (debt.status === 'settled') {
-                        footerText = `settled · ${currency} ${debt.totalAmount.toFixed(2)}`;
+                        footerText = t.debts.settledAmount.replace('{currency}', currency).replace('{amount}', debt.totalAmount.toFixed(2));
                         footerColor = settledColor;
                       } else if (debt.dueDate) {
                         const dueD = new Date(debt.dueDate);
@@ -5074,7 +5143,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       {/* Record payment — primary CTA */}
                       <NeuButton
                         icon="plus-circle"
-                        label="record all payment"
+                        label={t.debts.recordAllPayment}
                         onPress={() => {
                           const firstUnsettled = group.debts.find((d) => d.status !== 'settled');
                           if (firstUnsettled) {
@@ -5143,26 +5212,26 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               const netDir = theyOweTotal >= iOweTotal ? 'they_owe' : 'i_owe';
                               const displayAmt = isMixed ? netAmt : theyOweTotal;
 
-                              let msg = `Hey ${group.contactName}, you owe me ${currency} ${displayAmt.toFixed(2)}\n`;
+                              let msg = `${t.debts.msgReminderHeadline.replace('{name}', group.contactName).replace('{currency}', currency).replace('{amount}', displayAmt.toFixed(2))}\n`;
 
                               if (isMixed) {
-                                msg += '\nYou owe me:';
+                                msg += `\n${t.debts.msgYouOweMeList}`;
                                 theyOweItems.forEach((d) => {
-                                  msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
+                                  msg += `\n${t.debts.msgLineItem.replace('{desc}', d.description || 'untitled').replace('{currency}', currency).replace('{amount}', Math.max(0, d.totalAmount - d.paidAmount).toFixed(2))}`;
                                 });
-                                if (theyOweItems.length > 1) msg += `\n  subtotal: ${currency} ${theyOweTotal.toFixed(2)}`;
-                                msg += '\n\nI owe you:';
+                                if (theyOweItems.length > 1) msg += `\n${t.debts.msgSubtotal.replace('{currency}', currency).replace('{amount}', theyOweTotal.toFixed(2))}`;
+                                msg += `\n\n${t.debts.msgIOweYouList}`;
                                 iOweItems.forEach((d) => {
-                                  msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
+                                  msg += `\n${t.debts.msgLineItem.replace('{desc}', d.description || 'untitled').replace('{currency}', currency).replace('{amount}', Math.max(0, d.totalAmount - d.paidAmount).toFixed(2))}`;
                                 });
-                                if (iOweItems.length > 1) msg += `\n  subtotal: ${currency} ${iOweTotal.toFixed(2)}`;
+                                if (iOweItems.length > 1) msg += `\n${t.debts.msgSubtotal.replace('{currency}', currency).replace('{amount}', iOweTotal.toFixed(2))}`;
                                 msg += `\n\n${currency} ${theyOweTotal.toFixed(2)} - ${currency} ${iOweTotal.toFixed(2)} = ${currency} ${netAmt.toFixed(2)}`;
                               } else {
                                 unsettled.forEach((d) => {
-                                  msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
+                                  msg += `\n${t.debts.msgLineItem.replace('{desc}', d.description || 'untitled').replace('{currency}', currency).replace('{amount}', Math.max(0, d.totalAmount - d.paidAmount).toFixed(2))}`;
                                 });
                               }
-                              msg += '\n\nCan you settle when free? Thank you!';
+                              msg += `\n\n${t.debts.msgSettleWhenFree}`;
                               const gId = group.contactId;
                               returnToGroupRef.current = gId;
                               setDetailGroupId(null);
@@ -5194,33 +5263,33 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               const netAmt = Math.abs(theyOweTotal - iOweTotal);
                               const netDir = theyOweTotal >= iOweTotal ? 'they_owe' : 'i_owe';
                               const headline = netDir === 'they_owe'
-                                ? `you owe me ${currency} ${(isMixed ? netAmt : theyOweTotal).toFixed(2)}`
-                                : `i owe you ${currency} ${(isMixed ? netAmt : iOweTotal).toFixed(2)}`;
+                                ? t.debts.msgYouOweMeHeadline.replace('{currency}', currency).replace('{amount}', (isMixed ? netAmt : theyOweTotal).toFixed(2))
+                                : t.debts.msgIOweYouHeadline.replace('{currency}', currency).replace('{amount}', (isMixed ? netAmt : iOweTotal).toFixed(2));
 
-                              let msg = `Hey ${group.contactName}, ${headline}\n`;
+                              let msg = `${t.debts.msgRequestHeadline.replace('{name}', group.contactName).replace('{headline}', headline)}\n`;
 
                               if (isMixed) {
-                                msg += '\nYou owe me:';
+                                msg += `\n${t.debts.msgYouOweMeList}`;
                                 theyOweItems.forEach((d) => {
-                                  msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
+                                  msg += `\n${t.debts.msgLineItem.replace('{desc}', d.description || 'untitled').replace('{currency}', currency).replace('{amount}', Math.max(0, d.totalAmount - d.paidAmount).toFixed(2))}`;
                                 });
-                                if (theyOweItems.length > 1) msg += `\n  subtotal: ${currency} ${theyOweTotal.toFixed(2)}`;
-                                msg += '\n\nI owe you:';
+                                if (theyOweItems.length > 1) msg += `\n${t.debts.msgSubtotal.replace('{currency}', currency).replace('{amount}', theyOweTotal.toFixed(2))}`;
+                                msg += `\n\n${t.debts.msgIOweYouList}`;
                                 iOweItems.forEach((d) => {
-                                  msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
+                                  msg += `\n${t.debts.msgLineItem.replace('{desc}', d.description || 'untitled').replace('{currency}', currency).replace('{amount}', Math.max(0, d.totalAmount - d.paidAmount).toFixed(2))}`;
                                 });
-                                if (iOweItems.length > 1) msg += `\n  subtotal: ${currency} ${iOweTotal.toFixed(2)}`;
+                                if (iOweItems.length > 1) msg += `\n${t.debts.msgSubtotal.replace('{currency}', currency).replace('{amount}', iOweTotal.toFixed(2))}`;
                                 msg += `\n\n${currency} ${theyOweTotal.toFixed(2)} - ${currency} ${iOweTotal.toFixed(2)} = ${currency} ${netAmt.toFixed(2)}`;
                               } else {
                                 unsettled.forEach((d) => {
-                                  msg += `\n· ${d.description || 'untitled'} — ${currency} ${Math.max(0, d.totalAmount - d.paidAmount).toFixed(2)}`;
+                                  msg += `\n${t.debts.msgLineItem.replace('{desc}', d.description || 'untitled').replace('{currency}', currency).replace('{amount}', Math.max(0, d.totalAmount - d.paidAmount).toFixed(2))}`;
                                 });
                                 const total = unsettled.reduce((s, d) => s + Math.max(0, d.totalAmount - d.paidAmount), 0);
-                                if (unsettled.length > 1) msg += `\n\nTotal: ${currency} ${total.toFixed(2)}`;
+                                if (unsettled.length > 1) msg += `\n\n${t.debts.msgTotal.replace('{currency}', currency).replace('{amount}', total.toFixed(2))}`;
                               }
 
                               if (hasPaymentQr) msg += '\n\nQR code attached for payment';
-                              msg += `\n\nThanks!\n-${senderName}`;
+                              msg += `\n\n${t.debts.msgThanks.replace('{name}', senderName)}`;
                               const gId = group.contactId;
                               returnToGroupRef.current = gId;
                               setDetailGroupId(null);
@@ -5267,12 +5336,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={dGroupDetailCloseSheet}
                       hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                       accessibilityRole="button"
-                      accessibilityLabel="close"
+                      accessibilityLabel={t.common.close}
                     >
                       {({ pressed }) => (
                         <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                           <Feather name="x" size={12} color={C.textMuted} />
-                          <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                          <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                         </View>
                       )}
                     </Pressable>
@@ -5321,12 +5390,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={dGroupDetailCloseSheet}
                       hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                       accessibilityRole="button"
-                      accessibilityLabel="close"
+                      accessibilityLabel={t.common.close}
                     >
                       {({ pressed }) => (
                         <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                           <Feather name="x" size={12} color={C.textMuted} />
-                          <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                          <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                         </View>
                       )}
                     </Pressable>
@@ -5393,7 +5462,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       </View>
                       <View style={styles.dDebtTitleZone}>
                         <Text style={styles.dDebtTitle} numberOfLines={1} ellipsizeMode="tail">
-                          edit <Text style={styles.dDebtTitleAccent}>payment</Text>
+                          {t.debts.editTitlePrefix}<Text style={styles.dDebtTitleAccent}>{t.debts.paymentNoun}</Text>
                         </Text>
                         <Text style={styles.dDebtSubtitle}>
                           {currency} {payDetailPayment.amount.toFixed(2)} · {dateStr.toLowerCase()}
@@ -5414,19 +5483,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     <View style={styles.detailMetaSection}>
                       {wallet && (
                         <View style={styles.detailMetaRow}>
-                          <Text style={styles.detailMetaLabel}>wallet</Text>
+                          <Text style={styles.detailMetaLabel}>{t.debts.wallet}</Text>
                           <Text style={styles.detailMetaValue}>{wallet.name.toLowerCase()}</Text>
                         </View>
                       )}
                       {payDetailPayment.linkedTransactionId && (
                         <View style={styles.detailMetaRow}>
-                          <Text style={styles.detailMetaLabel}>linked</Text>
-                          <Text style={styles.detailMetaValue}>transaction · synced on save</Text>
+                          <Text style={styles.detailMetaLabel}>{t.debts.linkedLabel}</Text>
+                          <Text style={styles.detailMetaValue}>{t.debts.transactionSyncedOnSave}</Text>
                         </View>
                       )}
                       {payDetailPayment.tipAmount ? (
                         <View style={styles.detailMetaRow}>
-                          <Text style={styles.detailMetaLabel}>tip</Text>
+                          <Text style={styles.detailMetaLabel}>{t.debts.tip}</Text>
                           <Text style={styles.detailMetaValue}>
                             {currency} {payDetailPayment.tipAmount.toFixed(2)}
                           </Text>
@@ -5446,7 +5515,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       return (
                         <View style={[styles.dDebtFieldHeroCard, neu.raisedSoft]}>
                           <Text style={styles.dDebtFieldCardLabel}>
-                            amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                            {t.debts.amount} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                           </Text>
                           <View style={styles.dDebtFieldHeroAmountRow}>
                             <Text style={[styles.dDebtFieldHeroCurrency, { color: typeConfig.color }]} numberOfLines={1}>
@@ -5474,7 +5543,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     {/* Note card */}
                     <View style={[styles.dDebtFieldCard, neu.raisedSoft]}>
                       <Text style={styles.dDebtFieldCardLabel}>
-                        note <Text style={styles.dDebtFieldOptional}>optional</Text>
+                        {t.debts.note} <Text style={styles.dDebtFieldOptional}>{t.common.optional}</Text>
                       </Text>
                       <TextInput
                         style={[styles.dDebtFieldCardInput, styles.dDebtFieldMultiline]}
@@ -5576,12 +5645,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       }}
                       hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
                       accessibilityRole="button"
-                      accessibilityLabel="delete payment"
+                      accessibilityLabel={t.debts.deletePayment}
                     >
                       {({ pressed }) => (
                         <View style={[styles.dDebtDeleteLinkInner, pressed && { opacity: 0.55 }]}>
                           <Feather name="trash-2" size={13} color={C.textMuted} />
-                          <Text style={styles.dDebtDeleteLinkText}>delete payment</Text>
+                          <Text style={styles.dDebtDeleteLinkText}>{t.debts.deletePayment}</Text>
                         </View>
                       )}
                     </Pressable>
@@ -5596,7 +5665,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         onPressIn={() => { dPaySaveScale.value = withTiming(0.97, { duration: 120 }); }}
                         onPressOut={() => { dPaySaveScale.value = withSpring(1, { damping: 18, stiffness: 240 }); }}
                         accessibilityRole="button"
-                        accessibilityLabel="save changes"
+                        accessibilityLabel={t.debts.saveChanges}
                       >
                         {payDetailSaving ? (
                           <ActivityIndicator size="small" color={C.surface} />
@@ -5613,7 +5682,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={handleClosePayDetail}
                       hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                       accessibilityRole="button"
-                      accessibilityLabel="back"
+                      accessibilityLabel={t.common.back}
                     >
                       {({ pressed }) => (
                         <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
@@ -5646,17 +5715,17 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     </View>
                     <View style={styles.dDebtTitleZone}>
                       <Text style={styles.dDebtTitle} numberOfLines={1} ellipsizeMode="tail">
-                        {paymentViewOnly ? 'payment ' : 'record '}
+                        {paymentViewOnly ? t.debts.paymentTitlePrefix : t.debts.recordTitlePrefix}
                         <Text style={styles.dDebtTitleAccent}>
-                          {paymentViewOnly ? 'history' : 'payment'}
+                          {paymentViewOnly ? t.debts.history : t.debts.paymentNoun}
                         </Text>
                       </Text>
                       <Text style={styles.dDebtSubtitle}>
                         {groupPaymentId
-                          ? `consolidated · ${payDebt.contact.name.toLowerCase()}`
+                          ? t.debts.consolidatedName.replace('{name}', payDebt.contact.name.toLowerCase())
                           : payDebt.type === 'they_owe'
-                            ? `${payDebt.contact.name.toLowerCase()} is paying you back`
-                            : `paying ${payDebt.contact.name.toLowerCase()} back`}
+                            ? t.debts.isPayingYouBack.replace('{name}', payDebt.contact.name.toLowerCase())
+                            : t.debts.payingNameBack.replace('{name}', payDebt.contact.name.toLowerCase())}
                       </Text>
                     </View>
                   </View>
@@ -5697,17 +5766,17 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           {grpIsMixed ? (
                             <View style={styles.dPayContextAmounts}>
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>i owe</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.debts.iOwe}</Text>
                                 <Text style={styles.dPayContextAmountValue}>{currency} {iOweRem.toFixed(2)}</Text>
                               </View>
                               <View style={styles.dPayContextDivider} />
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>they owe</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.debts.theyOwe}</Text>
                                 <Text style={styles.dPayContextAmountValue}>{currency} {theyOweRem.toFixed(2)}</Text>
                               </View>
                               <View style={styles.dPayContextDivider} />
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>net</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.debts.netLabel}</Text>
                                 <Text style={[styles.dPayContextAmountValue, { color: typeConfig.color, fontWeight: '700' as const }]}>
                                   {currency} {netRem.toFixed(2)}
                                 </Text>
@@ -5716,19 +5785,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           ) : (
                             <View style={styles.dPayContextAmounts}>
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>total</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.common.total}</Text>
                                 <Text style={styles.dPayContextAmountValue}>{currency} {(iOweRem + theyOweRem).toFixed(2)}</Text>
                               </View>
                               <View style={styles.dPayContextDivider} />
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>paid</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.debts.paid}</Text>
                                 <Text style={[styles.dPayContextAmountValue, { color: settledColor }]}>
                                   {currency} {unsettled.reduce((s, d) => s + d.paidAmount, 0).toFixed(2)}
                                 </Text>
                               </View>
                               <View style={styles.dPayContextDivider} />
                               <View style={styles.dPayContextAmountItem}>
-                                <Text style={styles.dPayContextAmountLabel}>left</Text>
+                                <Text style={styles.dPayContextAmountLabel}>{t.debts.remaining}</Text>
                                 <Text style={[styles.dPayContextAmountValue, { color: typeConfig.color, fontWeight: '700' as const }]}>
                                   {currency} {(iOweRem + theyOweRem).toFixed(2)}
                                 </Text>
@@ -5768,19 +5837,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                         <View style={styles.dPayContextAmounts}>
                           <View style={styles.dPayContextAmountItem}>
-                            <Text style={styles.dPayContextAmountLabel}>total</Text>
+                            <Text style={styles.dPayContextAmountLabel}>{t.common.total}</Text>
                             <Text style={styles.dPayContextAmountValue}>{currency} {payDebt.totalAmount.toFixed(2)}</Text>
                           </View>
                           <View style={styles.dPayContextDivider} />
                           <View style={styles.dPayContextAmountItem}>
-                            <Text style={styles.dPayContextAmountLabel}>paid</Text>
+                            <Text style={styles.dPayContextAmountLabel}>{t.debts.paid}</Text>
                             <Text style={[styles.dPayContextAmountValue, { color: settledColor }]}>
                               {currency} {payDebt.paidAmount.toFixed(2)}
                             </Text>
                           </View>
                           <View style={styles.dPayContextDivider} />
                           <View style={styles.dPayContextAmountItem}>
-                            <Text style={styles.dPayContextAmountLabel}>left</Text>
+                            <Text style={styles.dPayContextAmountLabel}>{t.debts.remaining}</Text>
                             <Text style={[styles.dPayContextAmountValue, { color: typeConfig.color, fontWeight: '700' as const }]}>
                               {currency} {remaining.toFixed(2)}
                             </Text>
@@ -5814,11 +5883,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     </View>
                     <View style={styles.dPayProgressLabelRow}>
                       <Text style={styles.dPayProgressLabel}>
-                        {Math.round(currentPct)}% paid
+                        {t.debts.pctPaid.replace('{pct}', String(Math.round(currentPct)))}
                       </Text>
                       {enteredAmount > 0 && projectedPct > currentPct && (
                         <Text style={[styles.dPayProgressLabel, { color: settledColor, fontWeight: TYPOGRAPHY.weight.semibold }]}>
-                          → {Math.round(projectedPct)}% after this
+                          {t.debts.pctAfterThis.replace('{pct}', String(Math.round(projectedPct)))}
                         </Text>
                       )}
                     </View>
@@ -5844,7 +5913,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       {/* Amount card — hero style */}
                       <View style={[styles.dDebtFieldHeroCard, neu.raisedSoft]}>
                         <Text style={styles.dDebtFieldCardLabel}>
-                          amount <Text style={styles.dDebtFieldRequiredStar}>*</Text>
+                          {t.debts.amount} <Text style={styles.dDebtFieldRequiredStar}>*</Text>
                         </Text>
                         <View style={styles.dDebtFieldHeroAmountRow}>
                           <Text style={[styles.dDebtFieldHeroCurrency, { color: typeConfig.color }]} numberOfLines={1}>
@@ -5870,8 +5939,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       <View style={styles.dPayQuickChipRow}>
                         {[
                           { label: '¼', frac: 0.25 },
-                          { label: 'half', frac: 0.5 },
-                          { label: 'full', frac: 1.0 },
+                          { label: t.debts.quickHalf, frac: 0.5 },
+                          { label: t.debts.quickFull, frac: 1.0 },
                         ].map((chip) => {
                           const fillAmount = +(remaining * chip.frac).toFixed(2);
                           const isActive = Math.abs(parseFloat(paymentAmount || '0') - fillAmount) < 0.01;
@@ -5886,7 +5955,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               onPress={() => setPaymentAmount(fillAmount.toFixed(2))}
                               activeOpacity={0.7}
                               accessibilityRole="button"
-                              accessibilityLabel={`fill ${chip.label} of remaining`}
+                              accessibilityLabel={t.debts.fillOfRemainingA11y.replace('{label}', chip.label)}
                             >
                               <Text style={[styles.dPayQuickChipText, isActive && { color: settledColor }]}>
                                 {chip.label}
@@ -5935,7 +6004,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       {/* Note card */}
                       <View style={[styles.dDebtFieldCard, neu.raisedSoft]}>
                         <Text style={styles.dDebtFieldCardLabel}>
-                          note <Text style={styles.dDebtFieldOptional}>optional</Text>
+                          {t.debts.note} <Text style={styles.dDebtFieldOptional}>{t.common.optional}</Text>
                         </Text>
                         <TextInput
                           style={[styles.dDebtFieldCardInput, styles.dDebtFieldMultiline]}
@@ -6027,7 +6096,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                       <Text style={styles.payHistoryAmount}>{currency} {batch.total.toFixed(2)}</Text>
                                       <Text style={styles.payHistoryDate}>{safeFormatDate(firstPay.date, 'MMM dd, HH:mm', '—')}</Text>
                                     </View>
-                                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>settled up · {batch.payments.length} debts netted</Text>
+                                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>{t.debts.settledUpNetted.replace('{n}', String(batch.payments.length))}</Text>
                                   </View>
                                 </View>
                               </View>
@@ -6048,7 +6117,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                       <Text style={styles.payHistoryAmount}>{currency} {batch.total.toFixed(2)}</Text>
                                       <Text style={styles.payHistoryDate}>{safeFormatDate(firstPay.date, 'MMM dd, HH:mm', '—')}</Text>
                                     </View>
-                                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>consolidated · {batch.payments.length} debts</Text>
+                                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>{t.debts.consolidatedCount.replace('{n}', String(batch.payments.length))}</Text>
                                   </View>
                                 </View>
                               </View>
@@ -6068,7 +6137,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                     <Text style={styles.payHistoryAmount}>{currency} {batch.total.toFixed(2)}</Text>
                                     <Text style={styles.payHistoryDate}>{safeFormatDate(firstNP.date, 'MMM dd, HH:mm', '—')}</Text>
                                   </View>
-                                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.bronze }}>offset · no cash exchanged</Text>
+                                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.bronze }}>{t.debts.offsetNoCash}</Text>
                                   {descs.length > 0 && (
                                     <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 1 }}>{descs.join(' ↔ ')}</Text>
                                   )}
@@ -6105,7 +6174,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                       <View style={styles.payEditedBadge}>
                                         <Feather name="edit-2" size={10} color={C.bronze} />
                                         <Text style={styles.payEditedBadgeText}>
-                                          edited {safeFormatDate(payment.editLog[payment.editLog.length - 1].editedAt, 'MMM d, HH:mm', '—')}
+                                          {t.debts.editedOn.replace('{date}', safeFormatDate(payment.editLog[payment.editLog.length - 1].editedAt, 'MMM d, HH:mm', '—'))}
                                         </Text>
                                       </View>
                                     )}
@@ -6160,7 +6229,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             onPressIn={() => { dPaySaveScale.value = withTiming(0.97, { duration: 120 }); }}
                             onPressOut={() => { dPaySaveScale.value = withSpring(1, { damping: 18, stiffness: 240 }); }}
                             accessibilityRole="button"
-                            accessibilityLabel="record payment"
+                            accessibilityLabel={t.debts.recordPayment}
                             accessibilityState={{ disabled: !canRecord || dPayIsSaving, busy: dPayIsSaving }}
                           >
                             {dPayIsSaving ? (
@@ -6172,7 +6241,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                   styles.dDebtSaveBtnText,
                                   !canRecord && styles.dDebtSaveBtnTextDisabled,
                                 ]}>
-                                  record payment
+                                  {t.debts.recordPayment}
                                 </Text>
                               </View>
                             )}
@@ -6201,12 +6270,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     return (
                       <NeuPressable
                         accessibilityRole="button"
-                        accessibilityLabel={`undo consolidated payment, ${currency} ${batchTotal.toFixed(2)}`}
+                        accessibilityLabel={t.debts.undoConsolidatedA11y.replace('{currency}', currency).replace('{amount}', batchTotal.toFixed(2))}
                         onPress={() => handleDeletePayment(batchPayments[0]._debtId, batchPayments[0].id)}
                         style={[styles.debtPrimaryAction, neu.raisedSoft, { backgroundColor: withAlpha(C.textPrimary, isDark ? 0.08 : 0.04) }]}
                       >
                         <Feather name="rotate-ccw" size={15} color={C.textSecondary} />
-                        <Text style={[styles.debtPrimaryActionText, { color: C.textSecondary }]}>undo consolidated · {currency} {batchTotal.toFixed(2)}</Text>
+                        <Text style={[styles.debtPrimaryActionText, { color: C.textSecondary }]}>{t.debts.undoConsolidated.replace('{currency}', currency).replace('{amount}', batchTotal.toFixed(2))}</Text>
                       </NeuPressable>
                     );
                   })()}
@@ -6215,12 +6284,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={dPayCloseSheet}
                     hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                     accessibilityRole="button"
-                    accessibilityLabel="close"
+                    accessibilityLabel={t.common.close}
                   >
                     {({ pressed }) => (
                       <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                         <Feather name="x" size={12} color={C.textMuted} />
-                        <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                        <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                       </View>
                     )}
                   </Pressable>
@@ -6264,25 +6333,25 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <Feather name="gift" size={22} color={C.bronze} />
                 </View>
 
-                <Text style={styles.tipModalTitle}>includes extra</Text>
+                <Text style={styles.tipModalTitle}>{t.debts.includesExtra}</Text>
                 <Text style={styles.tipModalDesc}>
-                  {`${currency} ${tipConfirmData.tip.toFixed(2)} more than the remaining balance`}
+                  {t.debts.moreThanRemaining.replace('{currency}', currency).replace('{amount}', tipConfirmData.tip.toFixed(2))}
                 </Text>
 
                 {/* Amount breakdown — two stacked rows */}
                 <View style={styles.tipModalBreakdown}>
                   <View style={styles.tipModalBreakdownRow}>
-                    <Text style={styles.tipModalBreakdownLabel}>remaining balance</Text>
+                    <Text style={styles.tipModalBreakdownLabel}>{t.debts.remainingBalance}</Text>
                     <Text style={styles.tipModalBreakdownValue}>{currency} {(tipConfirmData.amount - tipConfirmData.tip).toFixed(2)}</Text>
                   </View>
                   <View style={[styles.tipModalBreakdownRow, styles.tipModalBreakdownRowLast]}>
-                    <Text style={styles.tipModalBreakdownLabel}>recording</Text>
+                    <Text style={styles.tipModalBreakdownLabel}>{t.debts.recordingLabel}</Text>
                     <Text style={[styles.tipModalBreakdownValue, { fontWeight: '700' as any }]}>{currency} {tipConfirmData.amount.toFixed(2)}</Text>
                   </View>
                   <View style={styles.tipModalExtraRow}>
                     <View style={styles.tipModalExtraPill}>
                       <Feather name="plus" size={11} color={C.bronze} />
-                      <Text style={styles.tipModalExtraText}>{currency} {tipConfirmData.tip.toFixed(2)} extra</Text>
+                      <Text style={styles.tipModalExtraText}>{t.debts.extraAmount.replace('{currency}', currency).replace('{amount}', tipConfirmData.tip.toFixed(2))}</Text>
                     </View>
                   </View>
                 </View>
@@ -6302,14 +6371,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   }}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.tipModalConfirmText}>record with tip</Text>
+                  <Text style={styles.tipModalConfirmText}>{t.debts.recordWithTip}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.tipModalCancelBtn}
                   onPress={() => { setTipConfirmVisible(false); setTipConfirmData(null); }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.tipModalCancelText}>cancel</Text>
+                  <Text style={styles.tipModalCancelText}>{t.common.cancel}</Text>
                 </TouchableOpacity>
               </View>
             </Reanimated.View>
@@ -6333,11 +6402,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               </View>
               <View style={styles.dDebtTitleZone}>
                 <Text style={styles.dDebtTitle}>
-                  split <Text style={styles.dDebtTitleAccent}>summary</Text>
+                  {t.debts.splitTitlePrefix}<Text style={styles.dDebtTitleAccent}>{t.debts.summary}</Text>
                 </Text>
                 {selectedSplit && (
                   <Text style={styles.dDebtSubtitle}>
-                    {selectedSplit.description.toLowerCase()} · {selectedSplit.participants.length} {selectedSplit.participants.length === 1 ? 'person' : 'people'}
+                    {selectedSplit.description.toLowerCase()} · {selectedSplit.participants.length} {selectedSplit.participants.length === 1 ? t.debts.personSingular : t.debts.personPlural}
                   </Text>
                 )}
               </View>
@@ -6365,7 +6434,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 const taxPerPerson = Math.round((selectedSplit.taxAmount / (participantsWithAmount.length || 1)) * 100) / 100;
                 participantsWithAmount.forEach((p) => {
                   const list = itemBreakdown.get(p.contact.id);
-                  if (list) list.push({ name: 'Tax', amount: taxPerPerson, shared: true });
+                  if (list) list.push({ name: t.debts.tax, amount: taxPerPerson, shared: true });
                 });
               }
 
@@ -6386,7 +6455,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       {currency} {selectedSplit.totalAmount.toFixed(2)}
                     </Text>
                     <Text style={styles.detailHeroSub}>
-                      {paidCount} of {totalCount} paid · {methodLabel.toLowerCase()} split
+                      {t.debts.splitPaidLine.replace('{paid}', String(paidCount)).replace('{total}', String(totalCount)).replace('{method}', methodLabel.toLowerCase())}
                     </Text>
                   </View>
 
@@ -6394,14 +6463,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <View style={styles.detailMetaSection}>
                     {selectedSplit.paidBy && (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>paid by</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.paidBy}</Text>
                         <Text style={styles.detailMetaValue}>
-                          {selectedSplit.paidBy.id === '__self__' ? 'you' : selectedSplit.paidBy.name.toLowerCase()}
+                          {selectedSplit.paidBy.id === '__self__' ? t.debts.youLabel : selectedSplit.paidBy.name.toLowerCase()}
                         </Text>
                       </View>
                     )}
                     <View style={styles.detailMetaRow}>
-                      <Text style={styles.detailMetaLabel}>when</Text>
+                      <Text style={styles.detailMetaLabel}>{t.debts.when}</Text>
                       <Text style={styles.detailMetaValue}>
                         {safeFormatDate(selectedSplit.createdAt, 'MMM dd, yyyy', '—').toLowerCase()}
                       </Text>
@@ -6410,7 +6479,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       const dd = new Date((selectedSplit as any).dueDate);
                       return isValid(dd) ? (
                         <View style={styles.detailMetaRow}>
-                          <Text style={styles.detailMetaLabel}>due</Text>
+                          <Text style={styles.detailMetaLabel}>{t.debts.due}</Text>
                           <Text style={styles.detailMetaValue}>
                             {format(dd, 'MMM dd, yyyy').toLowerCase()}
                           </Text>
@@ -6421,23 +6490,23 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       const w = wallets.find((wl) => wl.id === selectedSplit.walletId);
                       return w ? (
                         <View style={styles.detailMetaRow}>
-                          <Text style={styles.detailMetaLabel}>wallet</Text>
+                          <Text style={styles.detailMetaLabel}>{t.debts.wallet}</Text>
                           <Text style={styles.detailMetaValue}>{w.name.toLowerCase()}</Text>
                         </View>
                       ) : null;
                     })()}
                     {selectedSplit.taxAmount != null && selectedSplit.taxAmount > 0 && (
                       <View style={styles.detailMetaRow}>
-                        <Text style={styles.detailMetaLabel}>tax</Text>
+                        <Text style={styles.detailMetaLabel}>{t.debts.tax}</Text>
                         <Text style={styles.detailMetaValue}>
-                          {currency} {selectedSplit.taxAmount.toFixed(2)} · {selectedSplit.taxHandling === 'divide' ? 'split equally' : 'waived'}
+                          {currency} {selectedSplit.taxAmount.toFixed(2)} · {selectedSplit.taxHandling === 'divide' ? t.debts.splitEqually : t.debts.waived}
                         </Text>
                       </View>
                     )}
                   </View>
 
                   {/* Per person section */}
-                  <Text style={styles.detailSectionLabel}>per person</Text>
+                  <Text style={styles.detailSectionLabel}>{t.debts.perPerson}</Text>
                   {selectedSplit.participants.map((p) => {
                     const items = itemBreakdown.get(p.contact.id) || [];
                     const isPaid = p.isPaid;
@@ -6456,10 +6525,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             </View>
                             <View style={{ flex: 1, minWidth: 0 }}>
                               <Text style={styles.detailPersonName} numberOfLines={1}>
-                                {isSelf ? 'you' : p.contact.name.toLowerCase()}
+                                {isSelf ? t.debts.youLabel : p.contact.name.toLowerCase()}
                               </Text>
                               <Text style={styles.detailPersonStatus}>
-                                {isSelf ? 'your share' : isPaid ? 'paid' : 'unpaid'}
+                                {isSelf ? t.debts.yourShare : isPaid ? t.debts.paid : t.debts.unpaid}
                               </Text>
                             </View>
                             <Text style={[styles.detailPersonAmount, { color: participantColor }]}>
@@ -6482,7 +6551,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             >
                               <Feather name={isPaid ? 'check-circle' : 'circle'} size={13} color={isPaid ? settledColor : pendingColor} />
                               <Text style={[styles.detailPersonActionText, { color: isPaid ? settledColor : pendingColor }]}>
-                                {isPaid ? 'paid · undo' : 'mark paid'}
+                                {isPaid ? t.debts.paidUndo : t.debts.markPaidChip}
                               </Text>
                             </TouchableOpacity>
                           )}
@@ -6492,7 +6561,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               {items.map((share, idx) => (
                                 <View key={idx} style={styles.detailItemRow}>
                                   <Text style={styles.detailItemName} numberOfLines={1}>
-                                    {share.name.toLowerCase()}{share.shared ? ' · shared' : ''}
+                                    {share.name.toLowerCase()}{share.shared ? ` · ${t.debts.sharedLabel}` : ''}
                                   </Text>
                                   <Text style={styles.detailItemAmount}>
                                     {currency} {share.amount.toFixed(2)}
@@ -6535,11 +6604,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         if (isAr) {
                           unarchiveSplit(sid);
                           linkedDebts.forEach((d) => unarchiveDebt(d.id));
-                          showToast('split unarchived', 'success');
+                          showToast(t.debts.splitUnarchived, 'success');
                         } else {
                           archiveSplit(sid);
                           linkedDebts.forEach((d) => archiveDebt(d.id));
-                          showToast('split archived', 'success');
+                          showToast(t.debts.splitArchived, 'success');
                         }
                       }, 100);
                     }}
@@ -6554,12 +6623,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 onPress={dSplitDetailCloseSheet}
                 hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                 accessibilityRole="button"
-                accessibilityLabel="close"
+                accessibilityLabel={t.common.close}
               >
                 {({ pressed }) => (
                   <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                     <Feather name="x" size={12} color={C.textMuted} />
-                    <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                    <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                   </View>
                 )}
               </Pressable>
@@ -6994,7 +7063,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             onPress={() => { setWizardDueDate(null); setWizardDueDatePickerOpen(false); }}
                             style={{ alignSelf: 'center', paddingVertical: SPACING.xs }}
                           >
-                            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>clear due date</Text>
+                            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>{t.debts.clearDueDate}</Text>
                           </TouchableOpacity>
                         )}
                       </View>
@@ -7024,7 +7093,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       {person.itemShares.map((share, idx) => (
                         <View key={idx} style={styles.wizardShareRow}>
                           <Text style={styles.wizardShareName} numberOfLines={1}>
-                            {share.name}{share.shared ? ' (shared)' : ''}
+                            {share.name}{share.shared ? ` ${t.debts.sharedSuffix}` : ''}
                           </Text>
                           <Text style={styles.wizardShareAmount}>
                             {currency} {share.amount.toFixed(2)}
@@ -7531,12 +7600,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={dReminderCloseSheet}
                     hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                     accessibilityRole="button"
-                    accessibilityLabel="close"
+                    accessibilityLabel={t.common.close}
                   >
                     {({ pressed }) => (
                       <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                         <Feather name="x" size={12} color={C.textMuted} />
-                        <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                        <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                       </View>
                     )}
                   </Pressable>
@@ -7696,12 +7765,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={dReqCloseSheet}
                     hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
                     accessibilityRole="button"
-                    accessibilityLabel="close"
+                    accessibilityLabel={t.common.close}
                   >
                     {({ pressed }) => (
                       <View style={[styles.dDebtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
                         <Feather name="x" size={12} color={C.textMuted} />
-                        <Text style={styles.dDebtSecondaryLinkText}>close</Text>
+                        <Text style={styles.dDebtSecondaryLinkText}>{t.common.close}</Text>
                       </View>
                     )}
                   </Pressable>
@@ -7765,6 +7834,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           setCategoryManagerType(null);
           if (categoryManagerCallerRef.current === 'payment') {
             setPaymentModalVisible(true);
+          } else if (categoryManagerCallerRef.current === 'split') {
+            setSplitModalVisible(true);
           } else {
             setDebtModalVisible(true);
           }

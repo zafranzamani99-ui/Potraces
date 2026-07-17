@@ -24,7 +24,7 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../con
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { exportSingleReceiptPdf } from '../../services/pdfExport';
 import { shareCapturedReceipt } from '../../services/receiptImageExport';
-import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
 import { useT } from '../../i18n';
 import { useToast } from '../../context/ToastContext';
@@ -41,21 +41,11 @@ type DetailRoute = RouteProp<RootStackParamList, 'ReceiptDetail'>;
 
 const ReceiptDetail: React.FC = () => {
   const C = useCalm();
-  const neu = useNeu();            // on-screen surfaces sit on C.background
-  const neuS = useNeu(C.surface);  // tax-picker modal rows sit on the C.surface card
-  const isDark = useIsDark();      // tax-picker neu is softened in dark (user: reads too strong)
+  // Onyx dark standard: faint dark neu across this screen. The picker rows/icon
+  // sit on the (now C.background) modal, so they use this same default-base accessor
+  // — this folds the old local soft-neu-dark override into the kit's faintDark.
+  const neu = useNeu(undefined, { faintDark: true });
   const t = useT();
-  // The picker keeps a neu lift in dark, just softer than the kit's raisedSoft/raised
-  // (which stack up too strong across the dark rows). The kit has no "softer-than-
-  // raisedSoft" raised tier, so these are a local, picker-only gentler drop shadow.
-  const softRowNeu = useMemo(
-    () => ({ backgroundColor: C.surface, boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 8, color: 'rgba(0,0,0,0.6)' }] } as any),
-    [C.surface],
-  );
-  const softIconNeu = useMemo(
-    () => ({ boxShadow: [{ offsetX: 0, offsetY: 1, blurRadius: 5, color: 'rgba(0,0,0,0.55)' }] } as any),
-    [],
-  );
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -445,9 +435,7 @@ const ReceiptDetail: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.modalRow,
-                      // Dark: gentler neu lift than raisedSoft (softRowNeu); light keeps
-                      // the full card look.
-                      isDark ? softRowNeu : neuS.raisedSoft,
+                      neu.raisedSoft,
                       isSelected && { backgroundColor: withAlpha(C.accent, 0.06) },
                     ]}
                     onPress={() => {
@@ -457,7 +445,7 @@ const ReceiptDetail: React.FC = () => {
                     }}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.modalRowIcon, isDark ? softIconNeu : neuS.raised, { backgroundColor: withAlpha(isSelected ? C.accent : C.textSecondary, 0.08) }]}>
+                    <View style={[styles.modalRowIcon, neu.raised, { backgroundColor: withAlpha(isSelected ? C.accent : C.textSecondary, 0.08) }]}>
                       <Feather name={cat.icon as keyof typeof Feather.glyphMap} size={14} color={isSelected ? C.accent : C.textSecondary} />
                     </View>
                     <View style={{ flex: 1 }}>
@@ -974,7 +962,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING.xl,
   },
   modalCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     // Flat elevated shell (SHADOWS.lg at the call site), matching CategoryPicker.
     // Horizontal insets live on modalHeader (padding) + modalRow (margin) so the

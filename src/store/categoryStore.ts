@@ -59,6 +59,14 @@ interface CategoryState {
     id: string,
     mode?: 'personal' | 'business'
   ) => void;
+  // In-place update of a custom category — PRESERVES its id so budgets /
+  // transactions referencing it don't orphan (unlike delete-then-re-add).
+  updateCustomCategory: (
+    type: CategoryType,
+    id: string,
+    updates: Partial<Omit<CategoryOption, 'id'>>,
+    mode?: 'personal' | 'business'
+  ) => void;
   setCategoryOrder: (
     type: CategoryType,
     order: string[],
@@ -148,6 +156,19 @@ export const useCategoryStore = create<CategoryState>()(
           };
         }),
 
+      updateCustomCategory: (type, id, updates, mode = 'personal') =>
+        set((state) => {
+          const key = resolveKey(type, mode, 'custom') as keyof Pick<CategoryState,
+            'customExpenseCategories' | 'customIncomeCategories' |
+            'customBusinessExpenseCategories' | 'customBusinessIncomeCategories' |
+            'customInvestmentCategories'>;
+          return {
+            [key]: (state[key] as CategoryOption[]).map((c) =>
+              c.id === id ? { ...c, ...updates } : c
+            ),
+          };
+        }),
+
       setCategoryOrder: (type, order, mode = 'personal') =>
         set(() => {
           const key = resolveKey(type, mode, 'order');
@@ -160,7 +181,7 @@ export const useCategoryStore = create<CategoryState>()(
         const custom = mode === 'business' ? state.customBusinessExpenseCategories : state.customExpenseCategories;
         const order = mode === 'business' ? state.businessExpenseCategoryOrder : state.expenseCategoryOrder;
 
-        const cacheKey = mode + '|' + custom.length + '|' + custom.map(c => c.id).join(',') + '|' + order.join(',') + '|' + JSON.stringify(overrides);
+        const cacheKey = mode + '|' + custom.length + '|' + custom.map(c => c.id + ':' + c.name + ':' + c.icon + ':' + c.color).join(',') + '|' + order.join(',') + '|' + JSON.stringify(overrides);
         if (_expenseCategoriesCache && _expenseCategoriesCache.key === cacheKey) {
           return _expenseCategoriesCache.result;
         }
@@ -184,7 +205,7 @@ export const useCategoryStore = create<CategoryState>()(
         const custom = mode === 'business' ? state.customBusinessIncomeCategories : state.customIncomeCategories;
         const order = mode === 'business' ? state.businessIncomeCategoryOrder : state.incomeCategoryOrder;
 
-        const cacheKey = mode + '|' + custom.length + '|' + custom.map(c => c.id).join(',') + '|' + order.join(',') + '|' + JSON.stringify(overrides);
+        const cacheKey = mode + '|' + custom.length + '|' + custom.map(c => c.id + ':' + c.name + ':' + c.icon + ':' + c.color).join(',') + '|' + order.join(',') + '|' + JSON.stringify(overrides);
         if (_incomeCategoriesCache && _incomeCategoriesCache.key === cacheKey) {
           return _incomeCategoriesCache.result;
         }
@@ -208,7 +229,7 @@ export const useCategoryStore = create<CategoryState>()(
         const custom = state.customInvestmentCategories;
         const order = state.investmentCategoryOrder;
 
-        const cacheKey = custom.length + '|' + custom.map(c => c.id).join(',') + '|' + order.join(',') + '|' + JSON.stringify(overrides);
+        const cacheKey = custom.length + '|' + custom.map(c => c.id + ':' + c.name + ':' + c.icon + ':' + c.color).join(',') + '|' + order.join(',') + '|' + JSON.stringify(overrides);
         if (_investmentCategoriesCache && _investmentCategoriesCache.key === cacheKey) {
           return _investmentCategoriesCache.result;
         }

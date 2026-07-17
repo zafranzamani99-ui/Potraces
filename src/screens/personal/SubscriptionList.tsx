@@ -387,7 +387,7 @@ const SubscriptionList: React.FC = () => {
 
   const {
     subscriptions, transactions, addSubscription, updateSubscription, deleteSubscription,
-    incrementInstallment, toggleSubscriptionPause, markSubscriptionPaid,
+    toggleSubscriptionPause, markSubscriptionPaid,
     undoSubscriptionPayment, addTransaction,
   } = usePersonalStore();
   const wallets = useWalletStore(s => s.wallets);
@@ -555,12 +555,24 @@ const SubscriptionList: React.FC = () => {
   }, [subscriptions]);
 
   const categoryBreakdown = useMemo(() => {
-    const active = subscriptions.filter(s => s.isActive && !s.isPaused);
+    // Normalize every bill to its MONTHLY equivalent (yearly ÷12, quarterly ÷3,
+    // weekly ×52÷12) so the category split reflects real monthly load — a raw sum
+    // would let a single yearly bill dominate the pie against monthly ones. Exclude
+    // finished installments (they no longer bill).
+    const toMonthly = (s: Subscription) => {
+      switch (s.billingCycle) {
+        case 'weekly':    return (s.amount * 52) / 12;
+        case 'quarterly': return s.amount / 3;
+        case 'yearly':    return s.amount / 12;
+        default:          return s.amount;
+      }
+    };
+    const active = subscriptions.filter(s => s.isActive && !s.isPaused && !isInstallmentComplete(s));
     const groups: Record<string, { amount: number; color: string }> = {};
     active.forEach(s => {
       const cat = expenseCategories.find(c => c.id === s.category);
       if (!groups[s.category]) groups[s.category] = { amount: 0, color: cat?.color || C.accent };
-      groups[s.category].amount += s.amount;
+      groups[s.category].amount += toMonthly(s);
     });
     const total = Object.values(groups).reduce((sum, g) => sum + g.amount, 0);
     return Object.entries(groups)
@@ -968,7 +980,16 @@ const SubscriptionList: React.FC = () => {
       const existing = subscriptions.find(s => s.id === editingId);
       const startChanged = existing && payload.startDate.getTime() !== existing.startDate.getTime();
       const cycleChanged = existing && payload.billingCycle !== existing.billingCycle;
-      const nextBillingDate = (startChanged || cycleChanged) ? nextBilling : (existing?.nextBillingDate || nextBilling);
+      let nextBillingDate = (startChanged || cycleChanged) ? nextBilling : (existing?.nextBillingDate || nextBilling);
+      // A recompute derives the pointer purely from (start, cycle, now) — blind to
+      // what's been paid. If the commitment already has active payments, never let
+      // that pointer roll BACK behind the current oldest-unpaid cycle: doing so
+      // resurfaces already-settled periods as phantom "overdue" rows, and paying
+      // one deducts the wallet a second time. Cadence still changes going forward.
+      if ((startChanged || cycleChanged) && existing?.paymentHistory?.some(p => !p.undoneAt)
+          && nextBillingDate.getTime() < existing.nextBillingDate.getTime()) {
+        nextBillingDate = existing.nextBillingDate;
+      }
       updateSubscription(editingId, { ...payload, nextBillingDate });
       showToast(t.subscriptions.commitmentUpdated, 'success');
     } else {
@@ -1435,8 +1456,14 @@ const SubscriptionList: React.FC = () => {
       unpaidSubs = projected;
     }
 
-    const monthlyTotal = allSubs.filter(s => !s.isPaused).reduce((s, x) => s + x.amount, 0);
-    const yearlyTotal = allSubs.filter(s => !s.isPaused).reduce((s, x) => s + annualizeAmount(x.amount, x.billingCycle), 0);
+    // Recurring load under the /mo·/yr toggle must be CYCLE-NORMALIZED — a yearly
+    // RM1800 bill is RM150/mo, not RM1800/mo — and must exclude paused + finished
+    // installments (which no longer bill). Deriving /mo as /yr÷12 keeps the two
+    // toggle values consistent (mo×12 === yr) instead of the old raw sum where a
+    // yearly bill counted in full and /mo contradicted /yr.
+    const loadSubs = allSubs.filter(s => !s.isPaused && !isInstallmentComplete(s));
+    const yearlyTotal = loadSubs.reduce((s, x) => s + annualizeAmount(x.amount, x.billingCycle), 0);
+    const monthlyTotal = yearlyTotal / 12;
     const remainingTotal = unpaidSubs.reduce((s, x) => s + x.amount, 0);
     const paidTotal = paidSubs.reduce((s, x) => s + x.amount, 0);
     const showSplit = isCurrent && remainingTotal > 0 && paidTotal > 0;
@@ -1841,7 +1868,7 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={closeMp}>
         <Pressable style={styles.overlayCenter} onPress={closeMp}>
-          <View style={[styles.markPaidCard, neu.raisedSoft, mpCalendarOpen && { width: '94%', paddingHorizontal: SPACING.sm }]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.markPaidCard, neu.raisedModal, mpCalendarOpen && { width: '94%', paddingHorizontal: SPACING.sm }]} onStartShouldSetResponder={() => true}>
             {mpCalendarOpen ? (
               <>
                 <View style={[styles.modalHeader, { width: '100%' }]}>
@@ -2563,7 +2590,7 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible={filterModalVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setFilterModalVisible(false)}>
         <Pressable style={styles.overlayCenter} onPress={() => setFilterModalVisible(false)}>
-          <View style={[styles.filterModalCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
+          <View style={styles.filterModalCard} onStartShouldSetResponder={() => true}>
             <Text style={styles.filterModalTitle}>filter by status</Text>
             {filterOptions.map(opt => {
               const active = statusFilter === opt.key;
@@ -3042,12 +3069,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   // ── Filter modal ──────────────────────────────────────
   filterModalCard: {
+    // no neu, no outline — plain card with a regular drop shadow for elevation
     width: '80%',
     maxWidth: 320,
     backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   filterModalTitle: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -3527,6 +3556,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   swipeFill: {
     width: 72,
     alignSelf: 'stretch' as const,
+    marginBottom: SPACING.sm,
+    borderRadius: RADIUS.lg,
     overflow: 'hidden' as const,
     backgroundColor: 'transparent',
   },

@@ -192,6 +192,28 @@ for (const { key, to, from } of ENTITIES) {
   }
 }
 
+// ── LWW fix (20260716): conflict resolution must key on client_edit_at (the real
+// edit time), NOT the server-trigger-stamped updated_at — otherwise multi-device
+// sync silently reverts to last-PUSH-wins and a newer edit can be overwritten. ──
+{
+  const editTime = '2026-01-01T10:00:00.000Z';        // when the user actually edited
+  const serverPushTime = '2026-01-01T10:05:00.000Z';  // handle_updated_at() stamps this LATER at push
+  const w = walletFromRemote({ local_id: 'w1', name: 'Cash', balance: 100, client_edit_at: editTime, updated_at: serverPushTime });
+  if (w.updatedAt.toISOString() === editTime) {
+    console.log('  ✓ lww: fromRemote prefers client_edit_at over updated_at');
+  } else {
+    failures.push(`lww: walletFromRemote used ${w.updatedAt.toISOString()}, expected client_edit_at ${editTime}`);
+    console.log('  ✗ lww: fromRemote used the server timestamp, not client_edit_at');
+  }
+  const legacy = walletFromRemote({ local_id: 'w2', name: 'X', balance: 0, updated_at: serverPushTime });
+  if (legacy.updatedAt.toISOString() === serverPushTime) {
+    console.log('  ✓ lww: null client_edit_at falls back to updated_at (legacy rows)');
+  } else {
+    failures.push('lww: null client_edit_at should fall back to updated_at');
+    console.log('  ✗ lww: fallback to updated_at broken');
+  }
+}
+
 console.log('');
 if (failures.length === 0) {
   console.log(`PASS — ${passed}/${ENTITIES.length} entities round-trip losslessly.`);

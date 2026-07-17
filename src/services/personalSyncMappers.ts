@@ -28,6 +28,7 @@ import type {
   SavingsAccount,
   SavedReceipt,
 } from '../types';
+import { advanceBillingDate } from '../utils/billing';
 
 // ─── Safe date parsing ────────────────────────────────────────────────────────
 export const sd = (v: any): Date => {
@@ -78,6 +79,7 @@ export function txToRemote(userId: string, t: Transaction) {
     fx_rate: numOrNull(t.fxRate),
     edit_log: (t.editLog ?? []).map((e) => ({ ...e, editedAt: iso(e.editedAt) })),
     updated_at: iso(t.updatedAt),
+    client_edit_at: iso(t.updatedAt),
   };
 }
 
@@ -98,6 +100,7 @@ export function walletToRemote(userId: string, w: Wallet) {
     credit_bank: w.creditBank ?? null,
     credit_network: w.creditNetwork ?? null,
     updated_at: iso(w.updatedAt),
+    client_edit_at: iso(w.updatedAt),
   };
 }
 
@@ -112,6 +115,7 @@ export function transferToRemote(userId: string, t: WalletTransfer) {
     note: t.note ?? null,
     kind: t.kind ?? null,
     updated_at: iso((t as any).updatedAt ?? t.createdAt),
+    client_edit_at: iso((t as any).updatedAt ?? t.createdAt),
   };
 }
 
@@ -145,6 +149,7 @@ export function subToRemote(userId: string, s: Subscription) {
       undoneAt: p.undoneAt ? iso(p.undoneAt) : null,
     })),
     updated_at: iso(s.updatedAt),
+    client_edit_at: iso(s.updatedAt),
   };
 }
 
@@ -161,6 +166,7 @@ export function budgetToRemote(userId: string, b: Budget) {
     rollover: b.rollover ?? null,
     rollover_amount: numOrNull(b.rolloverAmount),
     updated_at: iso(b.updatedAt),
+    client_edit_at: iso(b.updatedAt),
   };
 }
 
@@ -185,6 +191,7 @@ export function goalToRemote(userId: string, g: Goal) {
     is_paused: !!g.isPaused,
     is_archived: !!g.isArchived,
     updated_at: iso(g.updatedAt),
+    client_edit_at: iso(g.updatedAt),
   };
 }
 
@@ -221,6 +228,7 @@ export function debtToRemote(userId: string, d: Debt) {
     due_date: isoOrNull(d.dueDate),
     wallet_local_id: (d as any).walletId ?? null,
     updated_at: iso(d.updatedAt),
+    client_edit_at: iso(d.updatedAt),
   };
 }
 
@@ -249,6 +257,7 @@ export function splitToRemote(userId: string, s: SplitExpense) {
     date: iso((s as any).date ?? s.createdAt),
     note: (s as any).note ?? null,
     updated_at: iso(s.updatedAt),
+    client_edit_at: iso(s.updatedAt),
   };
 }
 
@@ -278,6 +287,7 @@ export function savingsToRemote(userId: string, a: SavingsAccount) {
     annual_rate: numOrNull(a.annualRate),
     snapshots: a.history.map((h) => ({ ...h, date: iso(h.date) })),
     updated_at: iso(a.updatedAt),
+    client_edit_at: iso(a.updatedAt),
   };
 }
 
@@ -302,6 +312,7 @@ export function receiptToRemote(userId: string, r: SavedReceipt) {
     transaction_local_id: r.transactionId ?? null,
     image_url: r.imageUri ?? (r as any).imageUrl ?? null,
     updated_at: iso(r.updatedAt),
+    client_edit_at: iso(r.updatedAt),
   };
 }
 
@@ -330,7 +341,7 @@ export function txFromRemote(r: any): Transaction {
     fxRate: numOrUndef(r.fx_rate),
     editLog: (r.edit_log ?? []).map((e: any) => ({ ...e, editedAt: sd(e.editedAt) })),
     createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
+    updatedAt: sd(r.client_edit_at ?? r.updated_at),
   } as Transaction;
 }
 
@@ -350,7 +361,7 @@ export function walletFromRemote(r: any): Wallet {
     usedCredit: numOrUndef(r.used_credit),
     creditLimit: numOrUndef(r.credit_limit),
     createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
+    updatedAt: sd(r.client_edit_at ?? r.updated_at),
   };
 }
 
@@ -396,8 +407,59 @@ export function subFromRemote(r: any): Subscription {
       undoneAt: p.undoneAt ? sd(p.undoneAt) : undefined,
     })),
     createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
+    updatedAt: sd(r.client_edit_at ?? r.updated_at),
   } as Subscription;
+}
+
+// ─── Subscription merge (multi-device) ────────────────────────────────────────
+// A subscription carries paymentHistory, where each entry corresponds to a real
+// wallet debit + expense transaction. Plain whole-row last-write-wins would let a
+// concurrent edit on device B silently drop a payment device A recorded — re-opening
+// the cycle so the double-pay guard (which reads paymentHistory) misses it and the
+// wallet is deducted a SECOND time. So union the history (like debts/goals do with
+// their child arrays) and re-derive the schedule from the merged set, using the same
+// logic as undoSubscriptionPayment so a clean (non-conflicting) sync is a no-op.
+const subDayKey = (d: any): number => {
+  const x = new Date(d);
+  return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+};
+
+// Union payment records by id. Undo is terminal + monotonic: once a payment is
+// undone on EITHER device it stays undone, so a stale copy can't resurrect a
+// refunded payment.
+export function mergePaymentHistory(a: any[] = [], b: any[] = []): any[] {
+  const m = new Map<string, any>();
+  for (const p of a) m.set(p.id, p);
+  for (const p of b) {
+    const ex = m.get(p.id);
+    if (!ex) m.set(p.id, p);
+    else m.set(p.id, { ...ex, ...p, undoneAt: ex.undoneAt ?? p.undoneAt });
+  }
+  return Array.from(m.values());
+}
+
+export function mergeSubscription(l: Subscription, r: Subscription): Subscription {
+  const base = (r.updatedAt?.getTime?.() ?? 0) >= (l.updatedAt?.getTime?.() ?? 0) ? r : l;
+  const paymentHistory = mergePaymentHistory(l.paymentHistory ?? [], r.paymentHistory ?? []);
+  const active = paymentHistory.filter((p: any) => !p.undoneAt);
+  const clearedKeys = new Set(active.map((p: any) => subDayKey(p.periodDate ?? p.paidAt)));
+  const billedPeriods = paymentHistory
+    .map((p: any) => new Date(p.periodDate ?? p.paidAt))
+    .sort((x, y) => x.getTime() - y.getTime());
+  const firstUnpaid = billedPeriods.find((pd) => !clearedKeys.has(subDayKey(pd)));
+  const latestBilled = billedPeriods[billedPeriods.length - 1];
+  const nextBillingDate = firstUnpaid
+    ? firstUnpaid
+    : latestBilled
+      ? advanceBillingDate(latestBilled, base.billingCycle)
+      : new Date(base.nextBillingDate);
+  const lastPaidAt = active.length
+    ? [...active].sort((x: any, y: any) => new Date(y.paidAt).getTime() - new Date(x.paidAt).getTime())[0].paidAt
+    : undefined;
+  const completedInstallments = base.isInstallment
+    ? Math.min(active.length, base.totalInstallments ?? active.length)
+    : base.completedInstallments;
+  return { ...base, paymentHistory, nextBillingDate, lastPaidAt, completedInstallments } as Subscription;
 }
 
 export function budgetFromRemote(r: any): Budget {
@@ -412,7 +474,7 @@ export function budgetFromRemote(r: any): Budget {
     rollover: r.rollover ?? undefined,
     rolloverAmount: numOrUndef(r.rollover_amount),
     createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
+    updatedAt: sd(r.client_edit_at ?? r.updated_at),
   } as Budget;
 }
 
@@ -436,7 +498,7 @@ export function goalFromRemote(r: any): Goal {
     isPaused: !!r.is_paused,
     isArchived: !!r.is_archived,
     createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
+    updatedAt: sd(r.client_edit_at ?? r.updated_at),
   } as Goal;
 }
 
@@ -477,7 +539,7 @@ export function debtFromRemote(r: any): Debt {
     editLog: (r.edit_log ?? []).map((e: any) => ({ ...e, editedAt: sd(e.editedAt) })),
     dueDate: r.due_date ? sd(r.due_date) : undefined,
     createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
+    updatedAt: sd(r.client_edit_at ?? r.updated_at),
   } as Debt;
 }
 
@@ -501,7 +563,7 @@ export function splitFromRemote(r: any): SplitExpense {
     isArchived: !!r.is_archived,
     archivedAt: r.archived_at ? sd(r.archived_at) : undefined,
     createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
+    updatedAt: sd(r.client_edit_at ?? r.updated_at),
   } as SplitExpense;
 }
 
@@ -528,7 +590,7 @@ export function savingsFromRemote(r: any): SavingsAccount {
     annualRate: numOrUndef(r.annual_rate),
     history: (r.snapshots ?? []).map((s: any) => ({ ...s, date: sd(s.date) })),
     createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
+    updatedAt: sd(r.client_edit_at ?? r.updated_at),
   } as SavingsAccount;
 }
 
@@ -552,6 +614,6 @@ export function receiptFromRemote(r: any): SavedReceipt {
     transactionId: r.transaction_local_id ?? undefined,
     imageUri: r.image_url ?? undefined,
     createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
+    updatedAt: sd(r.client_edit_at ?? r.updated_at),
   } as any as SavedReceipt;
 }

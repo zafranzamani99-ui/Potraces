@@ -8,7 +8,7 @@
 import {
   startOfMonth, endOfMonth, isWithinInterval, differenceInDays, subMonths, format,
 } from 'date-fns';
-import { SavingsAccount, SavingsSortBy } from '../../../types';
+import { SavingsAccount, SavingsSortBy, SnapshotType } from '../../../types';
 import { roundMoney } from '../../../utils/money';
 import { getTypeInfo, classOf, TypeInfo, SavingsClass, CustomResolver } from './investmentTypes';
 
@@ -19,6 +19,51 @@ export const MILESTONES = [
 ];
 
 const toDate = (v: Date | string | number): Date => (v instanceof Date ? v : new Date(v));
+
+/**
+ * Cost basis after a snapshot's capital effect.
+ * - DEPOSIT adds capital, so the basis rises by exactly what was put in (the value
+ *   increase prevValue → newValue).
+ * - WITHDRAWAL returns capital PROPORTIONALLY (average-cost): taking out a fraction of
+ *   the value removes the SAME fraction of the basis. This keeps the return% steady
+ *   across a withdrawal (you don't "lock in" a higher %), realizes the basis to 0 on a
+ *   full close (newValue 0), and never leaves a phantom basis on an emptied or
+ *   over-withdrawn position — the two bugs the nominal model had.
+ * - DIVIDEND / MANUAL are pure revaluations — the basis is untouched, so the whole
+ *   move lands in gain.
+ * Pure (used by savingsStore.addSnapshot; unit-tested).
+ */
+export function nextBasis(prevBasis: number, prevValue: number, newValue: number, snapshotType: SnapshotType): number {
+  if (snapshotType === 'deposit') {
+    return roundMoney(Math.max(0, prevBasis) + Math.max(0, newValue - prevValue));
+  }
+  if (snapshotType === 'withdrawal') {
+    if (prevValue <= 0) return 0;
+    const ratio = Math.max(0, Math.min(1, newValue / prevValue));
+    return roundMoney(Math.max(0, prevBasis) * ratio);
+  }
+  return roundMoney(Math.max(0, prevBasis));
+}
+
+/** Signed amount a snapshot moves the COST BASIS by (+deposit, −withdrawal; 0 for
+ *  manual/dividend) — i.e. `nextBasis − prevBasis`. Captured at write time and stored
+ *  on the snapshot so a multi-device merge can re-derive the basis by replaying moves
+ *  in date order (see replayCapitalMoves). Pure. */
+export function capitalDeltaFor(prevBasis: number, prevValue: number, newValue: number, snapshotType: SnapshotType): number {
+  return roundMoney(nextBasis(prevBasis, prevValue, newValue, snapshotType) - roundMoney(Math.max(0, prevBasis)));
+}
+
+/**
+ * Net capital moved across a snapshot history: +deposits, −withdrawals (dividends &
+ * manual updates move no capital). Sums each snapshot's STORED capitalDelta so it's
+ * order-independent — a multi-device merge that re-sorts history still gets the same
+ * total (recomputing from consecutive values would misread an interleaved move).
+ * Invariant: basis = seed + replayCapitalMoves. Legacy snapshots (no capitalDelta)
+ * contribute 0, matching the pre-basis-model behaviour. Pure.
+ */
+export function replayCapitalMoves(history: { capitalDelta?: number }[]): number {
+  return roundMoney(history.reduce((s, h) => s + (h.capitalDelta ?? 0), 0));
+}
 
 export interface Portfolio {
   totalCurrent: number;
@@ -46,8 +91,12 @@ export function computePortfolio(accounts: SavingsAccount[], now: Date): Portfol
     for (let i = 1; i < a.history.length; i++) {
       const d = toDate(a.history[i].date);
       if (isWithinInterval(d, { start: mStart, end: mEnd })) {
-        const diff = a.history[i].value - a.history[i - 1].value;
-        if (diff > 0) monthContributed += diff;
+        // Only DEPOSIT snapshots are money the user actually put in; a manual
+        // revaluation or a dividend is not a "contribution", so don't count it.
+        if (a.history[i].snapshotType === 'deposit') {
+          const diff = a.history[i].value - a.history[i - 1].value;
+          if (diff > 0) monthContributed += diff;
+        }
         monthUpdates++;
       }
     }

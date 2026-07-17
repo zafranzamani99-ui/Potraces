@@ -4,6 +4,7 @@ import { BlurView } from 'expo-blur';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 
 // iOS 26 → Apple's real Liquid Glass (expo-glass-effect); Android / iOS < 26 →
 // expo-blur fallback. Glass rules (same as the navbar / GlassModeToggle): ONE glass
@@ -38,6 +39,7 @@ function DebtSegmentedControl<K extends string>({
 }: DebtSegmentedControlProps<K>) {
   const C = useCalm();
   const isDark = useIsDark();
+  const t = useT();
   const styles = React.useMemo(() => makeStyles(C), [C]);
 
   return (
@@ -91,7 +93,7 @@ function DebtSegmentedControl<K extends string>({
               activeOpacity={0.7}
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
-              accessibilityLabel={`${tab.label}, ${tab.count} ${tab.count === 1 ? itemNoun : itemNoun + 's'}`}
+              accessibilityLabel={t.debts.segmentTabA11y.replace('{label}', tab.label).replace('{count}', String(tab.count)).replace('{noun}', tab.count === 1 ? itemNoun : itemNoun + 's')}
             >
               <Text style={[
                 styles.segmentTabText,

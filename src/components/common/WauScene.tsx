@@ -349,9 +349,9 @@ export const FlyingWau: React.FC<{
   dark?: boolean;
   /** Lets the parent freeze its scroll views while the kite is being dragged. */
   onDraggingChange?: (dragging: boolean) => void;
-  /** The onboarding pager's native scroll gesture. Declaring the kite Pan
-   *  simultaneous with it lets a horizontal flick still page on Android instead
-   *  of the kite starving the swipe. */
+  /** The onboarding pager's native scroll gesture. The kite Pan BLOCKS it, so
+   *  dragging the wau moves only the wau and never pages to the next/prev screen;
+   *  swipes that start off the kite still page normally. */
   pagerGesture?: any;
 }> = ({ size = 180, panelW, panelH, dark = false, onDraggingChange, pagerGesture }) => {
   const bob = useRef(new Animated.Value(0)).current;     // -1..1 vertical ride
@@ -479,9 +479,10 @@ export const FlyingWau: React.FC<{
     () => {
       const g = Gesture.Pan()
         .runOnJS(true) // reanimated is installed → force JS callbacks for RN Animated
-        // Claim the touch only after a clear drag (no time-based long-press hold),
-        // and run SIMULTANEOUSLY with the pager's native scroll so a horizontal
-        // flick still pages on Android instead of the kite starving the swipe.
+        // Claim the touch only after a clear drag (no time-based long-press hold).
+        // Once the kite drag activates it BLOCKS the pager (blocksExternalGesture
+        // below) so playing with the wau never flips to the next/prev screen — the
+        // pager only pages from a swipe that starts OFF the kite (the rest of the page).
         .activeOffsetX([-12, 12])
         .activeOffsetY([-12, 12])
         .onStart(() => {
@@ -500,7 +501,10 @@ export const FlyingWau: React.FC<{
           shake.setValue(Math.max(-1, Math.min(1, e.velocityX / 900)));
         })
         .onFinalize(() => release());
-      return pagerGesture ? g.simultaneousWithExternalGesture(pagerGesture) : g;
+      // Block the pager (not simultaneous): a drag on the kite must move only the
+      // kite, never page. Touches that start off the kite don't hit this handler,
+      // so paging from the rest of the page is unaffected.
+      return pagerGesture ? g.blocksExternalGesture(pagerGesture) : g;
     },
     [maxX, maxYUp, maxYDown, dragX, dragY, gust, shake, release, startRipple, onDraggingChange, pagerGesture],
   );

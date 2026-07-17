@@ -400,7 +400,7 @@ const AddEditWalletModal: React.FC<Props> = ({
             accessibilityLabel={t.common.back.toLowerCase()}
           >
             <Feather name="arrow-left" size={18} color={C.textSecondary} />
-            <Text style={styles.backBtnText}>{creditCardStep === 'bank' ? 'Change network' : 'Back'}</Text>
+            <Text style={styles.backBtnText}>{creditCardStep === 'bank' ? t.wallets.changeNetwork : t.common.back}</Text>
           </TouchableOpacity>
 
           {creditCardStep === 'network' && (
@@ -642,7 +642,7 @@ const AddEditWalletModal: React.FC<Props> = ({
                   {({ pressed }: { pressed: boolean }) => (
                     <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
                       <Feather name="x" size={12} color={C.textMuted} />
-                      <Text style={styles.closeLinkText}>close</Text>
+                      <Text style={styles.closeLinkText}>{t.common.close.toLowerCase()}</Text>
                     </View>
                   )}
                 </Pressable>

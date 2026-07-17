@@ -14,6 +14,7 @@ export interface CommitSplitInput {
   items: SplitItem[];               // [] unless item_based
   paidBy?: Contact;                 // undefined => draft (no debts/tx)
   walletId?: string;                // only meaningful when self is the payer
+  category?: string;                // expense category when self paid (falls back to 'split_expense')
   dueDate?: Date;
   mode: AppMode;
 }
@@ -27,7 +28,7 @@ export interface CommitSplitInput {
  *  - No payer → draft split only.
  */
 export function commitSplit(input: CommitSplitInput): string {
-  const { description, totalAmount, splitMethod, participants, items, paidBy, walletId, dueDate, mode } = input;
+  const { description, totalAmount, splitMethod, participants, items, paidBy, walletId, category, dueDate, mode } = input;
 
   const { addSplit, updateSplit, addDebt } = useDebtStore.getState();
 
@@ -38,6 +39,7 @@ export function commitSplit(input: CommitSplitInput): string {
     participants,
     items,
     paidBy,
+    category: category || undefined,
     dueDate: dueDate ? dueDate.toISOString() : undefined,
     mode,
   } as any);
@@ -49,7 +51,7 @@ export function commitSplit(input: CommitSplitInput): string {
     if (mode === 'personal') {
       txId = usePersonalStore.getState().addTransaction({
         amount: totalAmount,
-        category: 'split_expense',
+        category: category || 'split_expense',
         description,
         date: new Date(),
         type: 'expense',
@@ -62,7 +64,7 @@ export function commitSplit(input: CommitSplitInput): string {
         date: new Date(),
         amount: totalAmount,
         type: 'cost',
-        category: 'split_expense',
+        category: category || 'split_expense',
         note: description,
         inputMethod: 'manual',
       } as any);

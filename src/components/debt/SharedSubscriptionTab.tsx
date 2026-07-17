@@ -4,6 +4,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { format } from 'date-fns';
 import { Image } from 'expo-image';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { formatAmount } from '../../utils/formatters';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
@@ -73,7 +74,7 @@ const SharedSubscriptionTab: React.FC<SharedSubscriptionTabProps> = ({ onPressSu
           style={styles.rowWrap}
           onPress={() => onPressSub(sub)}
           activeOpacity={0.7}
-          accessibilityLabel={`${sub.name}, ${progress.paid} of ${progress.total} paid`}
+          accessibilityLabel={t.sharedSubs.a11yPaidProgress.replace('{name}', sub.name).replace('{paid}', String(progress.paid)).replace('{total}', String(progress.total))}
         >
           <View style={[styles.rail, { backgroundColor: railColor }]} />
           <View style={styles.rowBody}>
@@ -94,11 +95,11 @@ const SharedSubscriptionTab: React.FC<SharedSubscriptionTabProps> = ({ onPressSu
                 <Text style={styles.subtitle}>
                   {t.sharedSubs.nMembers.replace('{n}', String(sub.members.filter((m) => m.isActive).length))}
                   {' · '}{sub.billingCycle === 'monthly' ? t.sharedSubs.monthly : sub.billingCycle === 'quarterly' ? t.sharedSubs.quarterly : t.sharedSubs.yearly}
-                  {' · day '}{sub.billingDay}
+                  {` · ${t.sharedSubs.dayLabel} `}{sub.billingDay}
                 </Text>
               </View>
               <Text style={styles.amount}>
-                {currency}{sub.totalAmount.toFixed(2)}{getCycleSuffix(sub.billingCycle)}
+                {formatAmount(sub.totalAmount, currency)}{getCycleSuffix(sub.billingCycle)}
               </Text>
             </View>
             <View style={styles.progressRow}>

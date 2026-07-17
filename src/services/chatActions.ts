@@ -12,6 +12,9 @@ import { useWalletStore } from '../store/walletStore';
 import { useSavingsStore } from '../store/savingsStore';
 import { useAppStore } from '../store/appStore';
 import { usePlaybookStore } from '../store/playbookStore';
+import { useCategoryStore } from '../store/categoryStore';
+import { usePremiumStore } from '../store/premiumStore';
+import { FREE_TIER } from '../constants/premium';
 import { syncLinkAmount } from '../utils/playbookAttribution';
 import { AppMode, Transaction, Subscription, Budget, Debt } from '../types';
 import { useLearningStore } from '../store/learningStore';
@@ -106,6 +109,10 @@ export interface ActionReceipt {
   // delete_transaction: full snapshot(s) of what was deleted — undo re-adds them and
   // re-applies the wallet adjustment the same way the add paths do.
   deletedTransactions?: Transaction[];
+  // delete_budget: full snapshot of the removed budget (parity with delete_debt's
+  // record-only receipt). A budget carries no wallet balance, so a future undo just
+  // re-adds it via addBudget.
+  deletedBudget?: Budget;
 }
 
 export interface ExecuteResult {
@@ -421,6 +428,32 @@ function getBudgetImpact(category: string): string {
   return ` (${category}: RM ${spent.toFixed(0)}/${budget.allocatedAmount.toFixed(0)} — past breathing room)`;
 }
 
+/**
+ * Resolve a raw category string (LLM/user text) to a canonical EXPENSE category id
+ * so add_budget never persists an arbitrary string that no transaction can match.
+ * Uses the same fuzzy shape edit_budget uses (exact id/name, then substring either
+ * direction) with a >= 3 char floor. Returns null when nothing plausibly matches so
+ * the caller can ask again instead of writing a phantom category.
+ */
+function resolveExpenseCategoryId(raw?: string): string | null {
+  const key = (raw || '').toLowerCase().trim();
+  if (key.length < 3) return null;
+  const norm = (s: string) => s.toLowerCase().replace(/[\s&]+/g, '_');
+  const nkey = norm(key);
+  const cats = useCategoryStore.getState().getExpenseCategories('personal');
+  const exact = cats.find(
+    (c) => c.id.toLowerCase() === key || norm(c.id) === nkey || norm(c.name) === nkey
+  );
+  if (exact) return exact.id;
+  const fuzzy = cats.find(
+    (c) =>
+      c.id.toLowerCase().includes(key) ||
+      c.name.toLowerCase().includes(key) ||
+      key.includes(c.id.toLowerCase())
+  );
+  return fuzzy ? fuzzy.id : null;
+}
+
 // ─── ID generator ───────────────────────────────────────
 let _idCounter = 0;
 function uniqueId(suffix?: string): string {
@@ -734,6 +767,13 @@ export function executeAction(action: ChatAction): ExecuteResult {
         if (!goal) {
           return { success: false, message: `No savings goal matching "${goalName}" found.`, action };
         }
+        // Cap to the room left — a full/over-target goal must not take money without
+        // advancing progress (matches the Goals UI handleContribute guard).
+        const cRoom = Math.max(0, goal.targetAmount - goal.currentAmount);
+        const cApply = Math.min(action.amount, cRoom);
+        if (cApply <= 0) {
+          return { success: false, message: `"${goal.name}" is already fully funded.`, action };
+        }
         // Mirror the Goals UI (handleContribute): money must actually leave a wallet
         // + create a linked 'savings' expense, or the goal grows against no real money
         // — phantom savings that overstate net worth and let the user double-spend.
@@ -745,7 +785,7 @@ export function executeAction(action: ChatAction): ExecuteResult {
         let cLinkedTxId: string | undefined;
         if (cSrcId) {
           cLinkedTxId = usePersonalStore.getState().addTransaction({
-            amount: action.amount,
+            amount: cApply,
             category: 'savings',
             description: goal.name,
             type: 'expense',
@@ -754,14 +794,14 @@ export function executeAction(action: ChatAction): ExecuteResult {
             walletId: cSrcId,
             linkedGoalId: goal.id,
           }) || undefined;
-          useWalletStore.getState().deductFromWallet(cSrcId, action.amount);
+          useWalletStore.getState().deductFromWallet(cSrcId, cApply);
         }
-        usePersonalStore.getState().contributeToGoal(goal.id, action.amount, action.description || 'contribution via chat', cSrcId || undefined, cLinkedTxId);
-        const newAmount = Math.min(goal.currentAmount + action.amount, goal.targetAmount);
+        usePersonalStore.getState().contributeToGoal(goal.id, cApply, action.description || 'contribution via chat', cSrcId || undefined, cLinkedTxId);
+        const newAmount = Math.min(goal.currentAmount + cApply, goal.targetAmount);
         const pct = goal.targetAmount > 0 ? Math.round((newAmount / goal.targetAmount) * 100) : 0;
         return {
           success: true,
-          message: `Added RM ${action.amount.toFixed(2)} to "${goal.name}" — now at RM ${newAmount.toFixed(2)} (${pct}%)`,
+          message: `Added RM ${cApply.toFixed(2)} to "${goal.name}" — now at RM ${newAmount.toFixed(2)} (${pct}%)`,
           action,
         };
       }
@@ -921,6 +961,10 @@ export function executeAction(action: ChatAction): ExecuteResult {
             action,
           };
         }
+        // action.amount is already guaranteed finite and > 0 by the global amount guard
+        // (line ~480; update_savings is not in NO_AMOUNT_TYPES). A chat "update to X" is a
+        // revaluation (basis unchanged) — 'manual' is correct; deposits/withdrawals are
+        // made in the Update sheet where the user picks the type.
         savingsStore.addSnapshot(account.id, action.amount, action.description || 'updated via chat', 'manual');
         const gain = action.amount - account.initialInvestment;
         const ret = account.initialInvestment > 0 ? (gain / account.initialInvestment) * 100 : 0;
@@ -933,13 +977,21 @@ export function executeAction(action: ChatAction): ExecuteResult {
 
       case 'add_savings_account': {
         const savingsStore = useSavingsStore.getState();
-        if (savingsStore.accounts.length >= 5) {
-          return { success: false, message: 'Maximum 5 savings accounts — remove one first.', action };
+        if (!usePremiumStore.getState().canCreateSavingsAccount(savingsStore.accounts.length)) {
+          return { success: false, message: `Free plan caps you at ${FREE_TIER.maxSavingsAccounts} savings accounts. Remove one, or upgrade to Premium to add more.`, action };
+        }
+        // action.amount is already finite & > 0 (global guard). But the resolved cost
+        // basis is NOT covered by that guard — a negative/non-finite initialInvestment
+        // would pass addAccount's finite-only check and persist a bogus basis (poisoning
+        // gain/return), so validate it here.
+        const initBasis = action.initialInvestment ?? action.amount;
+        if (!Number.isFinite(initBasis) || initBasis < 0) {
+          return { success: false, message: 'Please give a valid starting amount (0 or more) for the account.', action };
         }
         savingsStore.addAccount({
           name: action.description || action.accountName || 'New Account',
           type: action.accountType || 'other',
-          initialInvestment: action.initialInvestment ?? action.amount,
+          initialInvestment: initBasis,
           currentValue: action.amount,
         });
         return {
@@ -1126,30 +1178,67 @@ export function executeAction(action: ChatAction): ExecuteResult {
 
       // ── Budget Management ────────────────────────────────
       case 'add_budget': {
-        const cat = action.budgetCategory || action.category || action.description || 'other';
+        const store = usePersonalStore.getState();
+        // (a) Normalize the raw category text to a canonical expense category id —
+        // never persist an arbitrary LLM string (it would never match a transaction).
+        const categoryId = resolveExpenseCategoryId(action.budgetCategory || action.category || action.description);
+        if (!categoryId) {
+          return { success: false, message: 'Which category should I budget for? Try one like food, transport, shopping, bills, or entertainment.', action };
+        }
+        // (c) Coerce + validate the amount (chat can forward a string/Infinity); cap it.
+        const amt = Number(action.amount);
+        if (!Number.isFinite(amt) || amt <= 0) {
+          return { success: false, message: 'How much for this budget? Give me a positive amount.', action };
+        }
+        const allocatedAmount = Math.min(amt, 100_000_000);
+        // (b) Upsert: if a budget already exists for this category, update it instead
+        // of creating a duplicate. Only a genuinely NEW budget counts against the cap.
+        const existing = store.budgets.find((b) => b.category.toLowerCase() === categoryId.toLowerCase());
+        if (existing) {
+          store.updateBudget(existing.id, { allocatedAmount });
+          return {
+            success: true,
+            message: `Budget updated — ${existing.category} now RM ${allocatedAmount.toFixed(2)}`,
+            action,
+          };
+        }
+        // (4) Free-tier cap — don't let chat bypass the paywall the UI enforces.
+        if (!usePremiumStore.getState().canCreateBudget(store.budgets.length)) {
+          return { success: false, message: `Free plan caps you at ${FREE_TIER.maxBudgets} budgets. Upgrade to Premium to add more.`, action };
+        }
         const now = new Date();
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        usePersonalStore.getState().addBudget({
-          category: cat,
-          allocatedAmount: action.amount || 0,
+        store.addBudget({
+          category: categoryId,
+          allocatedAmount,
           period: 'monthly',
           startDate: now,
           endDate: monthEnd,
         });
         return {
           success: true,
-          message: `Budget set — RM ${(action.amount || 0).toFixed(2)} for ${cat}`,
+          message: `Budget set — RM ${allocatedAmount.toFixed(2)} for ${categoryId}`,
           action,
         };
       }
 
       case 'edit_budget': {
         const { budgets } = usePersonalStore.getState();
-        const cat = (action.budgetCategory || action.description || '').toLowerCase();
-        const budget = budgets.find((b) => b.category.toLowerCase() === cat || b.category.toLowerCase().includes(cat) || cat.includes(b.category.toLowerCase()));
+        const key = (action.budgetCategory || action.description || '').toLowerCase().trim();
+        // Empty category would make `key.includes(...)` true for every budget and
+        // silently hit budgets[0]. Ask instead (mirrors delete_debt's empty guard).
+        if (!key) {
+          return { success: false, message: 'Which budget? Name the category.', action };
+        }
+        // Require >= 3 chars before substring/fuzzy matching so a 1-2 char query
+        // can't sweep an unrelated budget; an exact match is always allowed.
+        const budget = budgets.find((b) => b.category.toLowerCase() === key)
+          || (key.length >= 3
+            ? budgets.find((b) => b.category.toLowerCase().includes(key) || key.includes(b.category.toLowerCase()))
+            : undefined);
         if (!budget) {
           const available = budgets.map((b) => b.category).join(', ');
-          return { success: false, message: `No budget matching "${cat}". You have: ${available || 'none'}`, action };
+          return { success: false, message: `No budget matching "${key}". You have: ${available || 'none'}`, action };
         }
         const updates: Partial<Pick<Budget, 'allocatedAmount'>> = {};
         if (action.amount && action.amount > 0) updates.allocatedAmount = action.amount;
@@ -1167,16 +1256,26 @@ export function executeAction(action: ChatAction): ExecuteResult {
 
       case 'delete_budget': {
         const { budgets } = usePersonalStore.getState();
-        const cat = (action.budgetCategory || action.description || '').toLowerCase();
-        const budget = budgets.find((b) => b.category.toLowerCase() === cat || b.category.toLowerCase().includes(cat) || cat.includes(b.category.toLowerCase()));
+        const key = (action.budgetCategory || action.description || '').toLowerCase().trim();
+        // Empty category would make `key.includes(...)` true for every budget and
+        // silently delete budgets[0]. Ask instead (mirrors delete_debt's empty guard).
+        if (!key) {
+          return { success: false, message: 'Which budget? Name the category.', action };
+        }
+        // Require >= 3 chars before substring/fuzzy matching; exact match always allowed.
+        const budget = budgets.find((b) => b.category.toLowerCase() === key)
+          || (key.length >= 3
+            ? budgets.find((b) => b.category.toLowerCase().includes(key) || key.includes(b.category.toLowerCase()))
+            : undefined);
         if (!budget) {
-          return { success: false, message: `No budget matching "${cat}".`, action };
+          return { success: false, message: `No budget matching "${key}".`, action };
         }
         usePersonalStore.getState().deleteBudget(budget.id);
         return {
           success: true,
           message: `Budget removed — ${budget.category}`,
           action,
+          receipt: { deletedBudget: { ...budget } },
         };
       }
 

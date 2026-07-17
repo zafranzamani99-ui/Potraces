@@ -25,6 +25,7 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../con
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
+import { useNeu } from '../../components/common/neu';
 import TransactionItem from '../../components/common/TransactionItem';
 import CategoryIcon from '../../components/common/CategoryIcon';
 import WalletLogo from '../../components/common/WalletLogo';
@@ -50,6 +51,11 @@ const DELETE_RED = '#E5484D';
 
 // Max transactions shown per page (date-grouped, with a prev/next pager).
 const PAGE_SIZE = 13;
+
+// Height of the floating select bar plus its bottom offset. Reserved as extra
+// scroll space below the pager while in select mode so the bar never overlaps
+// the "‹ 1/4 ›" pager sitting at the bottom of the list.
+const SELECT_BAR_CLEARANCE = 96;
 
 type FilterType = 'all' | 'expense' | 'income';
 type DateRange = 'this_month' | 'last_month' | 'last_3_months' | 'this_year' | 'all_time';
@@ -81,6 +87,8 @@ const TransactionsList: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // "Soft neu dark" tier — Neu Pills (Onyx rule 3) for pills/rows on C.background.
+  const neuF = useNeu(undefined, { faintDark: true });
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -93,6 +101,10 @@ const TransactionsList: React.FC = () => {
   // → existing callers are unaffected.
   const initialFilterDateRange: DateRange | undefined = route.params?.filterDateRange;
   const initialFilterSearch: string | undefined = route.params?.filterSearch;
+  // Optional initial wallet filter, passed from the "Fix balance" flow so the
+  // list lands pre-filtered to a single wallet. Optional → existing callers are
+  // unaffected.
+  const initialFilterWallet: string | undefined = route.params?.filterWallet;
 
   const TYPE_FILTERS = useMemo(() => [
     { key: 'all' as FilterType, label: t.transactionList.all.toLowerCase() },
@@ -106,6 +118,14 @@ const TransactionsList: React.FC = () => {
     { key: 'last_3_months' as DateRange, label: t.transactionList.last3Months.toLowerCase() },
     { key: 'this_year' as DateRange, label: t.transactionList.thisYear.toLowerCase() },
     { key: 'all_time' as DateRange, label: t.transactionList.allTime.toLowerCase() },
+  ], [t]);
+
+  // Combined sort options for the sort picker (by + order in one choice).
+  const SORT_OPTIONS = useMemo(() => [
+    { by: 'date' as SortBy, order: 'desc' as SortOrder, label: t.transactionList.newest.toLowerCase() },
+    { by: 'date' as SortBy, order: 'asc' as SortOrder, label: t.transactionList.oldest.toLowerCase() },
+    { by: 'amount' as SortBy, order: 'desc' as SortOrder, label: t.transactionList.highest.toLowerCase() },
+    { by: 'amount' as SortBy, order: 'asc' as SortOrder, label: t.transactionList.lowest.toLowerCase() },
   ], [t]);
   const { transactions, updateTransaction, deleteTransaction } = usePersonalStore(
     (s) => ({
@@ -145,12 +165,14 @@ const TransactionsList: React.FC = () => {
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     () => (initialFilterCategory ? new Set([initialFilterCategory]) : new Set())
   );
-  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
+  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(initialFilterWallet ?? null);
   const [sortBy, setSortBy] = useState<SortBy>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   // ── Filter modal ─────────────────────────────────────────────
   const [filterModalVisible, setFilterModalVisible] = useState(false);
+  // Which option picker is open on top of the filter modal (nested modal).
+  const [activePicker, setActivePicker] = useState<null | 'date' | 'category' | 'wallet' | 'sort'>(null);
   // Temp state for filter modal (apply on confirm)
   const [tempDateRange, setTempDateRange] = useState<DateRange>(dateRange);
   const [tempCategories, setTempCategories] = useState<Set<string>>(new Set(selectedCategories));
@@ -248,12 +270,17 @@ const TransactionsList: React.FC = () => {
       result = result.filter((t) => t.walletId === selectedWalletId);
     }
 
-    // Search — matches description, category, tags, amount, formatted date
+    // Search — matches description, category (id + display name), wallet name,
+    // tags, amount, formatted date
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       result = result.filter((t) => {
         if (t.description.toLowerCase().includes(query)) return true;
         if (t.category.toLowerCase().includes(query)) return true;
+        const categoryName = categoryMap.get(t.category)?.name;
+        if (categoryName && categoryName.toLowerCase().includes(query)) return true;
+        const walletName = t.walletId ? walletMap.get(t.walletId)?.name : undefined;
+        if (walletName && walletName.toLowerCase().includes(query)) return true;
         if (t.tags && t.tags.some((tag) => tag.toLowerCase().includes(query))) return true;
         if (t.amount.toString().includes(query)) return true;
         if (t.amount.toFixed(2).includes(query)) return true;
@@ -284,7 +311,7 @@ const TransactionsList: React.FC = () => {
     }
 
     return result;
-  }, [transactions, typeFilter, dateRange, selectedCategories, selectedWalletId, searchQuery, sortBy, sortOrder, pendingDeleteIds]);
+  }, [transactions, typeFilter, dateRange, selectedCategories, selectedWalletId, searchQuery, sortBy, sortOrder, pendingDeleteIds, categoryMap, walletMap]);
 
   // ── Pagination derivation ────────────────────────────────────
   // Reset to page 1 whenever the filtered set changes (new filter/search/sort).
@@ -396,6 +423,7 @@ const TransactionsList: React.FC = () => {
     setTempWalletId(selectedWalletId);
     setTempSortBy(sortBy);
     setTempSortOrder(sortOrder);
+    setActivePicker(null);
     setFilterModalVisible(true);
   }, [dateRange, selectedCategories, selectedWalletId, sortBy, sortOrder]);
 
@@ -848,7 +876,7 @@ const TransactionsList: React.FC = () => {
               )}
             </View>
             <TouchableOpacity
-              style={[styles.filterBtn, hasAdvancedFilters && styles.filterBtnActive]}
+              style={[styles.filterBtn, neuF.raised, hasAdvancedFilters && styles.filterBtnActive]}
               onPress={openFilterModal}
               activeOpacity={0.7}
               accessibilityLabel={t.transactionList.filter.toLowerCase()}
@@ -873,7 +901,7 @@ const TransactionsList: React.FC = () => {
                 return (
                   <TouchableOpacity
                     key={f.key}
-                    style={[styles.filterPill, active && styles.filterPillActive]}
+                    style={[styles.filterPill, neuF.raised, active && styles.filterPillActive]}
                     onPress={() => { lightTap(); setTypeFilter(f.key); }}
                     activeOpacity={0.7}
                     accessibilityLabel={f.label}
@@ -966,7 +994,12 @@ const TransactionsList: React.FC = () => {
           renderSectionHeader={renderSectionHeader}
           ListFooterComponent={renderPager}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            // In select mode, reserve room below the pager so the floating
+            // select bar can't collide with it.
+            selectMode && { paddingBottom: insets.bottom + SELECT_BAR_CLEARANCE },
+          ]}
           stickySectionHeadersEnabled={true}
           // Page is capped at PAGE_SIZE items — render them all, no clipping
           // (clipping/recycling is what made scrolling stutter & flash).
@@ -1087,100 +1120,86 @@ const TransactionsList: React.FC = () => {
             <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: SPACING.lg }}>
               {/* Date range */}
               <Text style={styles.filterSectionLabel}>{t.transaction.date.toLowerCase()}</Text>
-              <View style={styles.filterChipGrid}>
-                {DATE_RANGES.map((d) => (
-                  <TouchableOpacity
-                    key={d.key}
-                    style={[styles.filterOptionChip, tempDateRange === d.key && styles.filterOptionChipActive]}
-                    onPress={() => { lightTap(); setTempDateRange(d.key); }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.filterOptionText, tempDateRange === d.key && styles.filterOptionTextActive]}>
-                      {d.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <TouchableOpacity
+                style={[styles.pickerRow, neuF.raisedSoft]}
+                onPress={() => { lightTap(); setActivePicker('date'); }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.transaction.date.toLowerCase()}
+              >
+                <Text style={styles.pickerRowValue} numberOfLines={1}>
+                  {DATE_RANGES.find((d) => d.key === tempDateRange)?.label}
+                </Text>
+                <Feather name="chevron-down" size={18} color={C.textSecondary} />
+              </TouchableOpacity>
 
               {/* Categories */}
               <Text style={styles.filterSectionLabel}>{t.transaction.category.toLowerCase()}</Text>
-              <View style={styles.filterChipGrid}>
-                {filterCategories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[styles.filterOptionChip, tempCategories.has(cat.id) && styles.filterOptionChipActive]}
-                    onPress={() => { lightTap(); toggleTempCategory(cat.id); }}
-                    activeOpacity={0.7}
-                  >
-                    <CategoryIcon
-                      icon={cat.icon || 'tag'}
-                      size={14}
-                      color={tempCategories.has(cat.id) ? C.surface : cat.color || C.textSecondary}
-                    />
-                    <Text style={[styles.filterOptionText, tempCategories.has(cat.id) && styles.filterOptionTextActive]}>
-                      {cat.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <TouchableOpacity
+                style={[styles.pickerRow, neuF.raisedSoft]}
+                onPress={() => { lightTap(); setActivePicker('category'); }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.transaction.category.toLowerCase()}
+              >
+                <Text style={styles.pickerRowValue} numberOfLines={1}>
+                  {tempCategories.size === 0
+                    ? t.transactionList.allCategories.toLowerCase()
+                    : tempCategories.size === 1
+                    ? (categoryMap.get([...tempCategories][0])?.name ?? t.transactionList.categoryCount.replace('{n}', '1'))
+                    : t.transactionList.categoriesCount.replace('{n}', String(tempCategories.size))}
+                </Text>
+                <Feather name="chevron-down" size={18} color={C.textSecondary} />
+              </TouchableOpacity>
 
               {/* Wallet */}
               {wallets.length > 1 && (
                 <>
                   <Text style={styles.filterSectionLabel}>{t.transaction.wallet.toLowerCase()}</Text>
-                  <View style={styles.filterChipGrid}>
-                    <TouchableOpacity
-                      style={[styles.filterOptionChip, !tempWalletId && styles.filterOptionChipActive]}
-                      onPress={() => { lightTap(); setTempWalletId(null); }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.filterOptionText, !tempWalletId && styles.filterOptionTextActive]}>{t.transactionList.all.toLowerCase()}</Text>
-                    </TouchableOpacity>
-                    {wallets.map((w) => (
-                      <TouchableOpacity
-                        key={w.id}
-                        style={[styles.filterOptionChip, tempWalletId === w.id && styles.filterOptionChipActive]}
-                        onPress={() => { lightTap(); setTempWalletId(w.id); }}
-                        activeOpacity={0.7}
-                      >
-                        <WalletLogo wallet={w} size={18} />
-                        <Text style={[styles.filterOptionText, tempWalletId === w.id && styles.filterOptionTextActive]}>
-                          {w.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                  <TouchableOpacity
+                    style={[styles.pickerRow, neuF.raisedSoft]}
+                    onPress={() => { lightTap(); setActivePicker('wallet'); }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.transaction.wallet.toLowerCase()}
+                  >
+                    <View style={styles.pickerRowLeft}>
+                      {tempWalletId && walletMap.get(tempWalletId) && (
+                        <WalletLogo wallet={walletMap.get(tempWalletId)!} size={22} />
+                      )}
+                      <Text style={styles.pickerRowValue} numberOfLines={1}>
+                        {tempWalletId
+                          ? (walletMap.get(tempWalletId)?.name ?? t.transactionList.walletFallback)
+                          : t.transactionList.allWallets.toLowerCase()}
+                      </Text>
+                    </View>
+                    <Feather name="chevron-down" size={18} color={C.textSecondary} />
+                  </TouchableOpacity>
                 </>
               )}
 
               {/* Sort */}
               <Text style={styles.filterSectionLabel}>{t.transactionList.sort.toLowerCase()}</Text>
-              <View style={styles.filterChipGrid}>
-                {(['date', 'amount'] as const).map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[styles.filterOptionChip, tempSortBy === s && styles.filterOptionChipActive]}
-                    onPress={() => {
-                      lightTap();
-                      if (tempSortBy === s) setTempSortOrder((o) => o === 'asc' ? 'desc' : 'asc');
-                      else { setTempSortBy(s); setTempSortOrder('desc'); }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.filterOptionText, tempSortBy === s && styles.filterOptionTextActive]}>
-                      {s}
-                    </Text>
-                    {tempSortBy === s && (
-                      <Feather name={tempSortOrder === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={C.surface} />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <TouchableOpacity
+                style={[styles.pickerRow, neuF.raisedSoft]}
+                onPress={() => { lightTap(); setActivePicker('sort'); }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.transactionList.sort.toLowerCase()}
+              >
+                <View style={styles.pickerRowLeft}>
+                  <Feather name={tempSortOrder === 'desc' ? 'arrow-down' : 'arrow-up'} size={15} color={C.textSecondary} />
+                  <Text style={styles.pickerRowValue} numberOfLines={1}>
+                    {SORT_OPTIONS.find((o) => o.by === tempSortBy && o.order === tempSortOrder)?.label}
+                  </Text>
+                </View>
+                <Feather name="chevron-down" size={18} color={C.textSecondary} />
+              </TouchableOpacity>
             </ScrollView>
 
             {/* Bottom actions */}
             <View style={styles.filterModalActions}>
-              <TouchableOpacity style={styles.clearAllBtn} onPress={clearAllFilters} activeOpacity={0.7}>
+              <TouchableOpacity style={[styles.clearAllBtn, neuF.raised]} onPress={clearAllFilters} activeOpacity={0.7}>
                 <Text style={styles.clearAllText}>{t.common.clear.toLowerCase()}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.applyBtn} onPress={applyFilters} activeOpacity={0.7}>
@@ -1189,6 +1208,148 @@ const TransactionsList: React.FC = () => {
             </View>
           </View>
         </Pressable>
+
+        {/* ── Option picker (nested modal on top of the filter modal) ── */}
+        {activePicker && (
+          <Modal
+            visible
+            transparent
+            statusBarTranslucent
+            animationType="fade"
+            onRequestClose={() => setActivePicker(null)}
+          >
+            <Pressable style={styles.optionOverlay} onPress={() => setActivePicker(null)}>
+              <View style={styles.optionModal} onStartShouldSetResponder={() => true}>
+                <View style={styles.optionHeader}>
+                  <Text style={styles.optionTitle}>
+                    {activePicker === 'date'
+                      ? t.transaction.date.toLowerCase()
+                      : activePicker === 'category'
+                      ? t.transaction.category.toLowerCase()
+                      : activePicker === 'wallet'
+                      ? t.transaction.wallet.toLowerCase()
+                      : t.transactionList.sort.toLowerCase()}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setActivePicker(null)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    accessibilityLabel={t.common.close.toLowerCase()}
+                    accessibilityRole="button"
+                  >
+                    <Feather name="x" size={20} color={C.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled contentContainerStyle={styles.optionListContent}>
+                  {activePicker === 'date' && DATE_RANGES.map((d) => {
+                    const selected = tempDateRange === d.key;
+                    return (
+                      <TouchableOpacity
+                        key={d.key}
+                        style={[styles.optionItem, neuF.raisedSoft, selected && styles.optionItemSelected]}
+                        onPress={() => { lightTap(); setTempDateRange(d.key); setActivePicker(null); }}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                      >
+                        <Text style={[styles.optionItemText, selected && styles.optionItemTextSelected]}>{d.label}</Text>
+                        {selected && <Feather name="check" size={18} color={C.accent} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  {activePicker === 'category' && (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.optionItem, neuF.raisedSoft, tempCategories.size === 0 && styles.optionItemSelected]}
+                        onPress={() => { lightTap(); setTempCategories(new Set()); setActivePicker(null); }}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: tempCategories.size === 0 }}
+                      >
+                        <Text style={[styles.optionItemText, tempCategories.size === 0 && styles.optionItemTextSelected]}>
+                          {t.transactionList.allCategories.toLowerCase()}
+                        </Text>
+                        {tempCategories.size === 0 && <Feather name="check" size={18} color={C.accent} />}
+                      </TouchableOpacity>
+                      {/* Multi-select: rows toggle and the picker stays open; close via ✕ / backdrop. */}
+                      {filterCategories.map((cat) => {
+                        const selected = tempCategories.has(cat.id);
+                        return (
+                          <TouchableOpacity
+                            key={cat.id}
+                            style={[styles.optionItem, neuF.raisedSoft, selected && styles.optionItemSelected]}
+                            onPress={() => { lightTap(); toggleTempCategory(cat.id); }}
+                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <View style={[styles.optionItemIcon, { backgroundColor: withAlpha(cat.color || C.textSecondary, 0.15) }]}>
+                              <CategoryIcon icon={cat.icon || 'tag'} size={15} color={cat.color || C.textSecondary} />
+                            </View>
+                            <Text style={[styles.optionItemText, selected && styles.optionItemTextSelected]}>{cat.name}</Text>
+                            {selected && <Feather name="check" size={18} color={C.accent} />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {activePicker === 'wallet' && (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.optionItem, neuF.raisedSoft, !tempWalletId && styles.optionItemSelected]}
+                        onPress={() => { lightTap(); setTempWalletId(null); setActivePicker(null); }}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: !tempWalletId }}
+                      >
+                        <Text style={[styles.optionItemText, !tempWalletId && styles.optionItemTextSelected]}>
+                          {t.transactionList.allWallets.toLowerCase()}
+                        </Text>
+                        {!tempWalletId && <Feather name="check" size={18} color={C.accent} />}
+                      </TouchableOpacity>
+                      {wallets.map((w) => {
+                        const selected = tempWalletId === w.id;
+                        return (
+                          <TouchableOpacity
+                            key={w.id}
+                            style={[styles.optionItem, neuF.raisedSoft, selected && styles.optionItemSelected]}
+                            onPress={() => { lightTap(); setTempWalletId(w.id); setActivePicker(null); }}
+                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <WalletLogo wallet={w} size={22} />
+                            <Text style={[styles.optionItemText, selected && styles.optionItemTextSelected]}>{w.name}</Text>
+                            {selected && <Feather name="check" size={18} color={C.accent} />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {activePicker === 'sort' && SORT_OPTIONS.map((o) => {
+                    const selected = tempSortBy === o.by && tempSortOrder === o.order;
+                    return (
+                      <TouchableOpacity
+                        key={`${o.by}-${o.order}`}
+                        style={[styles.optionItem, neuF.raisedSoft, selected && styles.optionItemSelected]}
+                        onPress={() => { lightTap(); setTempSortBy(o.by); setTempSortOrder(o.order); setActivePicker(null); }}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                      >
+                        <Feather name={o.order === 'desc' ? 'arrow-down' : 'arrow-up'} size={15} color={selected ? C.accent : C.textSecondary} />
+                        <Text style={[styles.optionItemText, selected && styles.optionItemTextSelected]}>{o.label}</Text>
+                        {selected && <Feather name="check" size={18} color={C.accent} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </Pressable>
+          </Modal>
+        )}
         <ModalToastHost />
       </Modal>
       )}
@@ -1289,7 +1450,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
   },
   filterBtnActive: {
     backgroundColor: withAlpha(C.accent, 0.10),
@@ -1303,9 +1464,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.sm,
   },
 
-  // ── Filter pills — separate pills, dark active, light inactive (reference-matched) ──
+  // ── Filter pills — Neu Pills (Onyx rule 3): faintDark neu raised idle,
+  //    olive fill when selected ──
   filterPillsWrap: {
-    marginTop: SPACING.md,
+    marginTop: SPACING.xs,
     position: 'relative',
   },
   filterPillsScroll: {
@@ -1322,6 +1484,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
     gap: SPACING.sm,
     paddingRight: SPACING['2xl'] + SPACING.md, // extra right padding for scroll fade
+    paddingVertical: SPACING.sm + 2, // room for the neu shadow inside the scroll view
   },
   filterPill: {
     flexDirection: 'row',
@@ -1329,20 +1492,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
   },
   filterPillActive: {
-    backgroundColor: C.textPrimary,
+    backgroundColor: C.accent,
   },
   filterPillText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: C.textMuted,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
     letterSpacing: 0.1,
   },
   filterPillTextActive: {
-    color: C.surface,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
+    fontWeight: TYPOGRAPHY.weight.bold,
   },
 
   // ── Active filter chips (lighter, less chunky) ───────────────
@@ -1497,10 +1660,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
-  // ── Modal shared — softer backdrop alpha ───────────────────
+  // ── Modal shared — Onyx backdrop (rule 4: 0.4) ─────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.dimBg, 0.42),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1514,11 +1677,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ── Filter modal — pill cards inside, refined header, confident CTAs ─
+  // ── Filter modal — Onyx dialog card (C.background, no outline) with
+  //    picker rows inside, refined header, confident CTAs ─
   filterModalContent: {
     width: '90%',
     maxHeight: '82%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS['2xl'] ?? 24, // larger radius for the modal itself — pill-card feel
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
@@ -1546,34 +1710,90 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'lowercase',
   },
-  filterChipGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  // Option chips inside the filter modal — match the reference's pill pattern.
-  // Inactive: subtle tinted background. Active: dark fill (matches the All/Income/Expense pill on the screen).
-  filterOptionChip: {
+  // Picker trigger rows inside the filter modal — one borderless neu row per
+  // section (value + chevron) that opens the option picker on top.
+  pickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    // neuF.raisedSoft (bg + shadow) spread at the call site
   },
-  filterOptionChipActive: {
-    backgroundColor: C.textPrimary,
+  pickerRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    flex: 1,
   },
-  filterOptionText: {
-    fontSize: TYPOGRAPHY.size.sm,
+  pickerRowValue: {
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-    letterSpacing: 0.1,
+    color: C.textPrimary,
+    flexShrink: 1,
   },
-  filterOptionTextActive: {
-    color: C.surface,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+
+  // ── Option picker modal (nested on top of the filter modal) ──
+  optionOverlay: {
+    flex: 1,
+    backgroundColor: withAlpha(C.dimBg, 0.4),
+    justifyContent: 'center',
+    paddingHorizontal: SPACING['2xl'],
+  },
+  optionModal: {
+    backgroundColor: C.background,
+    borderRadius: RADIUS.xl,
+    maxHeight: '62%',
+    ...SHADOWS.lg,
+  },
+  optionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(C.textPrimary, 0.06),
+  },
+  optionTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+  },
+  optionListContent: {
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.md,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  optionItemSelected: {
+    backgroundColor: withAlpha(C.accent, 0.08),
+  },
+  optionItemIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionItemText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  optionItemTextSelected: {
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.bold,
   },
   filterModalActions: {
     flexDirection: 'row',
@@ -1610,7 +1830,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   applyText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.surface,
+    color: C.onAccent,
     letterSpacing: 0.2,
   },
 

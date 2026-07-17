@@ -54,11 +54,14 @@ const Sparkline: React.FC<SparklineProps> = memo(function Sparkline({
 
     const min = Math.min(...data);
     const max = Math.max(...data);
+    // A constant series has zero range; without this it maps every point to the
+    // bottom edge and reads as a crash to zero. Center it instead.
+    const flat = max === min;
     const range = max - min || 1;
 
     const coords = data.map((v, i) => ({
       x: padding + (i / (data.length - 1)) * innerW,
-      y: padding + innerH - ((v - min) / range) * innerH,
+      y: flat ? padding + innerH / 2 : padding + innerH - ((v - min) / range) * innerH,
     }));
 
     const points = coords.map((c) => `${c.x},${c.y}`).join(' ');

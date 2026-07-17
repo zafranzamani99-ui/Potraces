@@ -16,6 +16,7 @@ import { useNeu } from './neu';
 import { Wallet, WalletType } from '../../types';
 import { lightTap } from '../../services/haptics';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useT } from '../../i18n';
 
 interface WalletPickerProps {
   wallets: Wallet[];
@@ -45,13 +46,15 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
   onSelect,
   onClear,
   allowNone,
-  noneLabel = 'None',
+  noneLabel,
   label,
   typeFilter,
   faintNeu = true,
   onyxTrigger = false,
 }) => {
   const C = useCalm();
+  const t = useT();
+  const noneText = noneLabel ?? t.common.none;
   const styles = useMemo(() => makeStyles(C), [C]);
   // Trigger sits on the HOST container: converted (faintNeu) hosts are C.background
   // sheets; legacy hosts are still C.surface sheets. onyxTrigger keeps that same
@@ -145,7 +148,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             </View>
             {item.isDefault && (
               <View style={styles.defaultBadge}>
-                <Text style={styles.defaultText}>Default</Text>
+                <Text style={styles.defaultText}>{t.wallets.defaultWallet}</Text>
               </View>
             )}
             {isSelected && (
@@ -155,7 +158,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
         );
       })}
     </View>
-  ), [selectedId, onSelect, typeFilter, currency, neu, styles]);
+  ), [selectedId, onSelect, typeFilter, currency, neu, styles, t]);
 
   if (wallets.length === 0) return null;
 
@@ -186,16 +189,18 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
           setDropdownOpen(true);
         }}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={selectedWallet ? selectedWallet.name : allowNone ? noneText : t.wallets.selectWallet}
       >
         <View style={styles.selectedRow}>
           {selectedWallet ? (
             <>
-              <View style={[styles.iconCircle, !selectedWallet.presetId && neu.well, { backgroundColor: selectedWallet.presetId ? 'transparent' : withAlpha(selectedWallet.color, 0.15) }]}>
+              <View style={[styles.iconCircle, !selectedWallet.presetId && neu.raised, { backgroundColor: selectedWallet.presetId ? 'transparent' : withAlpha(selectedWallet.color, 0.15) }]}>
                 <WalletLogo wallet={selectedWallet} size={32} />
               </View>
               <View style={styles.textGroup}>
                 <View style={styles.nameRow}>
-                  <Text style={styles.walletName}>{selectedWallet.name}</Text>
+                  <Text style={styles.walletName} numberOfLines={1}>{selectedWallet.name}</Text>
                   <View style={[styles.typeBadge, { backgroundColor: withAlpha(getTypeBadgeColor(selectedWallet.type), 0.1) }]}>
                     <Text style={[styles.typeBadgeText, { color: getTypeBadgeColor(selectedWallet.type) }]}>
                       {WALLET_TYPE_CONFIG[selectedWallet.type].label}
@@ -209,10 +214,10 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             </>
           ) : (
             <>
-              <View style={[styles.iconCircle, neu.well, { backgroundColor: withAlpha(C.textMuted, 0.08) }]}>
+              <View style={[styles.iconCircle, neu.raised, { backgroundColor: withAlpha(C.textMuted, 0.08) }]}>
                 <Feather name={allowNone ? 'slash' : 'credit-card'} size={18} color={C.textMuted} />
               </View>
-              <Text style={styles.placeholder}>{allowNone ? noneLabel : 'Select wallet'}</Text>
+              <Text style={styles.placeholder}>{allowNone ? noneText : t.wallets.selectWallet}</Text>
             </>
           )}
         </View>
@@ -233,8 +238,12 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
         >
           <View style={styles.modal} onStartShouldSetResponder={() => true}>
             <View style={styles.header}>
-              <Text style={styles.title}>{label || 'Select Wallet'}</Text>
-              <TouchableOpacity onPress={() => setDropdownOpen(false)}>
+              <Text style={styles.title}>{label || t.wallets.selectWallet}</Text>
+              <TouchableOpacity
+                onPress={() => setDropdownOpen(false)}
+                accessibilityRole="button"
+                accessibilityLabel={t.common.close}
+              >
                 <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
@@ -256,8 +265,8 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
                     <Feather name="slash" size={18} color={C.textMuted} />
                   </View>
                   <View style={styles.itemTextGroup}>
-                    <Text style={styles.itemName}>{noneLabel}</Text>
-                    <Text style={styles.itemBalance}>no wallet linked</Text>
+                    <Text style={styles.itemName}>{noneText}</Text>
+                    <Text style={styles.itemBalance}>{t.wallets.noWalletLinked}</Text>
                   </View>
                   {!selectedId && <Feather name="check" size={18} color={C.accent} />}
                 </TouchableOpacity>
@@ -284,6 +293,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: SPACING.sm,           // breathing room between the text group and the chevron
     borderRadius: RADIUS.lg,   // match the open rows (was md + hard border)
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
@@ -314,11 +324,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
+    flexShrink: 1,   // let a long name truncate instead of shoving the badge into the chevron
   },
   typeBadge: {
     paddingHorizontal: SPACING.xs,
     paddingVertical: 1,
     borderRadius: RADIUS.xs,
+    flexShrink: 0,   // badge keeps its size; the name yields space
   },
   typeBadgeText: {
     fontSize: 9,
@@ -345,6 +357,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
+    // Clip to the rounded frame so the item cards' neu highlight can't bleed past
+    // the (shadowless) sheet edge and glow white onto the dark scrim behind it.
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',

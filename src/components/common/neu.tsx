@@ -99,6 +99,17 @@ export function useNeu(baseColor?: string, opts?: { faintDark?: boolean }) {
               { offsetX: 3, offsetY: 5, blurRadius: 12, color: shDSoft },
             ],
           }) as any as ViewStyle,
+      // Centered dialog / bottom-sheet card floating on a dim SCRIM. raisedSoft's
+      // white top-left highlight (light mode) glows into a visible halo against the
+      // dark rgba(0,0,0,0.4) scrim — the same reason the highlight is dropped in
+      // dark mode. On a scrim the scrim itself supplies the separation, so lift the
+      // card with a single soft NEUTRAL drop in both modes: depth, no white bloom.
+      raisedModal: {
+        backgroundColor: base,
+        boxShadow: [
+          { offsetX: 0, offsetY: 8, blurRadius: 24, color: isDark ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.22)' },
+        ],
+      } as any as ViewStyle,
       insetSoft: (isDark
         ? {
             backgroundColor: base,

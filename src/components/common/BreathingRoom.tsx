@@ -14,6 +14,7 @@ import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { useCategories } from '../../hooks/useCategories';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from './neu';
 
 interface BreathingRoomProps {
   onPress?: () => void;
@@ -30,6 +31,7 @@ interface RoomEntry {
 
 const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
   const C = useCalm();
+  const neuF = useNeu(undefined, { faintDark: true }); // soft raise — Onyx pill standard
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const transactions = usePersonalStore((s) => s.transactions);
@@ -98,17 +100,13 @@ const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
     return C.positive;
   };
 
-  const statusText = (entry: RoomEntry) => {
-    if (entry.remaining <= 0) return 'tight';
-    if (entry.percent >= 80) return 'getting close';
-    return 'comfortable';
-  };
-
+  // Minimal: one line per category (name · what's left) + a thin bar.
+  // The bar's color carries the status — no status words, no "x of y" line.
   return (
     <TouchableOpacity
       activeOpacity={onPress ? 0.7 : 1}
       onPress={onPress}
-      style={styles.container}
+      style={[styles.container, neuF.raisedSoft]}
     >
       <View style={styles.header}>
         <Text style={styles.title}>breathing room</Text>
@@ -120,9 +118,11 @@ const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
       {entries.slice(0, 4).map((entry, idx) => (
         <View key={`${entry.category}-${idx}`} style={styles.row}>
           <View style={styles.rowTop}>
-            <Text style={styles.categoryName}>{entry.categoryName}</Text>
-            <Text style={[styles.statusLabel, { color: barColor(entry.percent) }]}>
-              {statusText(entry)}
+            <Text style={styles.categoryName} numberOfLines={1}>{entry.categoryName}</Text>
+            <Text style={[styles.remainingText, { color: barColor(entry.percent) }]}>
+              {entry.remaining >= 0
+                ? `${currency} ${entry.remaining.toFixed(0)} left`
+                : `${currency} ${Math.abs(entry.remaining).toFixed(0)} over`}
             </Text>
           </View>
           <View style={styles.bar}>
@@ -136,16 +136,6 @@ const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
               ]}
             />
           </View>
-          <View style={styles.rowBottom}>
-            <Text style={styles.spentText}>
-              {currency} {entry.spent.toFixed(0)} of {entry.limit.toFixed(0)}
-            </Text>
-            <Text style={[styles.remainingText, entry.remaining <= 0 && styles.tightText]}>
-              {entry.remaining > 0
-                ? `${currency} ${entry.remaining.toFixed(0)} left`
-                : 'over'}
-            </Text>
-          </View>
         </View>
       ))}
     </TouchableOpacity>
@@ -155,65 +145,56 @@ const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
 export default React.memo(BreathingRoom);
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  // Onyx neu card: base matches the screen bg so the soft raise blends; the
+  // separation comes from the neu shadow (spread at the call site), no border.
   container: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    gap: SPACING.sm,
+    padding: SPACING.lg,
+    gap: SPACING.md,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  // Micro-label header — same modern type language as the insight-strip cards.
   title: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
   },
   row: {
-    gap: 4,
+    gap: 6,
   },
   rowTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: SPACING.sm,
   },
   categoryName: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textPrimary,
+  },
+  remainingText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-  },
-  statusLabel: {
-    fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.semibold,
+    fontVariant: ['tabular-nums'] as any,
   },
+  // Flat thin track (indicators stay flat per Onyx); faint textPrimary fill so
+  // it survives on the near-black card.
   bar: {
     height: 4,
-    backgroundColor: withAlpha(C.textMuted, 0.1),
+    backgroundColor: withAlpha(C.textPrimary, 0.08),
     borderRadius: 2,
     overflow: 'hidden',
   },
   barFill: {
     height: 4,
     borderRadius: 2,
-  },
-  rowBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  spentText: {
-    fontSize: 10,
-    color: C.textMuted,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  remainingText: {
-    fontSize: 10,
-    color: C.textSecondary,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  tightText: {
-    color: C.bronze,
   },
 });

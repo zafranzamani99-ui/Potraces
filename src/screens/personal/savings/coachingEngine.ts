@@ -33,6 +33,8 @@ export interface CoachInput {
 
 const CONCENTRATION_THRESHOLD = 60; // %
 const STALE_DAYS = 7;
+const MILESTONE_PROXIMITY_PCT = 80;  // only nudge when within ~20% of the next milestone…
+const MILESTONE_PROXIMITY_GAP = 500; // …or a small ringgit gap away
 
 const toDate = (v: Date | string | number): Date => (v instanceof Date ? v : new Date(v));
 
@@ -54,9 +56,25 @@ function bestPerformerThisMonth(accounts: SavingsAccount[], now: Date): { name: 
   let bestPct = 0;
   for (const a of accounts) {
     const before = a.history.filter((h) => toDate(h.date) < mStart);
-    const startVal = before.length ? before[before.length - 1].value : a.initialInvestment;
+    // Start-of-period VALUE. For an account created this month use its first snapshot's
+    // value (its opening value) — NOT initialInvestment, which is now a running cost
+    // basis that already absorbed this-month deposits and would double-count them
+    // against the movedThisMonth subtraction below.
+    const startVal = before.length ? before[before.length - 1].value : (a.history[0]?.value ?? a.initialInvestment);
     if (startVal <= 0) continue;
-    const pct = ((a.currentValue - startVal) / startVal) * 100;
+    // Net money the user MOVED in/out this month (deposits +, withdrawals −), taken from
+    // each capital-move snapshot's own value change. Subtracting it leaves real growth,
+    // so a fresh deposit no longer reads as a giant fake "gain" — the fix the old
+    // LIMITATION note was waiting on (now that snapshotType is tracked).
+    let movedThisMonth = 0;
+    for (let i = 1; i < a.history.length; i++) {
+      const h = a.history[i];
+      if (toDate(h.date) < mStart) continue;
+      if (h.snapshotType === 'deposit' || h.snapshotType === 'withdrawal') {
+        movedThisMonth += h.value - a.history[i - 1].value;
+      }
+    }
+    const pct = ((a.currentValue - startVal - movedThisMonth) / startVal) * 100;
     if (pct > bestPct) { bestPct = pct; name = a.name; }
   }
   return name ? { name, pct: bestPct } : null;
@@ -91,9 +109,14 @@ export function buildNudges(input: CoachInput): Nudge[] {
     }
   }
 
-  // 4. Next milestone
+  // 4. Next milestone — PROXIMITY-gated. nextMilestone() returns a target for
+  // essentially any sub-RM1M portfolio, so pushing it unconditionally would always
+  // out-prioritise the positive nudges below. Only surface it when the user is
+  // actually close (within ~20% of the target, or a small ringgit gap away).
   const nm = nextMilestone(portfolio.totalCurrent);
-  if (nm) out.push({ kind: 'milestone', tone: 'neutral', icon: 'flag', data: { value: nm.value, remaining: nm.remaining, pct: Math.round(nm.pct) } });
+  if (nm && (nm.pct >= MILESTONE_PROXIMITY_PCT || nm.remaining <= MILESTONE_PROXIMITY_GAP)) {
+    out.push({ kind: 'milestone', tone: 'neutral', icon: 'flag', data: { value: nm.value, remaining: nm.remaining, pct: Math.round(nm.pct) } });
+  }
 
   // 5. Best performer / added this month (positive fallback)
   const best = bestPerformerThisMonth(accounts, now);
