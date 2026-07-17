@@ -6,7 +6,8 @@
  */
 import {
   computePortfolio, classifyAccounts, computeBreakdown, computeAccountDerived,
-  sortDerived, emergencyRunway, nextMilestone, topConcentration,
+  sortDerived, emergencyRunway, nextMilestone, topConcentration, nextBasis,
+  capitalDeltaFor, replayCapitalMoves,
 } from '../src/screens/personal/savings/savingsMath';
 import { SavingsAccount } from '../src/types';
 
@@ -113,6 +114,52 @@ check('above max → null', nextMilestone(2_000_000) === null);
 console.log('topConcentration');
 check('top slice is largest', topConcentration(bd)?.id === 'asb');
 check('empty → null', topConcentration([]) === null);
+
+console.log('nextBasis (average-cost basis across deposits / withdrawals)');
+{
+  const retPct = (v: number, b: number) => (b > 0 ? ((v - b) / b) * 100 : 0);
+  // Lifecycle: put in 10000 → grows to 12000 → withdraw to 7000 → deposit 3000 → dividend.
+  let basis = 10000, value = 10000;
+  basis = nextBasis(basis, value, 12000, 'manual'); value = 12000;
+  close('manual growth leaves basis', basis, 10000);
+  close('return is +20% before withdrawal', retPct(value, basis), 20);
+  // Withdrawal is PROPORTIONAL: take out 5000/12000 of value → remove the same fraction
+  // of basis. Basis = 10000 * (7000/12000) = 5833.33.
+  basis = nextBasis(basis, value, 7000, 'withdrawal'); value = 7000;
+  close('withdrawal removes basis proportionally', basis, 5833.33);
+  check('withdrawal keeps a GAIN (not a fake loss)', value - basis > 0);
+  close('KEY: return% is UNCHANGED by a withdrawal (still +20%)', retPct(value, basis), 20);
+  // Deposit adds exactly what was put in (3000) to the basis.
+  basis = nextBasis(basis, value, 10000, 'deposit'); value = 10000;
+  close('deposit raises basis by exactly 3000', basis, 8833.33);
+  // Dividend is a pure revaluation — basis untouched, whole move is gain.
+  basis = nextBasis(basis, value, 10200, 'dividend'); value = 10200;
+  close('dividend leaves basis', basis, 8833.33);
+  check('dividend adds to gain', value - basis > 1000);
+  // Full close realizes the basis to 0 — no phantom basis on an emptied account.
+  check('full withdrawal (value→0) realizes basis to 0', nextBasis(5000, 7000, 0, 'withdrawal') === 0);
+  check('withdrawal never goes below 0', nextBasis(1000, 1000, -50000, 'withdrawal') === 0);
+  // Over-basis withdrawal on a WINNER no longer clamps to a broken 0%: basis stays
+  // proportional, so the remainder keeps a coherent positive return.
+  const b2 = nextBasis(1000, 2000, 500, 'withdrawal'); // basis 1000 * (500/2000) = 250
+  close('over-basis withdrawal keeps proportional basis', b2, 250);
+  close('...and a coherent +100% return on the remainder', retPct(500, b2), 100);
+}
+
+console.log('capitalDeltaFor / replayCapitalMoves (multi-device basis re-derivation)');
+{
+  // capitalDeltaFor now = the signed BASIS change (nextBasis − prevBasis).
+  check('deposit delta = +amount put in', capitalDeltaFor(10000, 10000, 13000, 'deposit') === 3000);
+  check('withdrawal delta is negative (basis removed)', capitalDeltaFor(10000, 10000, 8000, 'withdrawal') === -2000);
+  check('manual/dividend delta = 0', capitalDeltaFor(10000, 10000, 12000, 'manual') === 0 && capitalDeltaFor(10000, 10000, 10200, 'dividend') === 0);
+  // Stored deltas replay as a plain sum → basis = seed + Σ(deltas), order-independent.
+  const dep = { capitalDelta: capitalDeltaFor(10000, 10000, 13000, 'deposit') };   // +3000
+  const wd = { capitalDelta: capitalDeltaFor(10000, 10000, 8000, 'withdrawal') };  // −2000
+  close('replay sums stored deltas', replayCapitalMoves([{}, dep, wd]), 1000);
+  close('replay is ORDER-INDEPENDENT after a merge re-sort', replayCapitalMoves([{}, wd, dep]), 1000);
+  close('merged basis = seed + net capital (both moves counted)', 10000 + replayCapitalMoves([{}, dep, wd]), 11000);
+  check('legacy snapshots without capitalDelta contribute 0', replayCapitalMoves([{}, {}, {}]) === 0);
+}
 
 console.log('');
 if (failures > 0) { console.error(`✗ ${failures} assertion(s) failed`); process.exit(1); }

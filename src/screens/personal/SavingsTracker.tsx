@@ -9,6 +9,7 @@ import { useSavingsStore } from '../../store/savingsStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { usePremiumStore } from '../../store/premiumStore';
+import { FREE_TIER } from '../../constants/premium';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
@@ -20,6 +21,7 @@ import EchoInlineChat, { EchoChip } from '../../components/common/EchoInlineChat
 import EchoFab from '../../components/wallet/EchoFab';
 import { useEchoFabPan } from '../../hooks/useEchoFabPan';
 import PaywallModal from '../../components/common/PaywallModal';
+import HowItWorksModal, { HowItWorksSection } from '../../components/common/HowItWorksModal';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import ScreenGuide from '../../components/common/ScreenGuide';
 import { useToast } from '../../context/ToastContext';
@@ -36,7 +38,6 @@ import { selectNudge, Nudge } from './savings/coachingEngine';
 import { buildSavingsSnapshot } from './savings/savingsSnapshot';
 import { CustomResolver } from './savings/investmentTypes';
 
-const MAX_ACCOUNTS = 5;
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | 'ALL';
 type Tab = 'savings' | 'investment';
 
@@ -45,6 +46,34 @@ const SORT_OPTS: { key: SavingsSortBy; labelKey: 'valueLabel' | 'growthLabel' | 
   { key: 'value', labelKey: 'valueLabel' },
   { key: 'return', labelKey: 'growthLabel' },
   { key: 'updated', labelKey: 'updatedLabel' },
+];
+
+// "How it works" explainer content (mirrors the Bills screen's grouped modal).
+const SAVINGS_HOW: HowItWorksSection[] = [
+  {
+    group: 'the basics',
+    items: [
+      { icon: 'columns', bold: 'savings vs investments', rest: '— capital-safe accounts (bank, ASB, Tabung Haji, fixed deposit) sit under Savings; market accounts (robo, crypto, stocks, gold) under Investments. the screen splits them for you.' },
+      { icon: 'plus-circle', bold: 'put in vs now', rest: "— 'put in' is what you originally deposited; 'now' is what it's worth today. leave 'put in' blank and it matches 'now', so you start at zero gain." },
+      { icon: 'percent', bold: 'return %', rest: '— (now − put in) ÷ put in. green means the account is up, muted means it is down.' },
+    ],
+  },
+  {
+    group: 'tracking your balance',
+    items: [
+      { icon: 'refresh-cw', bold: 'update value', rest: '— tap update on a card whenever you check a balance. each update is saved as a dated snapshot.' },
+      { icon: 'plus-circle', bold: 'add money, withdraw, dividend', rest: '— tag an update so the math stays right: adding or withdrawing cash adjusts your "put in", so your return isn\'t thrown off, while a dividend counts as return.' },
+      { icon: 'bar-chart-2', bold: 'history & chart', rest: '— every snapshot builds the sparkline and the history sheet, so you can watch growth over time.' },
+    ],
+  },
+  {
+    group: 'goals & coaching',
+    items: [
+      { icon: 'target', bold: 'set a target', rest: '— give an account a goal amount and Savings shows a progress bar and an ETA at your current pace.' },
+      { icon: 'sun', bold: 'projected earnings', rest: '— add an annual rate (e.g. 4.25% for ASB) and each card estimates your earnings for the year.' },
+      { icon: 'zap', bold: 'Echo & nudges', rest: '— the coaching band and Echo give tips based on your accounts, and flag any that have gone stale.' },
+    ],
+  },
 ];
 
 const SavingsTracker: React.FC = () => {
@@ -59,6 +88,7 @@ const SavingsTracker: React.FC = () => {
   const { accounts, addAccount, updateAccount, deleteAccount, addSnapshot, sortBy, setSortBy, lastOpenedValue, recordOpen } = useSavingsStore();
   const currency = useSettingsStore((s) => s.currency);
   const tier = usePremiumStore((s) => s.tier);
+  const canCreateSavingsAccount = usePremiumStore((s) => s.canCreateSavingsAccount);
   const transactions = usePersonalStore((s) => s.transactions);
   const investmentCats = useCategories('investment');
 
@@ -84,11 +114,18 @@ const SavingsTracker: React.FC = () => {
   const [echoOpen, setEchoOpen] = useState(false);
   const [echoAutoPrompt, setEchoAutoPrompt] = useState<string | undefined>(undefined);
   const [paywallOpen, setPaywallOpen] = useState(false);
+  // Which feature triggered the paywall — the account cap and the Echo/AI gate share
+  // one modal, so this drives the correct copy ('savings' vs 'ai') instead of both
+  // showing "AI Limit Reached".
+  const [paywallFeature, setPaywallFeature] = useState<'ai' | 'savings'>('ai');
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
+  // Free tier is capped; premium is unlimited. The cap number for display + gating.
+  const atAccountCap = !canCreateSavingsAccount(accounts.length);
+  const savingsAccountLimit = tier === 'premium' ? Infinity : FREE_TIER.maxSavingsAccounts;
 
   // ── Draggable Echo FAB — same mechanism as Wallet / Bills ──
   const echoHidden = useSettingsStore((s) => s.savingsEchoHidden);
   const setEchoHidden = useSettingsStore((s) => s.setSavingsEchoHidden);
-  const [greetingText, setGreetingText] = useState('');
   const [greetingDismissed, setGreetingDismissed] = useState(false);
   const [greetingHiddenDuringDrag, setGreetingHiddenDuringDrag] = useState(false);
   const [fabSide, setFabSide] = useState<'left' | 'right'>('right');
@@ -125,7 +162,9 @@ const SavingsTracker: React.FC = () => {
   const periodChange = useMemo(() => {
     if (chartData.length < 2) return null;
     const first = chartData[0]; const last = chartData[chartData.length - 1];
-    return { diff: last - first, pct: first > 0 ? ((last - first) / first) * 100 : 0 };
+    // A 0 (or negative) baseline makes the % meaningless (div-by-zero → a fake
+    // '+0.0%' despite a real gain), so report the diff but null the percentage.
+    return { diff: last - first, pct: first > 0 ? ((last - first) / first) * 100 : null };
   }, [chartData]);
 
   // ── Split ──
@@ -171,17 +210,20 @@ const SavingsTracker: React.FC = () => {
   const snapshot = useMemo(() => buildSavingsSnapshot({ accounts, portfolio, breakdown: computeBreakdown(accounts, resolveCustom), currency, now, resolveCustom }), [accounts, portfolio, currency, now, resolveCustom]);
 
   const openEcho = useCallback((prompt?: string) => {
-    if (tier !== 'premium') { setPaywallOpen(true); return; }
+    if (tier !== 'premium') { setPaywallFeature('ai'); setPaywallOpen(true); return; }
     lightTap();
     setEchoAutoPrompt(prompt);
     setEchoOpen(true);
   }, [tier]);
 
+  const showAccountPaywall = useCallback(() => { setPaywallFeature('savings'); setPaywallOpen(true); }, []);
+
   // ── Add/edit/update/history/delete ──
   const openAdd = useCallback(() => {
-    if (accounts.length >= MAX_ACCOUNTS) { setPaywallOpen(true); return; }
+    // Free tier is capped; premium unlocks more (a real upsell, not a dead one).
+    if (!canCreateSavingsAccount(accounts.length)) { showAccountPaywall(); return; }
     setEditing(null); setAddEditOpen(true);
-  }, [accounts.length]);
+  }, [accounts.length, canCreateSavingsAccount, showAccountPaywall]);
   const openEdit = useCallback((a: SavingsAccount) => { setEditing(a); setAddEditOpen(true); }, []);
   const openUpdate = useCallback((a: SavingsAccount) => { setUpdating(a); setUpdateOpen(true); }, []);
   const openHistory = useCallback((a: SavingsAccount) => { setHistoryAcc(a); setHistoryOpen(true); }, []);
@@ -199,30 +241,47 @@ const SavingsTracker: React.FC = () => {
     { key: 'investment' as Tab, label: t.savings.investmentsTab, count: split.investments.length, color: C.bronze },
   ], [t, split, C]);
 
-  // Snapshot the greeting bubble text into state on focus (and when the coaching
-  // insight changes), so it stays stable instead of re-typing on every render —
-  // mirrors the Wallet/Bills focus-effect pattern. Prefer the live nudge, else a default.
-  useFocusEffect(useCallback(() => {
-    setGreetingText(nudgeCopy?.title ?? t.savings.echoGreetingDefault);
-    setGreetingDismissed(false);
-  }, [nudgeCopy, t]));
+  // Un-dismiss the greeting bubble ONLY on a genuine screen focus. Stable deps keep
+  // the callback identity fixed so React Navigation re-runs it on focus — not every
+  // time the coaching insight (nudgeCopy) changes, which used to resurrect a bubble
+  // the user had just dismissed.
+  useFocusEffect(useCallback(() => { setGreetingDismissed(false); }, []));
 
-  // Header Echo button — appears only while the FAB is hidden AND there are accounts
-  // to show it over (matches Bills; avoids a dead button in the empty state).
+  // Greeting text is derived straight from the live coaching insight (prefer the
+  // nudge, else a default). It's stable across unrelated renders because nudgeCopy
+  // is memoized, so the bubble doesn't re-type; dismissal is a separate flag.
+  const greetingText = nudgeCopy?.title ?? t.savings.echoGreetingDefault;
+
+  // Header buttons — "how it works" help (always) + Echo restore (only while the
+  // FAB is hidden and there are accounts), mirroring the Bills screen's header row.
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: () => (accounts.length > 0 && echoHidden) ? (
-        <TouchableOpacity
-          // Restoring the FAB isn't a premium action — the FAB itself gates on tier
-          // and shows the paywall on tap — so always bring it back.
-          onPress={() => { lightTap(); setEchoHidden(false); }}
-          accessibilityRole="button"
-          accessibilityLabel={t.savings.askEcho}
-          style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Feather name="zap" size={20} color={tier !== 'premium' ? C.textMuted : C.textPrimary} />
-        </TouchableOpacity>
-      ) : null,
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <TouchableOpacity
+            onPress={() => { lightTap(); setHowItWorksOpen(true); }}
+            accessibilityRole="button"
+            accessibilityLabel="How it works"
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Feather name="help-circle" size={19} color={C.textMuted} />
+          </TouchableOpacity>
+          {accounts.length > 0 && echoHidden && (
+            <TouchableOpacity
+              // Restoring the FAB isn't a premium action — the FAB itself gates on tier
+              // and shows the paywall on tap — so always bring it back.
+              onPress={() => { lightTap(); setEchoHidden(false); }}
+              accessibilityRole="button"
+              accessibilityLabel={t.savings.askEcho}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Feather name="zap" size={20} color={tier !== 'premium' ? C.textMuted : C.textPrimary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      ),
     });
   }, [echoHidden, tier, accounts.length, navigation, C, setEchoHidden, t]);
 
@@ -256,11 +315,11 @@ const SavingsTracker: React.FC = () => {
               )}
               <View style={styles.ranges}>
                 {TIME_RANGES.map((r) => (
-                  <TouchableOpacity key={r} onPress={() => { setTimeRange(r); selectionChanged(); }} style={[styles.range, timeRange === r && styles.rangeOn]} activeOpacity={0.7} accessibilityRole="button" accessibilityState={{ selected: timeRange === r }} accessibilityLabel={r === 'ALL' ? t.savings.timeRangeAll : r}>
+                  <TouchableOpacity key={r} onPress={() => { setTimeRange(r); selectionChanged(); }} style={[styles.range, timeRange === r && styles.rangeOn]} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }} accessibilityRole="button" accessibilityState={{ selected: timeRange === r }} accessibilityLabel={r === 'ALL' ? t.savings.timeRangeAll : r}>
                     <Text style={[styles.rangeText, timeRange === r && styles.rangeTextOn]}>{r === 'ALL' ? t.savings.timeRangeAll : r}</Text>
                   </TouchableOpacity>
                 ))}
-                {periodChange && (
+                {periodChange && periodChange.pct != null && (
                   <Text style={[styles.rangeChange, { color: periodChange.diff >= 0 ? C.positive : C.neutral }]}>
                     {periodChange.diff >= 0 ? '+' : ''}{periodChange.pct.toFixed(1)}%
                   </Text>
@@ -304,31 +363,40 @@ const SavingsTracker: React.FC = () => {
             )}
 
             {/* ALLOCATION */}
-            {tabBreakdown.length >= 2 && (
-              <View style={[styles.card, neu.raisedSoft]}>
-                <Text style={styles.sectionLabel}>{tab === 'savings' ? t.savings.whereSavingsLive : t.savings.whereInvestmentsLive}</Text>
-                {tabBreakdown.map((b) => (
-                  <View key={b.id} style={styles.allocRow}>
-                    <View style={[styles.allocDot, { backgroundColor: b.color }]} />
-                    <Text style={styles.allocName} numberOfLines={1}>{b.name}</Text>
-                    <View style={styles.allocBar}><View style={[styles.allocFill, { width: `${Math.max(b.pct, 3)}%`, backgroundColor: b.color }]} /></View>
-                    <Text style={styles.allocPct}>{b.pct.toFixed(0)}%</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+            {tabBreakdown.length >= 2 && (() => {
+              // Displayed integer labels are apportioned (Hamilton) so they sum to
+              // exactly 100; bar widths keep the exact pct for accurate proportions.
+              const allocLabels = apportionPct(tabBreakdown.map((b) => b.pct));
+              return (
+                <View style={[styles.card, neu.raisedSoft]}>
+                  <Text style={styles.sectionLabel}>{tab === 'savings' ? t.savings.whereSavingsLive : t.savings.whereInvestmentsLive}</Text>
+                  {tabBreakdown.map((b, i) => (
+                    <View key={b.id} style={styles.allocRow}>
+                      <View style={[styles.allocDot, { backgroundColor: b.color }]} />
+                      <Text style={styles.allocName} numberOfLines={1}>{b.name}</Text>
+                      <View style={styles.allocBar}><View style={[styles.allocFill, { width: `${Math.max(b.pct, 3)}%`, backgroundColor: b.color }]} /></View>
+                      <Text style={styles.allocPct}>{allocLabels[i]}%</Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })()}
 
             {/* SORT */}
             {tabAccounts.length > 1 && (
               <View style={styles.sortRow}>
                 {SORT_OPTS.map((o) => (
-                  <TouchableOpacity key={o.key} onPress={() => { setSortBy(o.key); selectionChanged(); }} style={[styles.sortChip, neu.raised, sortBy === o.key && { backgroundColor: C.accent }]} activeOpacity={0.8} accessibilityRole="button" accessibilityState={{ selected: sortBy === o.key }} accessibilityLabel={t.savings[o.labelKey]}>
+                  <TouchableOpacity key={o.key} onPress={() => { setSortBy(o.key); selectionChanged(); }} style={[styles.sortChip, neu.raised, sortBy === o.key && { backgroundColor: C.accent }]} activeOpacity={0.8} hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }} accessibilityRole="button" accessibilityState={{ selected: sortBy === o.key }} accessibilityLabel={t.savings[o.labelKey]}>
                     <Text style={[styles.sortChipText, sortBy === o.key && { color: '#fff' }]}>{t.savings[o.labelKey]}</Text>
                   </TouchableOpacity>
                 ))}
                 <Text style={styles.count}>{t.savings.accountsCount.replace('{n}', String(tabAccounts.length))}</Text>
               </View>
             )}
+
+            {/* PLAN CAPACITY — free tier shows "x/5" to anticipate the cap; premium is
+                unlimited so it just shows the count. */}
+            <Text style={styles.planCount}>{t.savings.accountsCount.replace('{n}', Number.isFinite(savingsAccountLimit) ? `${accounts.length}/${savingsAccountLimit}` : `${accounts.length}`)}</Text>
 
             {/* ACCOUNT CARDS */}
             {sorted.length > 0 ? (
@@ -358,12 +426,12 @@ const SavingsTracker: React.FC = () => {
         )}
       </ScrollView>
 
-      {showBar && accounts.length < MAX_ACCOUNTS && <FAB icon="plus" onPress={openAdd} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
-      {showBar && accounts.length >= MAX_ACCOUNTS && <FAB icon="lock" onPress={() => setPaywallOpen(true)} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
+      {showBar && !atAccountCap && <FAB icon="plus" onPress={openAdd} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
+      {showBar && atAccountCap && <FAB icon="lock" onPress={showAccountPaywall} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
 
       {/* Sheets */}
       <AddEditAccountSheet
-        visible={addEditOpen} editing={editing} currency={currency}
+        visible={addEditOpen} editing={editing} defaultType={tab === 'investment' ? 'robo' : 'bank'} currency={currency}
         onClose={() => { setAddEditOpen(false); setEditing(null); }}
         onAdd={addAccount} onUpdate={updateAccount} onSnapshot={addSnapshot} onDelete={deleteAccount}
       />
@@ -392,7 +460,7 @@ const SavingsTracker: React.FC = () => {
         greetingPrompt={nudgeCopy?.echoPrompt}
         onOpenSheet={(autoPrompt) => { setEchoAutoPrompt(autoPrompt); setEchoOpen(true); setGreetingDismissed(true); }}
         tier={tier}
-        onShowPaywall={() => setPaywallOpen(true)}
+        onShowPaywall={() => { setPaywallFeature('ai'); setPaywallOpen(true); }}
         insets={insets}
         fabScale={fabScale}
         hideZoneAnim={hideZoneAnim}
@@ -408,7 +476,13 @@ const SavingsTracker: React.FC = () => {
         chips={savingsChips} contextSnapshot={snapshot} autoPrompt={echoAutoPrompt}
         topInset={insets.top} bottomInset={insets.bottom}
       />
-      <PaywallModal visible={paywallOpen} onClose={() => setPaywallOpen(false)} feature="ai" />
+      <PaywallModal visible={paywallOpen} onClose={() => setPaywallOpen(false)} feature={paywallFeature} currentUsage={paywallFeature === 'savings' ? accounts.length : undefined} />
+      <HowItWorksModal
+        visible={howItWorksOpen}
+        onClose={() => setHowItWorksOpen(false)}
+        subtitle="everything about savings & investments"
+        sections={SAVINGS_HOW}
+      />
       <ModalToastHost />
       <ScreenGuide
         id="guide_savings"
@@ -430,8 +504,44 @@ function timeRangeFilter(portfolio: Portfolio, range: TimeRange, now: Date): num
   if (spark.length < 2) return [];
   if (range === 'ALL') return spark.map((p) => p.value);
   const cutoff = { '1M': subMonths(now, 1), '3M': subMonths(now, 3), '6M': subMonths(now, 6), '1Y': subMonths(now, 12) }[range];
-  const filtered = spark.filter((p) => parseISO(p.date) >= cutoff); // parseISO reads the yyyy-MM-dd key as local, matching the local `cutoff`
-  return filtered.length >= 2 ? filtered.map((p) => p.value) : spark.map((p) => p.value);
+  // parseISO reads the yyyy-MM-dd key as local, matching the local `cutoff`.
+  // Split into in-window points and the carry-forward BASELINE: the balance at the
+  // window start is the last snapshot strictly BEFORE the cutoff. Prepend it so the
+  // % badge and mini-chart measure from the window's opening balance, not the first
+  // in-window snapshot (spark is date-sorted, so the last pre-cutoff wins).
+  const inWindow: number[] = [];
+  let baseline: number | null = null;
+  for (const p of spark) {
+    if (parseISO(p.date) >= cutoff) inWindow.push(p.value);
+    else baseline = p.value;
+  }
+  if (baseline !== null) {
+    // Anchor to the carried-forward baseline even when nothing changed inside the
+    // window (flat line) rather than silently falling back to the all-time series.
+    return inWindow.length > 0 ? [baseline, ...inWindow] : [baseline, baseline];
+  }
+  // No pre-cutoff snapshot → the window already spans the whole history.
+  return inWindow.length >= 2 ? inWindow : spark.map((p) => p.value);
+}
+
+// Largest-remainder (Hamilton) apportionment: round a list of percentages that sum
+// to ~100 into integers that sum to EXACTLY 100, so the displayed allocation labels
+// never read 99% or 101%. Floor each, then hand the leftover points to the slices
+// with the largest fractional remainders.
+function apportionPct(values: number[]): number[] {
+  // No real total (e.g. every account in the tab is worth 0) → all zeros, not a
+  // spurious 1% per slice from distributing the leftover.
+  if (values.reduce((s, v) => s + v, 0) <= 0) return values.map(() => 0);
+  const floors = values.map((v) => Math.floor(v));
+  const sumFloors = floors.reduce((s, v) => s + v, 0);
+  let leftover = Math.round(100 - sumFloors);
+  leftover = Math.max(0, Math.min(leftover, values.length)); // guard float drift
+  const byRemainder = values
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac);
+  const out = [...floors];
+  for (let k = 0; k < leftover; k++) out[byRemainder[k].i] += 1;
+  return out;
 }
 
 function renderNudge(n: Nudge, t: any, fmtShort: (v: number) => string) {
@@ -512,6 +622,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   sortChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: C.background },
   sortChipText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: '600', color: C.textSecondary },
   count: { marginLeft: 'auto', fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, fontWeight: '600' },
+  planCount: { alignSelf: 'flex-end', marginBottom: SPACING.md, fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, fontWeight: '600', fontVariant: ['tabular-nums'] },
 
   tabEmpty: { alignItems: 'center', gap: 8, paddingVertical: 36 },
   tabEmptyText: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, fontWeight: '600' },

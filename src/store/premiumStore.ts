@@ -80,6 +80,12 @@ export const usePremiumStore = create<PremiumState>()(
         return currentCount < FREE_TIER.maxBudgets;
       },
 
+      canCreateSavingsAccount: (currentCount: number) => {
+        const state = get();
+        if (state.tier === 'premium') return true;
+        return currentCount < FREE_TIER.maxSavingsAccounts;
+      },
+
       canScanReceipt: () => {
         const state = get();
         state.resetScanCountIfNeeded();

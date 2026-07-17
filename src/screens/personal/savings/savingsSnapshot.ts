@@ -37,7 +37,9 @@ export function buildSavingsSnapshot(input: SnapshotInput): string {
 
   lines.push(`Portfolio value: ${money(p.totalCurrent)} across ${accounts.length} account${accounts.length === 1 ? '' : 's'}`);
   lines.push(`Invested: ${money(p.totalInvested)} | Gain: ${signed(p.totalGain)} (${pct(p.totalReturn)})`);
-  lines.push(`This month: ${money(p.monthContributed)} added, value moved ${signed(p.monthValueChange)}`);
+  // NOTE: we can't distinguish real deposits from market gains in history, so we do
+  // NOT claim an "added" figure here — only the honest net value change for the month.
+  lines.push(`Net value change this month: ${signed(p.monthValueChange)}`);
 
   if (breakdown.length) {
     lines.push('');

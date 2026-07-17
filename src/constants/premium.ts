@@ -5,6 +5,7 @@ export const FREE_TIER = {
   maxWallets: 6,
   maxWalletsPerType: 2,
   maxBudgets: 5,
+  maxSavingsAccounts: 5,
   maxScansPerMonth: 15,
   maxAiCallsPerMonth: 100,
   exportData: true,
@@ -16,6 +17,7 @@ export const FREE_TIER = {
 export const PREMIUM_TIER = {
   maxWallets: Infinity,
   maxBudgets: Infinity,
+  maxSavingsAccounts: Infinity,
   maxScansPerMonth: Infinity,
   maxAiCallsPerMonth: Infinity,
   exportData: true,

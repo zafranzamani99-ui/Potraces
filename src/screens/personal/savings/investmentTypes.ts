@@ -79,10 +79,15 @@ export function getTypeInfo(rawType: string | undefined | null, resolveCustom?: 
   const raw = (rawType ?? '').trim();
   if (!raw) return INVESTMENT_TYPES.other;
 
-  const canonical = TYPE_ALIASES[raw] ?? raw;
+  // Normalise casing/whitespace before matching: the registry + alias keys are all
+  // lowercase, so a differently-cased or padded type string (e.g. 'Crypto', ' ASB ')
+  // must fold to its canonical entry instead of wrong-falling to Other (a SAVINGS
+  // bucket, which would misfile an investment account under Savings).
+  const norm = raw.toLowerCase();
+  const canonical = TYPE_ALIASES[norm] ?? norm;
   if (INVESTMENT_TYPES[canonical]) return INVESTMENT_TYPES[canonical];
 
-  if (raw.startsWith('custom_') && resolveCustom) {
+  if (norm.startsWith('custom_') && resolveCustom) {
     const c = resolveCustom(raw);
     if (c) {
       return {

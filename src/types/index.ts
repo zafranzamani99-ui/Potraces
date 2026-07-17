@@ -1407,7 +1407,9 @@ export interface ChartData {
 // Savings / Investment Types (string to support custom investment categories)
 export type SavingsAccountType = string;
 
-export type SnapshotType = 'manual' | 'dividend' | 'withdrawal';
+// 'deposit'/'withdrawal' move CAPITAL (adjust the cost basis); 'dividend'/'manual'
+// are pure revaluations (basis unchanged) — see savingsStore.addSnapshot.
+export type SnapshotType = 'manual' | 'deposit' | 'dividend' | 'withdrawal';
 
 export interface SavingsSnapshot {
   id: string;
@@ -1415,6 +1417,10 @@ export interface SavingsSnapshot {
   note?: string;
   date: Date;
   snapshotType?: SnapshotType;
+  /** Signed capital moved by this snapshot (+deposit, −withdrawal; absent for
+   *  manual/dividend). Stored so a multi-device merge can re-derive the cost basis
+   *  order-independently instead of recomputing deltas from merge-reordered values. */
+  capitalDelta?: number;
 }
 
 export interface SavingsAccount {
@@ -1523,6 +1529,7 @@ export interface PremiumState {
   resetAiCallsIfNeeded: () => void;
   canCreateWallet: (currentCount: number) => boolean;
   canCreateBudget: (currentCount: number) => boolean;
+  canCreateSavingsAccount: (currentCount: number) => boolean;
   canScanReceipt: () => boolean;
   getRemainingScans: () => number;
   canUseAI: () => boolean;

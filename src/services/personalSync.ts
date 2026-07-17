@@ -9,6 +9,8 @@ import { useSavingsStore } from '../store/savingsStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTombstoneStore } from '../store/tombstoneStore';
 import { autoReconcileWallets } from '../utils/walletReconcile';
+import { roundMoney } from '../utils/money';
+import { replayCapitalMoves } from '../screens/personal/savings/savingsMath';
 import {
   txToRemote, walletToRemote, transferToRemote, subToRemote, budgetToRemote,
   goalToRemote, debtToRemote, splitToRemote, contactToRemote, savingsToRemote, receiptToRemote,
@@ -288,14 +290,36 @@ async function pullAll(userId: string): Promise<boolean> {
     };
     const mergeSavings = (l: SavingsAccount, r: SavingsAccount): SavingsAccount => {
       const base = newer(l, r);
+      const dateMs = (d: any) => new Date(d).getTime(); // Date objects OR ISO strings
+      // Union snapshots by id (whole-row LWW would drop one recorded on the other
+      // device), then sort ASCENDING by date. childUnion returns them in insertion
+      // order (local first, remote-only appended), but every consumer reads
+      // history[history.length - 1] as the LATEST snapshot (stale-date detection,
+      // Echo's "last updated", month-start baselines for gain math) — so an unsorted
+      // array can surface an OLDER snapshot as "latest" after a multi-device merge.
       const history = childUnion<any>(l.history ?? [], r.history ?? []);
+      history.sort((a: any, b: any) => dateMs(a.date) - dateMs(b.date));
       let currentValue = base.currentValue;
       if (history.length) {
         const latest = history.reduce((a: any, b: any) =>
-          (new Date(b.date).getTime() > new Date(a.date).getTime() ? b : a));
+          (dateMs(b.date) > dateMs(a.date) ? b : a));
         currentValue = latest.value;
       }
-      return { ...base, history, currentValue } as SavingsAccount;
+      // Cost basis is a RUNNING field: basis = seed + Σ(capital moves in history).
+      // Both devices' deposit/withdrawal snapshots are already in the merged,
+      // date-sorted history, so RE-DERIVE the basis from it — plain LWW would keep
+      // only one device's basis and corrupt gain/return after concurrent capital
+      // moves. Reconstruct each side's seed (basis minus its own capital moves); if
+      // they agree use it, else fall back to the newer row's seed (a rare "put in"
+      // edit conflict — a per-field edit timestamp would be the full fix, deferred).
+      const sortAsc = (h: any[]) => [...(h ?? [])].sort((x: any, y: any) => dateMs(x.date) - dateMs(y.date));
+      const seedOf = (acc: SavingsAccount) => roundMoney(acc.initialInvestment - replayCapitalMoves(sortAsc(acc.history)));
+      const seedL = seedOf(l), seedR = seedOf(r);
+      const seed = seedL === seedR ? seedL : seedOf(base);
+      const initialInvestment = roundMoney(Math.max(0, seed + replayCapitalMoves(history)));
+      // target / annualRate are user preferences (not money-critical), so keep plain
+      // LWW from `base` until per-field edit timestamps ship.
+      return { ...base, history, currentValue, initialInvestment } as SavingsAccount;
     };
     // Subscriptions carry paymentHistory (each entry ↔ a wallet debit + expense
     // transaction), so whole-row LWW would silently drop a payment recorded on
