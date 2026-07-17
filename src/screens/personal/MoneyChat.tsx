@@ -433,8 +433,8 @@ const ActionEditModal = ({
 
   useEffect(() => {
     if (action) {
-      setDesc(action.description);
-      setAmount(action.amount.toString());
+      setDesc(action.description || '');
+      setAmount(action.amount != null ? action.amount.toString() : '');
       setActionType(action.type);
       setPerson(action.person || '');
       setDebtType(action.debtType || 'they_owe');
@@ -459,7 +459,7 @@ const ActionEditModal = ({
     if (!action) return;
     const selectedCat = categories.find((c) => c.id === categoryId);
     const selectedWallet = wallets.find((w) => w.id === walletId);
-    const finalDesc = desc.trim() || action.description;
+    const finalDesc = desc.trim() || action.description || '';
     const finalCategory = selectedCat?.id || action.category;
     const finalWallet = selectedWallet?.name || action.wallet;
     const finalPerson = person.trim() || action.person;

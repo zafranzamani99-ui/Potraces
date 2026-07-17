@@ -139,11 +139,30 @@ export const usePersonalStore = create<PersonalState>()(
       },
 
       addBudget: (budget) => {
-        if (budget.allocatedAmount <= 0) return;
+        // Reject non-finite (NaN/Infinity) or non-positive allocations — the chat/LLM
+        // creation path forwards allocatedAmount unchecked, and an Infinity/NaN would
+        // persist then crash BudgetPlanning's toFixed. Round at the write site.
+        if (!Number.isFinite(budget.allocatedAmount) || budget.allocatedAmount <= 0) return;
+        // Belt-and-braces upsert: if a budget for this category already exists, merge
+        // the new allocation into it instead of creating a duplicate.
+        const existing = (usePersonalStore.getState() as PersonalState).budgets.find(
+          (b) => b.category.toLowerCase() === budget.category.toLowerCase()
+        );
+        if (existing) {
+          set((state) => ({
+            budgets: state.budgets.map((b) =>
+              b.id === existing.id
+                ? { ...b, allocatedAmount: roundMoney(budget.allocatedAmount), updatedAt: new Date() }
+                : b
+            ),
+          }));
+          return;
+        }
         set((state) => ({
           budgets: [
             {
               ...budget,
+              allocatedAmount: roundMoney(budget.allocatedAmount),
               id: newId(),
               spentAmount: 0,
               createdAt: new Date(),
@@ -154,14 +173,25 @@ export const usePersonalStore = create<PersonalState>()(
         }));
       },
 
-      updateBudget: (id, updates) =>
+      updateBudget: (id, updates) => {
+        // Sanitize a money write: the chat/LLM path can forward allocatedAmount as a
+        // raw string or Infinity, which later crashes BudgetPlanning's toFixed. Coerce
+        // + validate, and DROP an invalid allocation change rather than persist it
+        // (mirrors updateSubscription's round-at-write-site).
+        const safe: typeof updates = { ...updates };
+        if (safe.allocatedAmount !== undefined) {
+          const n = Number(safe.allocatedAmount);
+          if (Number.isFinite(n) && n > 0) safe.allocatedAmount = roundMoney(n);
+          else delete safe.allocatedAmount;
+        }
         set((state) => ({
           budgets: state.budgets.map((budget) =>
             budget.id === id
-              ? { ...budget, ...updates, updatedAt: new Date() }
+              ? { ...budget, ...safe, updatedAt: new Date() }
               : budget
           ),
-        })),
+        }));
+      },
 
       updateSubscription: (id, updates) =>
         set((state) => ({

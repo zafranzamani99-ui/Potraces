@@ -949,7 +949,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
         <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.4) }]} />
       </Pressable>
       <View style={styles.pickerOverlayWrap} pointerEvents="box-none">
-        <View style={[styles.pickerOverlayCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+        <View style={[styles.pickerOverlayCard, neuS.raisedModal]} onStartShouldSetResponder={() => true}>
           <View style={styles.pickerOverlayHeader}>
             <Text style={styles.pickerOverlayTitle}>
               {'start '}<Text style={styles.titleAccent}>date</Text>
@@ -977,7 +977,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
         <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.4) }]} />
       </Pressable>
       <View style={styles.pickerOverlayWrap} pointerEvents="box-none">
-        <View style={[styles.pickerOverlayCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+        <View style={[styles.pickerOverlayCard, neuS.raisedModal]} onStartShouldSetResponder={() => true}>
           <View style={styles.pickerOverlayHeader}>
             <Text style={styles.pickerOverlayTitle}>
               {'choose '}<Text style={styles.titleAccent}>wallet</Text>
@@ -1111,7 +1111,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
             <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.4) }]} />
           </Pressable>
           <View style={styles.iconPickerWrap} pointerEvents="box-none">
-            <View style={[styles.iconPickerCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.iconPickerCard, neuS.raisedModal]} onStartShouldSetResponder={() => true}>
               {/* Header: title + close */}
               <View style={styles.iconPickerHeader}>
                 <Text style={styles.iconPickerTitle}>
@@ -1208,7 +1208,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
             <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.4) }]} />
           </Pressable>
           <View style={styles.instModalWrap} pointerEvents="box-none">
-            <View style={[styles.instModalCard, neuS.raisedSoft]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.instModalCard, neuS.raisedModal]} onStartShouldSetResponder={() => true}>
               <Text style={styles.instModalTitle}>
                 {'installment '}
                 <Text style={{ color: C.accent }}>setup</Text>
@@ -1774,6 +1774,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
+    overflow: 'hidden' as any,
   },
   instModalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -1930,6 +1931,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.lg,
     paddingHorizontal: SPACING.lg,
+    // Contain the option rows' neu highlight so it can't glow white onto the scrim.
+    overflow: 'hidden',
   },
   pickerOverlayHeader: {
     flexDirection: 'row',
@@ -1966,6 +1969,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,
     paddingHorizontal: SPACING.lg,
+    overflow: 'hidden',
   },
   iconPickerHeader: {
     flexDirection: 'row',

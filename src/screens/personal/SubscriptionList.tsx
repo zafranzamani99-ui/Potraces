@@ -1868,7 +1868,7 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={closeMp}>
         <Pressable style={styles.overlayCenter} onPress={closeMp}>
-          <View style={[styles.markPaidCard, neu.raisedSoft, mpCalendarOpen && { width: '94%', paddingHorizontal: SPACING.sm }]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.markPaidCard, neu.raisedModal, mpCalendarOpen && { width: '94%', paddingHorizontal: SPACING.sm }]} onStartShouldSetResponder={() => true}>
             {mpCalendarOpen ? (
               <>
                 <View style={[styles.modalHeader, { width: '100%' }]}>

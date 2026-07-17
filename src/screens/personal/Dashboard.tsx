@@ -68,6 +68,10 @@ import ModalToastHost from '../../components/common/ModalToastHost';
 import OfflineBanner from '../../components/common/OfflineBanner';
 import RAnimated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
+// TEMP: the "exploring with demo data" banner is hidden for now — flip to
+// true to bring it back.
+const SHOW_SAMPLE_DATA_BANNER = false;
+
 const getGreetingKey = (): 'goodMorning' | 'goodAfternoon' | 'goodEvening' => {
   const hour = new Date().getHours();
   if (hour < 12) return 'goodMorning';
@@ -322,7 +326,11 @@ const PersonalDashboard: React.FC = () => {
   const heroHeadline = useMemo(() => {
     const now = new Date();
     const dayOfMonth = now.getDate();
-    const daysLeft = getDaysInMonth(now) - dayOfMonth;
+    // Days remaining INCLUDING today (device-local = Malaysia time for MY users),
+    // matching the Budget screen's daysRemaining so both read the same. Today is a
+    // day you're still budgeting for, so it counts — and this makes the "last 3
+    // days" check below exactly 3 days and avoids a "0 days left" on the 31st.
+    const daysLeft = getDaysInMonth(now) - dayOfMonth + 1;
     const savingsRate = stats.income > 0
       ? Math.round(((stats.income - stats.expenses) / stats.income) * 100)
       : 0;
@@ -775,7 +783,9 @@ const PersonalDashboard: React.FC = () => {
             rule above. The sample-data banner (demo mode) wins the slot; else
             FreshStart on days 1-5, GettingStarted otherwise. */}
         {sampleDataLoaded ? (
-          <SampleDataBanner />
+          // TEMP: demo-data banner hidden for now — restore via the
+          // SHOW_SAMPLE_DATA_BANNER flag at the top of this file.
+          SHOW_SAMPLE_DATA_BANNER ? <SampleDataBanner /> : null
         ) : (
           <>
             {showFreshStart && <FreshStart />}

@@ -16,11 +16,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import BottomSheet from './BottomSheet';
 import CategoryIcon from './CategoryIcon';
+import PaywallModal from './PaywallModal';
 import { CALM, CALM_DARK, SPACING, RADIUS, TYPOGRAPHY, withAlpha, SHADOWS } from '../../constants';
+import { FREE_TIER } from '../../constants/premium';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import { usePersonalStore } from '../../store/personalStore';
+import { usePremiumStore } from '../../store/premiumStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -63,6 +66,7 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
   const debts = useDebtStore((s) => s.debts);
   const wallets = useWalletStore((s) => s.wallets);
   const expenseCategories = useCategories('expense');
+  const tier = usePremiumStore((s) => s.tier);
 
   // persisted profile — Echo remembers your income, must-pays, and chosen model
   const profileTakeHome = useBudgetProfileStore((s) => s.takeHome);
@@ -81,6 +85,7 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
   const [catBuf, setCatBuf] = useState('');
   const [addingId, setAddingId] = useState<string | null>(null);
   const [commitBuf, setCommitBuf] = useState('');
+  const [paywallVisible, setPaywallVisible] = useState(false);
 
   const asOf = useMemo(() => new Date(), [visible]);
 
@@ -196,17 +201,30 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
   const apply = useCallback(() => {
     if (!plan || buildable.length === 0) return;
     mediumTap();
+    // Free-tier budget cap — the planner must respect the same limit as the manual
+    // "+" add flow, else a free user creates unlimited budgets here (revenue leak).
+    // `buildable` already excludes categories that own a budget, so this is idempotent
+    // (no duplicates) and only counts genuinely new budgets against the cap.
+    const remaining = tier === 'premium'
+      ? Infinity
+      : Math.max(0, FREE_TIER.maxBudgets - budgets.length);
     const now = new Date();
     const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     let n = 0;
     for (const r of buildable) {
+      if (n >= remaining) break; // stop at the free-tier cap
       if (r.amount <= 0) continue;
       addBudget({ category: r.category, allocatedAmount: r.amount, period: 'monthly', startDate: now, endDate });
       n++;
     }
+    if (n > 0) onApplied?.(n);
+    if (n < buildable.length) {
+      // Couldn't create every planned budget within the free limit — upsell the rest.
+      setPaywallVisible(true);
+      return;
+    }
     onClose();
-    onApplied?.(n);
-  }, [plan, buildable, addBudget, onClose, onApplied]);
+  }, [plan, buildable, addBudget, onClose, onApplied, tier, budgets.length]);
 
   const handleClose = useCallback(() => { setEditingCat(null); setEditingIncome(false); setAddingId(null); onClose(); }, [onClose]);
 
@@ -257,6 +275,7 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
   );
 
   return (
+    <>
     <BottomSheet visible={visible} onClose={handleClose} header={header} maxHeightPct={0.92}>
       <View style={styles.bounds}>
         <ScrollView
@@ -500,6 +519,13 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
         )}
       </View>
     </BottomSheet>
+    <PaywallModal
+      visible={paywallVisible}
+      onClose={() => setPaywallVisible(false)}
+      feature="budget"
+      currentUsage={budgets.length}
+    />
+    </>
   );
 };
 

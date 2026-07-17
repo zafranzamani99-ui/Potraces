@@ -1,6 +1,6 @@
 # Potraces — Step 2 Plan (July 2026)
 
-_On `main`, level with `origin/main` — the `feat/calculator-quick-action` redesign branch has been **merged**. Last updated 2026-07-15._
+_On `fix/debt-money-integrity` — pushed to origin, **3 commits ahead of `main`, not yet merged**. `tsc` 0, all `tsx` suites green, working tree clean. Last updated 2026-07-16._
 
 Three tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the locked 3-material standard), **(B) money data-safety hardening** (correctness), **(C) ScreenGuide walk-throughs** (first-run UX). Track B's CRITICAL tier is shipped. Tracks A and C roll out screen-by-screen.
 
@@ -8,29 +8,38 @@ Three tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the 
 
 # ▶ START HERE
 
-**Where it stands (2026-07-15):** merged to `main`, level with `origin`. The old doc's "7 uncommitted files" are now **committed** (`ff76023`). There is **new uncommitted WIP** in the tree (11 files — Onboarding, Goals, WalletManagement + shared modals; looks like further Onyx polish). Commit or discard that before starting fresh work.
+**Where it stands (2026-07-16):** all work sits on `fix/debt-money-integrity` (pushed to origin, **3 commits ahead of `main`, unmerged**). Working tree is clean; `tsc` 0; all `tsx` suites green.
 
-## ✅ Done since 2026-07-10 (was on this list, now cleared)
+## ✅ Done 2026-07-16 (on `fix/debt-money-integrity`, NEWLY cleared)
 
-- **HIGH money fix committed** — walletReconcile tip bug + the other 6 files, merged to `main` (`ff76023`).
-- **Import double-booking fixed** — CSV + statement re-imports now dedup (`src/utils/importDedup.ts`, wired into both import screens, `82428cf`). *Category name→id mapping is still open — see Track B.*
-- **Savings & Investments redesign merged** — Savings now on the neu kit (`a46f872`).
-- **"Onyx" dark-surface standard committed** app-wide for sheets/modals/pills (`54337ed`). This **supersedes the old "modal shell = flat" decision** — see CLAUDE.md "Onyx" section for the locked checklist + which screens still need it.
-- **Settings split** into App / Personal / Business screens (`2aaa7bb`).
-- **Beta site on `main`** — `site/index.html` is on `main` pointing at Singapore. The old "get the site onto main" blocker is **cleared**; only the two secrets remain.
-- **Singapore backend migration** — all live code + all 7 `site/*.html` swept to Singapore. Only docs/READMEs/already-applied migration SQL still *name* Tokyo — harmless history.
+- **Track B — wallet whole-row LWW FIXED.** New migration `20260716000000_personal_client_edit_at.sql` + skew-tolerant last-EDIT-wins in `personalSync.ts`; test `test-personal-sync-roundtrip.ts`. **⚠️ Apply the migration to Supabase BEFORE shipping the app build** (see Track B).
+- **Track B — savings `currentValue` merge FIXED** (same `client_edit_at` LWW).
+- **Onboarding "Skip" FIXED** — now scrolls to the start-choice page instead of committing "start fresh" immediately.
+- **Bills data/money/edge-case audit** done (`d139287`) + 5 new tests (billing-advance, subscription-merge, debt-payment-cap, goal-math, expanded wallet-reconcile).
+
+## ✅ Done earlier (2026-07-10…15, already cleared)
+
+- **HIGH money fix committed** — walletReconcile tip bug + 6 files (`ff76023`).
+- **Import double-booking fixed** — dedup in `src/utils/importDedup.ts`, wired into both import screens (`82428cf`). *Category name→id mapping still open — see Track B.*
+- **Savings & Investments redesign merged** — Savings on the neu kit (`a46f872`).
+- **"Onyx" dark-surface standard committed** app-wide (`54337ed`) — **supersedes the old "modal shell = flat" decision**; see CLAUDE.md.
+- **Settings split** into App / Personal / Business (`2aaa7bb`).
+- **Beta site on `main`** → Singapore. Old "get site onto main" blocker **cleared**; only the two secrets remain.
+- **Singapore backend migration** — all live code + all 7 `site/*.html` swept. Only docs/READMEs/applied-migration SQL still *name* Tokyo — harmless history.
 
 ## 1. Do these, in order
 
 | # | Do this | Why | Detail |
 |---|---|---|---|
-| 1 | **Device-verify Debt + Receipt, light AND dark** | The one un-cleared sign-off gate for that rollout. `tsc`/test-proven, but no human has eyeballed it on a phone. | [What to look at](#what-to-look-at-on-device) |
-| 2 | **Track B — sync/backup cluster** | Highest-severity code left in the repo (silent cross-device data loss). | [Track B](#track-b--money-data-safety-remaining-ranked) |
-| 3 | **Beta go-live — set the 2 secrets** | Site is already live-ready on `main`; only `BETA_IOS_URL` + `BETA_ANDROID_URL` remain. | [Beta](#beta-distribution--secrets-only) |
-| 4 | Track A — remaining neu screens | Cosmetic, low risk, mechanical. Savings now done; Goals/Budget/Account/Reports/Pulse/MoneyChat/Import remain. | [Remaining screens](#remaining-screens) |
-| 5 | Track C — guide upgrades | UX polish. | [Track C](#track-c--screenguide-walk-throughs-first-run-ux) |
-| 6 | ~~Onboarding "Skip" → land on start-choice page~~ **DONE 2026-07-15** | Skip now jumps to the final start-choice page (`handleSkip`) instead of committing "start fresh". | [Onboarding](#onboarding--skip-should-land-on-the-start-choice-page-todo-2026-07-14) |
-| 7 | Singapore shortcut re-sign (**Mac-only**) | Back-Tap shortcuts still point at the old Tokyo endpoint. | [Migration](#supabase-tokyo--singapore-migration--back-tap-shortcut-re-sign-mac-only-deferred-2026-07-14) |
+| 1 | **Merge `fix/debt-money-integrity` → `main`** — apply the `client_edit_at` migration to Supabase FIRST | The whole LWW money fix + Bills audit lives on this unmerged branch. Migration must land before the app build ships. | [Track B](#track-b--money-data-safety-remaining-ranked) |
+| 2 | **Device-verify Debt + Receipt, light AND dark** | The un-cleared sign-off gate for that rollout. `tsc`/test-proven, but no human has eyeballed it on a phone. | [What to look at](#what-to-look-at-on-device) |
+| 3 | **Track B — remaining sync/backup items** | Tombstone TTL 30d + storageBackup era-mix/account-gate still open (silent cross-device data loss). | [Track B](#track-b--money-data-safety-remaining-ranked) |
+| 4 | **Beta go-live — set the 2 secrets** | Site is already live-ready on `main`; only `BETA_IOS_URL` + `BETA_ANDROID_URL` remain. | [Beta](#beta-distribution--secrets-only) |
+| 5 | Track A — remaining neu screens | Cosmetic, low risk, mechanical. Savings + (likely) Goals done; Budget/Account/Reports/Pulse/MoneyChat/Import remain. | [Remaining screens](#remaining-screens) |
+| 6 | Track C — guide upgrades | UX polish. Debts/Receipts/Savings/Subscriptions still passive. | [Track C](#track-c--screenguide-walk-throughs-first-run-ux) |
+| 7 | ✅ ~~Singapore shortcut re-sign (**Mac-only**)~~ — DONE 2026-07-16 | Both shortcuts re-signed on Mac + uploaded to the Singapore `web` bucket; public URLs verified. | [Migration](#supabase-tokyo--singapore-migration--back-tap-shortcut-re-sign-mac-only-deferred-2026-07-14) |
+
+_(Done since this table was first written: Onboarding "Skip" → start-choice page ✅ · Track B wallet/savings LWW ✅ — see the Done sections above.)_
 
 ## 2. Decisions only you can make
 
@@ -85,12 +94,12 @@ CRITICAL tier already fixed (Echo transfer/goal/withdraw guards, corruption-quar
 
 > **Fixed 2026-07-09 (debt audit) — for context, not a TODO:** business-mode overpayment **tips** were silently erased by `walletReconcile` on every sync. `processPayment` charges the wallet `amount+tip`, but `addPayment` stores `amount` capped to the debt with the tip kept separately as `payment.tipAmount`; a business payment links to a **business** tx (not in `personalStore.transactions`), so reconcile's skip never fired and it replayed only `payment.amount` → `autoReconcileWallets` overwrote the balance and deleted the tip (or refunded an `i_owe` tip you really paid). Reconcile now mirrors the delete path (`+ (mode !== 'personal' ? tipAmount : 0)`), with 3 new scenarios in `scripts/test-wallet-reconcile.ts`. Also fixed: `updateMonthAmounts` clobbering a shared-sub's *current* price when adjusting a past month; and the "equal split" button producing a form its own validator rejects (33.33×3 ≠ 100).
 
-### Sync / backup cluster — **do this first** (distributed-systems care, own tested pass)
-- **Wallet whole-row LWW + reconcile double-apply** across two devices — `personalSync.ts:338`.
-- **Tombstone TTL 30d** resurrects deleted records for a device offline >30d — `tombstoneStore.ts:10`.
-- **`restoreDay` era-mix** restores stores from different snapshot dates → reconcile clobbers — `storageBackup.ts:161`.
-- **Savings `currentValue` merge** picks latest wall-clock → clock-behind device's newer update discarded — `personalSync.ts:292`.
-- **Backup restore not account/mode-gated** — can restore another user's snapshot over live data — `storageBackup.ts:179`.
+### Sync / backup cluster
+- ✅ **Wallet whole-row LWW + reconcile double-apply — DONE** (on `fix/debt-money-integrity`). Root cause: a `handle_updated_at` trigger overwrote `updated_at` with server `now()` on every push, degrading conflict resolution to **last-PUSH-wins** (a stale device could clobber a genuinely newer edit). Fix: new migration `20260716000000_personal_client_edit_at.sql` adds a client-authoritative `client_edit_at` (no server trigger touches it) across all 10 personal tables; `personalSync.ts` now resolves on `client_edit_at` (last-EDIT-wins) with a skew-tolerant near-tie window. Regression test `scripts/test-personal-sync-roundtrip.ts`. **⚠️ Deploy order: apply the migration to Supabase BEFORE shipping the app build that writes `client_edit_at` — schema preflight keeps sync safely disabled on an un-migrated DB.**
+- ✅ **Savings `currentValue` merge — DONE** (same `client_edit_at` LWW; `personal_savings_accounts` got the column).
+- ❌ **Tombstone TTL 30d** resurrects deleted records for a device offline >30d — `tombstoneStore.ts:10` (**still 30d, unchanged**).
+- ❌ **`restoreDay` era-mix** restores stores from different snapshot dates → reconcile clobbers — `storageBackup.ts` (`src/services/`, `restoreDay`).
+- ❌ **Backup restore not account/mode-gated** — can restore another user's snapshot over live data — `storageBackup.ts` (`src/services/`).
 
 ### Import cluster
 - ✅ **Duplicate detection — DONE (`82428cf`).** CSV + statement re-imports dedup on a content-identity key (wallet + calendar-day + amount-to-the-sen + type + normalized description), so re-importing the same file can't double-book. Lives in `src/utils/importDedup.ts` (`markNewImportRows`), wired into both import screens.
@@ -227,8 +236,10 @@ python3 scripts/build-autolog-shortcut.py
 shortcuts sign --mode anyone -i shortcut/PotracesAutoLog-unsigned.shortcut  -o "shortcut/Potraces Auto Log.shortcut"
 
 npx supabase link --project-ref jngmanwvhbpkpkeklfiv
-npx supabase storage cp "shortcut/Potraces Quick Log.shortcut" ss:///web/PotracesQuickLog.shortcut --experimental
-npx supabase storage cp "shortcut/Potraces Auto Log.shortcut"  ss:///web/PotracesAutoLog.shortcut  --experimental
+# --content-type is REQUIRED: the web bucket only allows images + application/x-apple-shortcut
+# (migration 20260708000000_web_bucket_shortcut_mime.sql); auto-detect sends octet-stream → 415.
+npx supabase storage cp "shortcut/Potraces Quick Log.shortcut" ss:///web/PotracesQuickLog.shortcut --experimental --content-type application/x-apple-shortcut
+npx supabase storage cp "shortcut/Potraces Auto Log.shortcut"  ss:///web/PotracesAutoLog.shortcut  --experimental --content-type application/x-apple-shortcut
 ```
 
 **Verify** (should download a shortcut, not an error JSON):
@@ -242,7 +253,7 @@ npx supabase storage cp "shortcut/Potraces Auto Log.shortcut"  ss:///web/Potrace
 3. **Delete the Tokyo project** — LAST, after the above + this shortcut re-sign.
 4. ✅ ~~Commit this session's changes~~ — the migrations + Singapore sweep + AccountScreen/AuthScreen fixes are committed to `main` (`bd0f86f`, `a0afd82`, `73fc108`). _(Remaining Tokyo `iydqeeonaljqapulboaz` refs are docs/READMEs/already-applied migration SQL only — harmless history.)_
 
-> **Shortcut re-sign status (2026-07-15):** still **NOT done**. The `-unsigned.shortcut` rebuilds are dated Jul 15, but the **signed** `Potraces Quick Log.shortcut` / `Potraces Auto Log.shortcut` are older (Jul 8/12) — i.e. they predate the latest rebuild and still carry the old Tokyo URL. Run the sign+upload block above on a Mac.
+> **Shortcut re-sign status (2026-07-16): ✅ DONE.** Rebuilt (Singapore URL confirmed, zero Tokyo refs), signed on Mac (`--mode anyone`), and uploaded to the Singapore `web` bucket (needed `--content-type application/x-apple-shortcut` — auto-detect 415'd). Verified: both public URLs return HTTP 200 `application/x-apple-shortcut`, byte-identical to the freshly signed local files. This unblocks Tokyo project deletion (item 3 below) once webhooks (item 2) are checked.
 
 ---
 

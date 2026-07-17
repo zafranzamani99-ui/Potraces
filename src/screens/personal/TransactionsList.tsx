@@ -52,6 +52,11 @@ const DELETE_RED = '#E5484D';
 // Max transactions shown per page (date-grouped, with a prev/next pager).
 const PAGE_SIZE = 13;
 
+// Height of the floating select bar plus its bottom offset. Reserved as extra
+// scroll space below the pager while in select mode so the bar never overlaps
+// the "‹ 1/4 ›" pager sitting at the bottom of the list.
+const SELECT_BAR_CLEARANCE = 96;
+
 type FilterType = 'all' | 'expense' | 'income';
 type DateRange = 'this_month' | 'last_month' | 'last_3_months' | 'this_year' | 'all_time';
 type SortBy = 'date' | 'amount';
@@ -989,7 +994,12 @@ const TransactionsList: React.FC = () => {
           renderSectionHeader={renderSectionHeader}
           ListFooterComponent={renderPager}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            // In select mode, reserve room below the pager so the floating
+            // select bar can't collide with it.
+            selectMode && { paddingBottom: insets.bottom + SELECT_BAR_CLEARANCE },
+          ]}
           stickySectionHeadersEnabled={true}
           // Page is capped at PAGE_SIZE items — render them all, no clipping
           // (clipping/recycling is what made scrolling stutter & flash).

@@ -22,6 +22,7 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import ModalToastHost from './ModalToastHost';
 import { useCategoryStore } from '../../store/categoryStore';
+import { usePersonalStore } from '../../store/personalStore';
 import { useCategories } from '../../hooks/useCategories';
 import { CategoryOption } from '../../types';
 import { lightTap } from '../../services/haptics';
@@ -59,7 +60,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
   const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const categories = useCategories(type, mode);
-  const { updateCategoryOverride, addCustomCategory, deleteCustomCategory, setCategoryOrder } =
+  const { updateCategoryOverride, addCustomCategory, deleteCustomCategory, updateCustomCategory, setCategoryOrder } =
     useCategoryStore();
 
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -108,8 +109,9 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
       showToast('Category added', 'success');
     } else if (editingCategory) {
       if (isCustom(editingCategory.id)) {
-        deleteCustomCategory(type, editingCategory.id, mode);
-        addCustomCategory(type, {
+        // In-place update — must PRESERVE the id, else every budget/transaction
+        // pointing at custom_<ts> orphans into a dangling reference.
+        updateCustomCategory(type, editingCategory.id, {
           name: trimmedName,
           icon: editIcon,
           color: editColor,
@@ -124,18 +126,28 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
     }
 
     setEditModalVisible(false);
-  }, [editName, isNewCategory, editIcon, editColor, editingCategory, type, mode, addCustomCategory, deleteCustomCategory, updateCategoryOverride, showToast]);
+  }, [editName, isNewCategory, editIcon, editColor, editingCategory, type, mode, addCustomCategory, updateCustomCategory, updateCategoryOverride, showToast]);
 
   const handleDelete = useCallback(() => {
     if (!editingCategory || !isCustom(editingCategory.id)) return;
 
-    Alert.alert('Delete Category', `Delete "${editingCategory.name}"?`, [
+    const catId = editingCategory.id;
+    // Budgets reference categories by id — deleting the category must also delete
+    // its budgets, else they keep a dangling custom_<ts> id (rendered as raw id).
+    const linkedBudgets = usePersonalStore.getState().budgets.filter((b) => b.category === catId);
+    const warn = linkedBudgets.length > 0
+      ? `\n\nThis also removes ${linkedBudgets.length} budget${linkedBudgets.length > 1 ? 's' : ''} using it.`
+      : '';
+
+    Alert.alert('Delete Category', `Delete "${editingCategory.name}"?${warn}`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          deleteCustomCategory(type, editingCategory.id, mode);
+          deleteCustomCategory(type, catId, mode);
+          const deleteBudget = usePersonalStore.getState().deleteBudget;
+          linkedBudgets.forEach((b) => deleteBudget(b.id));
           setEditModalVisible(false);
           showToast('Category deleted', 'success');
         },

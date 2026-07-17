@@ -357,6 +357,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
+    // Clip to the rounded frame so the item cards' neu highlight can't bleed past
+    // the (shadowless) sheet edge and glow white onto the dark scrim behind it.
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
