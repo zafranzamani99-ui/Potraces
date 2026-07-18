@@ -124,6 +124,19 @@ export default function AccountScreen() {
     if (settings.sampleDataLoaded) {
       await settings.clearSampleData({ localOnly: true });
     }
+    // Cloud backup is a PAID feature. Signing in must NOT silently enable it for a free
+    // user — that bypassed the toggle's own paywall (every sign-in path called this).
+    // Auth still succeeded; the user can upgrade and flip the toggle (which enforces the
+    // paywall via hasCloudBackup) any time.
+    if (!usePremiumStore.getState().hasCloudBackup()) {
+      // Only nudge to upgrade if backup isn't already running — a grandfathered free user
+      // whose sync is on must not be told "backup is a paid feature" (it contradicts reality).
+      if (!useSettingsStore.getState().personalSyncEnabled) {
+        showToast(tr.settings.cloudBackupPaid, 'info');
+      }
+      if (returnTo) navigation.navigate(returnTo as never);
+      return;
+    }
     useSettingsStore.getState().setPersonalSyncEnabled(true);
     showToast(tr.auth.acctBackingUp, 'info');
     // Came from another screen's gate (Quick Log setup)? Take the user back

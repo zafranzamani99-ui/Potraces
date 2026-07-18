@@ -4,6 +4,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { startOfMonth } from 'date-fns';
 import { PremiumState, PremiumTier } from '../types';
 import { canCreate, remainingOf, TIER_LIMITS } from '../constants/premium';
+import { disablePersonalSync } from '../services/personalSync';
+
+// Losing the cloud-backup entitlement (a genuine downgrade / cancel) must STOP syncing —
+// otherwise a downgraded user keeps backing up for free and the toggle still reads ON.
+// Keyed on the TRANSITION (prev had backup, next doesn't), NOT the new tier alone: this
+// makes free→free a no-op, so billing.syncFromCustomerInfo's launch-time setTier('free')
+// reconcile of a never-subscribed user can never force-disable a grandfathered free user's
+// pre-existing sync. Upgrades (→ backup-capable) are no-ops too. Safe: personalSync's
+// dependency tree does not import premiumStore, so no import cycle.
+const enforceBackupEntitlement = (prev: PremiumTier, next: PremiumTier) => {
+  if (TIER_LIMITS[prev].cloudBackup && !TIER_LIMITS[next].cloudBackup) {
+    void disablePersonalSync(false);
+  }
+};
 
 // Gates read the ACTIVE tier's row in TIER_LIMITS (src/constants/tiers.ts). No more
 // free-vs-premium branching — a single table drives all four tiers, and the paywall's
@@ -23,14 +37,17 @@ export const usePremiumStore = create<PremiumState>()(
       // paywall calls setTier(selectedTier) — that's the seam RevenueCat plugs into.
       subscribe: () => set({ tier: 'premium', subscribedAt: new Date() }),
 
-      setTier: (tier: PremiumTier) =>
-        set({ tier, subscribedAt: tier === 'free' ? null : new Date() }),
+      setTier: (tier: PremiumTier) => {
+        const prev = get().tier;
+        set({ tier, subscribedAt: tier === 'free' ? null : new Date() });
+        enforceBackupEntitlement(prev, tier);
+      },
 
-      unsubscribe: () =>
-        set({
-          tier: 'free',
-          subscribedAt: null,
-        }),
+      unsubscribe: () => {
+        const prev = get().tier;
+        set({ tier: 'free', subscribedAt: null });
+        enforceBackupEntitlement(prev, 'free');
+      },
 
       incrementScanCount: () =>
         set((state) => ({
