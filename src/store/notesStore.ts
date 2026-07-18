@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { NotesState, NotePage, AIExtraction, AppMode } from '../types';
+import { NotesState, NotePage, AppMode } from '../types';
+import { useTombstoneStore } from './tombstoneStore';
 
 export const useNotesStore = create<NotesState>()(
   persist(
@@ -9,6 +10,10 @@ export const useNotesStore = create<NotesState>()(
       pages: [],
       activePageId: null,
       isFirstWrite: true,
+      // Ephemeral delete tombstones — drive the remote DELETE in pushAll, then
+      // clear on a successful push. The durable tombstoneStore is the source of
+      // truth that keeps a deleted note from resurrecting on pull.
+      _deletedNoteIds: [],
 
       createPage: (mode: AppMode) => {
         const id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
@@ -42,19 +47,33 @@ export const useNotesStore = create<NotesState>()(
           }),
         })),
 
-      deletePage: (id) =>
+      updatePageFormatting: (id, formatting) =>
+        set((state) => ({
+          pages: state.pages.map((p) =>
+            p.id === id ? { ...p, formatting, updatedAt: new Date() } : p
+          ),
+        })),
+
+      deletePage: (id) => {
         set((state) => ({
           pages: state.pages.filter((p) => p.id !== id),
           activePageId: state.activePageId === id ? null : state.activePageId,
-        })),
+          _deletedNoteIds: [...(state._deletedNoteIds ?? []), id],
+        }));
+        useTombstoneStore.getState().addTombstones([id]);
+      },
 
       deletePages: (ids) => {
         const idSet = new Set(ids);
         set((state) => ({
           pages: state.pages.filter((p) => !idSet.has(p.id)),
           activePageId: state.activePageId && idSet.has(state.activePageId) ? null : state.activePageId,
+          _deletedNoteIds: [...(state._deletedNoteIds ?? []), ...ids],
         }));
+        useTombstoneStore.getState().addTombstones(ids);
       },
+
+      clearNotesTombstones: () => set({ _deletedNoteIds: [] }),
 
       setActivePageId: (id) => set({ activePageId: id }),
 
@@ -132,9 +151,11 @@ export const useNotesStore = create<NotesState>()(
         })),
         activePageId: state.activePageId,
         isFirstWrite: state.isFirstWrite,
+        _deletedNoteIds: state._deletedNoteIds,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          state._deletedNoteIds = state._deletedNoteIds || [];
           const sd = (v: any) => {
             if (!v) return new Date();
             const d = v instanceof Date ? v : new Date(v);

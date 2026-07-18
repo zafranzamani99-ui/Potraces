@@ -77,8 +77,16 @@ export function computeBudgetRow(budget: Budget, transactions: Transaction[], no
   let carry = 0;
   if (budget.rollover) {
     const prev = getPreviousPeriodInterval(period, now);
-    const prevSpent = sumExpenses(transactions, budget.category, prev.start, prev.end);
-    carry = Math.max(allocated - prevSpent, 0);
+    // Rollover carries LEFTOVER from the PRIOR period. If the budget didn't exist
+    // for that whole prior period, there is no leftover to carry — else prevSpent=0
+    // fabricates a full extra allocation, doubling the limit and the "free to spend"
+    // hero on a brand-new rollover budget (or any category with no prior spend).
+    const startedMs = new Date(budget.startDate ?? budget.createdAt).getTime();
+    const existedPriorPeriod = Number.isFinite(startedMs) && startedMs <= prev.start.getTime();
+    if (existedPriorPeriod) {
+      const prevSpent = sumExpenses(transactions, budget.category, prev.start, prev.end);
+      carry = Math.max(allocated - prevSpent, 0);
+    }
   }
   return { spentAmount, monthSpent, carry, effectiveAmount: allocated + carry };
 }

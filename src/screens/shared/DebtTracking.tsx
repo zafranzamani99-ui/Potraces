@@ -134,6 +134,7 @@ import {
 import { useCategories } from '../../hooks/useCategories';
 import SharedSubscriptionTab from '../../components/debt/SharedSubscriptionTab';
 import SharedSubFormSheet from '../../components/debt/SharedSubFormSheet';
+import PaywallModal from '../../components/common/PaywallModal';
 import SharedSubDetailSheet from '../../components/debt/SharedSubDetailSheet';
 import PriceChangeSheet from '../../components/debt/PriceChangeSheet';
 import ScanningOverlay from '../../components/debt/ScanningOverlay';
@@ -391,6 +392,7 @@ const DebtTracking: React.FC = () => {
   const [splitChoiceVisible, setSplitChoiceVisible] = useState(false);
   const [fabChoiceVisible, setFabChoiceVisible] = useState(false);
   const [sharedFormVisible, setSharedFormVisible] = useState(false);
+  const [sharedPaywallVisible, setSharedPaywallVisible] = useState(false);
   const [sharedDetailVisible, setSharedDetailVisible] = useState(false);
   const [sharedDetailSub, setSharedDetailSub] = useState<SharedSubscription | null>(null);
   const [sharedEditSub, setSharedEditSub] = useState<SharedSubscription | null>(null);
@@ -3350,9 +3352,16 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   }, []);
 
   const handleOpenSharedForm = useCallback((editSub?: SharedSubscription) => {
+    // Creating a NEW shared sub is capped per tier (free 3 / basic 6 / pro+ ∞);
+    // editing an existing one is always allowed. Gate at the entry so we never open
+    // the form Modal just to reject the save (and avoid a nested-modal paywall).
+    if (!editSub && !usePremiumStore.getState().canCreateSharedSub(sharedSubscriptions.length)) {
+      setSharedPaywallVisible(true);
+      return;
+    }
     setSharedEditSub(editSub ?? null);
     setSharedFormVisible(true);
-  }, []);
+  }, [sharedSubscriptions.length]);
 
   const handleGenerateSharedDebts = useCallback((subId: string, month: string) => {
     const sub = sharedSubscriptions.find((s) => s.id === subId);
@@ -7446,6 +7455,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         onClose={() => { setSharedFormVisible(false); setSharedEditSub(null); }}
         editingSub={sharedEditSub}
       />
+      <PaywallModal
+        visible={sharedPaywallVisible}
+        onClose={() => setSharedPaywallVisible(false)}
+        feature="subscription"
+        currentUsage={sharedSubscriptions.length}
+      />
       <SharedSubDetailSheet
         visible={sharedDetailVisible}
         onClose={() => { setSharedDetailVisible(false); setSharedDetailSub(null); }}
@@ -7880,6 +7895,9 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   scrollContent: {
     padding: SPACING.lg,
     paddingBottom: 80,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // Hero — Two Mini Stat Cards

@@ -369,7 +369,7 @@ export default function QuickLogSetup() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: SPACING.xl },
+  container: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: SPACING.xl, maxWidth: 680, width: '100%', alignSelf: 'center' as const },
   intro: { fontSize: 15, lineHeight: 22 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   statusDot: { width: 8, height: 8, borderRadius: 4 },

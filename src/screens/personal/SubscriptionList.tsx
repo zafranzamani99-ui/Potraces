@@ -59,6 +59,7 @@ import ModalToastHost from '../../components/common/ModalToastHost';
 import { useDebtStore } from '../../store/debtStore';
 import { useRoute, RouteProp, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { usePremiumStore } from '../../store/premiumStore';
+import { TIER_LIMITS } from '../../constants/premium';
 import EchoInlineChat from '../../components/common/EchoInlineChat';
 import TypewriterText from '../../components/common/TypewriterText';
 import PaywallModal from '../../components/common/PaywallModal';
@@ -138,7 +139,7 @@ type CommitmentKind = 'bills' | 'payments' | 'subs';
 type StatusFilter = 'all' | 'upcoming' | 'overdue' | 'cleared' | 'paused' | 'archived';
 
 type SubscriptionListParams = {
-  SubscriptionList: { highlightId?: string } | undefined;
+  SubscriptionList: { highlightId?: string; initialStatus?: StatusFilter } | undefined;
 };
 
 // ─── Brand Color Helpers ──────────────────────────────────
@@ -421,6 +422,16 @@ const SubscriptionList: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [filterModalVisible, setFilterModalVisible] = useState(false);
 
+  // Deep-link: Dashboard's "coming up" card lands here pre-filtered (e.g.
+  // 'upcoming'). Param cleared so later visits start on 'all' as usual.
+  useEffect(() => {
+    const s = route.params?.initialStatus;
+    if (s) {
+      setStatusFilter(s);
+      navigation.setParams({ initialStatus: undefined });
+    }
+  }, [route.params?.initialStatus, navigation]);
+
   // ── Modal state ─────────────────────────────────────────
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -487,7 +498,7 @@ const SubscriptionList: React.FC = () => {
             <TouchableOpacity
               onPress={() => {
                 lightTap();
-                if (tier !== 'premium') { setPaywallVisible(true); return; }
+                if (!TIER_LIMITS[tier].askEchoPerScreen) { setPaywallVisible(true); return; }
                 setEchoHidden(false);
               }}
               accessibilityRole="button"
@@ -497,7 +508,7 @@ const SubscriptionList: React.FC = () => {
               <Feather
                 name="zap"
                 size={20}
-                color={tier !== 'premium' ? C.textMuted : C.textPrimary}
+                color={!TIER_LIMITS[tier].askEchoPerScreen ? C.textMuted : C.textPrimary}
               />
             </TouchableOpacity>
           )}
@@ -2828,7 +2839,7 @@ const SubscriptionList: React.FC = () => {
             style={styles.commitmentEchoFab}
             onPress={() => {
               lightTap();
-              if (tier !== 'premium') { setPaywallVisible(true); return; }
+              if (!TIER_LIMITS[tier].askEchoPerScreen) { setPaywallVisible(true); return; }
               setEchoAutoPrompt(undefined);
               setEchoSheetVisible(true);
               setGreetingDismissed(true);
@@ -2838,7 +2849,7 @@ const SubscriptionList: React.FC = () => {
             accessibilityLabel="Open Echo assistant"
           >
             <Feather name="zap" size={22} color={C.onAccent} />
-            {tier !== 'premium' && (
+            {!TIER_LIMITS[tier].askEchoPerScreen && (
               <View style={styles.commitmentEchoFabLock}>
                 <Feather name="lock" size={9} color={C.onAccent} />
               </View>
@@ -2850,7 +2861,7 @@ const SubscriptionList: React.FC = () => {
               style={styles.commitmentEchoGreetingBubble}
               onPress={() => {
                 lightTap();
-                if (tier !== 'premium') { setPaywallVisible(true); return; }
+                if (!TIER_LIMITS[tier].askEchoPerScreen) { setPaywallVisible(true); return; }
                 setEchoAutoPrompt(greetingChips[0]?.question || greetingText);
                 setEchoSheetVisible(true);
               }}
@@ -2952,7 +2963,7 @@ const SubscriptionList: React.FC = () => {
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },
   scrollView: { flex: 1 },
-  scrollContent: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xl },
+  scrollContent: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xl, maxWidth: 680, width: '100%', alignSelf: 'center' as const },
 
   // ── Tab chips ─────────────────────────────────────────
   chipSection: {

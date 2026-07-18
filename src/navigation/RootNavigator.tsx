@@ -400,7 +400,7 @@ const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="FinancialPulse"
           component={FinancialPulse}
-          options={makeBackHeader(C, mode, 'Financial Pulse')}
+          options={makeBackHeader(C, mode, '')}
         />
         <Stack.Screen
           name="LogIncome"

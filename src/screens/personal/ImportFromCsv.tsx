@@ -376,7 +376,7 @@ const ImportFromCsv: React.FC = () => {
         maxToRenderPerBatch={10}
         windowSize={5}
         removeClippedSubviews
-        contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: 120 + insets.bottom, maxWidth: 680, width: '100%', alignSelf: 'center' }}
       />
 
       <View style={[styles.footer, { paddingBottom: SPACING.md + insets.bottom }]}>

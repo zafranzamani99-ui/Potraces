@@ -20,10 +20,11 @@ import {
   goalToRemote, debtToRemote, splitToRemote, contactToRemote, savingsToRemote, receiptToRemote,
   txFromRemote, walletFromRemote, transferFromRemote, subFromRemote, budgetFromRemote,
   goalFromRemote, debtFromRemote, splitFromRemote, contactFromRemote, savingsFromRemote, receiptFromRemote,
+  noteToRemote, noteFromRemote,
 } from '../src/services/personalSyncMappers';
 import type {
   Transaction, Wallet, WalletTransfer, Subscription, Budget, Goal,
-  Debt, SplitExpense, Contact, SavingsAccount, SavedReceipt,
+  Debt, SplitExpense, Contact, SavingsAccount, SavedReceipt, NotePage,
 } from '../src/types';
 
 const UID = 'user-123';
@@ -117,8 +118,19 @@ const fixtures = {
     id: 'rc1', title: 'Tesco run', vendor: 'Tesco', items: [{ name: 'milk', price: 6.5, qty: 1 }],
     subtotal: 6.5, tax: 0.4, total: 6.9, date: D1, category: 'groceries', myTaxCategory: 'none',
     paymentMethod: 'card', location: 'KL', walletId: 'w1', verified: true, year: 2026,
-    transactionId: 't1', imageUri: 'https://i/receipt.jpg', createdAt: D0, updatedAt: D1,
+    transactionId: 't1', imageUri: 'https://i/receipt.jpg', remoteImagePath: 'uid-x/personal/rc1.jpg', createdAt: D0, updatedAt: D1,
   } as unknown as SavedReceipt,
+
+  note: {
+    id: 'n1', title: 'Groceries', content: 'Groceries\nmilk 5\neggs 8',
+    formatting: { marks: [{ start: 0, end: 9, attr: 'b' }], blocks: [{ at: 10, style: 'heading' }] },
+    extractions: [
+      { id: 'ex1', type: 'expense', rawText: 'milk — RM 5',
+        extractedData: { amount: 5, description: 'milk', category: 'food', transactionType: 'expense', wallet: null, person: null },
+        status: 'pending' },
+    ],
+    mode: 'personal', createdAt: D0, updatedAt: D2,
+  } as unknown as NotePage,
 };
 
 // Fields intentionally NOT synced (with reason). Round-trip won't preserve these.
@@ -128,6 +140,10 @@ const IGNORE: Record<string, Set<string>> = {
     'timeContext', 'dayContext', 'sizeContext', 'frequencyContext',
     'emotionalFlag', 'confidence', 'categoryExplanation',
   ]),
+  // imageUri is a device-local cached file path; the remote row carries the
+  // Storage object path in remoteImagePath, and pull re-hydrates imageUri from
+  // it (ensureLocalReceiptImage). So imageUri intentionally doesn't round-trip.
+  receipt: new Set(['imageUri']),
 };
 
 // Each entity's mapper pair.
@@ -143,6 +159,7 @@ const ENTITIES: Array<{ key: string; to: (u: string, x: any) => any; from: (r: a
   { key: 'contact', to: contactToRemote, from: contactFromRemote },
   { key: 'savings', to: savingsToRemote, from: savingsFromRemote },
   { key: 'receipt', to: receiptToRemote, from: receiptFromRemote },
+  { key: 'note', to: noteToRemote, from: noteFromRemote },
 ];
 
 // ─── Deep equality (Date by time; undefined == absent; ignore at top level) ────

@@ -33,13 +33,16 @@ import { useLearningStore } from '../../store/learningStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useUILayoutStore } from '../../store/uiLayoutStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useToast } from '../../context/ToastContext';
-import { AIMessage, AIMessageAction, Transaction } from '../../types';
+import { AIMessage, AIMessageAction, Transaction, Budget } from '../../types';
 import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
+import { useNeu } from '../../components/common/neu';
+import NeuButton from '../../components/common/NeuButton';
+import NeuPressable from '../../components/common/NeuPressable';
 import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
@@ -164,7 +167,8 @@ const getActionLabel = (
 // Typing indicator — 3 olive dots with staggered animation
 const TypingDots = memo(() => {
   const C = useCalm();
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
+  const styles = useMemo(() => makeStyles(C, neu), [C, neu]);
   const dots = useRef([new Animated.Value(0.3), new Animated.Value(0.3), new Animated.Value(0.3)]).current;
 
   useEffect(() => {
@@ -232,7 +236,8 @@ const HighlightedText = memo(({ text, style }: { text: string; style: any }) => 
 // A blinking caret (inline, so it wraps with the text) gives the "typing" feel.
 const StreamingBubble = memo(({ text }: { text: string }) => {
   const C = useCalm();
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
+  const styles = useMemo(() => makeStyles(C, neu), [C, neu]);
   const caret = useRef(new Animated.Value(1)).current;
   const parts = useMemo(() => text.split(/(RM\s?[\d,]+\.?\d*)/gi), [text]);
 
@@ -267,7 +272,8 @@ const StreamingBubble = memo(({ text }: { text: string }) => {
 const ActionCard = memo(({ action }: { action: AIMessageAction }) => {
   const C = useCalm();
   const t = useT();
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
+  const styles = useMemo(() => makeStyles(C, neu), [C, neu]);
   if (!action.message && !action.description) return null;
 
   const label = action.message
@@ -307,7 +313,8 @@ const PendingChip = memo(({
 }) => {
   const C = useCalm();
   const t = useT();
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
+  const styles = useMemo(() => makeStyles(C, neu), [C, neu]);
   const icon = ACTION_ICONS[action.type] || 'plus';
   const typeLabel = getActionLabel(action.type, t);
   const personLabel = action.person ? ` · ${action.person}` : '';
@@ -336,7 +343,7 @@ const PendingChip = memo(({
       <View style={styles.pendingChipIconWrap}>
         <Feather name={icon} size={12} color={C.bronze} />
         {flagged && (
-          <View style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: 4, backgroundColor: C.bronze, borderWidth: 1, borderColor: C.surface }} />
+          <View style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: 4, backgroundColor: C.bronze, borderWidth: 1, borderColor: C.background }} />
         )}
       </View>
       <Text style={styles.pendingChipText} numberOfLines={1}>
@@ -374,7 +381,10 @@ const ActionEditModal = ({
 }) => {
   const C = useCalm();
   const t = useT();
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const isDark = useIsDark();
+  const neu = useNeu(undefined, { faintDark: true }); // icon well / type pill
+  const neuStd = useNeu(); // field cards — standard neu, the visible onyx raise
+  const styles = useMemo(() => makeStyles(C, neu, neuStd, isDark), [C, neu, neuStd, isDark]);
   const [desc, setDesc] = useState('');
   const [amount, setAmount] = useState('');
   const [actionType, setActionType] = useState<ChatActionType>('add_expense');
@@ -497,22 +507,41 @@ const ActionEditModal = ({
         <View style={styles.modalOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            {/* Close — top right */}
-            <TouchableOpacity
-              onPress={onClose}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={styles.modalClose}
-            >
-              <Feather name="x" size={18} color={C.textMuted} />
-            </TouchableOpacity>
-
             <ScrollView
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               nestedScrollEnabled
               bounces={false}
+              style={styles.modalScroll}
               contentContainerStyle={styles.modalScrollContent}
             >
+              {/* Header — type pill (opens picker) + close */}
+              <View style={styles.editHeader}>
+                <TouchableOpacity
+                  style={styles.editTypePill}
+                  onPress={() => { lightTap(); setShowTypePicker(true); }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${t.moneyChat.typeLabel}: ${getActionLabel(actionType, t)}`}
+                >
+                  <Feather
+                    name={SWITCHABLE_TYPE_KEYS.find((s) => s.key === actionType)?.icon || 'circle'}
+                    size={14}
+                    color={C.bronze}
+                  />
+                  <Text style={styles.editTypePillText}>{getActionLabel(actionType, t)}</Text>
+                  <Feather name="chevron-down" size={12} color={C.textMuted} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={onClose}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.moneyChat.cancel}
+                >
+                  <Feather name="x" size={18} color={C.textMuted} />
+                </TouchableOpacity>
+              </View>
+
               {flagNote ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: withAlpha(C.bronze, 0.08), borderRadius: RADIUS.md, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm, marginBottom: SPACING.sm }}>
                   <Feather name="alert-circle" size={14} color={C.bronze} />
@@ -554,32 +583,7 @@ const ActionEditModal = ({
                   </Text>
                 </View>
               ) : null}
-              {/* Type selector — tap to open picker */}
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>{t.moneyChat.typeLabel}</Text>
-                <TouchableOpacity
-                  style={styles.typeSelect}
-                  onPress={() => {
-                    lightTap();
-                    setShowTypePicker(true);
-                  }}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${t.moneyChat.typeLabel}: ${getActionLabel(actionType, t)}`}
-                >
-                  <Feather
-                    name={SWITCHABLE_TYPE_KEYS.find((s) => s.key === actionType)?.icon || 'circle'}
-                    size={14}
-                    color={C.bronze}
-                  />
-                  <Text style={styles.typeSelectText}>
-                    {getActionLabel(actionType, t)}
-                  </Text>
-                  <Feather name="chevron-down" size={14} color={C.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Amount — large and clean */}
+              {/* Amount — hero, filled card */}
               <View style={styles.amountSection}>
                 <Text style={styles.amountPrefix}>RM</Text>
                 <TextInput
@@ -593,45 +597,52 @@ const ActionEditModal = ({
                 />
               </View>
 
-              {/* Description — underline style */}
-              <TextInput
-                style={styles.descInput}
-                value={desc}
-                onChangeText={setDesc}
-                placeholder={t.moneyChat.descPlaceholder}
-                placeholderTextColor={C.textMuted}
-                accessibilityLabel={t.moneyChat.descPlaceholder}
-              />
+              {/* Description field card */}
+              <View style={styles.editFieldCard}>
+                <Text style={styles.editFieldLabel}>{t.moneyChat.descPlaceholder}</Text>
+                <TextInput
+                  style={styles.editFieldInput}
+                  value={desc}
+                  onChangeText={setDesc}
+                  placeholder={t.moneyChat.descPlaceholder}
+                  placeholderTextColor={C.textMuted}
+                  accessibilityLabel={t.moneyChat.descPlaceholder}
+                />
+              </View>
 
               {/* Category dropdown */}
               {showCategory && (
-                <CategoryPicker
-                  categories={categories}
-                  selectedId={categoryId}
-                  onSelect={setCategoryId}
-                  label={t.quickAdd.categoryLabel}
-                  layout="dropdown"
-                  onNavigateToSettings={handleNavigateToSettings}
-                />
+                <View style={styles.editPickerCard}>
+                  <CategoryPicker
+                    categories={categories}
+                    selectedId={categoryId}
+                    onSelect={setCategoryId}
+                    label={t.quickAdd.categoryLabel}
+                    layout="dropdown"
+                    onNavigateToSettings={handleNavigateToSettings}
+                  />
+                </View>
               )}
 
               {/* Wallet dropdown */}
               {showWallet && wallets.length > 0 && (
-                <WalletPicker
-                  wallets={wallets}
-                  selectedId={walletId}
-                  onSelect={setWalletId}
-                  label={t.quickAdd.walletLabel}
-                />
+                <View style={styles.editPickerCard}>
+                  <WalletPicker
+                    wallets={wallets}
+                    selectedId={walletId}
+                    onSelect={setWalletId}
+                    label={t.quickAdd.walletLabel}
+                  />
+                </View>
               )}
 
               {/* Person + debt direction */}
               {showPerson && (
                 <>
-                  <View style={styles.editField}>
-                    <Text style={styles.editLabel}>{t.moneyChat.personLabel}</Text>
+                  <View style={styles.editFieldCard}>
+                    <Text style={styles.editFieldLabel}>{t.moneyChat.personLabel}</Text>
                     <TextInput
-                      style={styles.descInput}
+                      style={styles.editFieldInput}
                       value={person}
                       onChangeText={setPerson}
                       placeholder={t.moneyChat.namePlaceholder}
@@ -668,17 +679,14 @@ const ActionEditModal = ({
                 </>
               )}
 
-              {/* Save — canonical primary action verb (UX-C1 swap-in) */}
-              <TouchableOpacity
-                style={styles.confirmBtnFull}
+              {/* Save — canonical primary action verb (UX-C1 swap-in); shared olive NeuButton per the neu standard */}
+              <NeuButton
+                icon="check"
+                label={t.moneyChat.save}
                 onPress={guardedConfirm}
-                activeOpacity={0.7}
-                accessibilityRole="button"
                 accessibilityLabel={t.moneyChat.save}
-              >
-                <Feather name="check" size={15} color="#fff" />
-                <Text style={styles.confirmBtnText}>{t.moneyChat.save}</Text>
-              </TouchableOpacity>
+                style={{ marginTop: SPACING.xs }}
+              />
 
               <TouchableOpacity
                 style={styles.discardBtn}
@@ -757,7 +765,8 @@ const ResolveTargetModal = ({
 }) => {
   const C = useCalm();
   const t = useT();
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
+  const styles = useMemo(() => makeStyles(C, neu), [C, neu]);
   if (!state) return null;
 
   const { action, resolved } = state;
@@ -789,16 +798,13 @@ const ResolveTargetModal = ({
                 <Feather name={isDelete ? 'trash-2' : 'edit-3'} size={15} color={C.bronze} />
                 <Text style={styles.resolveRowText}>{fmtRow(resolved.match)}</Text>
               </View>
-              <TouchableOpacity
-                style={styles.confirmBtnFull}
-                activeOpacity={0.8}
+              <NeuButton
+                icon="check"
+                label={isDelete ? t.moneyChat.removeEntry : t.moneyChat.save}
                 onPress={() => onConfirm(action, { description: resolved.match!.description, amount: resolved.match!.amount, type: resolved.match!.type })}
-                accessibilityRole="button"
                 accessibilityLabel={isDelete ? t.moneyChat.removeEntry : t.moneyChat.save}
-              >
-                <Feather name="check" size={15} color="#fff" />
-                <Text style={styles.confirmBtnText}>{isDelete ? t.moneyChat.removeEntry : t.moneyChat.save}</Text>
-              </TouchableOpacity>
+                style={{ marginTop: SPACING.xs }}
+              />
             </>
           )}
 
@@ -838,7 +844,8 @@ const ResolveTargetModal = ({
 
 const ChatBubble = memo(({ item, onSelectText, onViewImage }: { item: AIMessage; onSelectText: (text: string) => void; onViewImage: (uri: string) => void }) => {
   const C = useCalm();
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
+  const styles = useMemo(() => makeStyles(C, neu), [C, neu]);
   const isUser = item.role === 'user';
   const hasText = item.content.trim().length > 0;
   const hasImage = isUser && !!item.imageUri;
@@ -898,7 +905,8 @@ const MoneyChat: React.FC = () => {
   const guideTargetRef = useRef<any>(null);
   const C = useCalm();
   const t = useT();
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
+  const styles = useMemo(() => makeStyles(C, neu), [C, neu]);
   const route = useRoute<any>();
   const navigation = useNavigation();
   // Per-mount keyboard handling (each is the config proven correct for its mount):
@@ -1171,12 +1179,15 @@ const MoneyChat: React.FC = () => {
   // owner sees everything at once instead of scrolling a long chip row (B8).
   const autoOpenedReviewRef = useRef(false);
   useEffect(() => {
-    if (pendingActions.length >= 4 && !autoOpenedReviewRef.current && !showReviewSheet) {
+    // Not while an edit is handing off (editingId set): closing the review sheet to open
+    // ActionEditModal would otherwise re-fire this effect and re-present the sheet on top of
+    // the edit modal — two Modals at once = the iOS stacked-modal glitch (R1).
+    if (pendingActions.length >= 4 && !autoOpenedReviewRef.current && !showReviewSheet && !editingId) {
       autoOpenedReviewRef.current = true;
       setShowReviewSheet(true);
     }
     if (pendingActions.length < 4) autoOpenedReviewRef.current = false;
-  }, [pendingActions.length, showReviewSheet]);
+  }, [pendingActions.length, showReviewSheet, editingId]);
 
   // A capture that failed to send (offline / AI down) is kept across reloads —
   // bring it back into the composer on open so it's never lost.
@@ -1364,35 +1375,39 @@ const MoneyChat: React.FC = () => {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginRight: SPACING.sm }}>
-          {/* Always shown (not gated on hasConversations) — otherwise the native iOS header
-              draws an empty glass circle here with no icon. White, not muted, so it reads.
-              32×32 centered box — the exact geometry of the header back button
-              (makeBackHeader), so the right circle matches the left one instead of
-              the fatter blob a 44×44 box made iOS draw. hitSlop keeps the tap target big. */}
+        // Two plain icon buttons — same pattern as the Commitments header; the
+        // native iOS header supplies the circular chrome. History always shown;
+        // new-chat once there are messages.
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <TouchableOpacity
-            onPress={() => setShowHistory(true)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            onPress={() => { lightTap(); setShowHistory(true); }}
+            accessibilityRole="button"
+            accessibilityLabel={t.chat.pastChats}
             style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Feather name="clock" size={22} color={C.textPrimary} />
+            <Feather name="clock" size={19} color={C.textPrimary} />
           </TouchableOpacity>
           {chatMessages.length > 0 && (
             <TouchableOpacity
-              onPress={() => { archiveChat(); }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              onPress={() => { lightTap(); archiveChat(); }}
+              accessibilityRole="button"
+              accessibilityLabel={t.chat.newChat}
               style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
             >
-              <Feather name="plus" size={22} color={C.textPrimary} />
+              <Feather name="plus" size={20} color={C.textPrimary} />
             </TouchableOpacity>
           )}
         </View>
       ),
     });
-  }, [chatMessages.length, hasConversations, archiveChat, navigation]);
+  }, [chatMessages.length, hasConversations, archiveChat, navigation, C]);
 
   // Scroll to bottom when new messages arrive
   const shouldScrollRef = useRef(false);
+  // A fresh mount (the quick-action root-stack entry) renders the list from the TOP (first
+  // message) and never auto-scrolls, unlike the persistent tab mount which keeps its bottom
+  // position. This lands every fresh mount on the LATEST message, so both entry points match.
+  const didInitialScrollRef = useRef(false);
   // Ref mirror of showScrollDown so streaming callbacks (stable deps) can read
   // whether the user has scrolled away without going stale.
   const showScrollDownRef = useRef(false);
@@ -1413,10 +1428,31 @@ const MoneyChat: React.FC = () => {
   }, []);
 
   const handleContentSizeChange = useCallback(() => {
+    // First layout of a fresh mount → jump straight to the latest message (no animation).
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      flatListRef.current?.scrollToEnd({ animated: false });
+      return;
+    }
     if (shouldScrollRef.current) {
       shouldScrollRef.current = false;
       flatListRef.current?.scrollToEnd({ animated: true });
     }
+  }, []);
+
+  // Land a fresh mount on the LATEST message. The persistent tab mount keeps its bottom
+  // position; a fresh root-stack (quick-action) mount otherwise opens at the first message.
+  // A single scrollToEnd on first layout can land short (the list height/content settles
+  // async, esp. in the root-stack mount), so retry across a few frames.
+  useEffect(() => {
+    if (chatMessages.length === 0) return;
+    didInitialScrollRef.current = true; // suppress the onContentSizeChange initial-scroll (we own it here)
+    const timers = [0, 120, 300, 550].map((ms) =>
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), ms),
+    );
+    return () => timers.forEach(clearTimeout);
+    // Mount-only: chatMessages is already hydrated by the time either entry point opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const contentHeightRef = useRef(0);
@@ -1474,7 +1510,8 @@ const MoneyChat: React.FC = () => {
       r.deletedTransactions?.length ||
       r.debtPaymentId ||
       r.debtIds?.length ||
-      r.subscriptionId
+      r.subscriptionId ||
+      r.deletedBudget
     );
   }, []);
 
@@ -1513,6 +1550,13 @@ const MoneyChat: React.FC = () => {
       else if (r.debtIds?.length) r.debtIds.forEach((id) => debt.deleteDebt?.(id));
 
       if (r.subscriptionId) personal.deleteSubscription?.(r.subscriptionId);
+
+      // delete_budget: re-create the removed budget (addBudget upserts by category,
+      // so a same-category budget is restored to the deleted allocation).
+      if (r.deletedBudget) {
+        const { id, createdAt, updatedAt, spentAmount, ...rest } = r.deletedBudget;
+        personal.addBudget(rest as Omit<Budget, 'id' | 'createdAt' | 'updatedAt' | 'spentAmount'>);
+      }
     });
   }, []);
 
@@ -2075,18 +2119,16 @@ const MoneyChat: React.FC = () => {
               />
             </View>
             {pendingActions.length >= 2 && (
-              <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: SPACING.sm, paddingVertical: SPACING.sm, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: withAlpha(C.deepOlive, 0.3), backgroundColor: withAlpha(C.deepOlive, 0.06) }}
-                activeOpacity={0.8}
-                onPress={() => { lightTap(); setShowReviewSheet(true); }}
-                accessibilityRole="button"
-                accessibilityLabel={`${t.moneyChat.reviewAll} (${pendingActions.length})`}
-              >
-                <Feather name="check-circle" size={15} color={C.deepOlive} />
-                <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.deepOlive }}>
-                  {t.moneyChat.reviewAll} ({pendingActions.length})
-                </Text>
-              </TouchableOpacity>
+              // Neu Select (olive CTA), wrapped so its 100% width insets to the composer's
+              // marginHorizontal — same width as the input bar below it.
+              <View style={{ marginHorizontal: SPACING.md, marginTop: SPACING.sm }}>
+                <NeuButton
+                  icon="check-circle"
+                  label={`${t.moneyChat.reviewAll} (${pendingActions.length})`}
+                  onPress={() => { autoOpenedReviewRef.current = true; setShowReviewSheet(true); }}
+                  accessibilityLabel={`${t.moneyChat.reviewAll} (${pendingActions.length})`}
+                />
+              </View>
             )}
           </View>
         )}
@@ -2139,11 +2181,12 @@ const MoneyChat: React.FC = () => {
             <TouchableOpacity
               style={styles.imageViewerClose}
               onPress={() => setViewerUri(null)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
               accessibilityRole="button"
-              accessibilityLabel="close"
+              accessibilityLabel={t.common.close}
             >
-              <Feather name="x" size={24} color="#fff" />
+              <Feather name="x" size={15} color="rgba(255,255,255,0.9)" />
+              <Text style={styles.imageViewerCloseText}>{t.common.close}</Text>
             </TouchableOpacity>
           </Pressable>
         </Modal>
@@ -2385,7 +2428,7 @@ const MoneyChat: React.FC = () => {
           {/* Mic / Send toggle */}
           {input.trim() || imageUri ? (
             <TouchableOpacity
-              style={[styles.sendButton, isLoading && styles.sendButtonDisabled]}
+              style={[styles.sendButton, { backgroundColor: C.accent }, isLoading && styles.sendButtonDisabled]}
               onPress={handleSend}
               disabled={isLoading}
             >
@@ -2395,7 +2438,7 @@ const MoneyChat: React.FC = () => {
             <TouchableOpacity
               style={[
                 styles.sendButton,
-                isRecording ? styles.micButtonActive : styles.micButton,
+                isRecording && styles.micButtonActive,
                 isLoading && styles.sendButtonDisabled,
               ]}
               onPress={handleMicPress}
@@ -2554,7 +2597,12 @@ const MoneyChat: React.FC = () => {
   );
 };
 
-const makeStyles = (C: typeof CALM) => StyleSheet.create({
+const makeStyles = (
+  C: typeof CALM,
+  neu: ReturnType<typeof useNeu>,
+  neuStd: ReturnType<typeof useNeu> = neu, // standard neu for onyx field cards (ActionEditModal); others default to `neu`
+  isDark = false,
+) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.background,
@@ -2570,6 +2618,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     padding: SPACING['2xl'],
     gap: SPACING.md,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.xl,
@@ -2589,10 +2640,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   suggestionChip: {
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
+    ...neu.raised,
   },
   suggestionText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -2603,6 +2652,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   messageList: {
     padding: SPACING.lg,
     gap: SPACING.md,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   messageBubble: {
     maxWidth: '80%',
@@ -2613,12 +2665,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   userBubble: {
     alignSelf: 'flex-end',
     backgroundColor: C.accent,
+    // Neu's gray shadows are invisible on an olive bubble over near-black — they
+    // need tonal contrast this combo lacks. An accent-tinted glow is the depth
+    // that actually reads on a colored surface (same boxShadow mechanism as neu).
+    boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 10, color: withAlpha(C.accent, 0.28) }] as any,
   },
   assistantBubble: {
     alignSelf: 'flex-start',
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    ...neu.raisedSoft,
   },
   messageText: {
     fontSize: TYPE.insight.fontSize,
@@ -2676,12 +2730,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.sm,
+    ...neu.raised,
   },
 
   // Pending actions — scrollable chips
@@ -2701,6 +2752,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   pendingChipRow: {
     paddingLeft: SPACING.lg,
     paddingRight: SPACING['2xl'],
+    paddingVertical: 6, // room for the chips' neu shadow inside the scroller's clip
     gap: SPACING.sm,
   },
   pendingFade: {
@@ -2714,17 +2766,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: C.surface,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: withAlpha(C.bronze, 0.2),
     paddingHorizontal: SPACING.md,
     paddingVertical: 8,
+    ...neu.raised,
   },
   pendingChipIconWrap: {
     width: 20,
     height: 20,
     borderRadius: 10,
+    ...neu.well,
     backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
@@ -2756,9 +2807,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: 8,
     borderRadius: RADIUS.full,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: withAlpha(C.bronze, 0.25),
+    ...neu.raised,
   },
   undoLastText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -2812,7 +2861,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // Resolve-target modal (B5)
   resolveRoot: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: SPACING.lg,
@@ -2821,13 +2870,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '90%',
     maxWidth: 460,
     maxHeight: '80%',
-    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     padding: SPACING.lg,
     gap: SPACING.sm,
-    ...SHADOWS.lg,
+    ...neu.raisedSoft,
   },
   resolveTitle: {
     fontSize: TYPOGRAPHY.size.base,
@@ -2842,9 +2888,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.border,
     marginBottom: 6,
+    ...neu.raisedSoft,
   },
   resolveRowText: {
     flex: 1,
@@ -2858,18 +2903,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalCard: {
     width: '88%',
     maxHeight: '80%',
-    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    paddingTop: SPACING.xl,
-    ...SHADOWS['2xl'],
+    ...neu.raisedModal,
   },
   modalClose: {
     position: 'absolute',
@@ -2877,8 +2920,71 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     right: SPACING.md,
     zIndex: 1,
   },
+  // neu-onyx-vertical-error fix: the ScrollView clips at its bounds, cutting the neu shadows of
+  // the picker rows / type pill inside — hard lines down the modal. Bleed the viewport out to the
+  // card edge and pad the content back in so shadows have room (see memory neu-boxshadow-device-seam).
+  modalScroll: {
+    marginHorizontal: -SPACING.lg,
+  },
   modalScrollContent: {
-    gap: SPACING.sm,
+    gap: SPACING.sm + 2,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xs,
+  },
+  editHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
+  },
+  editTypePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: RADIUS.full,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.sm + 4,
+    ...neu.raised,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+  },
+  editTypePillText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    letterSpacing: 0.1,
+  },
+  // Field/picker cards — flat faint fill (a neu drop-shadow leaves vertical seams on the
+  // near-black modal; the fill lifts each field cleanly). Matches NoteEditor's edit modal.
+  // Onyx field cards: standard neu.raisedSoft raise + near-black face (0.015) so they read as
+  // BLACK raised cards, not grey slabs. Safe now the modal ScrollView bleeds (modalScroll) so
+  // the shadows don't clip. See memory neu-boxshadow-device-seam.
+  editFieldCard: {
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md + 2,
+    paddingVertical: SPACING.sm + 4,
+    ...neuStd.raisedSoft,
+    backgroundColor: isDark ? withAlpha(C.textPrimary, 0.015) : neuStd.base,
+  },
+  editFieldLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  editFieldInput: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    paddingVertical: 2,
+    letterSpacing: -0.1,
+  },
+  editPickerCard: {
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    ...neuStd.raisedSoft,
+    backgroundColor: isDark ? withAlpha(C.textPrimary, 0.015) : neuStd.base,
   },
   editField: {
     gap: 4,
@@ -2893,9 +2999,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: 8,
     paddingVertical: 8,
     paddingHorizontal: SPACING.sm,
-    borderWidth: 1,
-    borderColor: C.border,
     borderRadius: RADIUS.md,
+    ...neu.raised,
   },
   typeSelectText: {
     flex: 1,
@@ -2911,24 +3016,27 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   typePickerCard: {
     width: '75%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     gap: 2,
-    ...SHADOWS.xl,
+    ...SHADOWS.lg,
   },
   typePickerTitle: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    marginBottom: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    marginBottom: SPACING.md,
   },
   typePickerOption: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
     paddingVertical: 10,
-    paddingHorizontal: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.md,
+    ...neu.raisedSoft,
+    marginBottom: 4,
   },
   typePickerOptionActive: {
     backgroundColor: withAlpha(C.bronze, 0.08),
@@ -2937,6 +3045,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
+    ...neu.well,
     backgroundColor: withAlpha(C.textMuted, 0.08),
     justifyContent: 'center',
     alignItems: 'center',
@@ -2957,26 +3066,33 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: 4,
-    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    ...neuStd.raisedSoft,
+    backgroundColor: isDark ? withAlpha(C.textPrimary, 0.015) : neuStd.base,
   },
   amountPrefix: {
-    fontSize: 18,
+    fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
   },
   amountInput: {
     flex: 1,
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     padding: 0,
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
   },
   descInput: {
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
+    ...neu.insetSoft,
   },
   modalDivider: {
     height: 1,
@@ -2991,7 +3107,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     borderRadius: RADIUS.md,
-    backgroundColor: C.background,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
   },
   debtToggleTheyOwe: {
     backgroundColor: withAlpha(C.deepOlive, 0.12),
@@ -3011,21 +3127,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   debtToggleTextIOwe: {
     color: '#C1694F',
     fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  confirmBtnFull: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: C.deepOlive,
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.md,
-    marginTop: SPACING.xs,
-  },
-  confirmBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
   },
   discardBtn: {
     alignItems: 'center',
@@ -3050,16 +3151,25 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '92%',
     height: '82%',
   },
+  // Bottom-centered "✕ close" pill (moved down from the top-right corner).
   imageViewerClose: {
     position: 'absolute',
-    top: 50,
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    bottom: 64,
+    alignSelf: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  imageViewerCloseText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.3,
   },
 
   // Error notice — transient, above input bar
@@ -3123,11 +3233,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingLeft: SPACING.xs,        // + hugs the left edge → maximum input width
     paddingRight: SPACING.sm,       // mic keeps a touch more air on the right
     paddingVertical: SPACING.md,
-    backgroundColor: C.surface,
     borderRadius: RADIUS['2xl'],    // 28 — echoes the capsule's 30
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C.border,
-    ...SHADOWS.md,                  // soft lift, like the tab bar
+    ...neu.raisedSoft,              // onyx lift — zero outline per the neu standard
   },
   attachBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -3138,14 +3245,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     left: SPACING.sm,
     marginBottom: SPACING.sm,
     minWidth: 210,
-    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
     paddingVertical: SPACING.xs,
     zIndex: 50,
-    ...SHADOWS.lg,
+    ...neu.raisedSoft,
   },
   attachRow: {
     flexDirection: 'row',
@@ -3175,7 +3278,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
-    backgroundColor: C.background,
+    ...neu.insetSoft,
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
@@ -3185,17 +3288,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    ...neu.raised,
   },
   sendButtonDisabled: {
     backgroundColor: C.border,
-  },
-  micButton: {
-    backgroundColor: C.background,
-    borderWidth: 1,
-    borderColor: C.border,
   },
   micButtonActive: {
     backgroundColor: C.accent,
@@ -3205,9 +3303,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   imagePreviewBar: {
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   previewThumb: {
     width: 60,
@@ -3238,20 +3334,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Listening surface (voice) ──────────────────────────────────────────
   listeningSurface: {
-    width: '100%',
-    maxWidth: 640, // tablet cap — same idiom as the old recordingBar
-    alignSelf: 'center',
-    backgroundColor: C.surface,
+    // No `width: '100%'` — that + marginHorizontal made it 100% wide PLUS 16px margins, so it
+    // overflowed ~16px past each edge (wider than the inputBar). Let it stretch-fill minus the
+    // margins, exactly like the inputBar below it. maxWidth still caps it on tablets.
+    maxWidth: 640,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border, // floats in dark (modal-outline rule)
+    ...neu.raisedSoft,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
     marginHorizontal: SPACING.md, // aligns with the inputBar inset
     marginBottom: SPACING.sm,
     gap: SPACING.sm,
-    ...SHADOWS.sm,
   },
   listeningTranscriptWrap: {
     minHeight: 26, // reserve one line so the card doesn't jump on the first word
@@ -3318,6 +3412,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    ...neu.raised,
     backgroundColor: withAlpha(C.bronze, 0.1),
   },
   voiceStopCircle: {
@@ -3326,8 +3421,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
+    ...neu.raised,
     backgroundColor: C.accent,
-    ...SHADOWS.sm,
   },
   listeningFooter: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -3344,17 +3439,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // Conversation history modal
   historyOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   historyCard: {
     width: '88%',
     maxHeight: '70%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    ...SHADOWS['2xl'],
+    ...SHADOWS.lg,
   },
   historyHeader: {
     flexDirection: 'row',
@@ -3380,8 +3475,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.sm,
+    ...neu.raisedSoft,
   },
   historyItemContent: {
     flex: 1,
@@ -3400,17 +3497,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // Select text modal
   selectTextOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   selectTextCard: {
     width: '88%',
     maxHeight: '70%',
-    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    ...SHADOWS['2xl'],
+    ...neu.raisedSoft,
   },
   selectTextHeader: {
     flexDirection: 'row',

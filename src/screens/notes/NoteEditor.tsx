@@ -12,9 +12,11 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import Reanimated from 'react-native-reanimated';
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { intentGlyph } from '../../constants/intentIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,11 +25,21 @@ import ScreenGuide, { whenStore, type GuideStep } from '../../components/common/
 import { useWalletStore } from '../../store/walletStore';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
+import NeuButton from '../../components/common/NeuButton';
+import FormatToolbar from '../../components/notes/FormatToolbar';
+import EchoExtractingLoader from '../../components/notes/EchoExtractingLoader';
+import {
+  buildRenderModel, diffRange, remapFormatting, toggleAttr, addAttr, activeAttrs,
+  setBlock, lineStartOf, reconcileConfirmedStrikes, textWithoutStruckLines, defaultBlockStyle,
+  EMPTY_FORMATTING, type NoteFormatting, type InlineAttr, type BlockStyle,
+} from '../../utils/richText';
 import { lightTap, mediumTap, warningNotification } from '../../services/haptics';
 import { useIntentEngine } from '../../hooks/useIntentEngine';
 import { useVoiceInput, VoiceErrorKind } from '../../hooks/useVoiceInput';
 import { useCategories } from '../../hooks/useCategories';
 import { usePremiumStore } from '../../store/premiumStore';
+import { isGeminiAvailable } from '../../services/geminiClient';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { AIExtraction, ExtractionIntent } from '../../types';
 import { useLearningStore } from '../../store/learningStore';
@@ -39,22 +51,34 @@ import ConfirmationCard from './ConfirmationCard';
 import QueryResultCard from './QueryResultCard';
 import PaywallModal from '../../components/common/PaywallModal';
 
-const EDIT_TYPES: { key: ExtractionIntent; label: string; icon: keyof typeof Feather.glyphMap }[] = [
-  { key: 'expense', label: 'Expense', icon: 'arrow-up-right' },
-  { key: 'income', label: 'Income', icon: 'arrow-down-left' },
-  { key: 'subscription', label: 'Bill', icon: 'repeat' },
-  { key: 'debt', label: 'Debt', icon: 'users' },
-  { key: 'savings_goal', label: 'Savings', icon: 'target' },
-  { key: 'playbook', label: 'Playbook', icon: 'book-open' },
+const EDIT_TYPES: { key: ExtractionIntent }[] = [
+  { key: 'expense' },
+  { key: 'income' },
+  { key: 'subscription' },
+  { key: 'debt' },
+  { key: 'savings_goal' },
+  // Playbook is a v2 feature — not offered here yet.
 ];
 
 const AUTO_SAVE_DELAY = 600; // ms
+
+// The writing surface uses KeyboardAwareScrollView (follows the caret so new lines
+// don't hide behind the keyboard) but backed by gesture-handler's ScrollView, whose
+// native pan/tap arbitration lets a drag SCROLL without focusing the full-height text
+// input (a plain RN/Reanimated ScrollView focuses the input on drag → keyboard pops
+// up when you only meant to scroll). Wrapped for Reanimated so the library's scrollTo
+// worklet still drives it. See rn-keyboard-controller "usage with gesture-handler".
+const AnimatedGestureScrollView = Reanimated.createAnimatedComponent(ScrollView);
 
 const NoteEditor: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const neuStd = useNeu(); // field cards — standard neu for the visible onyx raise
+  const styles = useMemo(() => makeStyles(C, neuStd, isDark), [C, neuStd, isDark]);
+  // Onyx: one faintDark neu instance — header icon chips (raised), field cards
+  // (raisedSoft), pills (raised), and the centered dialogs (raisedModal).
+  const neu = useNeu(undefined, { faintDark: true });
   const currency = useSettingsStore((s) => s.currency);
   const editTypeLabel = useCallback((key: ExtractionIntent): string => {
     switch (key) {
@@ -78,15 +102,28 @@ const NoteEditor: React.FC = () => {
   const deletePage = useNotesStore((s) => s.deletePage);
   const updateExtraction = useNotesStore((s) => s.updateExtraction);
 
-  // Single unified text (first line = title visually)
+  // Single unified text (plain — stays the source of truth for extraction/title)
   const [text, setText] = useState(page?.content ?? '');
   const textRef = useRef(text);
   textRef.current = text;
 
-  // Derived title/body for compat
-  const firstNewline = text.indexOf('\n');
-  const title = firstNewline >= 0 ? text.slice(0, firstNewline) : text;
-  const body = firstNewline >= 0 ? text.slice(firstNewline + 1) : '';
+  // ── Rich formatting (offset-based metadata over the plain text) ──
+  const updatePageFormatting = useNotesStore((s) => s.updatePageFormatting);
+  const [formatting, setFormatting] = useState<NoteFormatting>(() => page?.formatting ?? EMPTY_FORMATTING);
+  const formattingRef = useRef(formatting);
+  formattingRef.current = formatting;
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  const [noteFocused, setNoteFocused] = useState(false);
+  // Pending inline formats set at a caret (tap B → type bold), applied to the
+  // next inserted characters — mirrors iOS Notes.
+  const [pending, setPending] = useState<Partial<Record<InlineAttr, boolean>>>({});
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  const justTypedRef = useRef(false);
+
+  const renderModel = useMemo(() => buildRenderModel(text, formatting), [text, formatting]);
 
   const [showPaywall, setShowPaywall] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -101,7 +138,6 @@ const NoteEditor: React.FC = () => {
 
   const {
     isClassifying,
-    classifyStep,
     extractionSource,
     extractions,
     queryAnswer,
@@ -293,16 +329,82 @@ const NoteEditor: React.FC = () => {
 
   const handleTextChange = useCallback(
     (newText: string) => {
+      const d = diffRange(textRef.current, newText);
+      let nextFmt = remapFormatting(formattingRef.current, d, newText);
+      // Apply pending inline formats to freshly-inserted characters.
+      const pend = pendingRef.current;
+      const isInsert = d.oldEnd === d.start && d.newEnd > d.start;
+      if (isInsert) {
+        for (const attr of Object.keys(pend) as InlineAttr[]) {
+          if (pend[attr]) nextFmt = { ...nextFmt, marks: addAttr(nextFmt.marks, d.start, d.newEnd, attr) };
+        }
+      }
+      if (Object.keys(pendingRef.current).length) { pendingRef.current = {}; setPending({}); }
+      justTypedRef.current = true; // let the selection-change that follows this edit pass without clearing pending
+      setFormatting(nextFmt);
+      formattingRef.current = nextFmt;
       setText(newText);
+      textRef.current = newText;
       hasUnsavedRef.current = true;
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
         updatePageContent(pageId, newText);
+        updatePageFormatting(pageId, formattingRef.current);
         hasUnsavedRef.current = false;
       }, AUTO_SAVE_DELAY);
     },
-    [pageId, updatePageContent]
+    [pageId, updatePageContent, updatePageFormatting]
   );
+
+  // Persist formatting immediately (toolbar actions, auto-strike).
+  const persistFormatting = useCallback((f: NoteFormatting) => {
+    setFormatting(f);
+    formattingRef.current = f;
+    updatePageFormatting(pageId, f);
+  }, [pageId, updatePageFormatting]);
+
+  const handleSelectionChange = useCallback((e: any) => {
+    setSelection(e.nativeEvent.selection);
+    // Moving the caret (a selection change NOT caused by the edit we just made)
+    // drops any pending caret format, so "tap B, tap elsewhere, type" doesn't
+    // bold the wrong text.
+    if (justTypedRef.current) { justTypedRef.current = false; return; }
+    if (Object.keys(pendingRef.current).length) { pendingRef.current = {}; setPending({}); }
+  }, []);
+
+  // ── Format toolbar actions ──
+  const onToggleInline = useCallback((attr: InlineAttr) => {
+    const { start, end } = selectionRef.current;
+    if (end > start) {
+      persistFormatting({ ...formattingRef.current, marks: toggleAttr(formattingRef.current.marks, start, end, attr) });
+    } else {
+      setPending((p) => { const next = { ...p, [attr]: !p[attr] }; pendingRef.current = next; return next; });
+    }
+  }, [persistFormatting]);
+
+  const onSetBlock = useCallback((style: BlockStyle) => {
+    const ls = lineStartOf(textRef.current, selectionRef.current.start);
+    persistFormatting({ ...formattingRef.current, blocks: setBlock(textRef.current, formattingRef.current.blocks, ls, style) });
+  }, [persistFormatting]);
+
+  // Auto-strikethrough: every line Echo has confirmed gets struck through.
+  // Re-derived idempotently from ALL confirmed items (not just newly-confirmed),
+  // so re-opening a note also strikes any item that couldn't be matched before —
+  // e.g. a computed-amount debt line like "ali (16-9)+6".
+  useEffect(() => {
+    const confirmed = extractions
+      .filter((e) => e.status === 'confirmed')
+      .map((e) => ({
+        amount: e.extractedData?.amount,
+        description: e.extractedData?.description,
+        person: e.extractedData?.person,
+      }));
+    if (confirmed.length === 0) return;
+    const next = reconcileConfirmedStrikes(textRef.current, formattingRef.current, confirmed);
+    if (JSON.stringify(next.marks) !== JSON.stringify(formattingRef.current.marks)) {
+      persistFormatting(next);
+    }
+  }, [extractions, persistFormatting]);
 
   const handleMicPress = useCallback(async () => {
     if (isRecording) {
@@ -336,8 +438,7 @@ const NoteEditor: React.FC = () => {
     if (voiceError?.kind === 'quota') setShowPaywall(true);
   }, [voiceError]);
 
-  const handleExtract = useCallback(() => {
-    lightTap();
+  const runExtract = useCallback(() => {
     // The walk-through's "tap extract" step is complete the instant the user
     // taps here — bow the guide out now so it's robust to the pill unmounting
     // during classification and to the confirmation modal opening on top.
@@ -346,10 +447,31 @@ const NoteEditor: React.FC = () => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
       updatePageContent(pageId, text);
+      updatePageFormatting(pageId, formattingRef.current);
       hasUnsavedRef.current = false;
     }
-    classify();
-  }, [classify, text, pageId, updatePageContent]);
+    // Extract only the NEW/unstruck lines — struck lines are already-saved items,
+    // so re-extracting them would surface the whole note again ("11 items found"
+    // when 7 are already done). Pass the LIVE text (classify()'s store `page`
+    // closure is stale within this same synchronous tick).
+    classify(textWithoutStruckLines(text, formattingRef.current.marks));
+  }, [classify, text, pageId, updatePageContent, updatePageFormatting]);
+
+  const handleExtract = useCallback(() => {
+    lightTap();
+    const settings = useSettingsStore.getState();
+    // First extraction that will actually reach the cloud AI → one-time consent
+    // before any note text leaves the device (mirrors the voice-cloud consent).
+    const willUseCloud = isGeminiAvailable() && usePremiumStore.getState().canUseAI();
+    if (willUseCloud && !settings.notesAiNoticeSeen) {
+      Alert.alert(t.notes.aiConsentTitle, t.notes.aiConsentBody, [
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.notes.aiConsentCta, onPress: () => { settings.setNotesAiNoticeSeen(true); runExtract(); } },
+      ]);
+      return;
+    }
+    runExtract();
+  }, [runExtract, t]);
 
   const handleClearExtractions = useCallback(() => {
     lightTap();
@@ -464,15 +586,17 @@ const NoteEditor: React.FC = () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       if (hasUnsavedRef.current) {
         updatePageContent(pageId, textRef.current);
+        updatePageFormatting(pageId, formattingRef.current);
       }
     };
-  }, [pageId, updatePageContent]);
+  }, [pageId, updatePageContent, updatePageFormatting]);
 
   const handleBack = useCallback(() => {
     // Flush pending save
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     if (hasUnsavedRef.current) {
       updatePageContent(pageId, text);
+      updatePageFormatting(pageId, formattingRef.current);
       hasUnsavedRef.current = false;
     }
     // Delete empty pages
@@ -480,7 +604,7 @@ const NoteEditor: React.FC = () => {
       deletePage(pageId);
     }
     navigation.goBack();
-  }, [text, pageId, updatePageContent, deletePage, navigation]);
+  }, [text, pageId, updatePageContent, updatePageFormatting, deletePage, navigation]);
 
   const handleDelete = useCallback(() => {
     warningNotification();
@@ -508,12 +632,39 @@ const NoteEditor: React.FC = () => {
 
   const dateLabel = format(page.updatedAt, 'dd MMM yyyy, HH:mm');
 
+  // ── Toolbar state derived from the current selection ──
+  const baseActive = activeAttrs(formatting.marks, selection.start, selection.end);
+  const displayActive: Record<InlineAttr, boolean> = {
+    b: pending.b ?? baseActive.b,
+    i: pending.i ?? baseActive.i,
+    u: pending.u ?? baseActive.u,
+    s: pending.s ?? baseActive.s,
+  };
+  const curLineStart = lineStartOf(text, selection.start);
+  const currentBlock: BlockStyle =
+    formatting.blocks.find((b) => lineStartOf(text, b.at) === curLineStart)?.style
+    ?? defaultBlockStyle(curLineStart);
+
+  const blockStyleFor = (block: BlockStyle) =>
+    block === 'title' ? styles.blkTitle : block === 'heading' ? styles.blkHeading : styles.blkBody;
+  const inlineStyleFor = (attrs: InlineAttr[]) => {
+    const s: any = {};
+    if (attrs.includes('b')) s.fontWeight = TYPOGRAPHY.weight.bold;
+    if (attrs.includes('i')) s.fontStyle = 'italic';
+    const deco: string[] = [];
+    if (attrs.includes('u')) deco.push('underline');
+    if (attrs.includes('s')) deco.push('line-through');
+    if (deco.length) s.textDecorationLine = deco.join(' ');
+    if (attrs.includes('s')) s.color = C.textMuted; // struck / Echo-confirmed lines dim out
+    return s;
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + SPACING.sm }]}>
         <TouchableOpacity
-          style={styles.backBtn}
+          style={[styles.backBtn, neu.raised]}
           onPress={handleBack}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityLabel={t.common.back}
@@ -527,7 +678,8 @@ const NoteEditor: React.FC = () => {
         <TouchableOpacity
           style={[
             styles.micBtn,
-            isRecording && styles.micBtnActive,
+            neu.raised,
+            isRecording && neu.inset,
           ]}
           onPress={handleMicPress}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -541,12 +693,12 @@ const NoteEditor: React.FC = () => {
             <Feather
               name={isRecording ? 'mic-off' : 'mic'}
               size={18}
-              color={isRecording ? C.surface : C.textMuted}
+              color={isRecording ? C.bronze : C.textMuted}
             />
           )}
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.deleteBtn}
+          style={[styles.deleteBtn, neu.raised]}
           onPress={() => {
             if (!text.trim()) return;
             lightTap();
@@ -570,7 +722,7 @@ const NoteEditor: React.FC = () => {
           <Feather name="message-circle" size={18} color={C.textMuted} />
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.deleteBtn}
+          style={[styles.deleteBtn, neu.raised]}
           onPress={handleDelete}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityLabel={t.notes.deleteNoteSingular}
@@ -580,15 +732,16 @@ const NoteEditor: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Writing surface */}
-      <ScrollView
+      {/* Writing surface — KeyboardAwareScrollView follows the caret in the multiline
+          input so new lines never hide behind the keyboard. bottomOffset clears the
+          keyboard + the FormatToolbar (~56px) that floats above it. */}
+      <KeyboardAwareScrollView
+        ScrollViewComponent={AnimatedGestureScrollView}
         style={styles.scrollArea}
-        contentContainerStyle={[
-          styles.scrollContent,
-          keyboardVisible && { paddingBottom: keyboardHeight },
-        ]}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        bottomOffset={80}
       >
         {/* Recording indicator */}
         {isRecording && (
@@ -629,6 +782,9 @@ const NoteEditor: React.FC = () => {
             ref={inputRef}
             style={styles.unifiedInput}
             onChangeText={handleTextChange}
+            onSelectionChange={handleSelectionChange}
+            onFocus={() => setNoteFocused(true)}
+            onBlur={() => { setNoteFocused(false); pendingRef.current = {}; setPending({}); }}
             placeholder={t.notes.startWritingPlaceholder}
             placeholderTextColor={C.textMuted}
             multiline
@@ -639,8 +795,14 @@ const NoteEditor: React.FC = () => {
             keyboardAppearance={isDark ? 'dark' : 'light'}
             selectionColor={withAlpha(C.accent, 0.25)}
           >
-            <Text style={styles.titleLine}>{title}</Text>
-            {body !== '' && <Text style={styles.bodyLine}>{'\n' + body}</Text>}
+            {text.length === 0 ? null : renderModel.map((line, li) => (
+              <Text key={li} style={blockStyleFor(line.block)}>
+                {line.runs.map((run, ri) => (
+                  <Text key={ri} style={inlineStyleFor(run.attrs)}>{run.text}</Text>
+                ))}
+                {li < renderModel.length - 1 ? '\n' : ''}
+              </Text>
+            ))}
           </TextInput>
         </View>
 
@@ -655,7 +817,7 @@ const NoteEditor: React.FC = () => {
         {text.trim().length > 0 && pendingExtractions.length === 0 && !isClassifying && (
           <TouchableOpacity
             ref={extractPillRef}
-            style={styles.extractBtn}
+            style={[styles.extractBtn, neu.raised, { backgroundColor: withAlpha(C.bronze, 0.06) }]}
             onPress={handleExtract}
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -665,76 +827,29 @@ const NoteEditor: React.FC = () => {
           </TouchableOpacity>
         )}
 
-        {/* Classifying indicator — stepped pipeline */}
-        {isClassifying && (
-          <View style={styles.classifyingPipeline}>
-            {/* Step 1: Scanning */}
-            <View style={styles.pipelineStep}>
-              {classifyStep === 'scanning' ? (
-                <ActivityIndicator size={10} color={C.bronze} />
-              ) : (
-                <Feather name="check" size={10} color={C.positive} />
-              )}
-              <Text style={[styles.pipelineLabel, classifyStep !== 'scanning' && styles.pipelineDone]}>
-                {t.notes.scanning}
-              </Text>
-            </View>
-            {/* Connector */}
-            <View style={styles.pipelineConnector} />
-            {/* Step 2: AI or Local */}
-            <View style={styles.pipelineStep}>
-              {classifyStep === 'ai' ? (
-                <>
-                  <ActivityIndicator size={10} color={C.bronze} />
-                  <Text style={styles.pipelineLabel}>AI</Text>
-                </>
-              ) : classifyStep === 'local' ? (
-                <>
-                  <ActivityIndicator size={10} color={C.bronze} />
-                  <Text style={styles.pipelineLabel}>{t.notes.localParser}</Text>
-                </>
-              ) : (classifyStep === 'scanning') ? (
-                <>
-                  <Feather name="cpu" size={10} color={C.textMuted} />
-                  <Text style={[styles.pipelineLabel, { color: C.textMuted }]}>{t.notes.waiting}</Text>
-                </>
-              ) : (
-                <>
-                  <Feather name="check" size={10} color={C.positive} />
-                  <Text style={styles.pipelineDone}>{t.notes.stepDone}</Text>
-                </>
-              )}
-            </View>
-          </View>
-        )}
+        {/* Extracting — Echo is working (spinner + progressing phrases) */}
+        {isClassifying && <EchoExtractingLoader />}
 
         {/* Status message — shows after extraction completes */}
         {statusMessage && !isClassifying && (
           <View style={styles.statusRow}>
-            {extractionSource === 'ai' ? (
-              <Feather name="zap" size={12} color={C.positive} />
-            ) : extractionSource === 'local' ? (
-              <Feather name="cpu" size={12} color={C.bronze} />
-            ) : (
-              <Feather name="info" size={12} color={C.textMuted} />
-            )}
-            <Text style={styles.statusText}>
-              {statusMessage}
-              {extractionSource === 'local' && statusMessage && !statusMessage.includes('unavailable') && !statusMessage.includes('nothing') && !statusMessage.includes('no ')
-                ? '  ·  local parser'
-                : ''}
-            </Text>
+            <Feather
+              name={extractionSource ? 'zap' : 'info'}
+              size={12}
+              color={extractionSource === 'ai' ? C.positive : extractionSource === 'local' ? C.bronze : C.textMuted}
+            />
+            <Text style={styles.statusText}>{statusMessage}</Text>
           </View>
         )}
 
         {/* Reopen pill — shows when modal is closed but extractions pending */}
         {pendingExtractions.length > 0 && !showExtractModal && (
           <TouchableOpacity
-            style={styles.reopenPill}
+            style={[styles.reopenPill, neu.raised, { backgroundColor: withAlpha(C.bronze, 0.08) }]}
             onPress={() => setShowExtractModal(true)}
             activeOpacity={0.7}
           >
-            <Feather name="layers" size={13} color={C.bronze} />
+            <Feather name="zap" size={13} color={C.bronze} />
             <Text style={styles.reopenText}>
               {pendingExtractions.length} {pendingExtractions.length > 1 ? t.notes.itemsFound : t.notes.itemFound}
             </Text>
@@ -747,7 +862,7 @@ const NoteEditor: React.FC = () => {
             <QueryResultCard answer={queryAnswer} />
           </View>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Extraction results modal */}
       <Modal
@@ -762,7 +877,7 @@ const NoteEditor: React.FC = () => {
             onPress={() => setShowExtractModal(false)}
           />
           <KeyboardAvoidingView
-            style={styles.extractCard}
+            style={[styles.extractCard, neu.raisedModal]}
             behavior="padding"
           >
             {/* Close button */}
@@ -778,7 +893,7 @@ const NoteEditor: React.FC = () => {
 
             {/* Header */}
             <View style={styles.extractHeader}>
-              <Feather name={extractionSource === 'ai' ? 'zap' : 'cpu'} size={25} color={C.bronze} />
+              <Feather name="zap" size={25} color={C.bronze} />
               <View>
                 <Text style={styles.extractTitle}>
                   {pendingExtractions.length} {pendingExtractions.length > 1 ? t.notes.itemsFound : t.notes.itemFound}
@@ -802,7 +917,7 @@ const NoteEditor: React.FC = () => {
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
               style={styles.extractScroll}
-              contentContainerStyle={{ paddingTop: SPACING.xs, paddingBottom: SPACING.md }}
+              contentContainerStyle={styles.extractScrollContent}
             >
               {pendingExtractions.map((ext) => (
                 <ConfirmationCard
@@ -826,24 +941,25 @@ const NoteEditor: React.FC = () => {
                 behavior="padding"
                 pointerEvents="box-none"
               >
-                <View style={styles.editInnerCard} onStartShouldSetResponder={() => true}>
+                <View style={[styles.editInnerCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
                 <ScrollView
                   keyboardShouldPersistTaps="handled"
                   nestedScrollEnabled
                   showsVerticalScrollIndicator={false}
                   bounces={false}
+                  style={styles.editScroll}
                   contentContainerStyle={styles.editScrollContent}
                 >
                   {/* Header — type selector as pill + close */}
                   <View style={styles.editHeader}>
                     <TouchableOpacity
-                      style={styles.editTypePill}
+                      style={[styles.editTypePill, neu.raised, { backgroundColor: withAlpha(C.bronze, 0.08) }]}
                       onPress={() => { lightTap(); setShowTypePicker(true); }}
                       activeOpacity={0.7}
                     >
-                      <Feather
-                        name={EDIT_TYPES.find((et) => et.key === editType)?.icon || 'circle'}
-                        size={13}
+                      <MaterialCommunityIcons
+                        name={intentGlyph(editType)}
+                        size={15}
                         color={C.bronze}
                       />
                       <Text style={styles.editTypePillText}>
@@ -939,7 +1055,7 @@ const NoteEditor: React.FC = () => {
                       {showEditDebtDirection && (
                         <View style={styles.editDebtRow}>
                           <TouchableOpacity
-                            style={[styles.editDebtToggle, editDebtType === 'they_owe' && styles.editDebtTheyOwe]}
+                            style={[styles.editDebtToggle, neu.raised, editDebtType === 'they_owe' && styles.editDebtTheyOwe]}
                             onPress={() => setEditDebtType('they_owe')}
                             activeOpacity={0.7}
                           >
@@ -948,7 +1064,7 @@ const NoteEditor: React.FC = () => {
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
-                            style={[styles.editDebtToggle, editDebtType === 'i_owe' && styles.editDebtIOwe]}
+                            style={[styles.editDebtToggle, neu.raised, editDebtType === 'i_owe' && styles.editDebtIOwe]}
                             onPress={() => setEditDebtType('i_owe')}
                             activeOpacity={0.7}
                           >
@@ -961,19 +1077,15 @@ const NoteEditor: React.FC = () => {
                     </>
                   )}
 
-                  {/* Confirm */}
-                  <TouchableOpacity
-                    style={[styles.editConfirmBtn, !editAmount && styles.editConfirmBtnDisabled]}
+                  {/* Confirm — Neu Select (primary olive CTA) */}
+                  <NeuButton
+                    icon="check"
+                    label={t.notes.confirm}
                     onPress={handleEditSave}
                     disabled={!editAmount}
-                    activeOpacity={0.8}
+                    style={styles.editConfirmBtn}
                     accessibilityLabel={t.notes.confirm}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: !editAmount }}
-                  >
-                    <Feather name="check" size={15} color={C.onAccent} />
-                    <Text style={styles.editConfirmText}>{t.notes.confirm}</Text>
-                  </TouchableOpacity>
+                  />
                 </ScrollView>
                 </View>
               </KeyboardAvoidingView>
@@ -988,7 +1100,7 @@ const NoteEditor: React.FC = () => {
                 onPress={() => setShowTypePicker(false)}
               />
               <View style={styles.typePickerCenter} pointerEvents="box-none">
-                <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
+                <View style={[styles.typePickerCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
                   <Text style={styles.typePickerTitle}>{t.notes.selectType}</Text>
                   {EDIT_TYPES.map((et) => {
                     const active = editType === et.key;
@@ -1003,7 +1115,7 @@ const NoteEditor: React.FC = () => {
                         activeOpacity={0.7}
                       >
                         <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
-                          <Feather name={et.icon} size={18} color={active ? C.bronze : C.textMuted} />
+                          <MaterialCommunityIcons name={intentGlyph(et.key)} size={19} color={active ? C.bronze : C.textMuted} />
                         </View>
                         <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
                           {editTypeLabel(et.key)}
@@ -1038,22 +1150,22 @@ const NoteEditor: React.FC = () => {
         currentUsage={usePremiumStore.getState().aiCallsCount}
       />
 
-      {keyboardVisible && (
-        <TouchableOpacity
-          style={[styles.doneFab, { bottom: keyboardHeight - insets.bottom + 48 }]}
-          onPress={() => Keyboard.dismiss()}
-          activeOpacity={0.8}
-        >
-          <Feather name="check" size={20} color={C.onAccent} />
-        </TouchableOpacity>
-      )}
+      {/* iOS-Notes-style format bar — pinned above the keyboard while writing */}
+      <FormatToolbar
+        visible={noteFocused}
+        active={displayActive}
+        block={currentBlock}
+        onToggleInline={onToggleInline}
+        onSetBlock={onSetBlock}
+        onDismiss={() => Keyboard.dismiss()}
+      />
     </View>
   );
 };
 
 export default NoteEditor;
 
-const makeStyles = (C: typeof CALM) => StyleSheet.create({
+const makeStyles = (C: typeof CALM, neuStd: ReturnType<typeof useNeu>, isDark = false) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.background,
@@ -1090,9 +1202,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  micBtnActive: {
-    backgroundColor: C.bronze,
-  },
   deleteBtn: {
     width: 36,
     height: 36,
@@ -1113,16 +1222,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.xs,
   },
-  titleLine: {
-    fontSize: TYPOGRAPHY.size.xl,
+  // Block styles for the rich editor (Title / Heading / Body font sizes).
+  blkTitle: {
+    fontSize: 26,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
-    lineHeight: 28,
+    lineHeight: 33,
   },
-  bodyLine: {
-    fontSize: TYPOGRAPHY.size.base,
-    lineHeight: 26,
+  blkHeading: {
+    fontSize: 20,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    lineHeight: 27,
+  },
+  blkBody: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.textPrimary,
+    lineHeight: 26,
   },
   extractBtn: {
     flexDirection: 'row',
@@ -1164,21 +1281,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // Onyx sheet: near-black bg, no outline — separation comes from neu.raisedModal.
   extractCard: {
     width: '88%',
     maxHeight: '75%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.xl,
     paddingBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   extractClose: {
     position: 'absolute',
@@ -1208,14 +1323,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   editInnerCard: {
     width: '88%',
     maxHeight: '80%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS['2xl'],
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md + 2,
     paddingBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.06),
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   extractHeader: {
     flexDirection: 'row',
@@ -1244,35 +1356,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: C.bronze,
   },
+  // neu-onyx-vertical-error fix: bleed the clipping ScrollView out to the modal edge + pad
+  // content back in so each card's neu shadow has room and isn't cut into vertical lines.
+  // extractCard padding is SPACING.xl, so bleed/pad by exactly that. See memory
+  // neu-boxshadow-device-seam.
   extractScroll: {
     flexShrink: 1,
+    marginHorizontal: -SPACING.xl,
   },
-  classifyingPipeline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
+  extractScrollContent: {
     paddingHorizontal: SPACING.xl,
-    gap: 6,
-  },
-  pipelineStep: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  pipelineLabel: {
-    fontSize: 11,
-    color: C.bronze,
-    letterSpacing: 0.3,
-  },
-  pipelineDone: {
-    fontSize: 11,
-    color: C.positive,
-    letterSpacing: 0.3,
-  },
-  pipelineConnector: {
-    width: 12,
-    height: 1,
-    backgroundColor: C.border,
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.md,
   },
   statusRow: {
     flexDirection: 'row',
@@ -1327,9 +1422,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     right: SPACING.md,
     zIndex: 1,
   },
+  // neu-onyx-vertical-error fix: bleed the clipping ScrollView to the card edge + pad content
+  // back in so inner neu shadows (pickers, type pill) aren't cut into vertical lines.
+  editScroll: {
+    marginHorizontal: -SPACING.lg,
+  },
   editScrollContent: {
     gap: SPACING.sm + 2,
     paddingBottom: SPACING.xs,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.xs,
   },
   editHeader: {
     flexDirection: 'row',
@@ -1375,16 +1477,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   typePickerCard: {
     width: '80%',
     maxWidth: 300,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     gap: 2,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.xl),
   },
   typePickerTitle: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    marginBottom: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    marginBottom: SPACING.md,
   },
   typePickerOption: {
     flexDirection: 'row',
@@ -1417,12 +1519,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
+  // Hero amount card — clean flat fill (a drop shadow left vertical seams on the
+  // near-black sheet; a faint fill lifts it with no artifact).
+  // Onyx field cards: standard neu.raisedSoft raise + near-black face so they read as BLACK
+  // raised cards, not grey slabs. Safe now the edit ScrollView bleeds (editScroll) so shadows
+  // don't clip. See memory neu-boxshadow-device-seam.
   editAmountSection: {
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: 4,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: 2,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    ...neuStd.raisedSoft,
+    backgroundColor: isDark ? withAlpha(C.textPrimary, 0.015) : neuStd.base,
   },
   editAmountPrefix: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -1439,12 +1549,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   editFieldCard: {
-    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md + 2,
     paddingVertical: SPACING.sm + 4,
+    ...neuStd.raisedSoft,
+    backgroundColor: isDark ? withAlpha(C.textPrimary, 0.015) : neuStd.base,
   },
   editFieldLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1467,12 +1576,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     lineHeight: 20,
   },
   editPickerCard: {
-    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.sm,
+    ...neuStd.raisedSoft,
+    backgroundColor: isDark ? withAlpha(C.textPrimary, 0.015) : neuStd.base,
   },
   editDebtRow: {
     flexDirection: 'row',
@@ -1504,23 +1612,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
+  // NeuButton (Neu Select) supplies the olive fill + neu; this only spaces it.
   editConfirmBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: C.deepOlive,
-    borderRadius: RADIUS.full,
-    paddingVertical: SPACING.md,
     marginTop: SPACING.sm,
-  },
-  editConfirmBtnDisabled: {
-    opacity: 0.4,
-  },
-  editConfirmText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.surface,
   },
   // Floating done button
   doneFab: {

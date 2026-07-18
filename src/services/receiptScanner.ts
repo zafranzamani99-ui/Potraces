@@ -1,9 +1,20 @@
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { callGeminiAPI, streamGeminiText, isGeminiAvailable, getCooldownSecondsLeft } from './geminiClient';
-import { enqueueReceipt } from './receiptQueue';
 import { extractCompleteItems } from '../utils/streamingJson';
 import { ExtractedReceipt, SellerReceiptResult } from '../types';
+
+/**
+ * Thrown by the scan entry points when a scan is already running (re-entry
+ * guard). Distinct type so the queue drainer can SKIP the entry without
+ * burning a retry attempt, rather than treating it as a real failure.
+ */
+export class ScanBusyError extends Error {
+  constructor() {
+    super('A receipt scan is already in progress.');
+    this.name = 'ScanBusyError';
+  }
+}
 
 /**
  * Resize + compress the image so Gemini processes it faster and more accurately.
@@ -121,7 +132,7 @@ let _scanningSellerReceipt = false;
 
 export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
   if (_scanningReceipt) {
-    throw new Error('A receipt scan is already in progress.');
+    throw new ScanBusyError();
   }
   _scanningReceipt = true;
   try {
@@ -258,7 +269,7 @@ export async function scanReceiptStream(
   handlers: ReceiptStreamHandlers = {},
 ): Promise<ExtractedReceipt> {
   if (_scanningReceipt) {
-    throw new Error('A receipt scan is already in progress.');
+    throw new ScanBusyError();
   }
   _scanningReceipt = true;
   try {
@@ -366,19 +377,11 @@ const VALID_COST_CATEGORY_IDS = new Set([
 
 export async function scanSellerReceipt(imageUri: string): Promise<SellerReceiptResult> {
   if (_scanningSellerReceipt) {
-    throw new Error('A receipt scan is already in progress.');
+    throw new ScanBusyError();
   }
   _scanningSellerReceipt = true;
   try {
     return await _doScanSellerReceipt(imageUri);
-  } catch (err: any) {
-    const msg = err?.message ?? '';
-    const isNetworkOrAI = msg.includes('Could not reach AI') || msg.includes('AI is busy') || msg.includes('AI is cooling down') || msg.includes('network');
-    if (isNetworkOrAI) {
-      await enqueueReceipt(imageUri);
-      throw new Error('Scan queued — will retry when online.');
-    }
-    throw err;
   } finally {
     _scanningSellerReceipt = false;
   }

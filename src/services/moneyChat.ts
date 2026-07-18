@@ -19,6 +19,10 @@ import { useBusinessStore } from '../store/businessStore';
 import { useSellerStore } from '../store/sellerStore';
 import { useAppStore } from '../store/appStore';
 import { useSavingsStore } from '../store/savingsStore';
+import { useCategoryStore } from '../store/categoryStore';
+import { useBudgetProfileStore } from '../store/budgetProfileStore';
+import { useReceiptStore } from '../store/receiptStore';
+import { isTransfer, isGoalMove } from '../utils/insights';
 import { usePlaybookStore } from '../store/playbookStore';
 import { computePlaybookStats } from '../utils/playbookStats';
 import { AIMessage } from '../types';
@@ -430,6 +434,12 @@ function buildFinancialContext(userMessage?: string): string {
     .map((d) => d.contact.name.toLowerCase());
   const scope = classifyScope(userMessage, debtNames);
 
+  // Resolve category IDs → display names. Custom cats are stored as `custom_<ts>` ids and
+  // built-ins can be renamed via overrides, so the raw id reads as gibberish to Echo.
+  const _catStore = useCategoryStore.getState();
+  const _cats = [..._catStore.getExpenseCategories(), ..._catStore.getIncomeCategories()];
+  const _catName = (id: string) => _cats.find((c) => c.id === id)?.name || id;
+
   const now = new Date();
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
@@ -438,6 +448,7 @@ function buildFinancialContext(userMessage?: string): string {
 
   // This month
   const thisMonthTxns = transactions.filter((t) => {
+    if (isTransfer(t) || isGoalMove(t)) return false; // match Reports/Pulse: transfers + goal moves aren't spend/income
     const d = t.date instanceof Date ? t.date : new Date(t.date);
     return isWithinInterval(d, { start: monthStart, end: monthEnd });
   });
@@ -454,6 +465,7 @@ function buildFinancialContext(userMessage?: string): string {
   const lastStart = startOfMonth(subMonths(now, 1));
   const lastEnd = endOfMonth(subMonths(now, 1));
   const lastMonthTxns = transactions.filter((t) => {
+    if (isTransfer(t) || isGoalMove(t)) return false;
     const d = t.date instanceof Date ? t.date : new Date(t.date);
     return isWithinInterval(d, { start: lastStart, end: lastEnd });
   });
@@ -469,7 +481,7 @@ function buildFinancialContext(userMessage?: string): string {
   const lastCatLines = Object.entries(lastMonthByCategory)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([cat, amt]) => `  ${cat}: ${currency} ${amt.toFixed(2)}`)
+    .map(([cat, amt]) => `  ${_catName(cat)}: ${currency} ${amt.toFixed(2)}`)
     .join('\n');
 
   // Category breakdown
@@ -480,7 +492,7 @@ function buildFinancialContext(userMessage?: string): string {
   const catLines = Object.entries(byCategory)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
-    .map(([cat, amt]) => `  ${cat}: ${currency} ${amt.toFixed(2)}`)
+    .map(([cat, amt]) => `  ${_catName(cat)}: ${currency} ${amt.toFixed(2)}`)
     .join('\n');
 
   // Recent 10 transactions
@@ -493,7 +505,7 @@ function buildFinancialContext(userMessage?: string): string {
     .slice(0, 20)
     .map((t) => {
       const d = t.date instanceof Date ? t.date : new Date(t.date);
-      return `  ${format(d, 'dd MMM')} | ${t.type === 'income' ? '+' : '-'}${currency} ${t.amount.toFixed(2)} | ${t.category} | ${t.description}`;
+      return `  ${format(d, 'dd MMM')} | ${t.type === 'income' ? '+' : '-'}${currency} ${t.amount.toFixed(2)} | ${_catName(t.category)} | ${t.description}`;
     })
     .join('\n');
 
@@ -540,7 +552,7 @@ function buildFinancialContext(userMessage?: string): string {
   const budgetLines = budgets
     .map(
       (b) =>
-        `  ${b.category}: ${currency} ${b.spentAmount.toFixed(2)} / ${currency} ${b.allocatedAmount.toFixed(2)} (${currency} ${(b.allocatedAmount - b.spentAmount).toFixed(2)} left)`
+        `  ${_catName(b.category)}: ${currency} ${b.spentAmount.toFixed(2)} / ${currency} ${b.allocatedAmount.toFixed(2)} (${currency} ${(b.allocatedAmount - b.spentAmount).toFixed(2)} left)`
     )
     .join('\n');
 
@@ -793,6 +805,31 @@ Came in: ${currency} ${bizIncome.toFixed(2)}
 Costs: ${currency} ${bizCosts.toFixed(2)}
 Kept: ${currency} ${(bizIncome - bizCosts).toFixed(2)}`;
     }
+  }
+
+  // Budget profile — take-home + locked must-pays (what Echo remembers for planning).
+  // Previously Echo was blind to these even though the whole Budget planner runs on them.
+  const _bp = useBudgetProfileStore.getState();
+  if (_bp.takeHome != null || _bp.commitments.length > 0) {
+    ctx += `\n\nBudget profile:`;
+    if (_bp.takeHome != null) ctx += `\n  Take-home: ${currency} ${_bp.takeHome.toFixed(2)}/month`;
+    if (_bp.commitments.length > 0) {
+      const _mustPay = _bp.commitments.reduce((s, c) => s + (c.monthly || 0), 0);
+      ctx += `\n  Must-pays (${currency} ${_mustPay.toFixed(2)}/mo): ${_bp.commitments
+        .map((c) => `${c.label} ${currency} ${c.monthly.toFixed(0)}`)
+        .join(', ')}`;
+    }
+  }
+
+  // Saved-receipt archive — the scanned tax/warranty reference. NOT extra spend (receipts
+  // become txns on confirm); framed as an archive so Echo can answer deductible/warranty
+  // questions without double-counting.
+  const _receipts = useReceiptStore.getState().receipts;
+  if (_receipts.length > 0) {
+    const _yr = now.getFullYear();
+    const _thisYr = _receipts.filter((r) => r.year === _yr);
+    const _yrTotal = _thisYr.reduce((s, r) => s + (r.total || 0), 0);
+    ctx += `\n\nSaved receipts archive: ${_receipts.length} on file; ${_thisYr.length} from ${_yr} totalling ${currency} ${_yrTotal.toFixed(2)} (tax/warranty reference — already counted in spending, don't re-add)`;
   }
 
   _cachedContext = ctx;

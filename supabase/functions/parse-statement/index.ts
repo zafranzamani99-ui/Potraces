@@ -132,11 +132,13 @@ Deno.serve(async (req: Request) => {
       console.error('[parse-statement] encryption probe failed:', (e as Error).message);
     }
 
-    // Call Gemini 2.5 Flash with inline PDF data.
+    // Call Gemini 3.5 Flash with inline PDF data — premium model is fine here:
+    // statement parsing is quality-critical and capped at 5 calls/user/month.
     // NOTE: gemini-2.0-flash was retired 2026-06-01 — that caused the prod 502s.
-    // gemini-2.5-flash is GA but sunsets 2026-10-16; migrate to gemini-3.5-flash before then.
+    // gemini-2.5-flash then went "no longer available to new users" 2026-07-17
+    // (prepay billing move), which 404'd this function — hence 3.5-flash now.
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

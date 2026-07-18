@@ -3,6 +3,8 @@ import { Animated, View, TouchableOpacity, StyleSheet, PanResponderInstance } fr
 import { Feather } from '@expo/vector-icons';
 import { EdgeInsets } from 'react-native-safe-area-context';
 import { CALM, CALM_DARK, SPACING, RADIUS, SHADOWS, TYPOGRAPHY, withAlpha } from '../../constants';
+import { TIER_LIMITS } from '../../constants/premium';
+import type { PremiumTier } from '../../types';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
@@ -32,7 +34,7 @@ interface EchoFabProps {
   greetingPrompt?: string;
   onOpenSheet: (autoPrompt?: string) => void;
   onHideEcho?: () => void;
-  tier: string;
+  tier: PremiumTier;
   onShowPaywall: () => void;
   insets: EdgeInsets;
   fabScale?: Animated.Value;
@@ -166,13 +168,13 @@ const EchoFab: React.FC<EchoFabProps> = ({
     >
       <TouchableOpacity
         style={styles.walletEchoFab}
-        onPress={() => { lightTap(); if (tier !== 'premium') { onShowPaywall(); return; } onOpenSheet(undefined); onSetGreetingDismissed(true); }}
+        onPress={() => { lightTap(); if (!TIER_LIMITS[tier].askEchoPerScreen) { onShowPaywall(); return; } onOpenSheet(undefined); onSetGreetingDismissed(true); }}
         activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel="Open Echo assistant"
       >
         <Feather name="zap" size={22} color={C.onAccent} />
-        {tier !== 'premium' && (
+        {!TIER_LIMITS[tier].askEchoPerScreen && (
           <View style={styles.echoFabLock}>
             <Feather name="lock" size={9} color={C.onAccent} />
           </View>
@@ -182,7 +184,7 @@ const EchoFab: React.FC<EchoFabProps> = ({
       {greetingText && !greetingDismissed && !greetingHiddenDuringDrag && (
         <TouchableOpacity
           style={styles.walletEchoGreetingBubble}
-          onPress={() => { lightTap(); if (tier !== 'premium') { onShowPaywall(); return; } onOpenSheet(greetingPrompt ?? greetingChips[0]?.question ?? greetingText); }}
+          onPress={() => { lightTap(); if (!TIER_LIMITS[tier].askEchoPerScreen) { onShowPaywall(); return; } onOpenSheet(greetingPrompt ?? greetingChips[0]?.question ?? greetingText); }}
           activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel={`Echo: ${greetingText}`}

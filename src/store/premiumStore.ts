@@ -1,10 +1,14 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { startOfMonth, differenceInDays } from 'date-fns';
-import { PremiumState } from '../types';
-import { FREE_TIER, TRIAL_DAYS } from '../constants/premium';
+import { startOfMonth } from 'date-fns';
+import { PremiumState, PremiumTier } from '../types';
+import { canCreate, remainingOf, TIER_LIMITS } from '../constants/premium';
 
+// Gates read the ACTIVE tier's row in TIER_LIMITS (src/constants/tiers.ts). No more
+// free-vs-premium branching — a single table drives all four tiers, and the paywall's
+// selected tier flows in via setTier(). Grandfathering is automatic: canCreate() blocks
+// the next create when a legacy user is already over a (now-lowered) cap, never deleting.
 export const usePremiumStore = create<PremiumState>()(
   persist(
     (set, get) => ({
@@ -14,13 +18,13 @@ export const usePremiumStore = create<PremiumState>()(
       scanResetDate: startOfMonth(new Date()),
       aiCallsCount: 0,
       aiCallsResetDate: startOfMonth(new Date()),
-      trialStartDate: null,
 
-      subscribe: () =>
-        set({
-          tier: 'premium',
-          subscribedAt: new Date(),
-        }),
+      // Local unlock (billing not wired). subscribe() = top tier for back-compat; the
+      // paywall calls setTier(selectedTier) — that's the seam RevenueCat plugs into.
+      subscribe: () => set({ tier: 'premium', subscribedAt: new Date() }),
+
+      setTier: (tier: PremiumTier) =>
+        set({ tier, subscribedAt: tier === 'free' ? null : new Date() }),
 
       unsubscribe: () =>
         set({
@@ -50,7 +54,6 @@ export const usePremiumStore = create<PremiumState>()(
       incrementAiCalls: () => {
         const state = get();
         state.resetAiCallsIfNeeded();
-        state.startTrialIfNeeded();
         set((s) => ({ aiCallsCount: s.aiCallsCount + 1 }));
       },
 
@@ -68,68 +71,38 @@ export const usePremiumStore = create<PremiumState>()(
         }
       },
 
-      canCreateWallet: (currentCount: number) => {
-        const state = get();
-        if (state.tier === 'premium') return true;
-        return currentCount < FREE_TIER.maxWallets;
-      },
+      // ── Count gates ──
+      canCreateWallet: (currentCount: number) => canCreate(get().tier, 'maxWallets', currentCount),
+      canCreateBudget: (currentCount: number) => canCreate(get().tier, 'maxBudgets', currentCount),
+      canCreateSavingsAccount: (currentCount: number) => canCreate(get().tier, 'maxSavingsAccounts', currentCount),
+      canCreateGoal: (currentCount: number) => canCreate(get().tier, 'maxGoals', currentCount),
+      canCreateSharedSub: (currentCount: number) => canCreate(get().tier, 'maxSharedSubs', currentCount),
 
-      canCreateBudget: (currentCount: number) => {
-        const state = get();
-        if (state.tier === 'premium') return true;
-        return currentCount < FREE_TIER.maxBudgets;
-      },
-
-      canCreateSavingsAccount: (currentCount: number) => {
-        const state = get();
-        if (state.tier === 'premium') return true;
-        return currentCount < FREE_TIER.maxSavingsAccounts;
-      },
-
+      // ── Metered gates (reset the monthly window first) ──
       canScanReceipt: () => {
-        const state = get();
-        state.resetScanCountIfNeeded();
-        if (state.tier === 'premium') return true;
-        return get().scanCount < FREE_TIER.maxScansPerMonth;
+        get().resetScanCountIfNeeded();
+        return canCreate(get().tier, 'maxScansPerMonth', get().scanCount);
       },
 
       getRemainingScans: () => {
-        const state = get();
-        state.resetScanCountIfNeeded();
-        if (state.tier === 'premium') return Infinity;
-        return Math.max(0, FREE_TIER.maxScansPerMonth - get().scanCount);
+        get().resetScanCountIfNeeded();
+        return remainingOf(get().tier, 'maxScansPerMonth', get().scanCount);
       },
 
       canUseAI: () => {
-        const state = get();
-        if (state.tier === 'premium') return true;
-        if (state.isInTrial()) return true;
-        state.resetAiCallsIfNeeded();
-        return get().aiCallsCount < FREE_TIER.maxAiCallsPerMonth;
+        get().resetAiCallsIfNeeded();
+        return canCreate(get().tier, 'maxAiCallsPerMonth', get().aiCallsCount);
       },
 
       getRemainingAiCalls: () => {
-        const state = get();
-        if (state.tier === 'premium') return Infinity;
-        if (state.isInTrial()) return Infinity;
-        state.resetAiCallsIfNeeded();
-        return Math.max(0, FREE_TIER.maxAiCallsPerMonth - get().aiCallsCount);
+        get().resetAiCallsIfNeeded();
+        return remainingOf(get().tier, 'maxAiCallsPerMonth', get().aiCallsCount);
       },
 
-      isInTrial: () => {
-        const state = get();
-        if (state.tier === 'premium') return false;
-        if (!state.trialStartDate) return false;
-        const daysSinceStart = differenceInDays(new Date(), state.trialStartDate);
-        return daysSinceStart < TRIAL_DAYS;
-      },
-
-      startTrialIfNeeded: () => {
-        const state = get();
-        if (state.tier === 'premium') return;
-        if (state.trialStartDate) return;
-        set({ trialStartDate: new Date() });
-      },
+      // ── Capability gates ──
+      hasCloudBackup: () => TIER_LIMITS[get().tier].cloudBackup,
+      hasAskEcho: () => TIER_LIMITS[get().tier].askEchoPerScreen,
+      hasPhotoIcon: () => TIER_LIMITS[get().tier].photoCategoryIcons,
     }),
     {
       name: 'premium-storage',
@@ -141,7 +114,6 @@ export const usePremiumStore = create<PremiumState>()(
         scanResetDate: state.scanResetDate instanceof Date ? state.scanResetDate.toISOString() : state.scanResetDate,
         aiCallsCount: state.aiCallsCount,
         aiCallsResetDate: state.aiCallsResetDate instanceof Date ? state.aiCallsResetDate.toISOString() : state.aiCallsResetDate,
-        trialStartDate: state.trialStartDate instanceof Date ? state.trialStartDate.toISOString() : state.trialStartDate,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
@@ -153,7 +125,8 @@ export const usePremiumStore = create<PremiumState>()(
         state.subscribedAt = sd(state.subscribedAt);
         state.scanResetDate = sd(state.scanResetDate) ?? startOfMonth(new Date());
         state.aiCallsResetDate = sd(state.aiCallsResetDate) ?? startOfMonth(new Date());
-        state.trialStartDate = sd(state.trialStartDate);
+        // Legacy persisted tiers ('free' | 'premium') remain valid values in the new
+        // 4-tier union, so no migration is needed — an existing premium user stays premium.
       },
     }
   )

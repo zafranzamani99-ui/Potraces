@@ -6,10 +6,13 @@ import {
   TouchableOpacity,
   Animated,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AIExtraction } from '../../types';
+import { intentGlyph } from '../../constants/intentIcons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
+import { useT } from '../../i18n';
 import { lightTap, mediumTap } from '../../services/haptics';
 import { useFadeSlide } from '../../utils/fadeSlide';
 import { useLearningStore } from '../../store/learningStore';
@@ -23,35 +26,6 @@ interface ConfirmationCardProps {
   onEdit?: (id: string) => void;
 }
 
-const INTENT_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
-  expense: 'arrow-up-right',
-  income: 'arrow-down-left',
-  debt: 'repeat',
-  debt_update: 'check-circle',
-  bnpl: 'credit-card',
-  seller_order: 'shopping-bag',
-  seller_cost: 'package',
-  query: 'help-circle',
-  savings_goal: 'target',
-  subscription: 'refresh-cw',
-  playbook: 'book-open',
-  plain: 'file-text',
-};
-
-const INTENT_LABELS: Record<string, string> = {
-  expense: 'Expense',
-  income: 'Income',
-  debt: 'Debt',
-  debt_update: 'Payment',
-  bnpl: 'Pay Later',
-  seller_order: 'Order',
-  seller_cost: 'Cost',
-  query: 'Question',
-  savings_goal: 'Savings',
-  subscription: 'Commitment',
-  playbook: 'Playbook',
-  plain: 'Note',
-};
 
 const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
   extraction,
@@ -60,7 +34,26 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
   onEdit,
 }) => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // Onyx: lift each card + skip pill off the near-black sheet with faintDark neu.
+  const neu = useNeu(undefined, { faintDark: true });
+  const intentLabel = (ty: string): string => {
+    switch (ty) {
+      case 'expense': return t.notes.typeExpense;
+      case 'income': return t.notes.typeIncome;
+      case 'debt': return t.notes.typeDebt;
+      case 'debt_update': return t.notes.typePayment;
+      case 'bnpl': return t.notes.typeBnpl;
+      case 'seller_order': return t.notes.typeOrder;
+      case 'seller_cost': return t.notes.typeCost;
+      case 'query': return t.notes.typeQuery;
+      case 'savings_goal': return t.notes.typeSavings;
+      case 'subscription': return t.notes.typeCommitment;
+      case 'playbook': return t.notes.typePlaybook;
+      default: return t.notes.typePlain;
+    }
+  };
   const currency = useSettingsStore((s) => s.currency);
   const { type, extractedData, status } = extraction;
   const { amount, description, category, wallet, person } = extractedData;
@@ -101,7 +94,7 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
             color={isConfirmed ? C.deepOlive : C.textMuted}
           />
           <Text style={[styles.doneText, isSkipped && styles.doneTextSkipped]}>
-            {isConfirmed ? 'saved' : 'skipped'} — {description || 'item'}
+            {isConfirmed ? t.notes.cardSaved : t.notes.cardSkipped} — {description || t.notes.cardItem}
             {amount > 0 ? ` ${currency} ${amount.toFixed(2)}` : ''}
           </Text>
         </View>
@@ -119,8 +112,8 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
     const dueDay = data.dueDay ?? sched.dueDay;
     const inst = data.installments ?? sched.installments;
     scheduleLabel = inst && inst > 1
-      ? `${inst}× installment`
-      : `${cycle}${dueDay ? ` · due ${dueDay}` : ''}`;
+      ? `${inst}× ${t.notes.cardInstallment}`
+      : `${cycle}${dueDay ? ` · ${t.notes.cardDue} ${dueDay}` : ''}`;
   }
   const sub = (type === 'subscription'
     ? [scheduleLabel, category]
@@ -128,13 +121,13 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
   ).filter(Boolean).join(' · ');
 
   return (
-    <Animated.View style={[styles.card, { opacity: fadeSlide.opacity, transform: fadeSlide.transform }]}>
+    <Animated.View style={[styles.card, neu.raisedSoft, { opacity: fadeSlide.opacity, transform: fadeSlide.transform }]}>
       <TouchableOpacity style={styles.row} activeOpacity={0.7} onPress={handleEdit}>
         {/* Icon circle */}
         <View style={styles.iconWrap}>
-          <Feather
-            name={INTENT_ICONS[type] || 'circle'}
-            size={16}
+          <MaterialCommunityIcons
+            name={intentGlyph(type)}
+            size={19}
             color={C.bronze}
           />
         </View>
@@ -142,7 +135,7 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
         {/* Center: name + subtitle */}
         <View style={styles.center}>
           <Text style={styles.name} numberOfLines={1}>
-            {description || INTENT_LABELS[type] || type}
+            {description || intentLabel(type)}
           </Text>
           {sub ? (
             <Text style={styles.sub} numberOfLines={1}>{sub}</Text>
@@ -173,19 +166,19 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
       {/* Actions */}
       <View style={styles.actions}>
         <TouchableOpacity
-          style={styles.skipBtn}
+          style={[styles.skipBtn, neu.raised]}
           onPress={handleSkip}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Text style={styles.skipText}>skip</Text>
+          <Text style={styles.skipText}>{t.notes.cardSkip}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.confirmBtn}
+          style={[styles.confirmBtn, neu.raisedSoft, { backgroundColor: C.deepOlive }]}
           onPress={handleConfirm}
           activeOpacity={0.7}
         >
           <Feather name="check" size={13} color={C.onAccent} />
-          <Text style={styles.confirmText}>save</Text>
+          <Text style={styles.confirmText}>{t.notes.cardSave}</Text>
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -196,6 +189,11 @@ export default React.memo(ConfirmationCard);
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   card: {
+    // Onyx raised card = pure near-black face + neu.raisedSoft (spread at render), matching
+    // WalletManagement's transferRowCard. NOT a grey withAlpha(textPrimary,0.05) fill (owner
+    // rejects that as "not onyx"). The shadow doesn't seam because the parent extract ScrollView
+    // bleeds its viewport (extractScroll) so the shadow isn't clipped. See memory
+    // neu-boxshadow-device-seam.
     backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
@@ -248,9 +246,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   skipBtn: {
     paddingHorizontal: 14,
     paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: C.border,
     borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
   },
   skipText: {
     fontSize: TYPOGRAPHY.size.xs,

@@ -4,10 +4,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── Durable Tombstone Store ─────────────────────────────────────────────────
 // Survives the push/clear cycle so that pulled remote items whose IDs are here
-// are never resurrected into local state. Tombstones older than 30 days are
-// pruned on startup — by then every device should have synced at least once.
+// are never resurrected into local state. Tombstones are pruned after the TTL —
+// a spare device offline for weeks (then re-uploading a since-deleted item) is a
+// realistic window, so the TTL is 180 days, not 30. (Budget dedup in personalSync
+// is a second backstop: a resurrected duplicate-category budget is collapsed on
+// the next sync.) Tombstones are tiny id→timestamp entries, so a long TTL is cheap.
 
-const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const TOMBSTONE_TTL_MS = 180 * 24 * 60 * 60 * 1000; // 180 days
 
 interface TombstoneState {
   /** Map of deleted item ID → deletion timestamp (epoch ms) */

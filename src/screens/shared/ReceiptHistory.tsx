@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { format, getYear } from 'date-fns';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -21,10 +21,13 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
+import { resolveReceiptImageUri } from '../../utils/receiptImage';
 import NeuButton from '../../components/common/NeuButton';
 import FAB from '../../components/common/FAB';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
+import { listFailedReceipts, clearFailedReceipt, retryFailedReceipt, type PendingReceipt } from '../../services/receiptQueue';
+import { runReceiptDrain } from '../../services/receiptQueueDrainer';
 import CategoryIcon from '../../components/common/CategoryIcon';
 import type { RootStackParamList, SavedReceipt } from '../../types';
 
@@ -92,6 +95,33 @@ const ReceiptHistory: React.FC = () => {
 
   const hasReceipts = filteredReceipts.length > 0;
 
+  // ── Failed-scan recovery: scans that exhausted their retries are kept (image
+  // preserved) instead of silently dropped. Surface them so the user can retry
+  // or discard. Reload on focus so it refreshes after a scan fails elsewhere.
+  const [failedScans, setFailedScans] = useState<PendingReceipt[]>([]);
+  const reloadFailed = useCallback(() => {
+    listFailedReceipts().then(setFailedScans).catch(() => {});
+  }, []);
+  useFocusEffect(useCallback(() => { reloadFailed(); }, [reloadFailed]));
+
+  const onRetryFailed = useCallback(async (id: string) => {
+    lightTap();
+    await retryFailedReceipt(id);
+    reloadFailed();
+    runReceiptDrain().finally(reloadFailed);
+  }, [reloadFailed]);
+
+  const onRemoveFailed = useCallback((id: string) => {
+    Alert.alert(t.receipts.discardScanTitle, t.receipts.discardScanMsg, [
+      { text: t.common.cancel, style: 'cancel' },
+      {
+        text: t.receipts.remove,
+        style: 'destructive',
+        onPress: async () => { await clearFailedReceipt(id); reloadFailed(); },
+      },
+    ]);
+  }, [reloadFailed, t]);
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -120,6 +150,55 @@ const ReceiptHistory: React.FC = () => {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* ── Failed-scan recovery (couldn't be scanned; image kept) ── */}
+        {failedScans.length > 0 && (
+          <View style={[styles.recoveryCard, neu.raisedSoft]}>
+            <View style={styles.recoveryHead}>
+              <Feather name="alert-triangle" size={15} color={C.bronze} />
+              <Text style={styles.recoveryTitle}>
+                {t.receipts.couldntScanTitle} ({failedScans.length})
+              </Text>
+            </View>
+            <Text style={styles.recoverySub}>{t.receipts.couldntScanSubtitle}</Text>
+            {failedScans.map((f) => {
+              const uri = resolveReceiptImageUri(f.imageUri);
+              return (
+                <View key={f.id} style={styles.recoveryRow}>
+                  {uri ? (
+                    <Image source={{ uri }} style={styles.recoveryThumb} />
+                  ) : (
+                    <View style={[styles.recoveryThumb, styles.recoveryThumbFallback]}>
+                      <Feather name="file-text" size={16} color={C.neutral} />
+                    </View>
+                  )}
+                  <View style={styles.recoveryInfo}>
+                    <Text style={styles.recoveryDate}>{format(new Date(f.addedAt), 'd MMM yyyy')}</Text>
+                    <Text style={styles.recoveryError} numberOfLines={1}>
+                      {f.lastError || t.receipts.scanFailedShort}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => onRetryFailed(f.id)}
+                    style={[styles.recoveryBtn, neu.raised]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.receipts.retry}
+                  >
+                    <Feather name="refresh-cw" size={14} color={C.accent} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => onRemoveFailed(f.id)}
+                    style={[styles.recoveryBtn, neu.raised]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.receipts.remove}
+                  >
+                    <Feather name="trash-2" size={14} color={C.bronze} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {/* ── Tax Relief Summary (hero card) ── */}
         {taxSummary.length > 0 && (
@@ -237,18 +316,7 @@ const ReceiptHistory: React.FC = () => {
                       onPress={() => navigation.navigate('ReceiptDetail', { receiptId: item.id })}
                       style={({ pressed }) => [styles.receiptRow, pressed && { opacity: 0.7 }]}
                     >
-                      {item.imageUri ? (
-                        <Image
-                          source={{ uri: item.imageUri }}
-                          style={styles.receiptThumb}
-                          resizeMode="cover"
-                          onError={() => {}}
-                        />
-                      ) : (
-                        <View style={[styles.receiptThumb, styles.receiptThumbFallback]}>
-                          <Feather name="file-text" size={18} color={C.neutral} />
-                        </View>
-                      )}
+                      <ReceiptThumb uri={item.imageUri} C={C} styles={styles} />
                       <View style={styles.receiptContent}>
                         <View style={styles.receiptNameRow}>
                           <Text style={styles.receiptTitle} numberOfLines={1}>{item.title}</Text>
@@ -263,7 +331,7 @@ const ReceiptHistory: React.FC = () => {
                             </>
                           )}
                         </View>
-                        <Text style={styles.receiptSavedDate}>saved {format(item.createdAt, 'dd MMM yyyy, h:mm a')}</Text>
+                        <Text style={styles.receiptSavedDate}>{t.receipts.savedPrefix} {format(item.createdAt, 'dd MMM yyyy, h:mm a')}</Text>
                       </View>
                     </Pressable>
                   </ReanimatedSwipeable>
@@ -301,6 +369,36 @@ const ReceiptHistory: React.FC = () => {
         icon="camera"
         style={{ bottom: 24 + insets.bottom }}
       />
+    </View>
+  );
+};
+
+// Receipt list thumbnail. Resolves stored paths (relative or legacy-absolute)
+// and falls back to the file-text placeholder when missing or on load error.
+const ReceiptThumb = ({
+  uri,
+  C,
+  styles,
+}: {
+  uri?: string;
+  C: typeof CALM;
+  styles: ReturnType<typeof makeStyles>;
+}) => {
+  const [errored, setErrored] = useState(false);
+  const resolved = resolveReceiptImageUri(uri);
+  if (resolved && !errored) {
+    return (
+      <Image
+        source={{ uri: resolved }}
+        style={styles.receiptThumb}
+        resizeMode="cover"
+        onError={() => setErrored(true)}
+      />
+    );
+  }
+  return (
+    <View style={[styles.receiptThumb, styles.receiptThumbFallback]}>
+      <Feather name="file-text" size={18} color={C.neutral} />
     </View>
   );
 };
@@ -345,6 +443,70 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   tabTextActive: {
     color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.bold,
+  },
+
+  // ── Failed-scan recovery ──
+  recoveryCard: {
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
+  },
+  recoveryHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  recoveryTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: 0.2,
+  },
+  recoverySub: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    letterSpacing: 0.2,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.sm,
+    lineHeight: TYPOGRAPHY.size.xs * TYPOGRAPHY.lineHeight.normal,
+  },
+  recoveryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  recoveryThumb: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(C.textPrimary, 0.04),
+  },
+  recoveryThumbFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recoveryInfo: {
+    flex: 1,
+  },
+  recoveryDate: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    letterSpacing: 0.2,
+  },
+  recoveryError: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    letterSpacing: 0.2,
+    marginTop: 1,
+  },
+  recoveryBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ── Hero (tax summary) ──

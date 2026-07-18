@@ -14,6 +14,7 @@ import {
   NativeModules,
   Animated,
   Easing,
+  Linking,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
@@ -32,6 +33,7 @@ import { format, getYear, parse, isValid } from 'date-fns';
 import { scanReceipt } from '../../services/receiptScanner';
 import { enqueueReceipt } from '../../services/receiptQueue';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { toRelativeReceiptPath, resolveReceiptImageUri } from '../../utils/receiptImage';
 import NetInfo from '@react-native-community/netinfo';
 import { usePersonalStore } from '../../store/personalStore';
 import { useAppStore } from '../../store/appStore';
@@ -42,6 +44,7 @@ import { useToast } from '../../context/ToastContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
+import { TIER_LIMITS } from '../../constants/premium';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import Card from '../../components/common/Card';
@@ -166,6 +169,15 @@ const ReceiptScanner: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [recordOnly, setRecordOnly] = useState(false);
 
+  // Cold-start hydration: wallets often populate from storage AFTER this mounts,
+  // so the initial selectedWalletId lands as null and the expense saves with no
+  // walletId. Once wallets arrive and nothing is selected, adopt the default.
+  useEffect(() => {
+    if (selectedWalletId || wallets.length === 0) return;
+    const def = wallets.find((w) => w.isDefault) || wallets[0];
+    if (def) setSelectedWalletId(def.id);
+  }, [wallets, selectedWalletId]);
+
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const scanPulseAnim = useRef(new Animated.Value(0.4)).current;
 
@@ -253,13 +265,27 @@ const ReceiptScanner: React.FC = () => {
     setReceipt({ items: d.items, total: parseFloat(d.total) } as ExtractedReceipt);
   }, []);
 
-  const requestPermission = async (type: 'camera' | 'gallery') => {
-    if (type === 'camera') {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      return status === 'granted';
+  // Returns granted state; when permanently denied (system won't prompt again),
+  // surfaces a 2-button alert that deep-links into the OS Settings app so the
+  // user isn't stuck on a silently-failing button.
+  const requestPermission = async (type: 'camera' | 'gallery', deniedMsg: string) => {
+    const res = type === 'camera'
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (res.status === 'granted') return true;
+    if (res.canAskAgain === false) {
+      Alert.alert(
+        t.receipts.permissionRequired,
+        deniedMsg,
+        [
+          { text: t.common.cancel, style: 'cancel' },
+          { text: t.receipts.openSettings, onPress: () => { Linking.openSettings(); } },
+        ],
+      );
+    } else {
+      Alert.alert(t.receipts.permissionRequired, deniedMsg);
     }
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    return status === 'granted';
+    return false;
   };
 
   const handleTakePhoto = useCallback(async () => {
@@ -277,11 +303,8 @@ const ReceiptScanner: React.FC = () => {
       setImageUri(scannedUri);
       setReceipt(null);
     } else {
-      const granted = await requestPermission('camera');
-      if (!granted) {
-        Alert.alert(t.receipts.permissionRequired, t.receipts.cameraPermissionMsg);
-        return;
-      }
+      const granted = await requestPermission('camera', t.receipts.cameraPermissionMsg);
+      if (!granted) return;
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         quality: 0.8,
@@ -294,11 +317,8 @@ const ReceiptScanner: React.FC = () => {
   }, []);
 
   const handlePickImage = useCallback(async () => {
-    const granted = await requestPermission('gallery');
-    if (!granted) {
-      Alert.alert(t.receipts.permissionRequired, t.receipts.galleryPermissionMsg);
-      return;
-    }
+    const granted = await requestPermission('gallery', t.receipts.galleryPermissionMsg);
+    if (!granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.8,
@@ -458,13 +478,16 @@ const ReceiptScanner: React.FC = () => {
             // Compression failed — fall back to raw copy so the receipt is never lost
             await FileSystem.copyAsync({ from: imageUri, to: target });
           }
-          persistedUri = target;
+          // Persist RELATIVE to documentDirectory — iOS rewrites the sandbox
+          // container path on every install/update, so an absolute file:// URI
+          // goes stale. Render sites resolve back via resolveReceiptImageUri.
+          persistedUri = toRelativeReceiptPath(target);
           if (txId) {
             updateTransaction(txId, { receiptUrl: persistedUri });
           }
         } catch {
           // Keep original URI as fallback
-          persistedUri = imageUri;
+          persistedUri = toRelativeReceiptPath(imageUri);
         }
       }
 
@@ -498,7 +521,8 @@ const ReceiptScanner: React.FC = () => {
         try { usePersonalStore.getState().deleteTransaction(txId); } catch {}
       }
       if (persistedUri && persistedUri !== imageUri) {
-        try { await FileSystem.deleteAsync(persistedUri, { idempotent: true }); } catch {}
+        const abs = resolveReceiptImageUri(persistedUri);
+        if (abs) { try { await FileSystem.deleteAsync(abs, { idempotent: true }); } catch {} }
       }
       Alert.alert(t.receipts.saveFailed, err?.message || t.receipts.saveFailedMsg);
     } finally {
@@ -628,7 +652,7 @@ const ReceiptScanner: React.FC = () => {
               <Text style={styles.galleryLinkText}>{t.receipts.fromGallery}</Text>
             </TouchableOpacity>
 
-            {tier === 'free' && (
+            {Number.isFinite(TIER_LIMITS[tier].maxScansPerMonth) && (
               <Text style={styles.scanLimitText}>
                 {getRemainingScans()} {t.receipts.scansRemaining}
               </Text>
@@ -1009,7 +1033,7 @@ const ReceiptScanner: React.FC = () => {
                 wallets={wallets}
                 selectedId={selectedWalletId}
                 onSelect={setSelectedWalletId}
-                label="paid from wallet"
+                label={t.receipts.paidFromWallet}
               />
             )}
 
@@ -1187,7 +1211,7 @@ const ReceiptScanner: React.FC = () => {
         visible={paywallVisible}
         onClose={() => setPaywallVisible(false)}
         feature="scan"
-        currentUsage={15 - getRemainingScans()}
+        currentUsage={TIER_LIMITS[tier].maxScansPerMonth - getRemainingScans()}
       />
 
       <CategoryManager

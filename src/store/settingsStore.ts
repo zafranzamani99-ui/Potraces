@@ -174,12 +174,20 @@ interface SettingsState {
   setCommitmentEchoHidden: (value: boolean) => void;
   savingsEchoHidden: boolean;
   setSavingsEchoHidden: (value: boolean) => void;
+  pulseEchoHidden: boolean;
+  setPulseEchoHidden: (value: boolean) => void;
   personalSyncEnabled: boolean;
   lastPersonalSyncAt: Date | null;
   lastSyncedUserId: string | null;
+  /** Last cloud-backup failure code, surfaced in the Account screen so a failed
+   *  or paused backup is never silent. null = last sync was clean. Codes:
+   *  'incomplete' (push didn't finish — retry), 'schema' (app/DB out of date —
+   *  backup paused), 'session' (re-authentication needed). */
+  lastPersonalSyncError: string | null;
   setPersonalSyncEnabled: (value: boolean) => void;
   setLastPersonalSyncAt: (value: Date | null) => void;
   setLastSyncedUserId: (value: string | null) => void;
+  setLastPersonalSyncError: (value: string | null) => void;
   spendingAlertsEnabled: boolean;
   setSpendingAlertsEnabled: (value: boolean) => void;
   quickAddConfirm: boolean;
@@ -196,6 +204,9 @@ interface SettingsState {
   /** One-time: the user has seen the "Malay voice uses the cloud to transcribe" disclosure. */
   voiceCloudNoticeSeen: boolean;
   setVoiceCloudNoticeSeen: (value: boolean) => void;
+  /** One-time: the user has consented to note text being sent to Echo's cloud AI for extraction. */
+  notesAiNoticeSeen: boolean;
+  setNotesAiNoticeSeen: (value: boolean) => void;
   /** Opt-in: transcribe Malay voice via the cloud (works on any phone; no on-device model download). */
   malayCloudVoice: boolean;
   setMalayCloudVoice: (value: boolean) => void;
@@ -352,6 +363,9 @@ const wipePersonalStores = async ({
   // Purge local rolling backups of personal stores too — otherwise deleted
   // data survives in bak:* snapshots and the deletion right is incomplete.
   await purgeBackups(PERSONAL_BACKUP_KEYS);
+  // budget-profile backups follow the same rule as its live storage: only a
+  // deliberate user wipe drops them (a demo-data drop preserves the real profile).
+  if (userInitiated) await purgeBackups(['budget-profile-storage']);
 
   // Delete this user's PERSONAL cloud rows (best-effort). Keeps the auth user +
   // any business data. No session (personal-only, never signed in) is a no-op.
@@ -435,27 +449,33 @@ export const useSettingsStore = create<SettingsState>()(
       setCommitmentEchoHidden: (commitmentEchoHidden) => set({ commitmentEchoHidden }),
       savingsEchoHidden: false,
       setSavingsEchoHidden: (savingsEchoHidden) => set({ savingsEchoHidden }),
+      pulseEchoHidden: false,
+      setPulseEchoHidden: (pulseEchoHidden) => set({ pulseEchoHidden }),
       personalSyncEnabled: false,
       lastPersonalSyncAt: null,
       lastSyncedUserId: null,
+      lastPersonalSyncError: null,
       spendingAlertsEnabled: true,
       quickAddConfirm: false,
       tapToPayEnabled: false,
       malayVoicePromptSeen: false,
       voiceModelEpoch: 0,
       voiceCloudNoticeSeen: false,
+      notesAiNoticeSeen: false,
       malayCloudVoice: false,
       malayLiveStreaming: false,
 
       setPersonalSyncEnabled: (personalSyncEnabled) => set({ personalSyncEnabled }),
       setLastPersonalSyncAt: (lastPersonalSyncAt) => set({ lastPersonalSyncAt }),
       setLastSyncedUserId: (lastSyncedUserId) => set({ lastSyncedUserId }),
+      setLastPersonalSyncError: (lastPersonalSyncError) => set({ lastPersonalSyncError }),
       setSpendingAlertsEnabled: (spendingAlertsEnabled) => set({ spendingAlertsEnabled }),
       setQuickAddConfirm: (quickAddConfirm) => set({ quickAddConfirm }),
       setTapToPayEnabled: (tapToPayEnabled) => set({ tapToPayEnabled }),
       setMalayVoicePromptSeen: (malayVoicePromptSeen) => set({ malayVoicePromptSeen }),
       bumpVoiceModelEpoch: () => set((s) => ({ voiceModelEpoch: s.voiceModelEpoch + 1 })),
       setVoiceCloudNoticeSeen: (voiceCloudNoticeSeen) => set({ voiceCloudNoticeSeen }),
+      setNotesAiNoticeSeen: (notesAiNoticeSeen) => set({ notesAiNoticeSeen }),
       setMalayCloudVoice: (malayCloudVoice) => set({ malayCloudVoice }),
       setMalayLiveStreaming: (malayLiveStreaming) => set({ malayLiveStreaming }),
 
@@ -537,6 +557,7 @@ export const useSettingsStore = create<SettingsState>()(
           personalSyncEnabled: false,
           lastPersonalSyncAt: null,
           lastSyncedUserId: null,
+          lastPersonalSyncError: null,
           userName: '',
           hasCompletedOnboarding: false,
           gettingStartedDismissed: false,

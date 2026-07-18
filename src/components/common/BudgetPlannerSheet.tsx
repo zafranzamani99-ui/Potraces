@@ -9,8 +9,8 @@
  * Every ringgit is the engine's — switching models only re-frames the same money.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
@@ -18,7 +18,7 @@ import BottomSheet from './BottomSheet';
 import CategoryIcon from './CategoryIcon';
 import PaywallModal from './PaywallModal';
 import { CALM, CALM_DARK, SPACING, RADIUS, TYPOGRAPHY, withAlpha, SHADOWS } from '../../constants';
-import { FREE_TIER } from '../../constants/premium';
+import { remainingOf } from '../../constants/premium';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
@@ -36,7 +36,7 @@ import { CategoryOption } from '../../types';
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onApplied?: (n: number) => void;
+  onApplied?: (created: number, updated: number) => void;
 }
 
 const cycleFactor = (cycle?: string): number => {
@@ -63,6 +63,7 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
   const goals = usePersonalStore((s) => s.goals);
   const budgets = usePersonalStore((s) => s.budgets);
   const addBudget = usePersonalStore((s) => s.addBudget);
+  const updateBudget = usePersonalStore((s) => s.updateBudget);
   const debts = useDebtStore((s) => s.debts);
   const wallets = useWalletStore((s) => s.wallets);
   const expenseCategories = useCategories('expense');
@@ -86,8 +87,13 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
   const [addingId, setAddingId] = useState<string | null>(null);
   const [commitBuf, setCommitBuf] = useState('');
   const [paywallVisible, setPaywallVisible] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
   const asOf = useMemo(() => new Date(), [visible]);
+
+  // Start each open from Echo's fresh plan — otherwise per-category edits from a
+  // previous session persist and silently overwrite the re-tailored numbers.
+  useEffect(() => { if (visible) setEdits({}); }, [visible]);
 
   const subscriptionCommitments = useMemo(
     () =>
@@ -143,8 +149,18 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
   );
   const allocated = displayRows.reduce((s, r) => s + r.amount, 0);
   const toAssign = plan ? plan.leftToSpend - allocated : 0;
-  const existingCats = useMemo(() => new Set(budgets.map((b) => b.category)), [budgets]);
-  const buildable = displayRows.filter((r) => r.amount > 0 && !existingCats.has(r.category));
+  const budgetByCat = useMemo(() => {
+    const m: Record<string, (typeof budgets)[number]> = {};
+    for (const b of budgets) m[b.category] = b;
+    return m;
+  }, [budgets]);
+  // rows Echo would CREATE (no budget yet) vs re-price on an EXISTING budget (limit differs).
+  const buildable = displayRows.filter((r) => r.amount > 0 && !budgetByCat[r.category]);
+  const updatable = displayRows.filter((r) => {
+    const b = budgetByCat[r.category];
+    return !!b && r.amount > 0 && Math.round(b.allocatedAmount) !== Math.round(r.amount);
+  });
+  const nothingToDo = buildable.length === 0 && updatable.length === 0;
   const roughStart = !!plan && (plan.rows.every((r) => r.fromStarter) || profileTakeHome != null);
   const activeModel = (profileModelId as BudgetModelId) ?? plan?.recommendedId;
 
@@ -192,39 +208,61 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
   const startEditCat = useCallback((cat: string, cur: number) => { lightTap(); setCatBuf(cur > 0 ? String(cur) : ''); setEditingCat(cat); }, []);
   const commitCat = useCallback(() => {
     setEditingCat((cat) => {
-      if (cat) { const v = Math.max(0, Math.round(parseFloat(catBuf) || 0)); setEdits((e) => ({ ...e, [cat]: v })); }
+      if (cat) {
+        const v = Math.max(0, Math.round(parseFloat(catBuf) || 0));
+        setEdits((e) => {
+          if (v > 0) return { ...e, [cat]: v };
+          // A zeroed row can't be applied (create + update both require > 0) and would
+          // show a misleading "→ RM0 updated". Drop the edit → revert to the plan amount.
+          const { [cat]: _drop, ...rest } = e;
+          return rest;
+        });
+      }
       return null;
     });
     setCatBuf('');
   }, [catBuf]);
 
-  const apply = useCallback(() => {
-    if (!plan || buildable.length === 0) return;
+  const commitApply = useCallback((includeUpdates: boolean) => {
+    if (!plan) return;
     mediumTap();
     // Free-tier budget cap — the planner must respect the same limit as the manual
     // "+" add flow, else a free user creates unlimited budgets here (revenue leak).
-    // `buildable` already excludes categories that own a budget, so this is idempotent
-    // (no duplicates) and only counts genuinely new budgets against the cap.
-    const remaining = tier === 'premium'
-      ? Infinity
-      : Math.max(0, FREE_TIER.maxBudgets - budgets.length);
+    // The cap governs ONLY new budgets; re-pricing an existing one never grows the count.
+    // `buildable` already excludes categories that own a budget, so creation is idempotent.
+    const remaining = remainingOf(tier, 'maxBudgets', budgets.length);
     const now = new Date();
     const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    let n = 0;
+    let created = 0;
     for (const r of buildable) {
-      if (n >= remaining) break; // stop at the free-tier cap
+      if (created >= remaining) break; // stop at the free-tier cap
       if (r.amount <= 0) continue;
       addBudget({ category: r.category, allocatedAmount: r.amount, period: 'monthly', startDate: now, endDate });
-      n++;
+      created++;
     }
-    if (n > 0) onApplied?.(n);
-    if (n < buildable.length) {
-      // Couldn't create every planned budget within the free limit — upsell the rest.
+    let updated = 0;
+    if (includeUpdates) {
+      for (const r of updatable) {
+        const b = budgetByCat[r.category];
+        if (b && r.amount > 0) { updateBudget(b.id, { allocatedAmount: r.amount }); updated++; }
+      }
+    }
+    setConfirmVisible(false);
+    if (created > 0 || updated > 0) onApplied?.(created, updated);
+    if (created < buildable.length) {
+      // Couldn't create every NEW budget within the free limit — upsell the rest.
       setPaywallVisible(true);
       return;
     }
     onClose();
-  }, [plan, buildable, addBudget, onClose, onApplied, tier, budgets.length]);
+  }, [plan, buildable, updatable, budgetByCat, addBudget, updateBudget, onClose, onApplied, tier, budgets.length]);
+
+  const apply = useCallback(() => {
+    if (nothingToDo) return;
+    // Overwriting a returning user's existing limits needs explicit consent.
+    if (updatable.length > 0) { mediumTap(); setConfirmVisible(true); return; }
+    commitApply(false);
+  }, [nothingToDo, updatable.length, commitApply]);
 
   const handleClose = useCallback(() => { setEditingCat(null); setEditingIncome(false); setAddingId(null); onClose(); }, [onClose]);
 
@@ -274,9 +312,65 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
     </View>
   );
 
+  // Consent gate — rendered via BottomSheet's `overlay` slot (INSIDE the sheet's
+  // Modal window). A sibling <Modal> would present behind the sheet on iOS.
+  const confirmDialog = confirmVisible ? (
+    <Pressable style={styles.confirmOverlay} onPress={() => setConfirmVisible(false)}>
+      <View style={styles.confirmCard} onStartShouldSetResponder={() => true}>
+        <Text style={styles.confirmTitle}>{tp.confirmTitle}</Text>
+        <Text style={styles.confirmBody}>
+          {buildable.length > 0
+            ? tp.confirmBodyBoth.replace('{{u}}', String(updatable.length)).replace('{{c}}', String(buildable.length))
+            : tp.confirmBodyUpdatesOnly.replace('{{u}}', String(updatable.length))}
+        </Text>
+        <TouchableOpacity
+          style={styles.confirmPrimary}
+          onPress={() => commitApply(true)}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={tp.confirmApply}
+        >
+          <Feather name="check" size={16} color={C.onAccent} />
+          <Text style={styles.confirmPrimaryText}>{tp.confirmApply}</Text>
+        </TouchableOpacity>
+        {buildable.length > 0 && (
+          <TouchableOpacity
+            style={styles.confirmSecondary}
+            onPress={() => commitApply(false)}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={tp.confirmAddNew}
+          >
+            <Text style={styles.confirmSecondaryText}>{`${tp.confirmAddNew} · ${buildable.length}`}</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.confirmCancel}
+          onPress={() => setConfirmVisible(false)}
+          accessibilityRole="button"
+          accessibilityLabel={t.common.cancel.toLowerCase()}
+        >
+          <Text style={styles.confirmCancelText}>{t.common.cancel}</Text>
+        </TouchableOpacity>
+      </View>
+    </Pressable>
+  ) : null;
+
+  // Paywall (free-tier cap) also renders via the sheet's overlay slot — a sibling
+  // <Modal> would present behind the sheet on iOS (invisible, dead upsell).
+  const paywallOverlay = paywallVisible ? (
+    <PaywallModal
+      asOverlay
+      visible
+      onClose={() => setPaywallVisible(false)}
+      feature="budget"
+      currentUsage={budgets.length}
+    />
+  ) : null;
+
   return (
     <>
-    <BottomSheet visible={visible} onClose={handleClose} header={header} maxHeightPct={0.92}>
+    <BottomSheet visible={visible} onClose={handleClose} header={header} maxHeightPct={0.92} overlay={confirmDialog || paywallOverlay}>
       <View style={styles.bounds}>
         <ScrollView
           nestedScrollEnabled
@@ -455,13 +549,20 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
                 {displayRows.map((r) => {
                   const cat = catMap[r.category];
                   const isEditing = editingCat === r.category;
+                  const existing = budgetByCat[r.category];
+                  const isNew = !existing;
+                  const changed = !!existing && Math.round(existing.allocatedAmount) !== Math.round(r.amount);
                   return (
                     <View key={r.category} style={styles.catRow}>
                       <View style={styles.catIconWrap}>
                         {cat ? <CategoryIcon icon={cat.icon} size={18} color={cat.color} /> : <Feather name="circle" size={16} color={C.textMuted} />}
                       </View>
                       <View style={styles.catMid}>
-                        <Text style={styles.catName}>{cat?.name ?? r.category}</Text>
+                        <View style={styles.catNameRow}>
+                          <Text style={styles.catName}>{cat?.name ?? r.category}</Text>
+                          {isNew && <Text style={[styles.catBadge, styles.catBadgeNew]}>{tp.newWord}</Text>}
+                          {changed && <Text style={[styles.catBadge, styles.catBadgeUpd]}>{tp.updatedWord}</Text>}
+                        </View>
                         {r.trailingAvg > 0 && <Text style={styles.catAnchor}>{`${tp.spentPrefix}${money(r.trailingAvg)}${tp.perMo}`}</Text>}
                       </View>
                       {isEditing ? (
@@ -478,7 +579,15 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
                         />
                       ) : (
                         <TouchableOpacity onPress={() => startEditCat(r.category, r.amount)} activeOpacity={0.7} style={styles.catAmountWrap}>
-                          <Text style={styles.catAmount}>{money(r.amount)}</Text>
+                          <View style={styles.catAmountInner}>
+                            {changed && existing && (
+                              <>
+                                <Text style={styles.catAmountOld}>{money(existing.allocatedAmount)}</Text>
+                                <Feather name="arrow-right" size={11} color={C.textMuted} />
+                              </>
+                            )}
+                            <Text style={styles.catAmount}>{money(r.amount)}</Text>
+                          </View>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -504,27 +613,25 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
         {plan && !needBand && (
           <View style={styles.footer}>
             <TouchableOpacity
-              style={[styles.createBtn, buildable.length === 0 && styles.createBtnOff]}
+              style={[styles.createBtn, nothingToDo && styles.createBtnOff]}
               onPress={apply}
-              disabled={buildable.length === 0}
+              disabled={nothingToDo}
               activeOpacity={0.85}
               accessibilityRole="button"
             >
-              <Feather name="check" size={16} color={buildable.length === 0 ? C.textMuted : C.onAccent} />
-              <Text style={[styles.createText, buildable.length === 0 && { color: C.textMuted }]}>
-                {buildable.length === 0 ? tp.allSet : `${tp.createCta} · ${buildable.length}`}
+              <Feather name="check" size={16} color={nothingToDo ? C.textMuted : C.onAccent} />
+              <Text style={[styles.createText, nothingToDo && { color: C.textMuted }]}>
+                {nothingToDo
+                  ? (plan && plan.leftToSpend <= 0 ? tp.noRoom : tp.allSet)
+                  : updatable.length > 0
+                    ? `${tp.applyCta} · ${buildable.length > 0 ? `${buildable.length} ${tp.newWord} · ` : ''}${updatable.length} ${tp.updatedWord}`
+                    : `${tp.createCta} · ${buildable.length}`}
               </Text>
             </TouchableOpacity>
           </View>
         )}
       </View>
     </BottomSheet>
-    <PaywallModal
-      visible={paywallVisible}
-      onClose={() => setPaywallVisible(false)}
-      feature="budget"
-      currentUsage={budgets.length}
-    />
     </>
   );
 };
@@ -609,9 +716,15 @@ const makeStyles = (C: typeof CALM) =>
     catRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, paddingHorizontal: SPACING.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: withAlpha(C.textPrimary, 0.06) },
     catIconWrap: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(C.textPrimary, 0.04) },
     catMid: { flex: 1, marginLeft: SPACING.md },
+    catNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, flexWrap: 'wrap' },
     catName: { fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary, fontWeight: TYPOGRAPHY.weight.medium },
+    catBadge: { fontSize: 9, fontWeight: TYPOGRAPHY.weight.bold, letterSpacing: 0.3, textTransform: 'lowercase', paddingHorizontal: 5, paddingVertical: 1, borderRadius: RADIUS.sm, overflow: 'hidden' },
+    catBadgeNew: { color: C.accent, backgroundColor: withAlpha(C.accent, 0.12) },
+    catBadgeUpd: { color: C.bronze, backgroundColor: withAlpha(C.bronze, 0.12) },
     catAnchor: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 1 },
     catAmountWrap: { paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: withAlpha(C.accent, 0.06) },
+    catAmountInner: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    catAmountOld: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, textDecorationLine: 'line-through', fontVariant: ['tabular-nums'] },
     catAmount: { fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontWeight: TYPOGRAPHY.weight.bold, fontVariant: ['tabular-nums'] },
     catInput: { fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontWeight: TYPOGRAPHY.weight.bold, minWidth: 80, textAlign: 'right', padding: 4, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: withAlpha(C.accent, 0.3) },
 
@@ -625,6 +738,18 @@ const makeStyles = (C: typeof CALM) =>
     createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.md, borderRadius: RADIUS.lg, backgroundColor: C.accent, ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.sm) },
     createBtnOff: { backgroundColor: withAlpha(C.textPrimary, 0.06) },
     createText: { fontSize: TYPOGRAPHY.size.base, color: C.onAccent, fontWeight: TYPOGRAPHY.weight.semibold },
+
+    // consent gate (overwrite confirm) — Onyx centered dialog
+    confirmOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: SPACING.xl, zIndex: 10 },
+    confirmCard: { backgroundColor: C.background, borderRadius: RADIUS.xl, padding: SPACING.xl, width: '100%', maxWidth: 380, gap: SPACING.sm },
+    confirmTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary },
+    confirmBody: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, lineHeight: 20, marginBottom: SPACING.sm },
+    confirmPrimary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.md, borderRadius: RADIUS.lg, backgroundColor: C.accent, minHeight: 52, ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.sm) },
+    confirmPrimaryText: { fontSize: TYPOGRAPHY.size.base, color: C.onAccent, fontWeight: TYPOGRAPHY.weight.semibold },
+    confirmSecondary: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.md, borderRadius: RADIUS.lg, backgroundColor: withAlpha(C.textPrimary, 0.06), minHeight: 52 },
+    confirmSecondaryText: { fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontWeight: TYPOGRAPHY.weight.semibold },
+    confirmCancel: { alignItems: 'center', paddingVertical: SPACING.sm },
+    confirmCancelText: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, fontWeight: TYPOGRAPHY.weight.medium },
   });
 
 export default BudgetPlannerSheet;

@@ -16,7 +16,10 @@ import { useDebtStore } from '../store/debtStore';
 import { useSellerStore } from '../store/sellerStore';
 import { usePlaybookStore } from '../store/playbookStore';
 import { parseCommitmentSchedule, computeNextBillingDate } from '../utils/commitmentParse';
+import { applyGoalContribution } from '../utils/money';
 import { AIExtraction } from '../types';
+import { useT } from '../i18n';
+import { useCalm } from './useCalm';
 
 interface UseIntentEngineOptions {
   pageId: string;
@@ -33,7 +36,7 @@ interface UseIntentEngineReturn {
   extractions: AIExtraction[];
   queryAnswer: QueryAnswer | null;
   statusMessage: string | null;
-  classify: () => void;
+  classify: (currentText?: string) => void;
   retry: () => void;
   confirmExtraction: (extractionId: string) => void;
   skipExtraction: (extractionId: string) => void;
@@ -74,6 +77,8 @@ export function useIntentEngine({
   const addIngredientCost = useSellerStore((s) => s.addIngredientCost);
   const getActiveSeason = useSellerStore((s) => s.getActiveSeason);
 
+  const t = useT();
+  const C = useCalm();
   const walletNames = wallets.map((w) => w.name);
 
   const showStatus = useCallback((msg: string, durationMs = 4000) => {
@@ -133,24 +138,22 @@ export function useIntentEngine({
         const aiLeft = usePremiumStore.getState().getRemainingAiCalls();
 
         if (addedCount > 0 && usedLocal && !aiWasAvailable) {
-          // Local parser worked but AI was unavailable — tell user
-          showStatus(`extracted via local parser · ${aiLeft} AI calls left`, 5000);
+          // Echo fell back to its offline reader — keep it branded, not technical.
+          showStatus(t.notes.toastExtracted, 5000);
         } else if (addedCount > 0) {
           // Cards appeared — no extra message needed
         } else if (intentResult?.intent === 'plain') {
-          showStatus('no financial content found');
+          showStatus(t.notes.toastNoContent);
         } else if (!aiWasAvailable) {
-          showStatus(aiLeft <= 0
-            ? 'AI limit reached this month · using local parser'
-            : 'AI temporarily unavailable · using local parser');
+          showStatus(aiLeft <= 0 ? t.notes.toastLimit : t.notes.toastBusy);
         } else if (intentResult?.extractions?.length === 0) {
-          showStatus('nothing to extract');
+          showStatus(t.notes.toastNothing);
         } else {
-          showStatus('nothing new to extract');
+          showStatus(t.notes.toastNothingNew);
         }
       } catch (err) {
         if (__DEV__) console.warn('[useIntentEngine] Classification failed:', err);
-        showStatus('extraction failed — try again');
+        showStatus(t.notes.toastFailed);
       } finally {
         if (!abortRef.current) {
           setIsClassifying(false);
@@ -158,7 +161,7 @@ export function useIntentEngine({
         }
       }
     },
-    [pageId, enabled, walletNames, page?.extractions, addExtraction, showStatus]
+    [pageId, enabled, walletNames, page?.extractions, addExtraction, showStatus, t]
   );
 
   // Cleanup on unmount
@@ -176,11 +179,38 @@ export function useIntentEngine({
       const extraction = (currentPage?.extractions || []).find(
         (e) => e.id === extractionId
       );
-      if (!extraction) return;
+      // Idempotency guard: only a still-pending extraction may be applied. Without
+      // this a rapid double-tap on "save" (the card is removed on an async re-render,
+      // so it stays pressable for a frame) would re-enter here and create a SECOND
+      // transaction/debt/subscription + a second wallet movement.
+      if (!extraction || extraction.status !== 'pending') return;
 
       const { amount, description, category, transactionType, wallet, person } =
         extraction.extractedData;
 
+      // Wallet resolver for money-MOVING confirms (expense/income/playbook): a
+      // named wallet if it matches, else the default/first wallet, else create the
+      // canonical Cash wallet — so a saved item ALWAYS lands in a real wallet and
+      // its balance actually moves (mirrors QuickAdd / NoteEditor's edit path).
+      const ensureWalletId = (): string | undefined => {
+        const named = wallet
+          ? wallets.find((w) => w.name.toLowerCase() === wallet.toLowerCase())
+          : undefined;
+        if (named) return named.id;
+        const fallback = wallets.find((w) => w.isDefault) || wallets[0];
+        if (fallback) return fallback.id;
+        useWalletStore.getState().addWallet({
+          name: t.quickAdd.cashWalletName,
+          type: 'ewallet',
+          balance: 0,
+          icon: 'dollar-sign',
+          color: C.accent,
+          isDefault: true,
+        });
+        const fresh = useWalletStore.getState().wallets;
+        return (fresh.find((w) => w.isDefault) || fresh[0])?.id;
+      };
+      // Non-creating resolver — used where a wallet is optional (debt payment).
       const resolveWalletId = () =>
         wallet
           ? wallets.find((w) => w.name.toLowerCase() === wallet.toLowerCase())?.id
@@ -191,7 +221,7 @@ export function useIntentEngine({
         (extraction.type === 'expense' || extraction.type === 'income') &&
         amount > 0
       ) {
-        const wId = resolveWalletId();
+        const wId = ensureWalletId();
         const txnId = addTransaction({
           amount,
           category: category || 'other',
@@ -223,9 +253,10 @@ export function useIntentEngine({
           (c) => c.name.toLowerCase() === person.toLowerCase()
         );
         if (!contact) {
-          const contactId = Date.now().toString() + Math.random().toString(36).slice(2, 7);
+          // Use the id addContact actually persists — fabricating our own here
+          // produced a phantom contact.id that never matched the stored contact.
+          const contactId = addContact({ name: person, isFromPhone: false });
           contact = { id: contactId, name: person, isFromPhone: false };
-          addContact({ name: person, isFromPhone: false });
         }
 
         // Direction: if transactionType is 'income' → they_owe me, else → i_owe
@@ -252,9 +283,21 @@ export function useIntentEngine({
         );
 
         if (matchingDebt) {
+          // Cap to what's actually left BEFORE moving the wallet. addPayment already
+          // caps the RECORDED payment to the remaining balance, but the wallet delta
+          // used the raw amount — overpaying a debt (e.g. "paid Ali 500" on a 300
+          // remaining) deducted 500 while recording 300, leaving 200 of invisible
+          // cash. Mirror chatActions debt_update: drive both from the capped `pay`.
+          const before = Math.max(0, matchingDebt.totalAmount - matchingDebt.paidAmount);
+          const pay = Math.min(amount, before);
+          if (pay <= 0) {
+            // Debt already settled — record nothing and don't touch the wallet.
+            updateExtractionStatus(pageId, extractionId, 'confirmed');
+            return;
+          }
           const pWalletId = resolveWalletId();
           const paymentId = addPayment(matchingDebt.id, {
-            amount,
+            amount: pay,
             date: new Date(),
             note: description || 'payment from note',
             walletId: pWalletId,
@@ -262,9 +305,9 @@ export function useIntentEngine({
           // Adjust wallet: i_owe → money out, they_owe → money in
           if (pWalletId) {
             if (matchingDebt.type === 'i_owe') {
-              useWalletStore.getState().deductFromWallet(pWalletId, amount);
+              useWalletStore.getState().deductFromWallet(pWalletId, pay);
             } else {
-              useWalletStore.getState().addToWallet(pWalletId, amount);
+              useWalletStore.getState().addToWallet(pWalletId, pay);
             }
           }
           updateExtractionStatus(pageId, extractionId, 'confirmed', paymentId ?? undefined);
@@ -335,18 +378,44 @@ export function useIntentEngine({
                  goalName.toLowerCase().includes(g.name.toLowerCase())
         );
         if (goal) {
-          contributeToGoal(goal.id, amount, description || 'contribution from note');
-          updateExtractionStatus(pageId, extractionId, 'confirmed', goal.id);
-        } else {
-          // No matching goal — just mark confirmed
-          updateExtractionStatus(pageId, extractionId, 'confirmed');
+          // Cap to the goal's remaining room so we debit the wallet by the SAME
+          // amount the goal absorbs (contributeToGoal caps internally too).
+          const { actualAmount } = applyGoalContribution(goal.currentAmount, goal.targetAmount, amount);
+          if (actualAmount > 0) {
+            // Money leaves a wallet INTO savings — mirror the Goals screen: a linked
+            // 'savings' expense + wallet debit, so it isn't double-counted (the goal
+            // used to grow while the wallet kept the money).
+            const wId = ensureWalletId();
+            const linkedTxId = wId
+              ? (addTransaction({
+                  amount: actualAmount,
+                  category: 'savings',
+                  description: goal.name,
+                  date: new Date(),
+                  type: 'expense',
+                  mode,
+                  walletId: wId,
+                  inputMethod: 'text',
+                  rawInput: extraction.rawText,
+                  linkedGoalId: goal.id,
+                }) || undefined)
+              : undefined;
+            if (wId) useWalletStore.getState().deductFromWallet(wId, actualAmount);
+            contributeToGoal(goal.id, actualAmount, description || 'contribution from note', wId, linkedTxId);
+            updateExtractionStatus(pageId, extractionId, 'confirmed', goal.id);
+          }
+          // else: goal already full → leave pending (nothing to contribute).
+          return;
         }
+        // No matching goal → leave PENDING. Marking it 'confirmed' here used to
+        // show "saved" while recording nothing (silent no-op). Keeping it pending
+        // lets the user create a matching goal or edit the item instead.
         return;
       }
 
       // ── Playbook → income tx + playbookStore ──
       if (extraction.type === 'playbook' && amount > 0) {
-        const wId = resolveWalletId();
+        const wId = ensureWalletId();
         // Create income transaction
         const txId = addTransaction({
           amount,
@@ -388,7 +457,7 @@ export function useIntentEngine({
       updateExtractionStatus(pageId, extractionId, 'confirmed');
     },
     [
-      pageId, wallets, mode,
+      pageId, wallets, mode, t, C,
       addTransaction, addSubscription, goals, contributeToGoal,
       updateExtractionStatus,
       contacts, debts, addDebt, addPayment, addContact,

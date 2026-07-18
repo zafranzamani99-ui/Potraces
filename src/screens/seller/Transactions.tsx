@@ -414,7 +414,10 @@ const SellerTransactions: React.FC = () => {
         </>
       );
     },
-    [filtered, currency, dailyTotals, sortBy]
+    // styles/C are deps: they change on theme switch. Without them this memoized
+    // renderItem keeps the previous theme's colors on every row until an unrelated
+    // dep changes (stale-closure theme bug). See extraData on the FlatList too.
+    [filtered, currency, dailyTotals, sortBy, styles, C]
   );
 
   // Quick chips: period shortcuts + payment method chips
@@ -539,6 +542,7 @@ const SellerTransactions: React.FC = () => {
           data={filtered}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
+          extraData={C.textPrimary}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews

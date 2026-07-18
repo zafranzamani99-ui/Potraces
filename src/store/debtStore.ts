@@ -571,16 +571,19 @@ export const useDebtStore = create<DebtState>()(
           };
         }),
 
-      addContact: (contact) =>
+      addContact: (contact) => {
+        const id = newId();
         set((state) => ({
           contacts: [
             {
               ...contact,
-              id: newId(),
+              id,
             },
             ...state.contacts,
           ],
-        })),
+        }));
+        return id;
+      },
 
       deleteContact: (id) => {
         useTombstoneStore.getState().addTombstones([id]);

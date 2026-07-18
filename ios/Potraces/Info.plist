@@ -70,15 +70,17 @@
     <key>NSContactsUsageDescription</key>
     <string>Potraces needs access to contacts for splitting expenses.</string>
     <key>NSFaceIDUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to use Face ID</string>
+    <string>Potraces uses Face ID to unlock the app and keep your money data private.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>This app uses the local WiFi network to connect to supported card readers.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Location access is required to accept card payments.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <string>Potraces uses the microphone so you can speak entries to Echo.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Potraces needs access to your photos to scan receipts.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Potraces uses speech recognition to show your words live as you speak.</string>
     <key>NSUserTrackingUsageDescription</key>
     <string>Allow this app to collect app-related data that can be used for tracking you or your device.</string>
     <key>RCTNewArchEnabled</key>

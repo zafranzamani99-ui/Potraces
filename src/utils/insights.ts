@@ -23,6 +23,7 @@ import {
   startOfDay,
   addDays,
   differenceInDays,
+  differenceInCalendarMonths,
 } from 'date-fns';
 import { Transaction, Subscription, Budget, Goal, CategoryOption } from '../types';
 
@@ -51,6 +52,23 @@ export function getRange(key: RangeKey, now: Date = new Date()): DateRange {
   }
 }
 
+// How many calendar months a range spans (inclusive, min 1). Lets us turn a
+// range-total into a per-month figure without re-deriving from the pill.
+export function monthsInRange(r: { start: Date; end: Date }): number {
+  return Math.max(differenceInCalendarMonths(r.end, r.start) + 1, 1);
+}
+
+// The equal-length window immediately BEFORE `r` — for "this range vs the one
+// before it" comparisons. e.g. this_month → last month; 3m → the prior 3 months.
+export function previousRange(r: DateRange): DateRange {
+  const span = monthsInRange(r);
+  return {
+    start: startOfMonth(subMonths(r.start, span)),
+    end: endOfMonth(subMonths(r.start, 1)),
+    key: r.key,
+  };
+}
+
 // TransactionsList uses its own range union (no 3m/6m presets) — map to the
 // closest so the drill-down lands sensibly. Full-range fidelity stays in
 // Reports' own cards.
@@ -58,6 +76,7 @@ export type TxnListRange =
   | 'this_month'
   | 'last_month'
   | 'last_3_months'
+  | 'last_6_months'
   | 'this_year'
   | 'all_time';
 
@@ -70,7 +89,7 @@ export function toTxnListRange(key: RangeKey): TxnListRange {
     case '3m':
       return 'last_3_months';
     case '6m':
-      return 'last_3_months';
+      return 'last_6_months';
     case 'year':
       return 'this_year';
   }
@@ -81,6 +100,17 @@ const toDate = (v: Date | string): Date =>
   v instanceof Date ? v : new Date(v);
 
 export const isTransfer = (t: Transaction): boolean => t.id.startsWith('transfer-');
+
+// A goal money-movement booked as a real txn: a contribution is an expense
+// {category:'savings', linkedGoalId}, a withdrawal is income {category:'savings_return',
+// linkedGoalId} (Goals.tsx ~952/1026, and chatActions goal actions). Moving money into
+// or out of your own goal is NOT spending/earning, so it must be excluded from cash-flow
+// + category rollups (kept, the "where it went" donut, the Pulse saving score) — but NOT
+// from realTxns/scopeTxns, so net-worth, merchants, biggest-buys, movers and the monthly
+// trend keep seeing every txn. Keyed on the reserved category ids OR linkedGoalId so every
+// booking shape is caught; those ids are never used by user/custom categories.
+export const isGoalMove = (t: Transaction): boolean =>
+  t.category === 'savings' || t.category === 'savings_return' || !!t.linkedGoalId;
 
 export function realTxns(txns: Transaction[]): Transaction[] {
   return txns.filter((t) => !isTransfer(t));
@@ -96,6 +126,14 @@ export function inRange(
   });
 }
 
+// The real (non-transfer) transactions inside a range — the shared slice every
+// Reports metric derives from. Compute this ONCE per range and pass it to the
+// `*Of` variants below, instead of each metric re-running realTxns()+inRange()
+// over the whole ledger (Reports would otherwise scan the array ~8× per pill tap).
+export function scopeTxns(txns: Transaction[], r: { start: Date; end: Date }): Transaction[] {
+  return inRange(realTxns(txns), r);
+}
+
 // ─── Cash flow ───────────────────────────────────────────────
 export interface CashFlow {
   cameIn: number;
@@ -104,15 +142,20 @@ export interface CashFlow {
   count: number;
 }
 
-export function cashFlow(txns: Transaction[], r: DateRange): CashFlow {
-  const scoped = inRange(realTxns(txns), r);
+// Scoped variant — operates on an already-scoped slice (see scopeTxns).
+export function cashFlowOf(scoped: Transaction[]): CashFlow {
   let cameIn = 0;
   let wentOut = 0;
   for (const t of scoped) {
+    if (isGoalMove(t)) continue; // saving into a goal isn't spending; a withdrawal isn't income
     if (t.type === 'income') cameIn += t.amount;
     else if (t.type === 'expense') wentOut += t.amount;
   }
   return { cameIn, wentOut, kept: cameIn - wentOut, count: scoped.length };
+}
+
+export function cashFlow(txns: Transaction[], r: DateRange): CashFlow {
+  return cashFlowOf(scopeTxns(txns, r));
 }
 
 // ─── Category rollup ─────────────────────────────────────────
@@ -125,16 +168,17 @@ export interface CategoryRollup {
   percent: number;
 }
 
-export function categoryRollup(
-  txns: Transaction[],
-  r: DateRange,
+// Scoped variant — group an already-scoped slice by category for one txn type.
+export function rollupOf(
+  scoped: Transaction[],
   cats: CategoryOption[],
   fallbackColor: string,
-  limit = 6
+  limit: number,
+  type: 'expense' | 'income'
 ): CategoryRollup[] {
-  const scoped = inRange(realTxns(txns), r).filter((t) => t.type === 'expense');
+  const rows = scoped.filter((t) => t.type === type && !isGoalMove(t));
   const totals: Record<string, number> = {};
-  for (const t of scoped) totals[t.category] = (totals[t.category] || 0) + t.amount;
+  for (const t of rows) totals[t.category] = (totals[t.category] || 0) + t.amount;
   const total = Object.values(totals).reduce((s, a) => s + a, 0) || 1;
   return Object.entries(totals)
     .map(([id, amount]) => {
@@ -152,6 +196,130 @@ export function categoryRollup(
     .slice(0, limit);
 }
 
+export function categoryRollup(
+  txns: Transaction[],
+  r: DateRange,
+  cats: CategoryOption[],
+  fallbackColor: string,
+  limit = 6
+): CategoryRollup[] {
+  return rollupOf(scopeTxns(txns, r), cats, fallbackColor, limit, 'expense');
+}
+
+// Income equivalent of categoryRollup — "where the money came from". Neither
+// Reports nor Pulse breaks income down today, so this is genuinely new signal.
+export function incomeRollup(
+  txns: Transaction[],
+  r: DateRange,
+  cats: CategoryOption[],
+  fallbackColor: string,
+  limit = 6
+): CategoryRollup[] {
+  return rollupOf(scopeTxns(txns, r), cats, fallbackColor, limit, 'income');
+}
+
+// ─── Biggest single expenses in a range ──────────────────────
+export interface BigExpense {
+  id: string;
+  description: string;
+  category: string;
+  amount: number;
+  date: Date;
+}
+
+// Scoped variant — biggest single expenses from an already-scoped slice.
+export function biggestOf(scoped: Transaction[], limit = 5): BigExpense[] {
+  return scoped
+    .filter((t) => t.type === 'expense')
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, limit)
+    .map((t) => ({
+      id: t.id,
+      description: (t.description || '').trim(),
+      category: t.category,
+      amount: t.amount,
+      date: toDate(t.date),
+    }));
+}
+
+export function biggestExpenses(
+  txns: Transaction[],
+  r: DateRange,
+  limit = 5
+): BigExpense[] {
+  return biggestOf(scopeTxns(txns, r), limit);
+}
+
+// ─── Category movers: this range vs the previous equal window ──
+export interface CategoryDelta {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+  thisAmount: number;
+  prevAmount: number;
+  delta: number;
+  pct: number | null; // null when there was no prior spend (brand-new)
+}
+
+// Scoped variant — compare two already-scoped slices (this window vs the one before).
+export function categoryMoversOf(
+  scopedThis: Transaction[],
+  scopedPrev: Transaction[],
+  cats: CategoryOption[],
+  fallbackColor: string,
+  limit = 3
+): { up: CategoryDelta[]; down: CategoryDelta[] } {
+  const sumByCat = (slice: Transaction[]): Record<string, number> => {
+    const totals: Record<string, number> = {};
+    for (const t of slice) {
+      if (t.type !== 'expense') continue;
+      totals[t.category] = (totals[t.category] || 0) + t.amount;
+    }
+    return totals;
+  };
+  const cur = sumByCat(scopedThis);
+  const prev = sumByCat(scopedPrev);
+  const ids = new Set([...Object.keys(cur), ...Object.keys(prev)]);
+  const rows: CategoryDelta[] = [];
+  ids.forEach((id) => {
+    const thisAmount = cur[id] || 0;
+    const prevAmount = prev[id] || 0;
+    // Only categories that existed before are a genuine "change vs before".
+    // Brand-new categories (prevAmount 0) already show in "where it went" — including
+    // them here would restate the same number and read as duplicate info.
+    if (prevAmount <= 0) return;
+    const delta = thisAmount - prevAmount;
+    if (Math.abs(delta) < 0.005) return;
+    const c = cats.find((x) => x.id === id);
+    rows.push({
+      id,
+      name: c?.name || id,
+      color: c?.color || fallbackColor,
+      icon: c?.icon || 'tag',
+      thisAmount,
+      prevAmount,
+      delta,
+      pct: prevAmount > 0 ? (delta / prevAmount) * 100 : null,
+    });
+  });
+  return {
+    up: rows.filter((x) => x.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, limit),
+    down: rows.filter((x) => x.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, limit),
+  };
+}
+
+export function categoryMovers(
+  txns: Transaction[],
+  r: DateRange,
+  prevR: DateRange,
+  cats: CategoryOption[],
+  fallbackColor: string,
+  limit = 3
+): { up: CategoryDelta[]; down: CategoryDelta[] } {
+  return categoryMoversOf(scopeTxns(txns, r), scopeTxns(txns, prevR), cats, fallbackColor, limit);
+}
+
 // ─── Merchant rollup (groups by free-text description) ───────
 export interface MerchantRollup {
   key: string;
@@ -161,14 +329,11 @@ export interface MerchantRollup {
   percent: number;
 }
 
-export function merchantRollup(
-  txns: Transaction[],
-  r: DateRange,
-  limit = 5
-): MerchantRollup[] {
-  const scoped = inRange(realTxns(txns), r).filter((t) => t.type === 'expense');
+// Scoped variant — group an already-scoped slice by free-text description.
+export function merchantsOf(scoped: Transaction[], limit = 5): MerchantRollup[] {
+  const rows = scoped.filter((t) => t.type === 'expense');
   const groups: Record<string, { label: string; amount: number; count: number }> = {};
-  for (const t of scoped) {
+  for (const t of rows) {
     const raw = (t.description || '').trim();
     if (!raw) continue;
     const key = raw.toLowerCase();
@@ -187,6 +352,14 @@ export function merchantRollup(
     }))
     .sort((a, b) => b.amount - a.amount)
     .slice(0, limit);
+}
+
+export function merchantRollup(
+  txns: Transaction[],
+  r: DateRange,
+  limit = 5
+): MerchantRollup[] {
+  return merchantsOf(scopeTxns(txns, r), limit);
 }
 
 // ─── Monthly series (oldest → newest) ────────────────────────
@@ -325,6 +498,18 @@ export function monthlyEquivalent(sub: Subscription): number {
   }
 }
 
+// A subscription that still generates spending: active, not paused, and — if it's
+// a fixed-term installment plan — NOT already fully paid off. A finished installment
+// keeps an advanced nextBillingDate (a phantom cycle); counting it would inflate every
+// recurring total. Shared by upcomingBills + recurringShare so they can't drift.
+export function isLiveRecurring(sub: Subscription): boolean {
+  return (
+    sub.isActive &&
+    !sub.isPaused &&
+    !(sub.isInstallment && !!sub.totalInstallments && (sub.completedInstallments ?? 0) >= sub.totalInstallments)
+  );
+}
+
 export interface UpcomingBill {
   id: string;
   name: string;
@@ -348,8 +533,7 @@ export function upcomingBills(
     // A finished installment plan still carries an advanced nextBillingDate (a
     // phantom cycle), so exclude it — otherwise a paid-off loan inflates the
     // "bills to come" figure that BudgetPlanning subtracts from the spendable pool.
-    .filter((s) => s.isActive && !s.isPaused
-      && !(s.isInstallment && s.totalInstallments && (s.completedInstallments ?? 0) >= s.totalInstallments))
+    .filter(isLiveRecurring)
     .map((s) => ({ s, due: toDate(s.nextBillingDate) }))
     .filter(
       ({ due }) => isValid(due) && isWithinInterval(due, { start: today, end: horizon })
@@ -376,7 +560,7 @@ export function recurringShare(
   monthWentOut: number
 ): RecurringShare {
   const monthlyRecurring = subs
-    .filter((s) => s.isActive && !s.isPaused)
+    .filter(isLiveRecurring)
     .reduce((s, sub) => s + monthlyEquivalent(sub), 0);
   return {
     monthlyRecurring,

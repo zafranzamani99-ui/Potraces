@@ -9,7 +9,7 @@ import { useSavingsStore } from '../../store/savingsStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { usePremiumStore } from '../../store/premiumStore';
-import { FREE_TIER } from '../../constants/premium';
+import { TIER_LIMITS } from '../../constants/premium';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
@@ -121,7 +121,7 @@ const SavingsTracker: React.FC = () => {
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   // Free tier is capped; premium is unlimited. The cap number for display + gating.
   const atAccountCap = !canCreateSavingsAccount(accounts.length);
-  const savingsAccountLimit = tier === 'premium' ? Infinity : FREE_TIER.maxSavingsAccounts;
+  const savingsAccountLimit = TIER_LIMITS[tier].maxSavingsAccounts;
 
   // ── Draggable Echo FAB — same mechanism as Wallet / Bills ──
   const echoHidden = useSettingsStore((s) => s.savingsEchoHidden);
@@ -210,7 +210,7 @@ const SavingsTracker: React.FC = () => {
   const snapshot = useMemo(() => buildSavingsSnapshot({ accounts, portfolio, breakdown: computeBreakdown(accounts, resolveCustom), currency, now, resolveCustom }), [accounts, portfolio, currency, now, resolveCustom]);
 
   const openEcho = useCallback((prompt?: string) => {
-    if (tier !== 'premium') { setPaywallFeature('ai'); setPaywallOpen(true); return; }
+    if (!TIER_LIMITS[tier].askEchoPerScreen) { setPaywallFeature('ai'); setPaywallOpen(true); return; }
     lightTap();
     setEchoAutoPrompt(prompt);
     setEchoOpen(true);
@@ -277,7 +277,7 @@ const SavingsTracker: React.FC = () => {
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
             >
-              <Feather name="zap" size={20} color={tier !== 'premium' ? C.textMuted : C.textPrimary} />
+              <Feather name="zap" size={20} color={!TIER_LIMITS[tier].askEchoPerScreen ? C.textMuted : C.textPrimary} />
             </TouchableOpacity>
           )}
         </View>
@@ -575,7 +575,7 @@ function renderNudge(n: Nudge, t: any, fmtShort: (v: number) => string) {
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },
-  content: { padding: SPACING.lg, paddingBottom: 120 },
+  content: { padding: SPACING.lg, paddingBottom: 120, maxWidth: 680, width: '100%', alignSelf: 'center' as const },
   loading: { alignItems: 'center', paddingTop: 80 },
   muted: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted },
 

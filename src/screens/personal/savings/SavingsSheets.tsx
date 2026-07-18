@@ -1,17 +1,21 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, Modal, Pressable, TouchableOpacity, Alert, Keyboard, useWindowDimensions } from 'react-native';
-import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { Gesture, GestureDetector, GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import Reanimated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS, interpolate, Extrapolation } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, isValid } from 'date-fns';
 import { CALM, CALM_DARK, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useNeu } from '../../../components/common/neu';
 import CategoryPicker from '../../../components/common/CategoryPicker';
 import Sparkline from '../../../components/common/Sparkline';
 import ModalToastHost from '../../../components/common/ModalToastHost';
+import { useKeyboardVisible } from '../../../hooks/useKeyboardVisible';
+import KeyboardDoneFab from '../../../components/common/KeyboardDoneFab';
+import { fetchLatestInstrumentRate } from '../../../services/aiService';
+import { usePremiumStore } from '../../../store/premiumStore';
 import { useToast } from '../../../context/ToastContext';
 import { useT } from '../../../i18n';
 import { lightTap, successNotification } from '../../../services/haptics';
@@ -49,13 +53,31 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
   const a = useMemo(() => addSheetStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
+  const isDark = useIsDark();
+  // "Note Fields" standard: the description input is multiline, so it carries the
+  // gold keyboard-done FAB while focused (see CLAUDE.md — Note Fields, LOCKED).
+  const [multilineFocused, setMultilineFocused] = useState(false);
+  const { keyboardVisible, keyboardHeight } = useKeyboardVisible(() => setMultilineFocused(false));
 
   const [name, setName] = useState('');
+  // True while the name came from the type pick (auto-fill) — typing takes over.
+  const [nameAuto, setNameAuto] = useState(false);
   const [type, setType] = useState('bank');
   const [description, setDescription] = useState('');
   const [initial, setInitial] = useState('');
   const [current, setCurrent] = useState('');
   const [rate, setRate] = useState('');
+  // True while the rate value came from an auto-fill (registry or Echo) — typing
+  // in the field takes ownership back and stops future auto-fills.
+  const [rateAuto, setRateAuto] = useState(false);
+  // Echo latest-rate check: 'checking' while in flight, {asOf} once Echo's figure
+  // landed (drives the "echo · 2025" hint), null → registry figure/hint.
+  const [rateEcho, setRateEcho] = useState<{ asOf: string } | null>(null);
+  const [rateChecking, setRateChecking] = useState(false);
+  // Live mirrors for the async Echo callback: ignore a result that lands after the
+  // user switched type or typed their own rate.
+  const typeRef = useRef(type); typeRef.current = type;
+  const rateAutoRef = useRef(rateAuto); rateAutoRef.current = rateAuto;
   const [target, setTarget] = useState('');
   const [goalName, setGoalName] = useState('');
 
@@ -72,11 +94,15 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
     setSyncKey(opened);
     if (opened !== null) {
       setName(editing?.name ?? '');
+      setNameAuto(false);
       setType(editing?.type ?? defaultType ?? 'bank');
       setDescription(editing?.description ?? '');
       setInitial(editing ? String(editing.initialInvestment) : '');
       setCurrent(editing ? String(editing.currentValue) : '');
       setRate(editing?.annualRate ? String(editing.annualRate) : '');
+      setRateAuto(false);
+      setRateEcho(null);
+      setRateChecking(false);
       setTarget(editing?.target ? String(editing.target) : '');
       setGoalName(editing?.goalName ?? '');
     }
@@ -155,7 +181,9 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
     const tgtNum = parseFloat(normAmount(target)); const tgt = Number.isFinite(tgtNum) && tgtNum > 0 ? tgtNum : undefined;
     const rtNum = parseFloat(normAmount(rate)); const rt = Number.isFinite(rtNum) && rtNum > 0 ? rtNum : undefined;
     const gn = goalName.trim() || undefined;
-    const desc = isCustomLike ? description.trim() : undefined;
+    // Notes/description is saved for EVERY type (it used to be custom-types-only,
+    // which silently dropped notes typed for normal instruments).
+    const desc = description.trim() || undefined;
     const nm = name.trim();
     // Commit past this point — block re-entrant double-taps while the Modal
     // slides out. Auto-clears shortly after so the next open starts unlocked
@@ -242,29 +270,45 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={a.scrollContent}
-            bottomOffset={insets.bottom + 130}
+            bottomOffset={32}
             keyboardDismissMode="on-drag"
           >
-            {/* Hero — current value */}
-            <View style={[a.heroCard, neu.raisedSoft]}>
-              <Text style={a.cardLabel}>{t.savings.nowLabel} <Text style={a.reqStar}>*</Text></Text>
-              <View style={a.heroAmountRow}>
-                <Text style={[a.heroCurrency, { color: C.accent }]} numberOfLines={1}>{currency}</Text>
-                <TextInput value={current} onChangeText={(v) => setCurrent(normAmount(v))} keyboardType="decimal-pad" maxLength={13} placeholder="0" placeholderTextColor={withAlpha(C.textPrimary, 0.12)} style={a.heroAmountInput} selectionColor={withAlpha(C.accent, 0.25)} accessibilityLabel={t.savings.nowLabel} />
-              </View>
-            </View>
-
-            {/* Account name */}
-            <View style={[a.fieldCard, neu.raisedSoft]}>
-              <Text style={a.cardLabel}>{t.savings.accountName} <Text style={a.reqStar}>*</Text></Text>
-              <TextInput value={name} onChangeText={setName} placeholder={t.savings.accountNamePlaceholder} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={a.fieldInput} selectionColor={withAlpha(C.accent, 0.25)} />
-            </View>
-
-            {/* Type — dropdown picker (same UX as the Add Debt category picker) */}
+            {/* TYPE FIRST — picking the type auto-fills the name (and rate) below, so
+                the natural flow is: choose what it is → confirm the name → enter the
+                amount. Same dropdown UX as the Add Debt category picker. Picking a type
+                with a PUBLISHED rate (ASB / Tabung Haji / ESA / GO+ / FD) auto-fills the
+                annual-rate field (registry figure instantly, then Echo's latest); typing
+                a field takes ownership back. */}
             <CategoryPicker
               categories={SAVINGS_TYPE_OPTIONS}
               selectedId={type}
-              onSelect={setType}
+              onSelect={(id) => {
+                setType(id);
+                const ti = SAVINGS_TYPE_OPTIONS.find((o) => o.id === id);
+                // Auto-prefill the account name from the picked type (e.g. "Tabung
+                // Haji") so the user doesn't have to type it — typing their own
+                // name takes ownership back. Skip the generic "Other" bucket.
+                if (ti && id !== 'other' && (nameAuto || !name.trim())) {
+                  setName(ti.name);
+                  setNameAuto(true);
+                }
+                if (rateAuto || !rate.trim()) {
+                  setRate(ti?.typicalRate != null ? String(ti.typicalRate) : '');
+                  setRateAuto(ti?.typicalRate != null);
+                  setRateEcho(null);
+                  if (ti?.typicalRate != null && usePremiumStore.getState().canUseAI()) {
+                    setRateChecking(true);
+                    fetchLatestInstrumentRate(ti.id, ti.name)
+                      .then((res) => {
+                        // Auto-rate suggestion — background AI, does NOT spend the user's Echo quota.
+                        // Drop the result if the user moved on: switched type or typed a rate.
+                        if (typeRef.current !== id || !rateAutoRef.current) return;
+                        if (res) { setRate(String(res.rate)); setRateEcho({ asOf: res.asOf }); }
+                      })
+                      .finally(() => { if (typeRef.current === id) setRateChecking(false); });
+                  }
+                }
+              }}
               label={t.savings.typeLabel}
               layout="dropdown"
               showManageHint={false}
@@ -273,23 +317,53 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
             {isCustomLike && (
               <View style={[a.fieldCard, neu.raisedSoft]}>
                 <Text style={a.cardLabel}>{t.savings.descriptionLabel}</Text>
-                <TextInput value={description} onChangeText={setDescription} placeholder={t.savings.descriptionPlaceholder} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={a.fieldInput} selectionColor={withAlpha(C.accent, 0.25)} />
+                <TextInput value={description} onChangeText={setDescription} placeholder={t.savings.descriptionPlaceholder} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={[a.fieldInput, a.multilineInput]} selectionColor={withAlpha(C.accent, 0.25)} multiline textAlignVertical="top" keyboardAppearance={isDark ? 'dark' : 'light'} onFocus={() => setMultilineFocused(true)} onBlur={() => setMultilineFocused(false)} />
               </View>
             )}
+
+            {/* Account name — auto-prefilled from the picked type (editable) */}
+            <View style={[a.fieldCard, neu.raisedSoft]}>
+              <Text style={a.cardLabel}>{t.savings.accountName} <Text style={a.reqStar}>*</Text></Text>
+              <TextInput value={name} onChangeText={(v) => { setName(v); setNameAuto(false); }} placeholder={t.savings.accountNamePlaceholder} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={a.fieldInput} selectionColor={withAlpha(C.accent, 0.25)} />
+            </View>
+
+            {/* Hero — current value ("now"), entered AFTER type + name */}
+            <View style={[a.heroCard, neu.raisedSoft]}>
+              <Text style={a.cardLabel}>{t.savings.nowLabel} <Text style={a.reqStar}>*</Text></Text>
+              <View style={a.heroAmountRow}>
+                <Text style={[a.heroCurrency, { color: C.accent }]} numberOfLines={1}>{currency}</Text>
+                <TextInput value={current} onChangeText={(v) => setCurrent(normAmount(v))} keyboardType="decimal-pad" maxLength={13} placeholder="0" placeholderTextColor={withAlpha(C.textPrimary, 0.12)} style={a.heroAmountInput} selectionColor={withAlpha(C.accent, 0.25)} accessibilityLabel={t.savings.nowLabel} returnKeyType="done" onSubmitEditing={Keyboard.dismiss} keyboardAppearance={isDark ? 'dark' : 'light'} />
+              </View>
+            </View>
 
             {/* Put in */}
             <View style={[a.fieldCard, neu.raisedSoft]}>
               <Text style={a.cardLabel}>{t.savings.putInLabel}</Text>
               <View style={a.amtRow}>
                 <Text style={a.amtCur}>{currency}</Text>
-                <TextInput value={initial} onChangeText={(v) => setInitial(normAmount(v))} keyboardType="decimal-pad" maxLength={13} placeholder={!editing && current.trim() ? current : '0'} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={a.amtInput} selectionColor={withAlpha(C.accent, 0.25)} accessibilityLabel={t.savings.putInLabel} />
+                <TextInput value={initial} onChangeText={(v) => setInitial(normAmount(v))} keyboardType="decimal-pad" maxLength={13} placeholder={!editing && current.trim() ? current : '0'} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={a.amtInput} selectionColor={withAlpha(C.accent, 0.25)} accessibilityLabel={t.savings.putInLabel} returnKeyType="done" onSubmitEditing={Keyboard.dismiss} keyboardAppearance={isDark ? 'dark' : 'light'} />
               </View>
             </View>
 
-            {/* Annual rate */}
+            {/* Annual rate — auto-filled: registry figure instantly, Echo's latest when it lands */}
             <View style={[a.fieldCard, neu.raisedSoft]}>
               <Text style={a.cardLabel}>{t.savings.annualRateLabel}</Text>
-              <TextInput value={rate} onChangeText={(v) => setRate(normAmount(v))} keyboardType="decimal-pad" placeholder={t.savings.annualRatePlaceholder} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={a.fieldInput} selectionColor={withAlpha(C.accent, 0.25)} />
+              <TextInput value={rate} onChangeText={(v) => { setRate(normAmount(v)); setRateAuto(false); setRateEcho(null); }} keyboardType="decimal-pad" returnKeyType="done" onSubmitEditing={Keyboard.dismiss} keyboardAppearance={isDark ? 'dark' : 'light'} placeholder={t.savings.annualRatePlaceholder} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={a.fieldInput} selectionColor={withAlpha(C.accent, 0.25)} />
+              {rateAuto && !!rate && (() => {
+                const ti = SAVINGS_TYPE_OPTIONS.find((o) => o.id === type);
+                if (!ti) return null;
+                const hint = rateChecking
+                  ? t.savings.rateCheckingHint
+                  : rateEcho
+                    ? t.savings.rateEchoHint.replace('{name}', ti.name).replace('{year}', rateEcho.asOf)
+                    : t.savings.rateAutoHint.replace('{name}', ti.name).replace('{year}', ti.rateAsOf ?? '');
+                return (
+                  <View style={a.rateAutoRow}>
+                    <Feather name="zap" size={11} color={C.accent} />
+                    <Text style={a.rateAutoText}>{hint}</Text>
+                  </View>
+                );
+              })()}
             </View>
 
             {/* Target */}
@@ -297,7 +371,7 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
               <Text style={a.cardLabel}>{t.savings.targetFieldLabel} <Text style={a.optional}>{t.savings.optionalTag}</Text></Text>
               <View style={a.amtRow}>
                 <Text style={a.amtCur}>{currency}</Text>
-                <TextInput value={target} onChangeText={(v) => setTarget(normAmount(v))} keyboardType="decimal-pad" maxLength={13} placeholder={t.savings.targetPlaceholder} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={a.amtInput} selectionColor={withAlpha(C.accent, 0.25)} accessibilityLabel={t.savings.targetFieldLabel} />
+                <TextInput value={target} onChangeText={(v) => setTarget(normAmount(v))} keyboardType="decimal-pad" maxLength={13} placeholder={t.savings.targetPlaceholder} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={a.amtInput} selectionColor={withAlpha(C.accent, 0.25)} accessibilityLabel={t.savings.targetFieldLabel} returnKeyType="done" onSubmitEditing={Keyboard.dismiss} keyboardAppearance={isDark ? 'dark' : 'light'} />
               </View>
             </View>
 
@@ -321,38 +395,38 @@ export const AddEditAccountSheet: React.FC<AddEditProps> = ({ visible, editing, 
             )}
           </KeyboardAwareScrollView>
 
-          {/* Anchored save zone — rides above the keyboard so the decimal-pad
-              (which has no Done key) never buries the primary action. */}
-          <KeyboardStickyView offset={{ opened: 0 }}>
-            <View style={[a.saveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
-              <Reanimated.View style={saveAnimStyle}>
-                <Pressable
-                  style={[a.saveBtn, neu.raised, { backgroundColor: C.accent }, !canSave && a.saveBtnDisabled]}
-                  onPress={save}
-                  onPressIn={() => { saveScale.value = withTiming(0.97, { duration: 120 }); }}
-                  onPressOut={() => { saveScale.value = withSpring(1, { damping: 18, stiffness: 240 }); }}
-                  accessibilityRole="button"
-                  accessibilityLabel={editing ? t.savings.saveChanges : t.savings.addAccount.toLowerCase()}
-                >
-                  <View style={a.saveBtnInner}>
-                    <Feather name={editing ? 'check' : 'plus'} size={16} color={canSave ? C.surface : C.textMuted} />
-                    <Text style={[a.saveBtnText, !canSave && a.saveBtnTextDisabled]}>{editing ? t.savings.saveChanges : t.savings.addAccount.toLowerCase()}</Text>
-                  </View>
-                </Pressable>
-              </Reanimated.View>
-              <Pressable style={a.closeLink} onPress={requestClose} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }} accessibilityRole="button" accessibilityLabel={t.savings.closeLabel}>
-                {({ pressed }) => (
-                  <View style={[a.closeLinkInner, pressed && { opacity: 0.55 }]}>
-                    <Feather name="x" size={12} color={C.textMuted} />
-                    <Text style={a.closeLinkText}>{t.savings.closeLabel}</Text>
-                  </View>
-                )}
+          {/* Anchored save zone — sits at the bottom; the Done bar (below) dismisses
+              the keypad to reveal it (the Goals "contribute" pattern). */}
+          <View style={[a.saveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
+            <Reanimated.View style={saveAnimStyle}>
+              <Pressable
+                style={[a.saveBtn, neu.raised, { backgroundColor: C.accent }, !canSave && a.saveBtnDisabled]}
+                onPress={save}
+                onPressIn={() => { saveScale.value = withTiming(0.97, { duration: 120 }); }}
+                onPressOut={() => { saveScale.value = withSpring(1, { damping: 18, stiffness: 240 }); }}
+                accessibilityRole="button"
+                accessibilityLabel={editing ? t.savings.saveChanges : t.savings.addAccount.toLowerCase()}
+              >
+                <View style={a.saveBtnInner}>
+                  <Feather name={editing ? 'check' : 'plus'} size={16} color={canSave ? C.surface : C.textMuted} />
+                  <Text style={[a.saveBtnText, !canSave && a.saveBtnTextDisabled]}>{editing ? t.savings.saveChanges : t.savings.addAccount.toLowerCase()}</Text>
+                </View>
               </Pressable>
-            </View>
-          </KeyboardStickyView>
+            </Reanimated.View>
+            <Pressable style={a.closeLink} onPress={requestClose} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }} accessibilityRole="button" accessibilityLabel={t.savings.closeLabel}>
+              {({ pressed }) => (
+                <View style={[a.closeLinkInner, pressed && { opacity: 0.55 }]}>
+                  <Feather name="x" size={12} color={C.textMuted} />
+                  <Text style={a.closeLinkText}>{t.savings.closeLabel}</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
 
           <ModalToastHost />
         </Reanimated.View>
+        {/* Note Fields standard: gold done-FAB while the multiline description is focused */}
+        <KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />
       </GestureHandlerRootView>
     </Modal>
   );
@@ -373,6 +447,11 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
   const a = useMemo(() => addSheetStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
+  // "Note Fields" standard: the note input is multiline and carries the gold
+  // keyboard-done FAB while focused (see CLAUDE.md — Note Fields, LOCKED).
+  const [multilineFocused, setMultilineFocused] = useState(false);
+  const { keyboardVisible, keyboardHeight } = useKeyboardVisible(() => setMultilineFocused(false));
+  const isDark = useIsDark();
   const [value, setValue] = useState('');
   const [note, setNote] = useState('');
   const [snap, setSnap] = useState<SnapshotType>('manual');
@@ -488,11 +567,14 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
             </View>
           </GestureDetector>
 
-          <KeyboardAwareScrollView
+          {/* Plain ScrollView (not KeyboardAware) so opening the keypad does NOT lift
+              the content to the top — it stays put and the Done bar sits above the
+              keypad (the Goals "contribute" pattern). Extra bottom padding lets the
+              note scroll clear of the keyboard. */}
+          <ScrollView
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={a.scrollContent}
-            bottomOffset={insets.bottom + 130}
+            contentContainerStyle={[a.scrollContent, keyboardVisible && { paddingBottom: keyboardHeight + SPACING.xl }]}
             keyboardDismissMode="on-drag"
           >
             {/* Hero — new value + live change preview */}
@@ -500,7 +582,7 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
               <Text style={a.cardLabel}>{t.savings.newValueLabel} <Text style={a.reqStar}>*</Text></Text>
               <View style={a.heroAmountRow}>
                 <Text style={[a.heroCurrency, { color: C.accent }]} numberOfLines={1}>{currency}</Text>
-                <TextInput value={value} onChangeText={(v) => setValue(normAmount(v))} keyboardType="decimal-pad" maxLength={13} autoFocus placeholder="0" placeholderTextColor={withAlpha(C.textPrimary, 0.12)} style={a.heroAmountInput} selectionColor={withAlpha(C.accent, 0.25)} accessibilityLabel={t.savings.newValueLabel} />
+                <TextInput value={value} onChangeText={(v) => setValue(normAmount(v))} keyboardType="decimal-pad" maxLength={13} autoFocus placeholder="0" placeholderTextColor={withAlpha(C.textPrimary, 0.12)} style={a.heroAmountInput} selectionColor={withAlpha(C.accent, 0.25)} accessibilityLabel={t.savings.newValueLabel} returnKeyType="done" onSubmitEditing={Keyboard.dismiss} keyboardAppearance={isDark ? 'dark' : 'light'} />
               </View>
               {preview && Math.abs(preview.diff) > 0.001 && (
                 <View style={[a.preview, { backgroundColor: withAlpha(preview.diff >= 0 ? C.positive : C.neutral, 0.1) }]}>
@@ -529,42 +611,43 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
             {/* Note */}
             <View style={[a.fieldCard, neu.raisedSoft]}>
               <Text style={a.cardLabel}>{t.savings.noteOptional}</Text>
-              <TextInput value={note} onChangeText={setNote} placeholder={t.savings.monthlyCheckPlaceholder} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={a.fieldInput} selectionColor={withAlpha(C.accent, 0.25)} />
+              <TextInput value={note} onChangeText={setNote} placeholder={t.savings.monthlyCheckPlaceholder} placeholderTextColor={withAlpha(C.textPrimary, 0.25)} style={[a.fieldInput, a.multilineInput]} selectionColor={withAlpha(C.accent, 0.25)} multiline textAlignVertical="top" keyboardAppearance={isDark ? 'dark' : 'light'} onFocus={() => setMultilineFocused(true)} onBlur={() => setMultilineFocused(false)} />
             </View>
-          </KeyboardAwareScrollView>
+          </ScrollView>
 
-          {/* Anchored save zone — rides above the keyboard so the decimal-pad
-              (which has no Done key) never buries the primary action. */}
-          <KeyboardStickyView offset={{ opened: 0 }}>
-            <View style={[a.saveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
-              <Reanimated.View style={saveAnimStyle}>
-                <Pressable
-                  style={[a.saveBtn, neu.raised, { backgroundColor: C.accent }, !canSave && a.saveBtnDisabled]}
-                  onPress={save}
-                  onPressIn={() => { saveScale.value = withTiming(0.97, { duration: 120 }); }}
-                  onPressOut={() => { saveScale.value = withSpring(1, { damping: 18, stiffness: 240 }); }}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.savings.save.toLowerCase()}
-                >
-                  <View style={a.saveBtnInner}>
-                    <Feather name="check" size={16} color={canSave ? C.surface : C.textMuted} />
-                    <Text style={[a.saveBtnText, !canSave && a.saveBtnTextDisabled]}>{t.savings.save.toLowerCase()}</Text>
-                  </View>
-                </Pressable>
-              </Reanimated.View>
-              <Pressable style={a.closeLink} onPress={requestClose} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }} accessibilityRole="button" accessibilityLabel={t.savings.closeLabel}>
-                {({ pressed }) => (
-                  <View style={[a.closeLinkInner, pressed && { opacity: 0.55 }]}>
-                    <Feather name="x" size={12} color={C.textMuted} />
-                    <Text style={a.closeLinkText}>{t.savings.closeLabel}</Text>
-                  </View>
-                )}
+          {/* Anchored save zone — sits at the bottom. While the keypad is up it's
+              hidden behind it; the Done bar (below) dismisses the keypad to
+              reveal it (the Goals "contribute" pattern). */}
+          <View style={[a.saveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
+            <Reanimated.View style={saveAnimStyle}>
+              <Pressable
+                style={[a.saveBtn, neu.raised, { backgroundColor: C.accent }, !canSave && a.saveBtnDisabled]}
+                onPress={save}
+                onPressIn={() => { saveScale.value = withTiming(0.97, { duration: 120 }); }}
+                onPressOut={() => { saveScale.value = withSpring(1, { damping: 18, stiffness: 240 }); }}
+                accessibilityRole="button"
+                accessibilityLabel={t.savings.save.toLowerCase()}
+              >
+                <View style={a.saveBtnInner}>
+                  <Feather name="check" size={16} color={canSave ? C.surface : C.textMuted} />
+                  <Text style={[a.saveBtnText, !canSave && a.saveBtnTextDisabled]}>{t.savings.save.toLowerCase()}</Text>
+                </View>
               </Pressable>
-            </View>
-          </KeyboardStickyView>
+            </Reanimated.View>
+            <Pressable style={a.closeLink} onPress={requestClose} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }} accessibilityRole="button" accessibilityLabel={t.savings.closeLabel}>
+              {({ pressed }) => (
+                <View style={[a.closeLinkInner, pressed && { opacity: 0.55 }]}>
+                  <Feather name="x" size={12} color={C.textMuted} />
+                  <Text style={a.closeLinkText}>{t.savings.closeLabel}</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
 
           <ModalToastHost />
         </Reanimated.View>
+        {/* Note Fields standard: gold done-FAB while the multiline note is focused */}
+        <KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />
       </GestureHandlerRootView>
     </Modal>
   );
@@ -743,6 +826,10 @@ const addSheetStyles = (C: typeof CALM) => StyleSheet.create({
   // Generic field card
   fieldCard: { backgroundColor: C.background, borderRadius: RADIUS.lg, paddingHorizontal: SPACING.md + 2, paddingVertical: SPACING.sm + 4, marginBottom: SPACING.md },
   fieldInput: { fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontWeight: '500', paddingVertical: 2, minHeight: 22 },
+  // Note Fields standard: multiline note/description inputs get room to grow.
+  multilineInput: { minHeight: 64 },
+  rateAutoRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACING.xs },
+  rateAutoText: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, flex: 1 },
   amtRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
   amtCur: { fontSize: TYPOGRAPHY.size.base, color: C.textSecondary, fontWeight: '600', marginRight: 6 },
   amtInput: { flex: 1, fontSize: TYPOGRAPHY.size.lg, color: C.textPrimary, fontWeight: '600', fontVariant: ['tabular-nums'], paddingVertical: 2 },

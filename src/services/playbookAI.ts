@@ -817,7 +817,7 @@ Top categories: ${stats.categoryBreakdown.slice(0, 5).map((c) => `${c.category} 
 
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (text) {
-      premium.incrementAiCalls();
+      // Auto playbook insight — background AI, does NOT spend the user's Echo quota.
       return { ok: true, insight: text };
     }
     return { ok: false };

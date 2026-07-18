@@ -4,6 +4,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ReceiptState, ReceiptDraft, TaxCategorySummary } from '../types';
 import { useTombstoneStore } from './tombstoneStore';
 import { MYTAX_CATEGORIES } from '../constants/taxCategories';
+import { newId } from '../utils/id';
+import { roundMoney } from '../utils/money';
+// NOTE: expo-file-system + ../utils/receiptImage are lazy-require'd inside
+// deleteReceipt (native modules) so this store stays tsx-test-loadable — same
+// reason personalStore is require'd below, not imported at top.
 
 export const useReceiptStore = create<ReceiptState>()(
   persist(
@@ -15,12 +20,13 @@ export const useReceiptStore = create<ReceiptState>()(
       clearReceiptTombstones: () => set({ _deletedReceiptIds: [] }),
 
       addReceipt: (receipt) => {
-        const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+        const id = newId();
         set((state) => ({
           receipts: [
             {
               ...receipt,
               id,
+              total: Number.isFinite(receipt.total) ? receipt.total : 0,
               createdAt: new Date(),
               updatedAt: new Date(),
             },
@@ -31,11 +37,25 @@ export const useReceiptStore = create<ReceiptState>()(
       },
 
       updateReceipt: (id, updates) =>
-        set((state) => ({
-          receipts: state.receipts.map((r) =>
-            r.id === id ? { ...r, ...updates, updatedAt: new Date() } : r
-          ),
-        })),
+        set((state) => {
+          const existing = state.receipts.find((r) => r.id === id);
+          // No-op guard: if nothing actually changes, don't bump updatedAt or
+          // create a new state object — re-tapping the same category shouldn't
+          // burn an LWW timestamp or churn the sync engine.
+          if (
+            existing &&
+            (Object.keys(updates) as (keyof typeof updates)[]).every(
+              (k) => existing[k] === updates[k]
+            )
+          ) {
+            return state;
+          }
+          return {
+            receipts: state.receipts.map((r) =>
+              r.id === id ? { ...r, ...updates, updatedAt: new Date() } : r
+            ),
+          };
+        }),
 
       deleteReceipt: (id) => {
         const receipt = get().receipts.find((r) => r.id === id);
@@ -43,6 +63,22 @@ export const useReceiptStore = create<ReceiptState>()(
           receipts: state.receipts.filter((r) => r.id !== id),
           _deletedReceiptIds: [...(state._deletedReceiptIds ?? []), id],
         }));
+        // Best-effort cleanup of the local image file so deleting a receipt
+        // doesn't leak storage. Only touch local file:// paths — never a
+        // remote/http uri (those live in Storage, cleaned up by sync). Native
+        // modules are require'd lazily so this store stays tsx-test-loadable.
+        if (receipt?.imageUri) {
+          try {
+            const { resolveReceiptImageUri } = require('../utils/receiptImage');
+            const FileSystem = require('expo-file-system/legacy');
+            const abs = resolveReceiptImageUri(receipt.imageUri);
+            if (abs && (abs.startsWith('file://') || abs.startsWith('/'))) {
+              FileSystem.deleteAsync(abs, { idempotent: true }).catch(() => {});
+            }
+          } catch {
+            // best-effort
+          }
+        }
         useTombstoneStore.getState().addTombstones([id]);
         // Also remove the transaction this receipt created, so deleting a saved
         // receipt doesn't leave an orphan expense behind. deleteTransaction
@@ -67,14 +103,17 @@ export const useReceiptStore = create<ReceiptState>()(
           if (cat.id === 'none') continue;
           const catReceipts = receipts.filter((r) => r.myTaxCategory === cat.id);
           if (catReceipts.length === 0) continue;
-          const totalSpent = catReceipts.reduce((sum, r) => sum + r.total, 0);
+          const totalSpent = catReceipts.reduce(
+            (sum, r) => roundMoney(sum + r.total),
+            0
+          );
           summaries.push({
             categoryId: cat.id,
             categoryName: cat.name,
             totalSpent,
             limit: cat.limit,
             receiptCount: catReceipts.length,
-            remaining: cat.limit !== null ? Math.max(cat.limit - totalSpent, 0) : null,
+            remaining: cat.limit !== null ? Math.max(roundMoney(cat.limit - totalSpent), 0) : null,
           });
         }
 

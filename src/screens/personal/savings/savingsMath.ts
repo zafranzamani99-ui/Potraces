@@ -30,19 +30,26 @@ const toDate = (v: Date | string | number): Date => (v instanceof Date ? v : new
  *   full close (newValue 0), and never leaves a phantom basis on an emptied or
  *   over-withdrawn position — the two bugs the nominal model had.
  * - DIVIDEND / MANUAL are pure revaluations — the basis is untouched, so the whole
- *   move lands in gain.
+ *   move lands in gain. EXCEPT off a ZERO basis: a fully-withdrawn/empty account
+ *   (basis 0) that gets a positive value again is fresh CAPITAL reappearing, not
+ *   "gain on nothing", so the basis is seeded from that value — otherwise the card
+ *   shows a phantom +100% / incoherent 0% return the basis could never recover from.
  * Pure (used by savingsStore.addSnapshot; unit-tested).
  */
 export function nextBasis(prevBasis: number, prevValue: number, newValue: number, snapshotType: SnapshotType): number {
+  const base = roundMoney(Math.max(0, prevBasis));
   if (snapshotType === 'deposit') {
-    return roundMoney(Math.max(0, prevBasis) + Math.max(0, newValue - prevValue));
+    return roundMoney(base + Math.max(0, newValue - prevValue));
   }
   if (snapshotType === 'withdrawal') {
     if (prevValue <= 0) return 0;
     const ratio = Math.max(0, Math.min(1, newValue / prevValue));
-    return roundMoney(Math.max(0, prevBasis) * ratio);
+    return roundMoney(base * ratio);
   }
-  return roundMoney(Math.max(0, prevBasis));
+  // manual / dividend: revaluation, basis untouched — unless the basis is 0, then
+  // the reappearing value is capital, so seed the basis from it (gain resets to 0).
+  if (base === 0 && newValue > 0) return roundMoney(newValue);
+  return base;
 }
 
 /** Signed amount a snapshot moves the COST BASIS by (+deposit, −withdrawal; 0 for
@@ -105,9 +112,13 @@ export function computePortfolio(accounts: SavingsAccount[], now: Date): Portfol
   let totalAtMonthStart = 0;
   for (const a of accounts) {
     const beforeMonth = a.history.filter((h) => toDate(h.date) < mStart);
+    // Baseline = the last value ON/BEFORE month start; for an account CREATED this
+    // month, use its opening snapshot value (history[0]) — NOT initialInvestment,
+    // which is the cost basis and would report a phantom "this month" change when
+    // the account was created with put-in ≠ current value.
     totalAtMonthStart += beforeMonth.length > 0
       ? beforeMonth[beforeMonth.length - 1].value
-      : a.initialInvestment;
+      : (a.history[0]?.value ?? a.initialInvestment);
   }
   const monthValueChange = totalCurrent - totalAtMonthStart;
 
@@ -198,7 +209,10 @@ export function computeAccountDerived(account: SavingsAccount, now: Date, resolv
 
   const mStart = startOfMonth(now);
   const beforeMonth = account.history.filter((h) => toDate(h.date) < mStart);
-  const monthStartVal = beforeMonth.length > 0 ? beforeMonth[beforeMonth.length - 1].value : account.initialInvestment;
+  // Opening snapshot value (not the cost basis) as the pre-month baseline for an
+  // account created this month — so a fresh account with put-in ≠ current doesn't
+  // read a phantom month gain.
+  const monthStartVal = beforeMonth.length > 0 ? beforeMonth[beforeMonth.length - 1].value : (account.history[0]?.value ?? account.initialInvestment);
   const monthGain = account.currentValue - monthStartVal;
 
   let goalEtaMonths: number | null = null;

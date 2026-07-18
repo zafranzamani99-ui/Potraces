@@ -8,6 +8,7 @@ import { usePersonalStore } from '../store/personalStore';
 import { useDebtStore } from '../store/debtStore';
 import { useWalletStore } from '../store/walletStore';
 import { useSellerStore } from '../store/sellerStore';
+import { isTransfer, isGoalMove } from '../utils/insights';
 import { callGeminiAPI, isGeminiAvailable } from './geminiClient';
 import { usePremiumStore } from '../store/premiumStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -96,6 +97,7 @@ function buildQueryContext(): string {
   const daysLeft = getDaysInMonth(now) - now.getDate();
 
   const thisMonthTxns = transactions.filter((t) => {
+    if (isTransfer(t) || isGoalMove(t)) return false; // match Reports/Pulse: transfers + goal moves aren't spend/income
     const d = t.date instanceof Date ? t.date : new Date(t.date);
     return isWithinInterval(d, { start: monthStart, end: monthEnd });
   });
@@ -108,6 +110,7 @@ function buildQueryContext(): string {
   const lastStart = startOfMonth(subMonths(now, 1));
   const lastEnd = endOfMonth(subMonths(now, 1));
   const lastMonthTxns = transactions.filter((t) => {
+    if (isTransfer(t) || isGoalMove(t)) return false;
     const d = t.date instanceof Date ? t.date : new Date(t.date);
     return isWithinInterval(d, { start: lastStart, end: lastEnd });
   });
@@ -225,6 +228,7 @@ function answerQueryLocal(text: string): QueryAnswer {
   const wallets = useWalletStore.getState().wallets;
 
   const thisMonthTxns = transactions.filter((t) => {
+    if (isTransfer(t) || isGoalMove(t)) return false;
     const d = t.date instanceof Date ? t.date : new Date(t.date);
     return isWithinInterval(d, { start: monthStart, end: monthEnd });
   });
@@ -387,6 +391,8 @@ export async function answerQuery(text: string): Promise<QueryAnswer> {
     try {
       const aiAnswer = await getAIAnswer(text);
       if (aiAnswer) {
+        // The user asked Echo a data question (NL query) — this IS an explicit ask, so it
+        // counts against the Echo quota (the parse in intentEngine stays uncounted).
         answer.aiAnswer = aiAnswer;
         usePremiumStore.getState().incrementAiCalls();
       }

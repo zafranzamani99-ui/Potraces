@@ -49,7 +49,8 @@ const AccountCard: React.FC<Props> = ({ account, derived, currency, onEdit, onUp
       {/* Header */}
       <View style={styles.header}>
         <View style={[styles.iconWell, neu.well, { backgroundColor: withAlpha(typeInfo.color, 0.14) }]}>
-          <CategoryIcon icon={typeInfo.icon} size={20} color={typeInfo.color} />
+          {/* Brand-logo tiles render a touch larger than glyphs so they fill the well */}
+          <CategoryIcon icon={typeInfo.icon} size={typeInfo.icon.startsWith('logo/') ? 30 : 20} color={typeInfo.color} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={1.3}>{account.name}</Text>

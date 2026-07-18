@@ -11,7 +11,7 @@
 // (handleQuickAction is the existing `(screen) => { … navigation.navigate(screen); }`.)
 
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -45,27 +45,34 @@ const renderActionIcon = (spec: string, color: string, size = 27) => {
 interface Props {
   onAction: (screen: string) => void;
   billsBadge?: number;
+  /** Count of receipt scans that failed and need review — badge on the Receipts tile. */
+  receiptsBadge?: number;
 }
 
-const QuickActions: React.FC<Props> = ({ onAction, billsBadge = 0 }) => {
+const QuickActions: React.FC<Props> = ({ onAction, billsBadge = 0, receiptsBadge = 0 }) => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const actions = useMemo(() => getQuickActions(C), [C]);
   const [pressedKey, setPressedKey] = useState<string | null>(null);
   const rows = [actions.slice(0, 5), actions.slice(5, 10)];
+  // On wide screens (tablet / landscape) all tiles fit, so center them instead of
+  // left-packing a scroller. No-op on phones (where the row overflows & scrolls).
+  const { width } = useWindowDimensions();
+  const wide = width >= 700;
 
   return (
     <View style={styles.section}>
       <Text style={styles.title}>{t.dashboard.quickActions}</Text>
       {rows.map((row, rowIdx) => (
-        <View key={rowIdx} style={styles.rowWrap}>
+        <View key={rowIdx} style={[styles.rowWrap, wide && styles.rowWrapWide]}>
           <ScrollView
             horizontal
             nestedScrollEnabled
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.row}
+            contentContainerStyle={[styles.row, wide && styles.rowWide]}
             style={styles.scroll}
+            scrollEnabled={!wide}
           >
             {row.map((action) => (
               <Pressable
@@ -84,18 +91,25 @@ const QuickActions: React.FC<Props> = ({ onAction, billsBadge = 0 }) => {
                       <Text style={styles.badgeText}>{billsBadge}</Text>
                     </View>
                   )}
+                  {action.key === 'receipts' && receiptsBadge > 0 && (
+                    <View style={[styles.badge, styles.badgeWarn]}>
+                      <Text style={styles.badgeText}>{receiptsBadge}</Text>
+                    </View>
+                  )}
                 </NeuSurface>
                 <Text style={styles.label} numberOfLines={1}>{(t.dashboard as any)[action.key]}</Text>
               </Pressable>
             ))}
           </ScrollView>
-          <LinearGradient
-            colors={[withAlpha(C.background, 0), withAlpha(C.background, 1)]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.fade}
-            pointerEvents="none"
-          />
+          {!wide && (
+            <LinearGradient
+              colors={[withAlpha(C.background, 0), withAlpha(C.background, 1)]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.fade}
+              pointerEvents="none"
+            />
+          )}
         </View>
       ))}
     </View>
@@ -111,8 +125,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.2,
   },
   rowWrap: { position: 'relative', marginRight: -SPACING['2xl'] },
+  rowWrapWide: { marginRight: 0 },
   scroll: { overflow: 'visible' },
   row: { flexDirection: 'row', gap: SPACING.md, paddingRight: SPACING['2xl'], paddingVertical: 4 },
+  rowWide: { flexGrow: 1, justifyContent: 'center', paddingRight: 0 },
   btn: { alignItems: 'center', gap: 6, width: 76 },
   chip: {
     width: 56,
@@ -138,6 +154,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badgeWarn: {
+    // "needs review" — bronze signals attention vs the neutral accent bills count.
+    backgroundColor: C.bronze,
   },
   badgeText: {
     fontSize: 10,

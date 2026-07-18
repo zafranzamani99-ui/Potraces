@@ -16,7 +16,7 @@ import {
   AccessibilityInfo,
   AppState,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ScrollView, Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -53,7 +53,7 @@ import { useT } from '../../i18n';
 import { useEchoFabPan } from '../../hooks/useEchoFabPan';
 import EchoDragHideZone from '../../components/wallet/EchoDragHideZone';
 import { useCategories } from '../../hooks/useCategories';
-import { FREE_TIER } from '../../constants/premium';
+import { TIER_LIMITS } from '../../constants/premium';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import CategoryIcon from '../../components/common/CategoryIcon';
 import { useNeu } from '../../components/common/neu';
@@ -549,16 +549,16 @@ const BudgetPlanning: React.FC = () => {
     const trimmed = amount.trim().replace(/,/g, '.');
     const MAX_BUDGET = 100000000;
     if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
-      showToast('enter a valid amount', 'error');
+      showToast(t.budget.invalidAmount, 'error');
       return;
     }
     const parsedAmount = parseFloat(trimmed);
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || parsedAmount > MAX_BUDGET) {
-      showToast('enter a valid amount', 'error');
+      showToast(t.budget.invalidAmount, 'error');
       return;
     }
     if (!category) {
-      showToast('please select a category', 'error');
+      showToast(t.budget.selectCategory, 'error');
       return;
     }
 
@@ -569,7 +569,7 @@ const BudgetPlanning: React.FC = () => {
         (b) => b.category === category && b.id !== editingBudget.id
       );
       if (conflicting) {
-        showToast('a budget for this category already exists', 'error');
+        showToast(t.budget.categoryExists, 'error');
         return;
       }
       mediumTap();
@@ -582,11 +582,11 @@ const BudgetPlanning: React.FC = () => {
         endDate: dates.endDate,
       });
       closeModal();
-      showToast('budget updated.', 'success');
+      showToast(t.budget.budgetUpdatedToast, 'success');
     } else {
       const existing = budgets.find((b) => b.category === category);
       if (existing) {
-        showToast('a budget for this category already exists', 'error');
+        showToast(t.budget.categoryExists, 'error');
         return;
       }
 
@@ -600,9 +600,9 @@ const BudgetPlanning: React.FC = () => {
         endDate: dates.endDate,
       });
       closeModal();
-      showToast('budget created.', 'success');
+      showToast(t.budget.budgetCreatedToast, 'success');
     }
-  }, [amount, category, period, rollover, editingBudget, budgets, addBudget, updateBudget, showToast]);
+  }, [amount, category, period, rollover, editingBudget, budgets, addBudget, updateBudget, showToast, t]);
 
   const handleEdit = useCallback((budget: Budget) => {
     lightTap();
@@ -617,7 +617,7 @@ const BudgetPlanning: React.FC = () => {
   const handleDelete = useCallback((budget: Budget) => {
     Alert.alert(
       t.common.delete.toLowerCase(),
-      'are you sure you want to remove this budget?',
+      t.budget.deleteBudgetConfirm,
       [
         { text: t.common.cancel.toLowerCase(), style: 'cancel' },
         {
@@ -626,12 +626,12 @@ const BudgetPlanning: React.FC = () => {
           onPress: () => {
             mediumTap();
             deleteBudget(budget.id);
-            showToast('budget deleted', 'success');
+            showToast(t.budget.budgetDeletedToast, 'success');
           },
         },
       ]
     );
-  }, [deleteBudget, showToast]);
+  }, [deleteBudget, showToast, t]);
 
   const resetForm = useCallback(() => {
     setAmount('');
@@ -723,7 +723,10 @@ const BudgetPlanning: React.FC = () => {
           .replace('{{amount}}', overBy.toFixed(0)),
         subtitle: biggest && biggest.description
           ? t.budget.insightOverSubDesc
-              .replace('{{currency}}', currency).replace('{{amount}}', biggest.amount.toFixed(0)).replace('{{desc}}', biggest.description)
+              .replace('{{currency}}', currency).replace('{{amount}}', biggest.amount.toFixed(0))
+              // function replacement — raw description may contain `$&`/`$'`/`$$` which
+              // a string replacement would expand and corrupt the copy.
+              .replace('{{desc}}', () => biggest.description)
           : biggest
           ? t.budget.insightOverSubAmount
               .replace('{{currency}}', currency).replace('{{amount}}', biggest.amount.toFixed(0))
@@ -738,14 +741,18 @@ const BudgetPlanning: React.FC = () => {
       const nearest = close[0];
       const cat = categoryMap.get(nearest.category);
       const leftAmt = nearest.effectiveAmount - nearest.spentAmount;
-      const dailyLeft = leftAmt / Math.max(heroData.daysRemaining, 1);
+      // Use the budget's OWN period for the safe per-day figure — a weekly budget
+      // divided by days-left-in-MONTH understates the pace by ~4×.
+      const { endDate: periodEnd } = getPeriodDates(nearest.period ?? 'monthly', now);
+      const daysLeftInPeriod = Math.max(1, Math.ceil((periodEnd.getTime() - now.getTime()) / 86400000));
+      const dailyLeft = leftAmt / daysLeftInPeriod;
       return {
         mode: 'close' as const,
         title: t.budget.insightCloseTitle.replace('{{category}}', cat?.name || nearest.category),
         subtitle: t.budget.insightCloseSub
           .replace('{{currency}}', currency).replace('{{left}}', leftAmt.toFixed(0))
           .replace('{{currency}}', currency).replace('{{perDay}}', dailyLeft.toFixed(0))
-          .replace('{{day}}', String(heroData.daysInMonth)),
+          .replace('{{day}}', String(daysLeftInPeriod)),
       };
     }
     if (!heroData.stretchesWholeMonth) {
@@ -1250,7 +1257,7 @@ const BudgetPlanning: React.FC = () => {
         <TouchableOpacity
           onPress={() => {
             lightTap();
-            if (tier !== 'premium') { setEchoPaywallVisible(true); return; }
+            if (!TIER_LIMITS[tier].askEchoPerScreen) { setEchoPaywallVisible(true); return; }
             setEchoHidden(false);
           }}
           accessibilityRole="button"
@@ -1260,7 +1267,7 @@ const BudgetPlanning: React.FC = () => {
           <Feather
             name="zap"
             size={20}
-            color={tier !== 'premium' ? C.textMuted : C.textPrimary}
+            color={!TIER_LIMITS[tier].askEchoPerScreen ? C.textMuted : C.textPrimary}
           />
         </TouchableOpacity>
       ),
@@ -1542,12 +1549,12 @@ const BudgetPlanning: React.FC = () => {
           );
         })() : null}
 
-        {/* ── Over-limit banner (free tier) ── */}
-        {tier === 'free' && budgets.length > FREE_TIER.maxBudgets && (
+        {/* ── Over-limit banner (over current tier cap) ── */}
+        {budgets.length > TIER_LIMITS[tier].maxBudgets && (
           <View style={styles.bannerCard}>
             <Feather name="info" size={16} color={C.bronze} />
             <Text style={styles.bannerText}>
-              you have {budgets.length} budgets (free limit: {FREE_TIER.maxBudgets}).{' '}
+              you have {budgets.length} budgets (limit: {TIER_LIMITS[tier].maxBudgets}).{' '}
               <Text
                 style={styles.bannerLink}
                 onPress={() => setPaywallVisible(true)}
@@ -1719,7 +1726,7 @@ const BudgetPlanning: React.FC = () => {
               activeOpacity={0.7}
             >
               <Text style={[styles.pbTabText, playbookTab === 'past' && styles.pbTabTextActive]}>
-                {t.budget.playbookPast} ({closedPlaybooks.length}{tier === 'free' ? `/${FREE_TIER.maxSavedPlaybooks}` : ''})
+                {t.budget.playbookPast} ({closedPlaybooks.length}{Number.isFinite(TIER_LIMITS[tier].maxSavedPlaybooks) ? `/${TIER_LIMITS[tier].maxSavedPlaybooks}` : ''})
               </Text>
             </TouchableOpacity>
           </View>
@@ -1980,9 +1987,9 @@ const BudgetPlanning: React.FC = () => {
             )}
 
             {/* Free tier counter */}
-            {tier === 'free' && closedPlaybooks.length > 0 && (
+            {Number.isFinite(TIER_LIMITS[tier].maxSavedPlaybooks) && closedPlaybooks.length > 0 && (
               <Text style={styles.pbTierCounter}>
-                {closedPlaybooks.length}/{FREE_TIER.maxSavedPlaybooks} saved playbooks (free tier)
+                {closedPlaybooks.length}/{TIER_LIMITS[tier].maxSavedPlaybooks} saved playbooks (free tier)
               </Text>
             )}
           </>)}
@@ -2391,6 +2398,7 @@ const BudgetPlanning: React.FC = () => {
             </ScrollView>
           </KeyboardAvoidingView>
 
+          <KeyboardStickyView>
           <View style={[styles.modalSaveZone, { paddingBottom: Math.max(insets.bottom, SPACING.lg) }]}>
             <Pressable
               style={({ pressed }) => [
@@ -2424,6 +2432,7 @@ const BudgetPlanning: React.FC = () => {
               )}
             </Pressable>
           </View>
+          </KeyboardStickyView>
         </Reanimated.View>
         <ModalToastHost />
         </GestureHandlerRootView>
@@ -2447,7 +2456,15 @@ const BudgetPlanning: React.FC = () => {
       <BudgetPlannerSheet
         visible={budgetPlannerVisible}
         onClose={() => setBudgetPlannerVisible(false)}
-        onApplied={(n) => showToast(t.budget.planner.createdToast.replace('{{n}}', String(n)), 'success')}
+        onApplied={(created, updated) => {
+          const p = t.budget.planner;
+          const msg = updated > 0
+            ? (created > 0
+                ? p.updatedToast.replace('{{u}}', String(updated)).replace('{{c}}', String(created))
+                : p.updatedOnlyToast.replace('{{u}}', String(updated)))
+            : p.createdToast.replace('{{n}}', String(created));
+          showToast(msg, 'success');
+        }}
       />
 
       {/* ── Playbook FAB ── */}
@@ -2576,7 +2593,7 @@ const BudgetPlanning: React.FC = () => {
             style={styles.echoFab}
             onPress={() => {
               lightTap();
-              if (tier !== 'premium') { setEchoPaywallVisible(true); return; }
+              if (!TIER_LIMITS[tier].askEchoPerScreen) { setEchoPaywallVisible(true); return; }
               setEchoAutoPrompt(undefined);
               setEchoSheetVisible(true);
               setGreetingDismissed(true);
@@ -2586,7 +2603,7 @@ const BudgetPlanning: React.FC = () => {
             accessibilityLabel="Open Echo assistant"
           >
             <Feather name="zap" size={22} color={C.onAccent} />
-            {tier !== 'premium' && (
+            {!TIER_LIMITS[tier].askEchoPerScreen && (
               <View style={styles.echoFabLock}>
                 <Feather name="lock" size={9} color={C.onAccent} />
               </View>
@@ -2598,7 +2615,7 @@ const BudgetPlanning: React.FC = () => {
               style={styles.echoGreetingBubble}
               onPress={() => {
                 lightTap();
-                if (tier !== 'premium') { setEchoPaywallVisible(true); return; }
+                if (!TIER_LIMITS[tier].askEchoPerScreen) { setEchoPaywallVisible(true); return; }
                 setEchoAutoPrompt(greetingChips[0]?.question || greetingText);
                 setEchoSheetVisible(true);
               }}
@@ -2680,6 +2697,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.xl,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // Banner

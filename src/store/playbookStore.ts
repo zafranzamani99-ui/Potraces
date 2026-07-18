@@ -6,7 +6,7 @@ import { Playbook, PlaybookAllocation, PlaybookLineItem, Transaction } from '../
 import { usePremiumStore } from './premiumStore';
 import { usePersonalStore } from './personalStore';
 import { cleanupOrphanedLinks } from '../utils/playbookStats';
-import { FREE_TIER } from '../constants/premium';
+import { FREE_TIER, TIER_LIMITS } from '../constants/premium';
 
 export interface EchoMemoryEntry {
   date: string;           // ISO date
@@ -130,7 +130,7 @@ export const usePlaybookStore = create<PlaybookStoreState>()(
         const { playbooks } = get();
         const tier = usePremiumStore.getState().tier;
         const closedCount = playbooks.filter((p) => p.isClosed).length;
-        if (tier === 'free' && closedCount >= FREE_TIER.maxSavedPlaybooks) return false;
+        if (closedCount >= TIER_LIMITS[tier].maxSavedPlaybooks) return false;
 
         set((state) => ({
           playbooks: state.playbooks.map((p) =>

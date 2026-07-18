@@ -1,38 +1,21 @@
 // Premium subscription configuration
 import { WalletType } from '../types';
 
-export const FREE_TIER = {
-  maxWallets: 6,
-  maxWalletsPerType: 2,
-  maxBudgets: 5,
-  maxSavingsAccounts: 5,
-  maxScansPerMonth: 15,
-  maxAiCallsPerMonth: 100,
-  exportData: true,
-  googleDocsSync: false,
-  maxActivePlaybooks: 2,
-  maxSavedPlaybooks: 5,
-};
-
-export const PREMIUM_TIER = {
-  maxWallets: Infinity,
-  maxBudgets: Infinity,
-  maxSavingsAccounts: Infinity,
-  maxScansPerMonth: Infinity,
-  maxAiCallsPerMonth: Infinity,
-  exportData: true,
-  googleDocsSync: true,
-  maxActivePlaybooks: 2,
-  maxSavedPlaybooks: Infinity,
-};
-
-export const TRIAL_DAYS = 7;
-
-export const PREMIUM_CONFIG = {
-  price: 10,
-  currency: 'RM',
-  period: 'month' as const,
-};
+// Tier limits live in the PURE ./tiers module (tsx-loadable). This file require()s ~39
+// logo PNGs so a test can't import it — but the tier table must be testable, so it lives
+// in ./tiers and is re-exported here. Existing `import { FREE_TIER } from
+// '../constants/premium'` sites keep working unchanged.
+export {
+  TIER_LIMITS,
+  TIER_RANK,
+  tierAtLeast,
+  limitFor,
+  canCreate,
+  remainingOf,
+  FREE_TIER,
+  PREMIUM_TIER,
+} from './tiers';
+export type { TierLimits } from './tiers';
 
 // Wallet icon presets (Feather icon names) — generic fallback
 export const WALLET_ICONS = [

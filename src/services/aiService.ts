@@ -3,19 +3,9 @@ import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants';
 import { readAsStringAsync, deleteAsync, EncodingType } from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { aiProxyFetch, isAiProxyConfigured } from './aiProxy';
-import { streamGeminiText } from './geminiClient';
-
-// ─── Anthropic API Types ────────────────────────────────
-
-interface AnthropicContentBlock {
-  type: 'text' | 'tool_use';
-  text?: string;
-}
-
-interface AnthropicResponse {
-  content?: AnthropicContentBlock[];
-  stop_reason?: string;
-}
+import { streamGeminiText, callGeminiAPI, isGeminiAvailable, GeminiContent } from './geminiClient';
+import { chatModelForTier } from './chatModel';
+import { usePremiumStore } from '../store/premiumStore';
 
 /** Shape of a raw parsed product from AI JSON before validation. */
 interface RawParsedProduct {
@@ -50,8 +40,10 @@ interface GeminiVisionResponse {
   candidates?: GeminiVisionCandidate[];
 }
 
-const MODEL = 'claude-haiku-4-5-20251001';
-const CHAT_MODEL = 'claude-sonnet-4-6'; // conversational Echo — needs personality, not just speed
+// All AI runs on Gemini (the Anthropic key was retired). Default = cheap flash-lite;
+// tier-aware model comes from chatModelForTier() (Gemini smart vs lite), powering the
+// "smarter AI" upsell. The ai-proxy remaps any old model names server-side too.
+const MODEL = 'gemini-3.1-flash-lite';
 
 // Regulatory guard (SC/CMSA + FSA): AI answers are general information only, never
 // licensed financial/investment advice. Appended to every money-answering prompt.
@@ -59,9 +51,6 @@ const ADVICE_GUARD =
   "You give general information only — NOT financial, investment, tax, or legal advice. " +
   "Never recommend specific financial products or promise/guarantee returns. If asked for that, " +
   "say you can't give advice and suggest speaking to a licensed adviser.";
-
-let _lastAnthropicCall = 0;
-const ANTHROPIC_COOLDOWN_MS = 1000;
 
 const categoryNames = [
   ...EXPENSE_CATEGORIES.map((c) => c.name),
@@ -76,51 +65,58 @@ export interface ParsedTransaction {
   confidence: 'high' | 'low';
 }
 
-async function callAnthropic(
+/**
+ * Core text-completion helper — routes through the shared Gemini client (model
+ * fallback + rate-limit handling live in geminiClient). Converts the callers'
+ * Anthropic-style (system, role/content messages) shape into Gemini's
+ * contents + system_instruction. `model` is honored as a preference (the tier
+ * "smarter AI" upsell) then falls back to the standard chain.
+ *
+ * Structured output: pass `json:true` (or a '{'/'[' prefill) to switch Gemini into
+ * JSON mode and return the complete JSON as-is — Gemini can't be "seeded" like
+ * Anthropic, so the brace is never prepended. JSON intent is an EXPLICIT flag, never
+ * sniffed from the prompt text (a prompt embeds user data — e.g. a client literally
+ * named "JSON Corp" — which must not flip a prose chat answer into raw JSON). Never throws.
+ */
+async function callAI(
   system: string,
   messages: { role: 'user' | 'assistant'; content: string }[],
   maxTokens: number,
   model: string = MODEL,
-  prefill?: string
+  prefill?: string,
+  json = false,
 ): Promise<string | null> {
-  if (!isAiProxyConfigured()) return null;
-
-  // Prefill: seed the assistant's response so it continues from that point.
-  // The model physically cannot insert a filler opener before the prefill.
-  const msgsWithPrefill = prefill
-    ? [...messages, { role: 'assistant' as const, content: prefill }]
-    : messages;
-
-  const now = Date.now();
-  const elapsed = now - _lastAnthropicCall;
-  if (elapsed < ANTHROPIC_COOLDOWN_MS) {
-    await new Promise((r) => setTimeout(r, ANTHROPIC_COOLDOWN_MS - elapsed));
-  }
-  _lastAnthropicCall = Date.now();
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
-  try {
-    const response = await aiProxyFetch({
-      provider: 'anthropic',
-      mode: 'generate',
-      model,
-      payload: { model, max_tokens: maxTokens, system, messages: msgsWithPrefill },
-    }, controller.signal);
-
-    if (!response.ok) return null;
-
-    const data: AnthropicResponse = await response.json();
-    const content = data?.content?.[0];
-    if (!content || content.type !== 'text') return null;
-
-    // Prepend the prefill since the API returns only the continuation
-    const text = content.text ?? null;
-    if (!text) return null;
-    return prefill ? prefill + text : text;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const contents: GeminiContent[] = messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+  // JSON intent is EXPLICIT (the `json` flag) or a '{'/'[' prefill — never sniffed
+  // from the system text, which can contain user-controlled strings.
+  const jsonMode = json || (!!prefill && /^\s*[[{]/.test(prefill));
+  // A NON-JSON prefill is a forced opener (e.g. "eh,"): seed it as a trailing model
+  // turn — Gemini continues from it (verified) — and prepend it to the result, the
+  // same effect Anthropic's prefill had. A JSON prefill only signals JSON mode
+  // (Gemini returns complete JSON, so it's never seeded or prepended).
+  const seed = prefill && !jsonMode ? prefill : undefined;
+  if (seed) contents.push({ role: 'model', parts: [{ text: seed }] });
+  const data = await callGeminiAPI(
+    {
+      contents,
+      system_instruction: { parts: [{ text: system }] },
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+      },
+    },
+    30_000,
+    false,
+    model,
+  );
+  const raw = (data?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+  // Prepend the seed BEFORE trimming so the internal space it continues with (e.g.
+  // "eh," + " RM6k…") survives; only outer whitespace is stripped.
+  const out = (seed ? seed + raw : raw).trim();
+  return out || null;
 }
 
 /**
@@ -142,10 +138,11 @@ export async function parseTextInput(
   text: string
 ): Promise<ParsedTransaction | null> {
   try {
-    const result = await callAnthropic(
+    const result = await callAI(
       `You are a financial transaction parser for a Malaysian user. Given natural language, extract: amount (number), category (string from this list: ${categoryNames.join(', ')}), description (string), type ('expense' | 'income'). Return JSON only. If unsure about any field, set confidence to 'low'. Default currency is MYR.`,
       [{ role: 'user', content: text }],
-      256
+      256,
+      MODEL, undefined, true,
     );
 
     if (!result) return null;
@@ -175,10 +172,11 @@ export async function parseReceiptText(
   ocrText: string
 ): Promise<ParsedTransaction | null> {
   try {
-    const result = await callAnthropic(
+    const result = await callAI(
       `You are a receipt parser. Given OCR text from a Malaysian receipt, extract the total amount, merchant name as description, and suggest a category from this list: ${categoryNames.join(', ')}. Return JSON only with fields: amount (number), category (string), description (string), type (always 'expense'), confidence ('high' or 'low').`,
       [{ role: 'user', content: ocrText }],
-      256
+      256,
+      MODEL, undefined, true,
     );
 
     if (!result) return null;
@@ -251,13 +249,13 @@ export async function askMoneyQuestion(
       { role: 'user' as const, content: question },
     ];
 
-    return await callAnthropic(
+    return await callAI(
       `You are Echo — a financial companion for a young Malaysian. Always reply in the SAME language the user writes in. Malay message = Malay reply. English = English. Manglish = Manglish. Short, direct, casual. Use RM. Max 2 sentences. ${ADVICE_GUARD}
 
 ${summary}`,
       messages,
       150,
-      CHAT_MODEL,
+      chatModelForTier(usePremiumStore.getState().tier),
       isMalay ? 'eh,' : 'tbh,' // prefill forces casual opener, no filler
     );
   } catch {
@@ -302,11 +300,11 @@ export async function askBusinessQuestion(
       { role: 'user' as const, content: question },
     ];
 
-    return await callAnthropic(
+    return await callAI(
       `You are a calm, honest money companion for a Malaysian gig worker or small earner.\nYou understand that income is irregular and unpredictable.\nNever compare the user to a standard or ideal.\nNever use words like "should", "must", "discipline", or "goal".\nWhen asked about slow months, normalize them — they are part of this kind of work.\nWhen asked about affordability, calculate from realistic average income, not current month.\nIf the user earns from multiple sources, treat that as a strength, not complexity.\nKeep responses under 4 sentences.\nSpeak plainly. No jargon.\n${ADVICE_GUARD}\n\n${contextSummary}`,
       messages,
       150,
-      CHAT_MODEL
+      chatModelForTier(usePremiumStore.getState().tier)
     );
   } catch {
     return null;
@@ -375,7 +373,9 @@ function parseParsedProducts(raw: string): ParsedProduct[] | null {
   }).filter((p: ParsedProduct) => p.name.length > 0);
 }
 
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+// 3.1-flash-lite replaced the retired 2.5-flash-lite (2026-07); handles the
+// text + vision + audio inlineData these product/transcription calls send.
+const GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
 export async function parseProductList(
   text: string,
@@ -402,10 +402,11 @@ export async function parseProductList(
   }
 
   try {
-    const result = await callAnthropic(
+    const result = await callAI(
       PRODUCT_PARSE_SYSTEM(existingUnits, existingProducts),
       [{ role: 'user', content: text }],
-      2048
+      2048,
+      MODEL, undefined, true,
     );
     if (!result) return null;
     return parseParsedProducts(result);
@@ -504,7 +505,7 @@ export async function transcribeAudio(
       {
         provider: 'gemini',
         mode: 'generate',
-        model: GEMINI_MODEL, // gemini-2.5-flash-lite — accepts audio inlineData
+        model: GEMINI_MODEL, // gemini-3.1-flash-lite — accepts audio inlineData
         payload: {
           contents: [{
             parts: [
@@ -558,10 +559,11 @@ export async function parseWhatsAppOrderAI(
       .map((p) => `${p.name} (${p.unit}, RM ${p.pricePerUnit})`)
       .join(', ');
 
-    const result = await callAnthropic(
+    const result = await callAI(
       `You are a WhatsApp order parser for a Malaysian home-based food seller.\nThe seller's products: ${productList}\n\nGiven a WhatsApp message (often in Malay), extract the order items.\nReturn JSON array only. Each item: { "productName": string (exact name from product list), "quantity": number, "unit": string }.\nIf a product in the message doesn't match any known product, use the name as written.\nCommon Malay patterns: "nak order" = want to order, "dan" = and, "tin/bekas/balang/kotak" = container types.\nIf quantity is not specified, default to 1.\nReturn [] if the message is not an order.`,
       [{ role: 'user', content: message }],
-      512
+      512,
+      MODEL, undefined, true,
     );
 
     if (!result) return null;
@@ -692,7 +694,7 @@ export async function askFreelancerQuestion(
       { role: 'user' as const, content: question },
     ];
 
-    return await callAnthropic(
+    return await callAI(
       `${FREELANCER_SYSTEM_PROMPT}\n\n${contextStr}`,
       messages,
       400
@@ -811,7 +813,7 @@ export async function askPartTimeQuestion(
       { role: 'user' as const, content: question },
     ];
 
-    return await callAnthropic(
+    return await callAI(
       `${PARTTIME_SYSTEM_PROMPT}\n\n${contextStr}`,
       messages,
       400
@@ -928,7 +930,7 @@ export async function askOnTheRoadQuestion(
       { role: 'user' as const, content: question },
     ];
 
-    return await callAnthropic(
+    return await callAI(
       `${ONTHEROAD_SYSTEM_PROMPT}\n\n${contextStr}`,
       messages,
       400
@@ -1045,11 +1047,151 @@ export async function askMixedQuestion(
       { role: 'user' as const, content: question },
     ];
 
-    return await callAnthropic(
+    return await callAI(
       `${MIXED_SYSTEM_PROMPT}\n\n${contextStr}`,
       messages,
       400
     );
+  } catch {
+    return null;
+  }
+}
+
+// ── Latest declared instrument rate (Savings auto-rate) ─────────────────────
+const _instrumentRateCache = new Map<string, { rate: number; asOf: string }>();
+
+/** Validate + normalise a parsed {rate, asOf} candidate; null if implausible.
+ *  Sanity window: Malaysian savings rates live in low single digits — reject
+ *  anything outside (0, 12) rather than auto-filling a hallucination. */
+function sanitizeRate(parsed: any): { rate: number; asOf: string } | null {
+  const rate = Number(parsed?.rate);
+  const asOf = String(parsed?.asOf ?? '').trim().slice(0, 12);
+  if (!Number.isFinite(rate) || rate <= 0 || rate >= 12) return null;
+  return { rate: Math.round(rate * 100) / 100, asOf };
+}
+
+/**
+ * WEB-SEARCH path: the model actually searches the internet for the latest
+ * declared rate via Gemini's Google-Search grounding tool (`google_search`). The
+ * ai-proxy passes the provider-native Gemini payload through untouched (clampGemini
+ * only caps generationConfig), so the tool reaches Google. Uses the fuller flash
+ * model for reliable tool use. Returns the concatenated text, or null on failure.
+ */
+async function callGeminiWithSearch(system: string, userMsg: string): Promise<string | null> {
+  // Respect the shared client's availability/rate-limit gate — don't fire (and burn)
+  // a grounded call when all Gemini models are cooling down from a 429.
+  if (!isAiProxyConfigured() || !isGeminiAvailable()) return null;
+  const controller = new AbortController();
+  // Grounded search is slower than a plain completion — allow up to 45s.
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const response = await aiProxyFetch({
+      provider: 'gemini',
+      mode: 'generate',
+      model: 'gemini-3.5-flash', // fuller model — reliable Google-Search grounding
+      payload: {
+        contents: [{ role: 'user', parts: [{ text: userMsg }] }],
+        system_instruction: { parts: [{ text: system }] },
+        tools: [{ google_search: {} }],
+        generationConfig: { maxOutputTokens: 500 },
+      },
+    }, controller.signal);
+    if (!response.ok) return null;
+    const data: any = await response.json();
+    const parts = data?.candidates?.[0]?.content?.parts;
+    if (!Array.isArray(parts)) return null;
+    // Concatenate the text parts (grounding metadata lives separately in
+    // groundingMetadata) — the JSON answer is at the end.
+    const text = parts
+      .filter((p: any) => typeof p?.text === 'string')
+      .map((p: any) => p.text)
+      .join('\n');
+    return text || null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Latest DECLARED annual rate of a Malaysian savings instrument (ASB dividend,
+ * Tabung Haji hibah, SSPN, GO+, …), looked up in tiers:
+ *   1. WEB SEARCH — Echo searches the internet, so the answer is genuinely
+ *      current (this year's declaration), not capped at the model's cutoff.
+ *   2. Plain model knowledge — if search fails (offline mid-flight, tool
+ *      rejected, unparseable), still usually the last year's figure.
+ *   3. (Caller) the registry's built-in rate silently stands if both fail.
+ * Treat the result as a CONVENIENCE FILL only: range-validated, source year
+ * shown, field stays user-editable. Never advice.
+ *
+ * Cached per app session (one lookup per instrument). `fromCache` lets the
+ * caller meter AI usage only for real calls. Never throws.
+ */
+export async function fetchLatestInstrumentRate(
+  instrumentId: string,
+  instrumentName: string,
+): Promise<{ rate: number; asOf: string; fromCache: boolean } | null> {
+  const cached = _instrumentRateCache.get(instrumentId);
+  if (cached) return { ...cached, fromCache: true };
+
+  const year = new Date().getFullYear();
+  const remember = (out: { rate: number; asOf: string }) => {
+    _instrumentRateCache.set(instrumentId, out);
+    return { ...out, fromCache: false as const };
+  };
+
+  // ── Tier 1: grounded web search → strict JSON extraction ──
+  // Grounding returns PROSE (a Search-tool call can't be combined with JSON mode),
+  // and the model tends to ignore a "reply in JSON" instruction while searching —
+  // so we do it in two steps: (a) search for the current figure, (b) a strict
+  // JSON-mode call pulls the headline rate + year out of that prose.
+  const searched = await callGeminiWithSearch(
+    'Search the web for the SINGLE most recent OFFICIALLY DECLARED annual ' +
+      'dividend/profit/interest rate (percent, combined incl. bonus where applicable) ' +
+      'for this Malaysian savings instrument. State the rate and its financial year clearly.',
+    `It is ${year}. Latest officially declared annual rate for: ${instrumentName} (Malaysia)?`,
+  );
+  if (searched) {
+    const extracted = await callAI(
+      'Extract the headline annual rate from the text. Reply ONLY minified JSON ' +
+        '{"rate":<number>,"asOf":"<financial year>"}. rate = the combined/total percent ' +
+        '(e.g. 5.75), NOT a sub-component. If none is present, use {"rate":0,"asOf":""}.',
+      [{ role: 'user', content: searched }],
+      60,
+      MODEL,
+      '{',
+    );
+    if (extracted) {
+      try {
+        const out = sanitizeRate(JSON.parse(stripJsonFences(extracted)));
+        if (out) return remember(out);
+      } catch { /* fall through to tier 2 */ }
+    }
+    // Belt-and-suspenders: if the grounded prose itself carried a JSON line, use it.
+    const jsonMatches = searched.match(/\{[^{}]*"rate"[^{}]*\}/g);
+    if (jsonMatches?.length) {
+      try {
+        const out = sanitizeRate(JSON.parse(jsonMatches[jsonMatches.length - 1]));
+        if (out) return remember(out);
+      } catch { /* fall through to tier 2 */ }
+    }
+  }
+
+  // ── Tier 2: plain model knowledge (best effort, may lag a year) ──
+  const system =
+    'You answer ONE factual question about a Malaysian savings instrument. ' +
+    'Reply with ONLY minified JSON {"rate":<number>,"asOf":"<year>"} — the most recent ' +
+    'officially declared annual dividend/profit/interest rate in percent (combined incl. ' +
+    'bonus where applicable) that you are confident about, and the year it was declared for. ' +
+    'If unsure of the very latest, give the most recent declaration you know. No prose, no markdown.';
+  const raw = await callAI(system, [
+    { role: 'user', content: `Instrument: ${instrumentName} (Malaysia). Latest declared annual rate?` },
+  ], 80, MODEL, '{');
+  if (!raw) return null;
+  try {
+    const out = sanitizeRate(JSON.parse(stripJsonFences(raw)));
+    return out ? remember(out) : null;
   } catch {
     return null;
   }

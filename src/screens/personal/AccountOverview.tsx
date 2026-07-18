@@ -45,6 +45,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   content: {
     padding: SPACING['2xl'],
     gap: SPACING.lg,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // Hero (bordered card, no gradient)
@@ -521,8 +524,10 @@ const AccountOverview: React.FC = () => {
         })
     );
 
-    // Debts
-    const personalDebts = debts.filter((d) => d.mode === 'personal');
+    // Debts — exclude archived so net worth here agrees with FinancialPulse's
+    // debtPulse (which filters !isArchived); an archived-but-unsettled debt was
+    // inflating youOwe / owedToYou / activeDebtCount only on this screen.
+    const personalDebts = debts.filter((d) => d.mode === 'personal' && !d.isArchived);
     const youOwe = personalDebts
       .filter((d) => d.type === 'i_owe' && d.status !== 'settled')
       .reduce((s, d) => s + (d.totalAmount - d.paidAmount), 0);

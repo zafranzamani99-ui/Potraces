@@ -38,11 +38,24 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // Only models the app actually uses — stops the proxy being used to call
 // arbitrary (expensive) models with our keys.
 const ALLOWED_MODELS = new Set([
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',        // legacy name from shipped builds — remapped below
+  'gemini-2.5-flash-lite',   // legacy name from shipped builds — remapped below
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash',
   'claude-haiku-4-5-20251001',
   'claude-sonnet-4-6',
 ]);
+
+// Google retired the 2.5 Gemini models for new billing accounts (404 "no longer
+// available to new users", hit 2026-07-17 after the prepay-billing move). Shipped
+// app builds still request the old names, so remap them server-side onto the
+// current generation — existing installs keep working without an app update.
+// gemini-3.1-flash-lite is the cost-equivalent successor (cheaper than the old
+// 2.5-flash was) and handles text + vision + audio.
+const MODEL_REMAP: Record<string, string> = {
+  'gemini-2.5-flash': 'gemini-3.1-flash-lite',
+  'gemini-2.5-flash-lite': 'gemini-3.1-flash-lite',
+};
 
 // Per-identity monthly token budget (input + output). Generous enough for a heavy
 // legitimate user, low enough to bound abuse. Tier-aware limits come later once a
@@ -121,6 +134,8 @@ Deno.serve(async (req: Request) => {
   if (!payload || typeof payload !== 'object') return json({ error: 'Missing payload' }, 400);
   if (provider === 'gemini' && model.startsWith('claude')) return json({ error: 'Model/provider mismatch' }, 400);
   if (provider === 'anthropic' && !model.startsWith('claude')) return json({ error: 'Model/provider mismatch' }, 400);
+  // Retired model names from older app builds are silently upgraded (see MODEL_REMAP).
+  const upstreamModel = MODEL_REMAP[model] ?? model;
 
   if ((provider === 'gemini' && !GEMINI_KEY) || (provider === 'anthropic' && !ANTHROPIC_KEY)) {
     return json({ error: 'Provider not configured' }, 503);
@@ -149,7 +164,7 @@ Deno.serve(async (req: Request) => {
     const body = clampGemini(payload as Record<string, unknown>);
 
     if (mode === 'stream') {
-      const url = `${GEMINI_BASE}/${model}:streamGenerateContent?alt=sse&key=${GEMINI_KEY}`;
+      const url = `${GEMINI_BASE}/${upstreamModel}:streamGenerateContent?alt=sse&key=${GEMINI_KEY}`;
       const upstream = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,7 +189,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // generate
-    const url = `${GEMINI_BASE}/${model}:generateContent?key=${GEMINI_KEY}`;
+    const url = `${GEMINI_BASE}/${upstreamModel}:generateContent?key=${GEMINI_KEY}`;
     const upstream = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

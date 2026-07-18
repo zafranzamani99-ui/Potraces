@@ -47,6 +47,7 @@ eq('crypto → class', classOf('crypto'), 'investment');
 eq('stocks → class', classOf('stocks'), 'investment');
 eq('gold → class', classOf('gold'), 'investment');
 eq('robo → name', getTypeInfo('robo').name, 'Robo-advisor');
+eq('wahed → class', classOf('wahed'), 'investment');
 
 // ── Legacy / alias values normalise correctly ──
 eq('legacy robo_crypto → id', getTypeInfo('robo_crypto').id, 'robo');
@@ -88,6 +89,19 @@ for (const [key, info] of Object.entries(INVESTMENT_TYPES)) {
   check(`registry[${key}].id === key`, info.id === key);
   check(`registry[${key}] has name/icon/color`, !!info.name && !!info.icon && !!info.color);
   check(`registry[${key}].class is valid`, info.class === 'savings' || info.class === 'investment');
+}
+
+// ── Published-rate auto-fill (typicalRate) ──
+console.log('typicalRate (published-rate auto-fill)');
+const RATE_IDS = ['asb', 'tabung_haji', 'esa', 'tng_plus', 'fd'];
+for (const id of RATE_IDS) {
+  const info = INVESTMENT_TYPES[id];
+  check(`${id} has a sane typicalRate (0 < r < 10)`, typeof info.typicalRate === 'number' && info.typicalRate > 0 && info.typicalRate < 10);
+  check(`${id} has a rateAsOf label`, !!info.rateAsOf);
+}
+// Market instruments must NOT auto-fill a rate — their returns aren't a fixed rate.
+for (const id of ['crypto', 'stocks', 'robo', 'gold', 'bank', 'other']) {
+  check(`${id} has NO typicalRate`, INVESTMENT_TYPES[id].typicalRate === undefined);
 }
 
 // ── Allow-list + picker sanity ──

@@ -58,12 +58,12 @@ const PAGE_SIZE = 13;
 const SELECT_BAR_CLEARANCE = 96;
 
 type FilterType = 'all' | 'expense' | 'income';
-type DateRange = 'this_month' | 'last_month' | 'last_3_months' | 'this_year' | 'all_time';
+type DateRange = 'this_month' | 'last_month' | 'last_3_months' | 'last_6_months' | 'this_year' | 'all_time';
 type SortBy = 'date' | 'amount';
 type SortOrder = 'asc' | 'desc';
 
 const TYPE_FILTER_KEYS: FilterType[] = ['all', 'expense', 'income'];
-const DATE_RANGE_KEYS: DateRange[] = ['this_month', 'last_month', 'last_3_months', 'this_year', 'all_time'];
+const DATE_RANGE_KEYS: DateRange[] = ['this_month', 'last_month', 'last_3_months', 'last_6_months', 'this_year', 'all_time'];
 
 function getDateInterval(range: DateRange): { start: Date; end: Date } | null {
   const now = new Date();
@@ -76,6 +76,8 @@ function getDateInterval(range: DateRange): { start: Date; end: Date } | null {
     }
     case 'last_3_months':
       return { start: startOfMonth(subMonths(now, 2)), end: endOfMonth(now) };
+    case 'last_6_months':
+      return { start: startOfMonth(subMonths(now, 5)), end: endOfMonth(now) };
     case 'this_year':
       return { start: startOfYear(now), end: endOfMonth(now) };
     case 'all_time':
@@ -105,6 +107,10 @@ const TransactionsList: React.FC = () => {
   // list lands pre-filtered to a single wallet. Optional → existing callers are
   // unaffected.
   const initialFilterWallet: string | undefined = route.params?.filterWallet;
+  // Optional income/expense hint from a Reports drill-down so a tapped 'other'
+  // row lands on the right side of the ledger (income 'other' and expense 'other'
+  // share the same category id). Optional → existing callers are unaffected.
+  const initialFilterType: FilterType | undefined = route.params?.filterType;
 
   const TYPE_FILTERS = useMemo(() => [
     { key: 'all' as FilterType, label: t.transactionList.all.toLowerCase() },
@@ -116,6 +122,7 @@ const TransactionsList: React.FC = () => {
     { key: 'this_month' as DateRange, label: t.transactionList.thisMonth.toLowerCase() },
     { key: 'last_month' as DateRange, label: t.transactionList.lastMonth.toLowerCase() },
     { key: 'last_3_months' as DateRange, label: t.transactionList.last3Months.toLowerCase() },
+    { key: 'last_6_months' as DateRange, label: t.transactionList.last6Months.toLowerCase() },
     { key: 'this_year' as DateRange, label: t.transactionList.thisYear.toLowerCase() },
     { key: 'all_time' as DateRange, label: t.transactionList.allTime.toLowerCase() },
   ], [t]);
@@ -160,7 +167,7 @@ const TransactionsList: React.FC = () => {
 
   // ── Search & filter state ────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState(initialFilterSearch ?? '');
-  const [typeFilter, setTypeFilter] = useState<FilterType>('all');
+  const [typeFilter, setTypeFilter] = useState<FilterType>(initialFilterType ?? 'all');
   const [dateRange, setDateRange] = useState<DateRange>(initialFilterDateRange ?? 'all_time');
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     () => (initialFilterCategory ? new Set([initialFilterCategory]) : new Set())
@@ -1406,6 +1413,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   headerTitle: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -1431,8 +1441,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    marginHorizontal: SPACING['2xl'],
+    paddingHorizontal: SPACING['2xl'],
     marginTop: SPACING.sm,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   searchContainer: {
     flex: 1,
@@ -1469,6 +1482,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   filterPillsWrap: {
     marginTop: SPACING.xs,
     position: 'relative',
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   filterPillsScroll: {
     flexGrow: 0,
@@ -1536,6 +1552,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   listContent: {
     paddingHorizontal: SPACING['2xl'],
     paddingBottom: SPACING['2xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   // Date group header — sticky, opaque so list rows don't bleed through.
   sectionHeader: {

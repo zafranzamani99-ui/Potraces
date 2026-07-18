@@ -1,6 +1,6 @@
 /**
  * Report Narrative — generates a 2-3 sentence AI narrative
- * for report screens using Gemini 2.0 Flash.
+ * for report screens using Gemini (model chain in geminiClient).
  *
  * Follows the same pattern as spendingMirror.ts.
  */
@@ -96,7 +96,7 @@ Rules:
 
     const text = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (text && text.length > 10) {
-      premium.incrementAiCalls();
+      // Auto report narrative — background AI, does NOT spend the user's Echo quota.
       useAIInsightsStore.getState().setReportNarrative(cacheKey, text);
     }
   } catch (err) {

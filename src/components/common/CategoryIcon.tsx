@@ -1,7 +1,9 @@
 import React from 'react';
+import { View, Image } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { ensureContrastOnDark } from '../../constants';
 import { useIsDark } from '../../hooks/useCalm';
+import { TYPE_LOGOS } from './typeLogos';
 
 // Single renderer for every category / cost-category / product / payment-method icon.
 //
@@ -9,6 +11,7 @@ import { useIsDark } from '../../hooks/useCalm';
 //   i/<name>   -> Ionicons
 //   m/<name>   -> MaterialCommunityIcons
 //   fa/<name>  -> FontAwesome5
+//   logo/<key> -> brand-logo Image from TYPE_LOGOS (falls back to Feather if unknown)
 // A bare name with no "/" is treated as a Feather glyph. This is the safety net:
 // every category created before this migration stored a plain Feather name, so it
 // keeps rendering correctly — a category can never become a blank box.
@@ -33,6 +36,16 @@ const CategoryIcon: React.FC<CategoryIconProps> = ({ icon, size = 22, color = '#
     if (lib === 'm') return <MaterialCommunityIcons name={name as any} size={size} color={c} style={style} />;
     if (lib === 'i') return <Ionicons name={name as any} size={size} color={c} style={style} />;
     if (lib === 'fa') return <FontAwesome5 name={name as any} size={size} color={c} style={style} />;
+    if (lib === 'logo' && TYPE_LOGOS[name]) {
+      // Brand-logo tile: white app-icon-style tile with the logo CONTAINed inside.
+      // Wide wordmark logos (Tabung Haji 310×213, TnG+ 361×192) must never be
+      // cover-cropped; jpg white backgrounds blend into the tile. Never tinted.
+      return (
+        <View style={[{ width: size, height: size, borderRadius: Math.round(size * 0.24), backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, style]}>
+          <Image source={TYPE_LOGOS[name]} style={{ width: Math.round(size * 0.86), height: Math.round(size * 0.86) }} resizeMode="contain" />
+        </View>
+      );
+    }
   }
   return <Feather name={(icon || 'tag') as any} size={size} color={c} style={style} />;
 };

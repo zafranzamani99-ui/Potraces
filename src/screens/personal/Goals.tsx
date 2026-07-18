@@ -42,6 +42,9 @@ import {
 } from 'date-fns';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
+import { usePremiumStore } from '../../store/premiumStore';
+import PaywallModal from '../../components/common/PaywallModal';
+import { TIER_LIMITS } from '../../constants/premium';
 import { useSettingsStore } from '../../store/settingsStore';
 import { calcHub } from '../../utils/calcHub';
 import { useWalletStore } from '../../store/walletStore';
@@ -403,7 +406,7 @@ type GoalSort = 'manual' | 'deadline' | 'progress';
 // Localized version defined inside component via useT()
 
 // ── CIRCULAR PROGRESS RING ───────────────────────────────────
-const MAX_GOALS = 10;
+// Goal count cap is now tier-based — see canCreateGoal / TIER_LIMITS[tier].maxGoals.
 
 // Memoized grid card. All props are referentially stable across the parent's
 // keystroke/state re-renders (styles/neu useMemo'd, C is a module constant,
@@ -493,6 +496,10 @@ const Goals: React.FC = () => {
   const { showToast } = useToast();
   const goals = usePersonalStore((s) => s.goals);
   const addGoal = usePersonalStore((s) => s.addGoal);
+  const canCreateGoal = usePremiumStore((s) => s.canCreateGoal);
+  const tier = usePremiumStore((s) => s.tier);
+  const [goalsPaywallVisible, setGoalsPaywallVisible] = useState(false);
+  const [echoPaywallVisible, setEchoPaywallVisible] = useState(false);
   const updateGoal = usePersonalStore((s) => s.updateGoal);
   const deleteGoal = usePersonalStore((s) => s.deleteGoal);
   const contributeToGoal = usePersonalStore((s) => s.contributeToGoal);
@@ -779,15 +786,15 @@ const Goals: React.FC = () => {
 
   // ── Open Add Modal ──
   const openAddGoal = useCallback(() => {
-    if (goalsList.length >= MAX_GOALS) {
-      showToast(t.goals.maxGoals.replace('{n}', String(MAX_GOALS)), 'error');
+    if (!canCreateGoal(goalsList.length)) {
+      setGoalsPaywallVisible(true);
       return;
     }
     resetGoalForm();
     goalClosingRef.current = false;
     goalSheetY.value = SCREEN_H;
     setGoalModalVisible(true);
-  }, [goalsList.length, resetGoalForm, showToast, SCREEN_H, goalSheetY]);
+  }, [goalsList.length, canCreateGoal, resetGoalForm, SCREEN_H, goalSheetY]);
 
   // ── Open Edit Modal ──
   const openEditGoal = useCallback((goal: Goal) => {
@@ -1519,6 +1526,17 @@ const Goals: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <PaywallModal
+        visible={goalsPaywallVisible}
+        onClose={() => setGoalsPaywallVisible(false)}
+        feature="goals"
+        currentUsage={goalsList.length}
+      />
+      <PaywallModal
+        visible={echoPaywallVisible}
+        onClose={() => setEchoPaywallVisible(false)}
+        feature="ai"
+      />
       <ScreenGuide
         id="goals-guide"
         // Do-it-with-me: on first visit the hole lands on the empty-state CTA
@@ -1656,7 +1674,7 @@ const Goals: React.FC = () => {
       </ScrollView>
 
       {/* ── FAB ── */}
-      {activeGoals.length > 0 && goalsList.length < MAX_GOALS && (
+      {activeGoals.length > 0 && canCreateGoal(goalsList.length) && (
         <FAB
           ref={guideTargetRef}
           onPress={openAddGoal}
@@ -2456,6 +2474,13 @@ const Goals: React.FC = () => {
                     style={styles.echoTipCard}
                     onPress={() => {
                       lightTap();
+                      // Ask-Echo-per-screen is a paid feature (matches every other screen).
+                      // Close the detail modal first, then show the paywall (Modal-over-Modal gotcha).
+                      if (!TIER_LIMITS[tier].askEchoPerScreen) {
+                        setDetailGoal(null);
+                        setTimeout(() => setEchoPaywallVisible(true), 50);
+                        return;
+                      }
                       setEchoGoal(g);
                       echoGoalRef.current = g;
                       setDetailGoal(null);
@@ -2626,7 +2651,7 @@ const Goals: React.FC = () => {
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },
   scrollView: { flex: 1 },
-  scrollContent: { padding: SPACING.xl },
+  scrollContent: { padding: SPACING.xl, maxWidth: 680, width: '100%', alignSelf: 'center' as const },
 
   // ── Hero ──
   heroCard: {

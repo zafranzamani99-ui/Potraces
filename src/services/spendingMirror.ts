@@ -1,6 +1,6 @@
 /**
  * Spending Mirror — generates a calm, reflective monthly narrative
- * using Gemini 2.0 Flash based on the user's transaction data.
+ * using Gemini (model chain in geminiClient) based on the user's transaction data.
  *
  * No advice, no judgment — just a mirror.
  */
@@ -10,6 +10,7 @@ import { usePersonalStore } from '../store/personalStore';
 import { useDebtStore } from '../store/debtStore';
 import { useWalletStore } from '../store/walletStore';
 import { useAIInsightsStore } from '../store/aiInsightsStore';
+import { isTransfer, isGoalMove } from '../utils/insights';
 import { usePremiumStore } from '../store/premiumStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { callGeminiAPI, isGeminiAvailable } from './geminiClient';
@@ -27,6 +28,7 @@ function buildDataSummary(): string {
   const daysLeft = getDaysInMonth(now) - now.getDate();
 
   const monthTxns = transactions.filter((t) => {
+    if (isTransfer(t) || isGoalMove(t)) return false; // match Reports/Pulse
     const d = t.date instanceof Date ? t.date : new Date(t.date);
     return isWithinInterval(d, { start: monthStart, end: monthEnd });
   });
@@ -42,6 +44,7 @@ function buildDataSummary(): string {
   const lastStart = startOfMonth(subMonths(now, 1));
   const lastEnd = endOfMonth(subMonths(now, 1));
   const lastMonthTxns = transactions.filter((t) => {
+    if (isTransfer(t) || isGoalMove(t)) return false;
     const d = t.date instanceof Date ? t.date : new Date(t.date);
     return isWithinInterval(d, { start: lastStart, end: lastEnd });
   });
@@ -200,7 +203,7 @@ Rules:
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
     if (text) {
-      premium.incrementAiCalls();
+      // Dashboard auto-insight — background AI, does NOT spend the user's Echo quota.
       store.setSpendingMirror(text, monthKey);
       return text;
     }

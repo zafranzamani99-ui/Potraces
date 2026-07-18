@@ -155,6 +155,14 @@ export const SPACING = {
   '7xl': 64,
 };
 
+// ─── LEGAL LINKS ────────────────────────────────────────────
+// Terms (EULA) + Privacy — required as FUNCTIONAL links on the subscription paywall and in
+// Settings (Apple rule). Single source so the paywall, SubscriptionCard, and AppSettings all
+// point at the same pages. Privacy is already live; terms.html must be published before
+// charging (or repoint TERMS_URL at Apple's standard EULA).
+export const TERMS_URL = 'https://jejakbaki.my/terms.html';
+export const PRIVACY_URL = 'https://jejakbaki.my/privacy.html';
+
 // ─── BORDER RADIUS ──────────────────────────────────────────
 export const RADIUS = {
   xs: 4,

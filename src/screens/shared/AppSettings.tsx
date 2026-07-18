@@ -21,7 +21,7 @@ import Card from '../../components/common/Card';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useSettingsStore } from '../../store/settingsStore';
 import { isLiveAudioAvailable } from '../../services/liveAudioSource';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha, TERMS_URL, PRIVACY_URL } from '../../constants';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { useCalm } from '../../hooks/useCalm';
@@ -362,7 +362,7 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                     thumbColor={C.surface}
                   />
                 }
-                last={!biometricLockEnabled}
+                last={false}
               />
               {biometricLockEnabled && (
                 <View style={{ paddingHorizontal: SPACING.lg, paddingBottom: SPACING.md }}>
@@ -392,10 +392,17 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                 </View>
               )}
               <SettingRow
+                icon="i/document-text-outline"
+                chipColor="#4F5104"
+                label={t.settings.termsOfUse}
+                onPress={() => Linking.openURL(TERMS_URL).catch(() => {})}
+                external
+              />
+              <SettingRow
                 icon="i/shield-checkmark"
                 chipColor="#4F5104"
                 label={t.settings.privacyPolicy}
-                onPress={() => Linking.openURL('https://jejakbaki.my/privacy.html')}
+                onPress={() => Linking.openURL(PRIVACY_URL).catch(() => {})}
                 external
                 last
               />
@@ -483,6 +490,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.lg,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   sectionHeader: {
     fontSize: TYPOGRAPHY.size.sm,

@@ -90,11 +90,20 @@ const ImportFromStatement: React.FC = () => {
         ...tx,
         _id: `imp-${Date.now()}-${i}`,
         _include: true,
-        _category: tx.suggested_category,
+        // Store a category ID (what budgets/Echo match on), never a display NAME —
+        // the AI may return either, so resolve it. Unknown → 'other' (a valid id),
+        // so an imported txn can never carry an unmatchable name.
+        _category: (() => {
+          const s = (tx.suggested_category || '').toLowerCase().trim();
+          const hit = [...expenseCategories, ...incomeCategories].find(
+            (c: any) => String(c.id).toLowerCase() === s || String(c.name).toLowerCase() === s,
+          );
+          return hit ? hit.id : 'other';
+        })(),
       })),
     );
     setStep('review');
-  }, [t]);
+  }, [t, expenseCategories, incomeCategories]);
 
   const handlePick = useCallback(async () => {
     lightTap();
@@ -271,9 +280,9 @@ const ImportFromStatement: React.FC = () => {
     );
   }, [styles, toggleRow, C, currency]);
 
-  const pickCategory = useCallback((name: string) => {
+  const pickCategory = useCallback((id: string) => {
     if (!categoryPicker) return;
-    setRows((prev) => prev.map((r) => (r._id === categoryPicker.rowId ? { ...r, _category: name } : r)));
+    setRows((prev) => prev.map((r) => (r._id === categoryPicker.rowId ? { ...r, _category: id } : r)));
     setCategoryPicker(null);
   }, [categoryPicker]);
 
@@ -444,7 +453,7 @@ const ImportFromStatement: React.FC = () => {
         maxToRenderPerBatch={10}
         windowSize={5}
         removeClippedSubviews
-        contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: 120 + insets.bottom, maxWidth: 680, width: '100%', alignSelf: 'center' }}
       />
 
       <View style={[styles.footer, { paddingBottom: SPACING.md + insets.bottom }]}>
@@ -463,7 +472,7 @@ const ImportFromStatement: React.FC = () => {
             {categoriesForPicker.map((c: any) => (
               <TouchableOpacity
                 key={c.id}
-                onPress={() => pickCategory(c.name)}
+                onPress={() => pickCategory(c.id)}
                 style={styles.pickerItem}
                 accessibilityRole="button"
                 accessibilityLabel={`select category ${c.name}`}

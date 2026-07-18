@@ -1,6 +1,6 @@
 /**
  * Intent Engine — classifies natural language notes into financial intents
- * using local pre-filter + Gemini 1.5 Flash for structured extraction.
+ * using local pre-filter + Gemini (model chain in geminiClient) for structured extraction.
  *
  * Pipeline: text → manglishParser (local) → Gemini (if needed) → IntentResult
  */
@@ -117,10 +117,11 @@ COMMON NOTE FORMATS:
 Users often write quick structured notes. Understand these patterns:
 
 1. DEBT LISTS with headers:
-   "mereka hutang" or "they owe" = header meaning people owe the user (type: "income", intent per item: "debt")
+   "mereka hutang" / "orang hutang" / "they owe" = header meaning people owe the user (type: "income", intent per item: "debt")
    "aku hutang" or "i owe" = header meaning user owes people (type: "expense", intent per item: "debt")
-   Lines below a header like "100-faris" or "300-mak(duit raya)" mean: amount-person. Extract each as a separate debt item with the person name.
+   A header applies to EVERY line under it until the next header. Lines can be "amount-person", "person-amount", or "person amount" ("Ali- 7", "Rahman -8", "7-ali"). Extract each as a separate debt item with the person name.
    Example: "mereka hutang\\n100-faris\\n50-ali" → 2 debt items (faris RM100 type:income, ali RM50 type:income)
+   Example: "aku hutang\\nAli- 7\\n\\norang hutang\\nRahman -8" → Ali RM7 (type:expense, I owe Ali), Rahman RM8 (type:income, Rahman owes me)
 
 2. PERSON-SCOPED BLOCKS:
    A line with JUST a name (no amount) followed by item lines = all items below belong to that person.
@@ -135,7 +136,9 @@ Users often write quick structured notes. Understand these patterns:
    "netflix-75" → expense RM75, description: netflix, category: subscription
    "100-zarep" → could be debt or expense depending on context headers above
 
-4. PARENTHETICAL NOTES: "300-mak(duit raya)" → person: mak, amount: 300, description: duit raya
+4. PARENTHETICAL AMOUNTS vs NOTES:
+   - A NUMBER (or arithmetic) in parentheses is the AMOUNT: "kari (18)" → expense RM18, description "kari". "ayam (17)" → RM17.
+   - Parentheses containing TEXT are a note: "300-mak(duit raya)" → person: mak, amount: 300, description: duit raya.
 
 5. DONE/SETTLED markers: "digi bill is done", "settled", "lunas", "dah bayar" → intent: debt_update (the item is paid/completed)
    Also: ✅ checkmark after an item = already confirmed/done. SKIP items with ✅ — do not extract them.
@@ -148,7 +151,9 @@ Users often write quick structured notes. Understand these patterns:
    "netflix 55" → subscription, billingCycle monthly (known always-recurring services like netflix/spotify/icloud/unifi/astro/gym default to a monthly commitment)
    "groceries 55" / "lunch 12" (a generic one-off, not a recurring service) → expense
 
-7. MATH/BALANCE LINES: Lines that are pure arithmetic like "110+20-3-7.5 = 76.7" are the user's own calculations. SKIP these — do not extract them as items.
+7. MATH/BALANCE LINES vs MATH AMOUNTS:
+   - A line that is PURELY numbers and operators like "110+20-3-7.5 = 76.7" is the user's own calculation. SKIP it.
+   - But when maths is the AMOUNT of a described item, EVALUATE it: "ali (16-9)+ 6(dinner)" → person ali, amount 13 (16-9+6), note dinner. "petrol 20+5" → RM25.
 
 8. CASH ADDITIONS: "cash + 20" or "cash +20" = income RM20, description: cash, category: other. The "+" indicates money received.
 
@@ -159,6 +164,14 @@ Users often write quick structured notes. Understand these patterns:
    { "intent": "playbook", "items": [{ "intent": "playbook", "amount": 2600, "description": "Gaji March", "type": "income", "category": "salary", "confidence": "high", "allocations": [ { "label": "makan", "category": "food", "amount": 600 }, { "label": "rumah", "category": "rent", "amount": 700 } ] }] }
    Map allocation labels to the closest match from AVAILABLE CATEGORIES. If unsure, use "other".
    Key signal: the allocation amounts roughly add up to the total. This distinguishes a playbook from a list of expenses.
+
+10. CATEGORY TITLES + MIXED NOTES:
+   A heading that names a spend ("Makan harini" = today's food, "belanja hari ni", "groceries", "petrol trip") followed by item-amount lines means those items are EXPENSES in that category — NOT debts and NOT a person name.
+   A single note may MIX sections: an expense list under such a title AND a debt list under a "hutang"/"owe" header. Extract every line under the section it belongs to.
+   Example: "Makan harini | kari (18) | ayam -17 | nasi lemak RM8 | kuih -rm17 | hutang | ali (16-9)+ 6(dinner)"
+   → 4 food expenses (kari 18, ayam 17, nasi lemak 8, kuih 17) + 1 debt (person ali, RM13, dinner). The title "Makan harini" is NOT a person.
+   BARE-AMOUNT LISTS: a single-word category header ("makan", "petrol", "kopi") followed by amount-only lines ("-7", "8", "-rm9") means one EXPENSE per amount in that category, described by the header. Repeats are DISTINCT (do not merge duplicates).
+   Example: "makan | -7 | -8 | -8 | -9" → 4 food expenses of RM7, RM8, RM8, RM9 (keep BOTH RM8s). A category header also ENDS any preceding debt section.
 
 RULES:
 - Currency is always MYR (RM). Amount can appear with or without "RM" prefix.
@@ -333,12 +346,29 @@ function buildLocalResult(
   const playbook = detectLocalPlaybook(text);
   if (playbook) return playbook;
 
-  // Try structured line parsing (multi-line debt format)
+  // Try structured line parsing (multi-line mixed expense / debt format)
   const structured = parseStructuredLines(text);
   if (structured && structured.length > 0) {
     const learning = useLearningStore.getState();
     const extractions: AIExtraction[] = structured.map((line) => {
-      const preferredName = learning.getSuggestedPerson(line.person) || line.person;
+      if (line.kind === 'expense') {
+        return {
+          id: makeId(),
+          type: 'expense' as ExtractionIntent,
+          rawText: `${line.label} — RM ${line.amount}`,
+          extractedData: {
+            amount: line.amount,
+            description: line.note ? `${line.label} (${line.note})` : line.label,
+            category: line.category || matchCategory(line.label) || 'other',
+            transactionType: 'expense',
+            wallet: null,
+            person: null,
+          },
+          status: 'pending' as const,
+        };
+      }
+      const person = line.person || line.label;
+      const preferredName = learning.getSuggestedPerson(person) || person;
       return {
         id: makeId(),
         type: line.isDone ? 'debt_update' as ExtractionIntent : 'debt' as ExtractionIntent,
@@ -346,7 +376,7 @@ function buildLocalResult(
         extractedData: {
           amount: line.amount,
           description: line.note || `${line.direction === 'they_owe' ? `${preferredName} owes` : `owe ${preferredName}`}`,
-          category: matchCategory(line.person) || 'other',
+          category: line.category || matchCategory(person) || 'other',
           transactionType: line.direction === 'they_owe' ? 'income' : 'expense',
           wallet: null,
           person: preferredName,
@@ -355,8 +385,12 @@ function buildLocalResult(
       };
     });
 
+    const hasDebt = extractions.some((e) => e.type === 'debt' || e.type === 'debt_update');
+    const hasExpense = extractions.some((e) => e.type === 'expense');
+    const topIntent: ExtractionIntent = hasExpense && !hasDebt ? 'expense' : hasDebt && !hasExpense ? 'debt' : 'expense';
+
     return {
-      intent: 'debt',
+      intent: topIntent,
       extractions,
       confidence: 'low',
     };
@@ -486,7 +520,7 @@ export async function classifyIntent(
   onStep?.('ai');
   const geminiRaw = await callGemini(text, walletNames);
   if (geminiRaw) {
-    premium.incrementAiCalls();
+    // Natural-language logging parse — utility AI, does NOT spend the user's Echo quota.
     const result = parseGeminiResponse(geminiRaw);
     if (result && result.extractions.length > 0) {
       // Enrich with local + learned patterns

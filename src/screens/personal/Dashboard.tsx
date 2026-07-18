@@ -24,7 +24,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { addDays, isWithinInterval, startOfMonth, endOfMonth, startOfDay, subMonths, getDaysInMonth } from 'date-fns';
 
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -34,6 +34,7 @@ import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import GlassModeToggle from '../../components/common/GlassModeToggle';
 import QuickActions from '../../components/common/QuickActions';
+import { listFailedReceipts } from '../../services/receiptQueue';
 import NeuIconButton from '../../components/common/NeuIconButton';
 import { useNeu } from '../../components/common/neu';
 import TransactionItem from '../../components/common/TransactionItem';
@@ -58,6 +59,10 @@ import { lightTap } from '../../services/haptics';
 import QuickAddExpense from '../../components/common/QuickAddExpense';
 import { useBNPLTotal } from '../../hooks/useBNPLTotal';
 import { useKeptNumber } from '../../hooks/useKeptNumber';
+import { useBudgetProfileStore } from '../../store/budgetProfileStore';
+import { scopeTxns, getRange } from '../../utils/insights';
+import { pulseScore, expandBills, baselineDailySpend, last14DailySpend, PulseBand } from '../../utils/pulseMath';
+import PulseWave from '../../components/pulse/PulseWave';
 import { generateSpendingMirror } from '../../services/spendingMirror';
 import BreathingRoom from '../../components/common/BreathingRoom';
 import FreshStart from '../../components/common/FreshStart';
@@ -85,17 +90,6 @@ const getGreetingKey = (): 'goodMorning' | 'goodAfternoon' | 'goodEvening' => {
 // ─── Insight micro-visualizations ─────────────────────────────
 // Each insight card carries a tiny instrument of the user's real data
 // instead of a decorative icon — the strip becomes alive as data grows.
-
-const polarXY = (cx: number, cy: number, r: number, deg: number) => {
-  const a = (deg * Math.PI) / 180;
-  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
-};
-const arcD = (cx: number, cy: number, r: number, startDeg: number, endDeg: number) => {
-  const s = polarXY(cx, cy, r, startDeg);
-  const e = polarXY(cx, cy, r, endDeg);
-  const large = endDeg - startDeg > 180 ? 1 : 0;
-  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
-};
 
 // One dot per day of the month; lit where the user logged something.
 const DotCalendar: React.FC<{
@@ -126,30 +120,6 @@ const DotCalendar: React.FC<{
     ))}
   </View>
 );
-
-// 270° gauge; tick marks 100% of usual pace, scale caps at 150%.
-const PaceGauge: React.FC<{ percent: number; color: string; C: typeof CALM }> = ({ percent, color, C }) => {
-  const r = 14.5;
-  const cx = 19;
-  const cy = 19;
-  const frac = Math.min(Math.max(percent, 0), 150) / 150;
-  const tickIn = polarXY(cx, cy, r - 1, 315);
-  const tickOut = polarXY(cx, cy, r + 4, 315);
-  return (
-    <Svg width={38} height={38} viewBox="0 0 38 38">
-      <SvgPath d={arcD(cx, cy, r, 135, 405)} stroke={withAlpha(color, 0.18)} strokeWidth={5} strokeLinecap="round" fill="none" />
-      {frac > 0.01 && (
-        <SvgPath d={arcD(cx, cy, r, 135, 135 + 270 * frac)} stroke={color} strokeWidth={5} strokeLinecap="round" fill="none" />
-      )}
-      <SvgPath
-        d={`M ${tickIn.x} ${tickIn.y} L ${tickOut.x} ${tickOut.y}`}
-        stroke={withAlpha(C.textMuted, 0.6)}
-        strokeWidth={2}
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
-};
 
 // came-in vs went-out side by side — the net explains itself.
 const TwinBars: React.FC<{ inAmt: number; outAmt: number; C: typeof CALM }> = ({ inAmt, outAmt, C }) => {
@@ -191,6 +161,8 @@ const PersonalDashboard: React.FC = () => {
   const transactions = usePersonalStore((s) => s.transactions);
   const subscriptions = usePersonalStore((s) => s.subscriptions);
   const budgets = usePersonalStore((s) => s.budgets);
+  const goals = usePersonalStore((s) => s.goals);
+  const takeHome = useBudgetProfileStore((s) => s.takeHome);
   const updateTransaction = usePersonalStore((s) => s.updateTransaction);
   const deleteTransaction = usePersonalStore((s) => s.deleteTransaction);
   const unmarkOrdersTransferred = useSellerStore((s) => s.unmarkOrdersTransferred);
@@ -206,6 +178,7 @@ const PersonalDashboard: React.FC = () => {
   const addToWallet = useWalletStore((s) => s.addToWallet);
   const [refreshing, setRefreshing] = React.useState(false);
   const navigation = useNavigation<any>();
+  const isFocused = useIsFocused(); // pauses the strip's ambient ECG on other tabs
 
   const categoryMap = useMemo(() => {
     const map = new Map<string, CategoryOption>();
@@ -422,42 +395,44 @@ const PersonalDashboard: React.FC = () => {
       .slice(0, 5);
   }, [transactions]);
 
+  // ─── Pulse snapshot — same math as the Pulse screen, so the strip's score
+  // and the flagship screen can never disagree. ───────────────
+  const pulseSnap = useMemo(() => {
+    if (transactions.length === 0) return null;
+    const now = new Date();
+    return pulseScore({
+      scopedMonth: scopeTxns(transactions, getRange('this_month', now)),
+      budgets,
+      goals,
+      wallets,
+      bills14: expandBills(subscriptions, 13, now),
+      takeHome,
+      baselineDaily: baselineDailySpend(transactions, now),
+      last14Daily: last14DailySpend(transactions, now),
+      now,
+    });
+  }, [transactions, budgets, goals, wallets, subscriptions, takeHome]);
+  const pulseBandLabel: Record<PulseBand, string> = {
+    good: t.pulse.feelingGood,
+    steady: t.pulse.steadyGround,
+    building: t.pulse.buildingUp,
+    starting: t.pulse.justStarting,
+    finding: t.pulse.findingRhythm,
+  };
+  const pulseBandColor = (band: PulseBand): string =>
+    band === 'good' || band === 'steady'
+      ? C.accent
+      : band === 'building'
+      ? (isDark ? C.gold : '#8E6610')
+      : band === 'starting'
+      ? C.bronze
+      : (isDark ? C.lavender : '#6E6776');
+
   // ─── Insight strip data ───────────────────────────────────
   const insightStrip = useMemo(() => {
     const now = new Date();
     const dayOfMonth = now.getDate();
     const daysInMonth = getDaysInMonth(now);
-
-    // Savings rate
-    const savingsRate =
-      stats.income > 0
-        ? Math.round(((stats.income - stats.expenses) / stats.income) * 100)
-        : 0;
-    const savingsColor =
-      savingsRate > 20 ? C.positive : savingsRate > 0 ? C.accent : C.neutral;
-
-    // Spending velocity
-    const lastMonthExpenses = stats.prevMonthTransactions
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const monthProgress = dayOfMonth / daysInMonth;
-    let velocityPercent = 0;
-    if (lastMonthExpenses > 0 && monthProgress > 0) {
-      velocityPercent = Math.round(
-        (stats.expenses / lastMonthExpenses) * (1 / monthProgress) * 100
-      );
-    }
-    // With no last-month baseline the percent is forced to 0 — show it neutral,
-    // not positive-green, so "0%" doesn't read as "great, spent nothing".
-    const hasBaseline = lastMonthExpenses > 0;
-    const velocityColor =
-      !hasBaseline
-        ? C.neutral
-        : velocityPercent < 90
-        ? C.positive
-        : velocityPercent > 110
-        ? C.neutral
-        : C.accent;
 
     // Upcoming bills (next 7 days)
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -493,10 +468,6 @@ const PersonalDashboard: React.FC = () => {
     });
 
     return {
-      savingsRate,
-      savingsColor,
-      velocityPercent,
-      velocityColor,
       upcomingCount: upcomingWeek.length,
       upcomingTotal,
       dayOfMonth,
@@ -512,6 +483,16 @@ const PersonalDashboard: React.FC = () => {
       setRefreshing(false);
     }, 1000);
   }, []);
+
+  // Failed-scan count for the Receipts tile badge. Loaded from the queue (async)
+  // and refreshed whenever the dashboard regains focus, since a scan can fail
+  // while the user is on another screen.
+  const [receiptsBadge, setReceiptsBadge] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      listFailedReceipts().then((l) => setReceiptsBadge(l.length)).catch(() => {});
+    }, [])
+  );
 
   const billsBadge = useMemo(() => {
     const today = startOfDay(new Date());
@@ -803,17 +784,60 @@ const PersonalDashboard: React.FC = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.insightStripRow}
           style={styles.insightStripScroll}
+          snapToInterval={176 + SPACING.sm}
+          decelerationRate="fast"
         >
+          {/* Pulse — the strip's lead: real score + a living mini ECG.
+              Same pulseScore() as the flagship screen. */}
+          {pulseSnap !== null && (
+            <TouchableOpacity
+              style={[styles.insightCard, neuF.raisedSoft]}
+              activeOpacity={0.7}
+              onPress={() => { lightTap(); navigation.getParent()?.navigate('FinancialPulse'); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${t.dashboard.pulseCard}: ${pulseSnap.score}. ${pulseBandLabel[pulseSnap.band]}`}
+            >
+              <LinearGradient
+                colors={[withAlpha(pulseBandColor(pulseSnap.band), isDark ? 0.16 : 0.09), withAlpha(pulseBandColor(pulseSnap.band), 0)]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+                pointerEvents="none"
+              />
+              <View style={[styles.insightSpine, { backgroundColor: pulseBandColor(pulseSnap.band) }]} />
+              <Text style={styles.insightCardLabel}>{t.dashboard.pulseCard}</Text>
+              <View style={styles.insightBody}>
+                <View style={styles.insightTextCol}>
+                  <Text style={[styles.insightValue, { color: pulseBandColor(pulseSnap.band) }]} numberOfLines={1}>
+                    {pulseSnap.score}
+                  </Text>
+                  <Text style={styles.insightContext} numberOfLines={1}>{pulseBandLabel[pulseSnap.band]}</Text>
+                </View>
+                <PulseWave
+                  width={62}
+                  height={34}
+                  color={pulseBandColor(pulseSnap.band)}
+                  trackColor={withAlpha(C.textPrimary, 0.1)}
+                  active={isFocused}
+                />
+              </View>
+            </TouchableOpacity>
+          )}
+
           {/* Transactions — mini dot-calendar of the month */}
           <TouchableOpacity
-            style={[styles.insightCard, {
-              backgroundColor: withAlpha(C.accent, isDark ? 0.10 : 0.05),
-              borderColor: withAlpha(C.accent, isDark ? 0.24 : 0.14),
-            }]}
+            style={[styles.insightCard, neuF.raisedSoft]}
             activeOpacity={0.7}
             onPress={() => { lightTap(); navigation.getParent()?.navigate('TransactionsList'); }}
             accessibilityLabel={`${stats.transactionCount} transactions this month`}
           >
+            <LinearGradient
+              colors={[withAlpha(C.accent, isDark ? 0.14 : 0.08), withAlpha(C.accent, 0)]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+              pointerEvents="none"
+            />
             <View style={[styles.insightSpine, { backgroundColor: C.accent }]} />
             <Text style={styles.insightCardLabel}>{t.dashboard.thisMonth.toLowerCase()}</Text>
             <View style={styles.insightBody}>
@@ -833,39 +857,21 @@ const PersonalDashboard: React.FC = () => {
             </View>
           </TouchableOpacity>
 
-          {/* Spending Pace — gauge with a tick at "usual" */}
+          {/* Kept — came-in vs went-out twin bars → Reports with the
+              "show me the math" sheet opened on the kept equation */}
           <TouchableOpacity
-            style={[styles.insightCard, {
-              backgroundColor: withAlpha(insightStrip.velocityColor, isDark ? 0.10 : 0.05),
-              borderColor: withAlpha(insightStrip.velocityColor, isDark ? 0.24 : 0.14),
-            }]}
+            style={[styles.insightCard, neuF.raisedSoft]}
             activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.getParent()?.navigate('FinancialPulse'); }}
-            accessibilityLabel={`Spending velocity: ${insightStrip.velocityPercent} percent of usual pace`}
-          >
-            <View style={[styles.insightSpine, { backgroundColor: insightStrip.velocityColor }]} />
-            <Text style={styles.insightCardLabel}>{t.dashboard.pace}</Text>
-            <View style={styles.insightBody}>
-              <View style={styles.insightTextCol}>
-                <Text style={[styles.insightValue, { color: C.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                  {insightStrip.velocityPercent}%
-                </Text>
-                <Text style={styles.insightContext}>{t.dashboard.ofUsualSpending}</Text>
-              </View>
-              <PaceGauge percent={insightStrip.velocityPercent} color={insightStrip.velocityColor} C={C} />
-            </View>
-          </TouchableOpacity>
-
-          {/* Kept — came-in vs went-out twin bars */}
-          <TouchableOpacity
-            style={[styles.insightCard, {
-              backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, isDark ? 0.10 : 0.05),
-              borderColor: withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, isDark ? 0.24 : 0.14),
-            }]}
-            activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.getParent()?.navigate('TransactionsList'); }}
+            onPress={() => { lightTap(); navigation.getParent()?.navigate('PersonalReports', { openMath: 'kept' }); }}
             accessibilityLabel={`Kept ${currency} ${kept.keptThisMonth.toFixed(2)} this month`}
           >
+            <LinearGradient
+              colors={[withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, isDark ? 0.14 : 0.08), withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, 0)]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+              pointerEvents="none"
+            />
             <View style={[styles.insightSpine, { backgroundColor: kept.keptThisMonth >= 0 ? C.positive : C.neutral }]} />
             <Text style={styles.insightCardLabel}>{t.dashboard.hero.kept}</Text>
             <View style={styles.insightBody}>
@@ -882,14 +888,18 @@ const PersonalDashboard: React.FC = () => {
           {/* BNPL / Credit */}
           {bnpl.walletCount > 0 && bnpl.totalUsed > 0 && (
             <TouchableOpacity
-              style={[styles.insightCard, {
-                backgroundColor: withAlpha(C.bronze, isDark ? 0.10 : 0.05),
-                borderColor: withAlpha(C.bronze, isDark ? 0.24 : 0.14),
-              }]}
+              style={[styles.insightCard, neuF.raisedSoft]}
               activeOpacity={0.7}
-              onPress={() => { lightTap(); navigation.getParent()?.navigate('WalletManagement'); }}
+              onPress={() => { lightTap(); navigation.getParent()?.navigate('WalletManagement', { focusSection: 'credit' }); }}
               accessibilityLabel={`Future you owes ${currency} ${bnpl.totalUsed.toFixed(2)}`}
             >
+              <LinearGradient
+                colors={[withAlpha(C.bronze, isDark ? 0.14 : 0.08), withAlpha(C.bronze, 0)]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+                pointerEvents="none"
+              />
               <View style={[styles.insightSpine, { backgroundColor: C.bronze }]} />
               <Text style={styles.insightCardLabel}>{t.dashboard.owedLater}</Text>
               <View style={styles.insightBody}>
@@ -906,14 +916,18 @@ const PersonalDashboard: React.FC = () => {
 
           {/* Upcoming Bills — 7-day tick ruler */}
           <TouchableOpacity
-            style={[styles.insightCard, {
-              backgroundColor: withAlpha(C.gold, isDark ? 0.10 : 0.05),
-              borderColor: withAlpha(C.gold, isDark ? 0.24 : 0.14),
-            }]}
+            style={[styles.insightCard, neuF.raisedSoft]}
             activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.getParent()?.navigate('SubscriptionList'); }}
+            onPress={() => { lightTap(); navigation.getParent()?.navigate('SubscriptionList', { initialStatus: 'upcoming' }); }}
             accessibilityLabel={`${insightStrip.upcomingCount} bills due this week`}
           >
+            <LinearGradient
+              colors={[withAlpha(C.gold, isDark ? 0.14 : 0.08), withAlpha(C.gold, 0)]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+              pointerEvents="none"
+            />
             <View style={[styles.insightSpine, { backgroundColor: C.gold }]} />
             <Text style={styles.insightCardLabel}>{t.dashboard.comingUp}</Text>
             <View style={styles.insightBody}>
@@ -938,7 +952,7 @@ const PersonalDashboard: React.FC = () => {
         )}
 
         {/* Quick Actions — neumorphic tiles (components/common/QuickActions) */}
-        <QuickActions onAction={handleQuickAction} billsBadge={billsBadge} />
+        <QuickActions onAction={handleQuickAction} billsBadge={billsBadge} receiptsBadge={receiptsBadge} />
 
         {/* Details section */}
         <CollapsibleSection title={t.dashboard.details} subtitle={t.dashboard.detailsSubtitle} defaultOpen={false}>
@@ -1249,6 +1263,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING['2xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // Zone 1 — Greeting
@@ -1295,6 +1312,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   insightStripScroll: {
     marginHorizontal: -SPACING['2xl'],
+    // Bleed so the neu boxShadow isn't clipped by the scroll viewport
+    // (owner rule: "neu onyx vertical error") — the row padding gives it back.
+    marginVertical: -SPACING.md,
   },
   insightStripFade: {
     position: 'absolute',
@@ -1305,14 +1325,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   insightStripRow: {
     paddingHorizontal: SPACING['2xl'],
+    paddingVertical: SPACING.md,
     gap: SPACING.sm,
   },
+  // Onyx: borderless C.background face + neuF.raisedSoft at the use site;
+  // each card carries its own color as a corner gradient wash + spine.
   insightCard: {
-    width: 168,
+    width: 176,
+    minHeight: 92,
     padding: SPACING.md,
     paddingLeft: SPACING.md + 6,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
+    backgroundColor: C.background,
     gap: 2,
     overflow: 'hidden',
   },

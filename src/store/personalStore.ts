@@ -37,10 +37,17 @@ export const usePersonalStore = create<PersonalState>()(
       addTransaction: (transaction) => {
         if (!Number.isFinite(transaction.amount) || transaction.amount <= 0) return '';
         const id = newId();
+        // Round to 2dp so the stored value matches the numeric(14,2) cloud column
+        // AND the 2dp the app renders everywhere — a >2dp amount (e.g. a split
+        // divided three ways) would otherwise drift by a fraction of a cent between
+        // device and Supabase. Matches addSubscription/addBudget/addAccount, which
+        // already roundMoney; addTransaction was the lone writer that didn't.
+        const amount = roundMoney(transaction.amount);
         set((state) => ({
           transactions: [
             {
               ...transaction,
+              amount,
               id,
               createdAt: new Date(),
               updatedAt: new Date(),

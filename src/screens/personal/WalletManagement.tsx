@@ -27,7 +27,7 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { roundMoney } from '../../utils/money';
 import { useCalm } from '../../hooks/useCalm';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
-import { WALLET_ICONS_BY_TYPE, WALLET_COLORS, WALLET_PRESETS, WALLET_TYPE_CONFIG, FREE_TIER, BANK_LOGOS, CARD_NETWORK_LOGOS } from '../../constants/premium';
+import { WALLET_ICONS_BY_TYPE, WALLET_COLORS, WALLET_PRESETS, WALLET_TYPE_CONFIG, FREE_TIER, TIER_LIMITS, BANK_LOGOS, CARD_NETWORK_LOGOS } from '../../constants/premium';
 import { useWalletStore } from '../../store/walletStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { usePremiumStore } from '../../store/premiumStore';
@@ -39,7 +39,7 @@ import FAB from '../../components/common/FAB';
 import EmptyState from '../../components/common/EmptyState';
 import PaywallModal from '../../components/common/PaywallModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { lightTap } from '../../services/haptics';
 import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
 import EchoInlineChat from '../../components/common/EchoInlineChat';
@@ -689,14 +689,14 @@ const WalletManagement: React.FC = () => {
         <TouchableOpacity
           onPress={() => {
             lightTap();
-            if (tier !== 'premium') { setPaywallVisible(true); return; }
+            if (!TIER_LIMITS[tier].askEchoPerScreen) { setPaywallVisible(true); return; }
             setEchoHidden(false);
           }}
           accessibilityRole="button"
           accessibilityLabel="Open Echo assistant"
           style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
         >
-          <Feather name="zap" size={20} color={tier !== 'premium' ? C.textMuted : C.textPrimary} />
+          <Feather name="zap" size={20} color={!TIER_LIMITS[tier].askEchoPerScreen ? C.textMuted : C.textPrimary} />
         </TouchableOpacity>
       ) : null,
     });
@@ -833,9 +833,9 @@ const WalletManagement: React.FC = () => {
   }, []);
 
   const canAddType = useCallback((type: WalletType): boolean => {
-    if (tier === 'premium') return true;
+    if (!Number.isFinite(TIER_LIMITS[tier].maxWalletsPerType)) return true;
     const count = wallets.filter((w) => w.type === type).length;
-    return count < FREE_TIER.maxWalletsPerType;
+    return count < TIER_LIMITS[tier].maxWalletsPerType;
   }, [tier, wallets]);
 
   const showTypePaywall = useCallback((type: WalletType) => {
@@ -861,7 +861,7 @@ const WalletManagement: React.FC = () => {
 
   const handleChooseTypeAndPreset = useCallback((type: WalletType, presetId: string | null) => {
     if (!canAddType(type)) {
-      if (tier === 'free') {
+      if (Number.isFinite(TIER_LIMITS[tier].maxWalletsPerType)) {
         showTypePaywall(type);
       }
       return;
@@ -1359,6 +1359,33 @@ const WalletManagement: React.FC = () => {
     );
   }, [currency, getStarAnim, handleSetDefault, handleSwipeMore, handleSwipeDelete, getSwipeRef, t, styles, C, neu]);
 
+  // Deep-link: the Dashboard's "owed later" card lands here scrolled to the
+  // credit/BNPL section. Layout ys are captured on the way down; if the param
+  // arrives before the section has laid out, the scroll fires from onLayout.
+  const route = useRoute<any>();
+  const scrollRef = useRef<any>(null);
+  const walletListY = useRef(0);
+  // Only a REAL measurement counts: the list renders empty until listReady
+  // (deferred past the nav transition), and the collapsed height-0 layout
+  // must not satisfy the pending scroll — that was the "didn't scroll" bug.
+  const creditSectionY = useRef<number | null>(null);
+  const pendingCreditScroll = useRef(false);
+  const scrollToCredit = useCallback(() => {
+    if (creditSectionY.current === null) return false;
+    const y = Math.max(walletListY.current + creditSectionY.current - SPACING.md, 0);
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y, animated: true }));
+    return true;
+  }, []);
+  useEffect(() => {
+    if (route.params?.focusSection === 'credit') {
+      pendingCreditScroll.current = true;
+      navigation.setParams({ focusSection: undefined });
+      // Re-entering an already-laid-out screen scrolls right away; a fresh
+      // push waits for the section's onLayout below.
+      if (scrollToCredit()) pendingCreditScroll.current = false;
+    }
+  }, [route.params?.focusSection, scrollToCredit, navigation]);
+
   const renderTypeSection = useCallback((type: WalletType, walletList: Wallet[]) => {
     if (walletList.length === 0) return null;
     const config = WALLET_TYPE_CONFIG[type];
@@ -1377,6 +1404,7 @@ const WalletManagement: React.FC = () => {
   return (
     <View style={styles.screen}>
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
@@ -1408,9 +1436,9 @@ const WalletManagement: React.FC = () => {
               <View style={styles.summaryFooter}>
                 <Text style={[
                   styles.walletCountText,
-                  tier === 'free' && wallets.length >= FREE_TIER.maxWallets - 1 && { color: C.bronze, fontWeight: TYPOGRAPHY.weight.semibold },
+                  Number.isFinite(TIER_LIMITS[tier].maxWallets) && wallets.length >= TIER_LIMITS[tier].maxWallets - 1 && { color: C.bronze, fontWeight: TYPOGRAPHY.weight.semibold },
                 ]}>
-                  {wallets.length}{tier === 'free' ? `/${FREE_TIER.maxWallets}` : ''} {t.wallets.walletsSuffix}
+                  {wallets.length}{Number.isFinite(TIER_LIMITS[tier].maxWallets) ? `/${TIER_LIMITS[tier].maxWallets}` : ''} {t.wallets.walletsSuffix}
                 </Text>
                 {upcomingBillsWallet.count > 0 && (
                   <TouchableOpacity
@@ -1483,10 +1511,23 @@ const WalletManagement: React.FC = () => {
             onAction={handleAdd}
           />
         ) : (
-          <View style={styles.walletList}>
+          <View
+            style={styles.walletList}
+            onLayout={(e) => { walletListY.current = e.nativeEvent.layout.y; }}
+          >
             {listReady && renderTypeSection('bank', bankWallets)}
             {listReady && renderTypeSection('ewallet', ewalletWallets)}
-            {listReady && renderTypeSection('credit', creditWallets)}
+            <View
+              onLayout={(e) => {
+                if (e.nativeEvent.layout.height <= 0) return; // collapsed pre-listReady layout
+                creditSectionY.current = e.nativeEvent.layout.y;
+                if (pendingCreditScroll.current && scrollToCredit()) {
+                  pendingCreditScroll.current = false;
+                }
+              }}
+            >
+              {listReady && renderTypeSection('credit', creditWallets)}
+            </View>
             {listReady && renderTypeSection('cash', cashWallets)}
           </View>
         )}
@@ -1794,6 +1835,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: 100,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   // Summary
   summaryCard: {

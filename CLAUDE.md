@@ -21,8 +21,8 @@
 
 **Neu kit:** `src/components/common/neu.tsx` — `useNeu(baseColor?, { faintDark? })`. Palette: `src/constants/index.ts` (`CALM`, `CALM_DARK`). Never hand-roll shadows; always go through the kit.
 
-**Done:** Goals, Bills (SubscriptionList/CommitmentForm), full Debt cluster, all Wallet modals + WalletManagement, shared pickers (Contact/Category/Wallet/Calendar/QuickAdd), `BottomSheet`/`FloatingModal`.
-**Not yet Onyx'd (apply on request):** BudgetPlanning, SavingsTracker/SavingsSheets, AccountOverview, Reports, FinancialPulse, MoneyChat, Import screens, Receipt modals, seller/* screens.
+**Done:** Goals, Bills (SubscriptionList/CommitmentForm), full Debt cluster, all Wallet modals + WalletManagement, shared pickers (Contact/Category/Wallet/Calendar/QuickAdd), `BottomSheet`/`FloatingModal`, Reports (full redesign 2026-07-18).
+**Not yet Onyx'd (apply on request):** BudgetPlanning, SavingsTracker/SavingsSheets, AccountOverview, FinancialPulse, MoneyChat, Import screens, Receipt modals, seller/* screens.
 
 ## "Neu Key" — neumorphic icon button (LOCKED)
 

@@ -29,6 +29,8 @@ import { planDelete } from '../../services/deleteAccountFlow';
 import { resetBackoff } from '../../services/syncBackoff';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { usePremiumStore } from '../../store/premiumStore';
+import PaywallModal from '../../components/common/PaywallModal';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { useT } from '../../i18n';
@@ -77,10 +79,12 @@ export default function AccountScreen() {
   const provider = useAuthStore((s) => s.personal.provider);
   const personalSyncEnabled = useSettingsStore((s) => s.personalSyncEnabled);
   const lastPersonalSyncAt = useSettingsStore((s) => s.lastPersonalSyncAt);
+  const lastPersonalSyncError = useSettingsStore((s) => s.lastPersonalSyncError);
 
   const [email, setEmail] = useState<string | null>(null);
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [backupPaywallVisible, setBackupPaywallVisible] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   // Phone form
@@ -235,7 +239,12 @@ export default function AccountScreen() {
 
   const handleToggleBackup = useCallback((value: boolean) => {
     lightTap();
-    if (value) { enableBackup(); return; }
+    if (value) {
+      // Cloud backup is a paid feature — free users get the paywall, not sync.
+      if (!usePremiumStore.getState().hasCloudBackup()) { setBackupPaywallVisible(true); return; }
+      enableBackup();
+      return;
+    }
     Alert.alert(tr.settings.turnOffCloudSync, tr.settings.turnOffCloudSyncMsg, [
       { text: tr.common.cancel, style: 'cancel' },
       {
@@ -589,6 +598,22 @@ export default function AccountScreen() {
                   />
                 </View>
 
+                {/* A failed / paused backup must never be silent — the sync engine
+                    records a code and we surface it here (shown even when a schema
+                    error auto-disabled the toggle). */}
+                {!!lastPersonalSyncError && (
+                  <View style={styles.syncIssueRow}>
+                    <Feather name="alert-triangle" size={16} color={C.bronze} />
+                    <Text style={styles.syncIssueText}>
+                      {lastPersonalSyncError === 'schema'
+                        ? tr.settings.syncIssueSchema
+                        : lastPersonalSyncError === 'session'
+                          ? tr.settings.syncIssueSession
+                          : tr.settings.syncIssueIncomplete}
+                    </Text>
+                  </View>
+                )}
+
                 {personalSyncEnabled && (
                   <>
                     <View style={styles.divider} />
@@ -655,6 +680,12 @@ export default function AccountScreen() {
           )}
         </View>
       </KeyboardAwareScrollView>
+      <PaywallModal
+        visible={backupPaywallVisible}
+        onClose={() => setBackupPaywallVisible(false)}
+        feature="backup"
+        reason={tr.settings.cloudBackupPaid}
+      />
     </View>
   );
 }
@@ -1016,6 +1047,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.accent,
+  },
+  syncIssueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    marginBottom: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(C.bronze, 0.1),
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.25),
+  },
+  syncIssueText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.bronze,
+    lineHeight: TYPOGRAPHY.size.sm * 1.4,
   },
   signOutBtn: {
     marginTop: SPACING.sm,

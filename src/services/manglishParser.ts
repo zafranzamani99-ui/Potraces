@@ -370,24 +370,26 @@ export function parseCommitmentDraft(text: string): CommitmentDraft {
 // ── Structured line parsing ──
 
 export interface StructuredLine {
+  // 'expense' → a spending item (no person); 'debt' → owed money (has person + direction).
+  kind: 'expense' | 'debt';
   amount: number;
-  person: string;
-  note: string | null;
-  direction: 'they_owe' | 'i_owe';
+  label: string;                              // item / description text
+  person: string | null;                      // debt only
+  note: string | null;                        // parenthetical text note, if any
+  direction: 'they_owe' | 'i_owe' | null;     // debt only
   isDone: boolean;
+  category: string | null;                    // best-guess category id
 }
 
-// Header patterns for debt context
-const THEY_OWE_HEADER = /^(mereka|mereka semua|diorang|they|kawan|dia)\s*(hutang|owe)/i;
-const I_OWE_HEADER = /^(aku|saya|i|sy)\s*(hutang|owe)/i;
+// Header patterns for debt context. THEY_OWE = others owe the user ("orang hutang",
+// "mereka hutang"); I_OWE = the user owes others ("aku hutang").
+const THEY_OWE_HEADER = /^(mereka semua|mereka|diorang|orang lain|orang|org|they|kawan|dia|customer|pelanggan)\s*(hutang|owe|owes|owing)/i;
+const I_OWE_HEADER = /^(aku|saya|i|sy)\s*(hutang|owe|owes|owing)/i;
+// Bare debt-section header on its own line: "hutang", "utang", "owe", "debt", "iou"
+const DEBT_SECTION_HEADER = /^(hutang|utang|owe|owes|owing|debt|iou)\s*[:.\-–]?\s*$/i;
 
-// Line item: "100-faris", "100- zarep", "300-mak(duit raya)"
+// Amount-first line item: "100-faris", "100- zarep", "300-mak(duit raya)"
 const AMOUNT_FIRST = /^\s*(\d+(?:\.\d{1,2})?)\s*[-–]\s*(.+)$/;
-// Line item: "faris-100", "netflix-75"
-const AMOUNT_LAST = /^\s*(.+?)[-–]\s*(\d+(?:\.\d{1,2})?)\s*$/;
-
-// Parenthetical note extractor
-const PAREN_NOTE = /\(([^)]+)\)/;
 
 // Done/settled markers (per-line)
 const DONE_MARKER = /\b(done|selesai|settled|dah bayar|lunas|is done)\b/i;
@@ -402,20 +404,125 @@ const MATH_LINE = /^\s*[\d.]+\s*[+\-*/][\d\s+\-*/=.]+$/;
 const PERSON_NAME_LINE = /^\s*([a-zA-Z][a-zA-Z\s]{0,20})\s*$/;
 
 /**
- * Parse structured multi-line notes with debt headers and person-scoped blocks.
- * Returns per-line extractions with person names and directions,
- * or null if the text doesn't have structured debt format.
+ * Safely evaluate a small arithmetic expression (digits, . + - * / and parens).
+ * Used for notes where the amount is written as maths, e.g. "16-9+6" → 13,
+ * "(16-9)+ 6" → 13. Returns null for anything it can't parse. Never uses eval().
+ */
+function evalArithmetic(expr: string): number | null {
+  const s = expr.trim();
+  if (!s || !/\d/.test(s) || !/^[\d.\s+\-*/()]+$/.test(s)) return null;
+  const tokens = s.match(/\d+(?:\.\d+)?|[+\-*/()]/g);
+  if (!tokens) return null;
+  const prec: Record<string, number> = { '+': 1, '-': 1, '*': 2, '/': 2 };
+  const out: string[] = [];
+  const ops: string[] = [];
+  for (const tk of tokens) {
+    if (/\d/.test(tk)) out.push(tk);
+    else if (tk === '(') ops.push(tk);
+    else if (tk === ')') {
+      while (ops.length && ops[ops.length - 1] !== '(') out.push(ops.pop()!);
+      if (!ops.length) return null; // unbalanced
+      ops.pop();
+    } else {
+      while (
+        ops.length &&
+        ops[ops.length - 1] !== '(' &&
+        prec[ops[ops.length - 1]] >= prec[tk]
+      ) out.push(ops.pop()!);
+      ops.push(tk);
+    }
+  }
+  while (ops.length) {
+    const op = ops.pop()!;
+    if (op === '(') return null; // unbalanced
+    out.push(op);
+  }
+  const st: number[] = [];
+  for (const tk of out) {
+    if (/\d/.test(tk)) { st.push(parseFloat(tk)); continue; }
+    const b = st.pop();
+    const a = st.pop();
+    if (a === undefined || b === undefined) return null;
+    st.push(tk === '+' ? a + b : tk === '-' ? a - b : tk === '*' ? a * b : b === 0 ? NaN : a / b);
+  }
+  if (st.length !== 1 || !Number.isFinite(st[0])) return null;
+  return st[0];
+}
+
+// Tidy a captured description: drop separator dashes, stray "rm", parens, extra spaces.
+function cleanItemLabel(s: string): string {
+  return s
+    .replace(/[-–]+/g, ' ')
+    .replace(/\brm\b/gi, ' ')
+    .replace(/[()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Pull a single amount + label + optional text note out of one line, tolerating
+ * the many shorthand shapes users actually write:
+ *   "ayam -17", "netflix-75"          (trailing, dash)
+ *   "nasi lemak RM8", "kuih -rm17"     (trailing, with/without currency prefix)
+ *   "kari (18)"                        (amount in parentheses)
+ *   "100-faris", "300-mak(duit raya)"  (amount first)
+ *   "ali (16-9)+ 6(dinner)"            (arithmetic amount + text note)
+ * Returns null when the line carries no usable amount.
+ */
+function extractLineAmount(
+  line: string
+): { amount: number; label: string; note: string | null } | null {
+  let note: string | null = null;
+  // Parentheses: a NUMERIC group is part of the amount (keep it); a TEXT group is a note.
+  let s = line.replace(/\(([^)]*)\)/g, (full, inner: string) => {
+    if (/\d/.test(inner) && /^[\d\s.+\-*/]+$/.test(inner)) return full; // numeric → amount
+    if (note === null && inner.trim()) note = inner.trim();             // first text → note
+    return ' ';
+  });
+  // Strip currency prefixes sitting directly before a number ("RM8", "-rm17", "ringgit 5").
+  s = s.replace(/\b(?:rm|ringgit)\s*(?=\d)/gi, '');
+
+  // Amount-first: "100-faris", "300-mak"
+  const first = AMOUNT_FIRST.exec(s);
+  if (first) {
+    const amt = parseFloat(first[1]);
+    const label = cleanItemLabel(first[2]);
+    if (amt > 0 && label && !/\d/.test(label)) return { amount: amt, label, note };
+  }
+
+  // Amount-trailing: consume the longest run of arithmetic chars at the end of the line.
+  let i = s.length;
+  while (i > 0 && /[\d\s.+\-*/()]/.test(s[i - 1])) i--;
+  // A leading + / - directly after the label is a separator ("ayam -17"), not a sign.
+  const amountExpr = s.slice(i).replace(/^\s*[-+]\s*/, '');
+  const amt = evalArithmetic(amountExpr);
+  if (amt != null && amt > 0) {
+    // label may be '' for a bare amount line ("-7", "8"); the caller decides what
+    // to do with it (an expense under a category section, else skip).
+    return { amount: amt, label: cleanItemLabel(s.slice(0, i)), note };
+  }
+  return null;
+}
+
+/**
+ * Parse structured multi-line notes into per-line expense / debt items.
+ * Returns the items, or null if nothing parseable was found.
  *
  * Supports:
- * - Debt headers: "mereka hutang", "aku hutang"
- * - Person-scoped blocks: a bare name line followed by item lines
- * - Checkmark (✅) lines are skipped
- * - Math/balance lines are skipped
+ * - Debt headers: "mereka hutang", "aku hutang", or a bare "hutang" section line
+ * - Person-scoped blocks: a bare single-word name followed by item lines → debts
+ * - Category titles: a multi-word heading naming spend ("Makan harini") → the item
+ *   lines under it are EXPENSES in that category (not debts, not a person)
+ * - Amount shapes: dash / trailing / parenthetical / currency-prefixed / arithmetic
+ * - Checkmark (✅) and pure math/balance lines are skipped
  */
 export function parseStructuredLines(text: string): StructuredLine[] | null {
   const lines = text.split('\n');
   let currentDirection: 'they_owe' | 'i_owe' | null = null;
   let currentPerson: string | null = null;
+  let inDebtSection = false;
+  let categoryHint: string | null = null;
+  let sectionLabel: string | null = null; // raw text of the current category header ("makan")
   const results: StructuredLine[] = [];
 
   // All known keywords to avoid treating them as person names
@@ -429,88 +536,103 @@ export function parseStructuredLines(text: string): StructuredLine[] | null {
     const line = rawLine.trim();
     if (!line) continue;
 
-    // Skip checkmarked lines (already confirmed)
+    // Skip checkmarked lines (already confirmed) and pure math/balance lines
     if (CHECKMARK.test(line)) continue;
-
-    // Skip math/balance lines
     if (MATH_LINE.test(line)) continue;
 
-    // Check for header lines
+    // Header lines switch the debt context
     if (THEY_OWE_HEADER.test(line)) {
-      currentDirection = 'they_owe';
-      currentPerson = null;
+      currentDirection = 'they_owe'; currentPerson = null; inDebtSection = true; categoryHint = null; sectionLabel = null;
       continue;
     }
     if (I_OWE_HEADER.test(line)) {
-      currentDirection = 'i_owe';
-      currentPerson = null;
+      currentDirection = 'i_owe'; currentPerson = null; inDebtSection = true; categoryHint = null; sectionLabel = null;
+      continue;
+    }
+    if (DEBT_SECTION_HEADER.test(line)) {
+      inDebtSection = true; currentPerson = null; categoryHint = null; sectionLabel = null;
       continue;
     }
 
-    // Try amount-first: "100-faris", "300-mak(duit raya)"
-    let amountMatch = AMOUNT_FIRST.exec(line);
-    let amount: number | null = null;
-    let rest: string | null = null;
+    // Done/settled marker → strip it, remember the flag for this line
+    const isDone = DONE_MARKER.test(line);
+    const workLine = isDone ? line.replace(DONE_MARKER, '').trim() : line;
 
-    if (amountMatch) {
-      amount = parseFloat(amountMatch[1]);
-      rest = amountMatch[2].trim();
-    } else {
-      // Try amount-last: "faris-100", "netflix-75"
-      const lastMatch = AMOUNT_LAST.exec(line);
-      if (lastMatch) {
-        rest = lastMatch[1].trim();
-        amount = parseFloat(lastMatch[2]);
-      }
-    }
-
-    // If no amount found, check if this is a person name line (bare name)
-    if (amount == null || amount <= 0) {
-      const nameMatch = PERSON_NAME_LINE.exec(line);
-      if (nameMatch) {
-        const candidate = nameMatch[1].trim().toLowerCase();
-        // Only treat as person name if not a known keyword
-        if (!allKeywords.includes(candidate)) {
-          currentPerson = nameMatch[1].trim();
-          continue;
+    const parsed = extractLineAmount(workLine);
+    if (parsed) {
+      const debtContext = inDebtSection || currentPerson != null;
+      // Bare amount ("makan\n-7\n-8"): an expense in the current category section.
+      // Skipped if there's no section context (a stray number is too ambiguous).
+      if (parsed.label.length === 0) {
+        if (categoryHint && !debtContext) {
+          results.push({
+            kind: 'expense',
+            amount: parsed.amount,
+            label: sectionLabel || categoryHint,
+            person: null,
+            note: parsed.note,
+            direction: null,
+            isDone,
+            category: categoryHint,
+          });
         }
+        continue;
+      }
+      if (debtContext) {
+        const person = currentPerson || parsed.label;
+        results.push({
+          kind: 'debt',
+          amount: parsed.amount,
+          label: parsed.label,
+          person,
+          note: currentPerson ? (parsed.note || parsed.label) : parsed.note,
+          direction: currentDirection || 'i_owe',
+          isDone,
+          category: matchCategory(person) || matchCategory(parsed.label),
+        });
+      } else {
+        results.push({
+          kind: 'expense',
+          amount: parsed.amount,
+          label: parsed.label,
+          person: null,
+          note: parsed.note,
+          direction: null,
+          isDone,
+          category: matchCategory(parsed.label) || categoryHint,
+        });
       }
       continue;
     }
 
-    if (!rest) continue;
+    // No amount → header / title / person-name line
+    const nameMatch = PERSON_NAME_LINE.exec(line);
+    if (!nameMatch) continue;
+    const candidate = nameMatch[1].trim();
+    const lc = candidate.toLowerCase();
+    const cat = matchCategory(candidate);
+    const words = candidate.split(/\s+/).filter(Boolean);
 
-    // Extract parenthetical note: "mak(duit raya)" → note: "duit raya"
-    let note: string | null = null;
-    const parenMatch = PAREN_NOTE.exec(rest);
-    if (parenMatch) {
-      note = parenMatch[1].trim();
-      rest = rest.replace(PAREN_NOTE, '').trim();
+    // A heading that names a spend/earn category starts an EXPENSE section: a
+    // multi-word title ("Makan harini") OR a single spend/earn keyword ("makan",
+    // "lunch", "groceries"). It also ENDS any debt section, so
+    // "aku hutang … \n makan \n -7" switches back to expenses.
+    const isSpendSection = cat != null &&
+      (words.length >= 2 || EXPENSE_KEYWORDS.includes(lc) || INCOME_KEYWORDS.includes(lc));
+    if (isSpendSection) {
+      categoryHint = cat; sectionLabel = candidate; currentPerson = null; inDebtSection = false;
+      continue;
     }
 
-    // Check for done/settled marker
-    const isDone = DONE_MARKER.test(rest);
-    if (isDone) {
-      rest = rest.replace(DONE_MARKER, '').trim();
+    if (allKeywords.includes(lc)) {
+      // A bare debt keyword opens a debt section; other keywords are noise.
+      if (DEBT_KEYWORDS.includes(lc)) { inDebtSection = true; currentPerson = null; categoryHint = null; sectionLabel = null; }
+      continue;
     }
 
-    // Clean up trailing/leading dashes and spaces
-    const itemName = rest.replace(/^[-–\s]+|[-–\s]+$/g, '').trim();
-    if (!itemName) continue;
-
-    // Determine person: use currentPerson context if this looks like an item (not a name)
-    const person = currentPerson || itemName;
-
-    // Use current header context, default to i_owe if no header
-    const direction = currentDirection || 'i_owe';
-
-    results.push({
-      amount,
-      person,
-      note: currentPerson ? (note || itemName) : note,
-      direction,
-      isDone,
-    });
+    // Otherwise treat a bare single name as a person-scoped debt block.
+    currentPerson = candidate;
+    inDebtSection = true;
   }
 
   return results.length > 0 ? results : null;

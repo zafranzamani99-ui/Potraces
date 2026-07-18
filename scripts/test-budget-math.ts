@@ -76,12 +76,26 @@ console.log('computeBudgetRow — period vs month scope');
 
 console.log('computeBudgetRow — rollover carry');
 {
-  const b = budget('food', 500, 'monthly', true);
+  // Existed since May (before the June prior-period), so its June leftover carries into
+  // July. (The default fixture dates budgets NOW — a today-dated budget can't have
+  // existed last period, so rollover-carry must be tested with a prior startDate.)
+  const b = { ...budget('food', 500, 'monthly', true), startDate: d(1, 4), createdAt: d(1, 4) };
   const txns = [tx('food', 200, d(20, 5)) /* June, prev period */, tx('food', 100, d(10)) /* July */];
   const r = computeBudgetRow(b, txns, NOW);
   close('carry = prev-period leftover (500 − 200)', r.carry, 300);
   close('effectiveAmount = allocated + carry (800)', r.effectiveAmount, 800);
   close('monthSpent = this month only (100)', r.monthSpent, 100);
+}
+
+console.log('computeBudgetRow — new rollover budget does NOT fabricate carry');
+{
+  // Guard: a budget that started THIS period (startDate = NOW) did not exist last period,
+  // so a category with 0 prior spend must NOT fabricate a full extra allocation as carry.
+  const b = budget('food', 500, 'monthly', true); // startDate = NOW (July)
+  const txns = [tx('food', 200, d(20, 5)) /* June, before this budget existed */];
+  const r = computeBudgetRow(b, txns, NOW);
+  close('new budget carry = 0 (no fabrication)', r.carry, 0);
+  close('effectiveAmount = allocated only (500)', r.effectiveAmount, 500);
 }
 
 console.log('computeHeroMoney — WEEKLY EXTRAPOLATION regression (the fix)');

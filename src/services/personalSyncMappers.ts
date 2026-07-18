@@ -27,6 +27,7 @@ import type {
   Contact,
   SavingsAccount,
   SavedReceipt,
+  NotePage,
 } from '../types';
 import { advanceBillingDate } from '../utils/billing';
 
@@ -51,15 +52,30 @@ export const isoOrNull = (d: any): string | null => {
   return isNaN(parsed.getTime()) ? null : parsed.toISOString();
 };
 
-const numOrNull = (v: any): number | null => (v == null ? null : Number(v));
 const numOrUndef = (v: any): number | undefined => (v == null ? undefined : Number(v));
+
+// Finite coercions for money columns. A NaN (e.g. from a corrupt draft total)
+// would violate a NOT NULL / numeric constraint and fail the WHOLE receipt batch
+// on upsert — so coerce non-finite values to a safe fallback instead.
+const finiteOrNull = (v: any): number | null => {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+const finiteOrZero = (v: any): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
 // ─── Mappers: Local → Remote ──────────────────────────────────────────────────
 export function txToRemote(userId: string, t: Transaction) {
   return {
     user_id: userId,
     local_id: t.id,
-    amount: t.amount,
+    // NaN/Infinity-guard every money column: one non-finite value would violate the
+    // numeric/NOT-NULL constraint and fail the WHOLE 500-row upsert chunk, stranding
+    // every other record in it. finiteOrZero/finiteOrNull coerce the bad value instead.
+    amount: finiteOrZero(t.amount),
     category: t.category ?? null,
     description: t.description ?? null,
     date: iso(t.date),
@@ -74,9 +90,9 @@ export function txToRemote(userId: string, t: Transaction) {
     linked_goal_id: t.linkedGoalId ?? null,
     linked_goal_contribution_id: t.linkedGoalContributionId ?? null,
     playbook_links: t.playbookLinks ?? [],
-    original_amount: numOrNull(t.originalAmount),
+    original_amount: finiteOrNull(t.originalAmount),
     original_currency: t.originalCurrency ?? null,
-    fx_rate: numOrNull(t.fxRate),
+    fx_rate: finiteOrNull(t.fxRate),
     edit_log: (t.editLog ?? []).map((e) => ({ ...e, editedAt: iso(e.editedAt) })),
     updated_at: iso(t.updatedAt),
     client_edit_at: iso(t.updatedAt),
@@ -89,11 +105,11 @@ export function walletToRemote(userId: string, w: Wallet) {
     local_id: w.id,
     name: w.name,
     type: w.type ?? 'bank',
-    balance: w.balance,
-    initial_balance: w.initialBalance ?? w.balance,
+    balance: finiteOrZero(w.balance),
+    initial_balance: finiteOrZero(w.initialBalance ?? w.balance),
     is_default: !!w.isDefault,
-    used_credit: numOrNull(w.usedCredit),
-    credit_limit: numOrNull(w.creditLimit),
+    used_credit: finiteOrNull(w.usedCredit),
+    credit_limit: finiteOrNull(w.creditLimit),
     color: w.color ?? null,
     icon: w.icon ?? null,
     preset_id: w.presetId ?? null,
@@ -110,7 +126,7 @@ export function transferToRemote(userId: string, t: WalletTransfer) {
     local_id: t.id,
     from_wallet_local_id: t.fromWalletId ?? null,
     to_wallet_local_id: t.toWalletId ?? null,
-    amount: t.amount,
+    amount: finiteOrZero(t.amount),
     date: iso(t.date),
     note: t.note ?? null,
     kind: t.kind ?? null,
@@ -124,7 +140,7 @@ export function subToRemote(userId: string, s: Subscription) {
     user_id: userId,
     local_id: s.id,
     name: s.name,
-    amount: s.amount,
+    amount: finiteOrZero(s.amount),
     billing_cycle: s.billingCycle ?? 'monthly',
     start_date: iso(s.startDate),
     next_billing_date: iso(s.nextBillingDate),
@@ -139,7 +155,7 @@ export function subToRemote(userId: string, s: Subscription) {
     completed_installments: s.completedInstallments ?? null,
     image_uri: s.imageUri ?? null,
     icon_name: s.iconName ?? null,
-    outstanding_balance: numOrNull(s.outstandingBalance),
+    outstanding_balance: finiteOrNull(s.outstandingBalance),
     last_paid_at: isoOrNull(s.lastPaidAt),
     shared_sub_id: s.sharedSubId ?? null,
     payment_history: (s.paymentHistory ?? []).map((p) => ({
@@ -158,13 +174,13 @@ export function budgetToRemote(userId: string, b: Budget) {
     user_id: userId,
     local_id: b.id,
     category: b.category,
-    allocated_amount: b.allocatedAmount,
-    spent_amount: b.spentAmount,
+    allocated_amount: finiteOrZero(b.allocatedAmount),
+    spent_amount: finiteOrZero(b.spentAmount),
     period: b.period ?? 'monthly',
     start_date: iso(b.startDate),
     end_date: isoOrNull(b.endDate),
     rollover: b.rollover ?? null,
-    rollover_amount: numOrNull(b.rolloverAmount),
+    rollover_amount: finiteOrNull(b.rolloverAmount),
     updated_at: iso(b.updatedAt),
     client_edit_at: iso(b.updatedAt),
   };
@@ -175,8 +191,8 @@ export function goalToRemote(userId: string, g: Goal) {
     user_id: userId,
     local_id: g.id,
     name: g.name,
-    target_amount: g.targetAmount,
-    current_amount: g.currentAmount,
+    target_amount: finiteOrZero(g.targetAmount),
+    current_amount: finiteOrZero(g.currentAmount),
     deadline: isoOrNull(g.deadline),
     category: g.category ?? null,
     icon: g.icon ?? null,
@@ -205,8 +221,8 @@ export function debtToRemote(userId: string, d: Debt) {
     contact_local_id: d.contact?.id ?? null,
     contact_is_from_phone: d.contact ? !!d.contact.isFromPhone : null,
     type: d.type,
-    total_amount: d.totalAmount,
-    paid_amount: d.paidAmount,
+    total_amount: finiteOrZero(d.totalAmount),
+    paid_amount: finiteOrZero(d.paidAmount),
     status: d.status,
     description: d.description ?? null,
     note: d.description ?? null, // legacy column — keep mirrored so old readers still work
@@ -238,14 +254,14 @@ export function splitToRemote(userId: string, s: SplitExpense) {
     local_id: s.id,
     title: s.description ?? 'split', // legacy NOT-NULL column — mirror description
     description: s.description ?? null,
-    total_amount: s.totalAmount,
+    total_amount: finiteOrZero(s.totalAmount),
     split_method: s.splitMethod ?? 'custom',
     participants: (s.participants ?? []).map((p) => ({ ...p })),
     items: (s.items ?? []).map((it) => ({ ...it })),
     paid_by: s.paidBy ?? null,
     my_participant_id: (s as any).myParticipantId ?? null,
     category: s.category ?? null,
-    tax_amount: numOrNull(s.taxAmount),
+    tax_amount: finiteOrNull(s.taxAmount),
     tax_handling: s.taxHandling ?? null,
     linked_transaction_id: s.linkedTransactionId ?? null,
     wallet_local_id: s.walletId ?? null,
@@ -278,13 +294,13 @@ export function savingsToRemote(userId: string, a: SavingsAccount) {
     user_id: userId,
     local_id: a.id,
     name: a.name,
-    balance: a.currentValue,
-    initial_investment: numOrNull(a.initialInvestment),
-    target_amount: numOrNull(a.target),
+    balance: finiteOrZero(a.currentValue),
+    initial_investment: finiteOrNull(a.initialInvestment),
+    target_amount: finiteOrNull(a.target),
     note: a.description ?? null,
     account_type: a.type ?? 'savings',
     goal_name: a.goalName ?? null,
-    annual_rate: numOrNull(a.annualRate),
+    annual_rate: finiteOrNull(a.annualRate),
     snapshots: a.history.map((h) => ({ ...h, date: iso(h.date) })),
     updated_at: iso(a.updatedAt),
     client_edit_at: iso(a.updatedAt),
@@ -298,9 +314,10 @@ export function receiptToRemote(userId: string, r: SavedReceipt) {
     title: r.title ?? null,
     vendor: r.vendor ?? (r as any).merchant ?? null,
     items: r.items ?? [],
-    subtotal: numOrNull(r.subtotal),
-    tax: numOrNull(r.tax),
-    total: r.total ?? 0,
+    // NaN-guard money columns so one corrupt value can't fail the whole batch.
+    subtotal: finiteOrNull(r.subtotal),
+    tax: finiteOrNull(r.tax),
+    total: finiteOrZero(r.total),
     date: iso(r.date),
     category: r.category ?? null,
     my_tax_category: r.myTaxCategory ?? null,
@@ -310,7 +327,10 @@ export function receiptToRemote(userId: string, r: SavedReceipt) {
     verified: !!r.verified,
     year: r.year ?? null,
     transaction_local_id: r.transactionId ?? null,
-    image_url: r.imageUri ?? (r as any).imageUrl ?? null,
+    // Send the Supabase Storage BUCKET PATH only — never a local file:// URI.
+    // The local imageUri is device-specific and is NOT round-tripped through the
+    // remote row; the image-sync layer hydrates it from remoteImagePath on pull.
+    image_url: r.remoteImagePath ?? null,
     updated_at: iso(r.updatedAt),
     client_edit_at: iso(r.updatedAt),
   };
@@ -610,10 +630,52 @@ export function receiptFromRemote(r: any): SavedReceipt {
     location: r.location ?? undefined,
     walletId: r.wallet_local_id ?? undefined,
     verified: !!r.verified,
-    year: r.year ?? new Date(r.date).getFullYear(),
+    year: r.year ?? sd(r.date).getFullYear(),
     transactionId: r.transaction_local_id ?? undefined,
-    imageUri: r.image_url ?? undefined,
+    // image_url holds the BUCKET PATH, not a displayable local image. Keep it on
+    // remoteImagePath and leave imageUri undefined so the merge preserves this
+    // device's good local path (a receipt-only-remote row gets its imageUri
+    // hydrated by ensureLocalReceiptImage during pull).
+    imageUri: undefined,
+    // Only adopt image_url when it's a real Storage object path (…/personal/…).
+    // Rows synced by the OLD mapper put a local file path here; ignoring those
+    // lets the receipt re-upload cleanly instead of poisoning remoteImagePath.
+    remoteImagePath: (typeof r.image_url === 'string' && r.image_url.includes('/personal/')) ? r.image_url : undefined,
     createdAt: sd(r.created_at),
     updatedAt: sd(r.client_edit_at ?? r.updated_at),
   } as any as SavedReceipt;
+}
+
+// ─── NOTES ────────────────────────────────────────────────────
+// A note carries its plain `content`, offset-based `formatting`, and its
+// `extractions` (incl. still-pending ones) — all as jsonb so nothing is lost on a
+// device restore. LWW on client_edit_at (mirrors updatedAt), same as every other
+// personal entity. content + formatting are written together so offsets never
+// point at the wrong characters after a round-trip.
+export function noteToRemote(userId: string, n: NotePage) {
+  return {
+    user_id: userId,
+    local_id: n.id,
+    title: n.title ?? '',
+    content: n.content ?? '',
+    formatting: n.formatting ?? null,
+    extractions: n.extractions ?? [],
+    mode: n.mode,
+    created_at: iso(n.createdAt),
+    updated_at: iso(n.updatedAt),
+    client_edit_at: iso(n.updatedAt),
+  };
+}
+
+export function noteFromRemote(r: any): NotePage {
+  return {
+    id: r.local_id,
+    title: r.title ?? '',
+    content: r.content ?? '',
+    formatting: r.formatting ?? undefined,
+    extractions: Array.isArray(r.extractions) ? r.extractions : [],
+    mode: r.mode === 'business' ? 'business' : 'personal',
+    createdAt: sd(r.created_at),
+    updatedAt: sd(r.client_edit_at ?? r.updated_at),
+  } as NotePage;
 }

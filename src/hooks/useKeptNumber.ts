@@ -7,6 +7,7 @@
 import { useMemo } from 'react';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { usePersonalStore } from '../store/personalStore';
+import { isTransfer, isGoalMove } from '../utils/insights';
 
 interface KeptSummary {
   keptThisMonth: number;
@@ -32,6 +33,9 @@ export function useKeptNumber(): KeptSummary {
     let lastMonthIncome = 0, lastMonthExpenses = 0;
 
     for (const t of transactions) {
+      // Exclude transfers + goal moves so the Dashboard "Kept" card matches Reports
+      // "You kept" (Dashboard.tsx deep-links this number into the Reports math sheet).
+      if (isTransfer(t) || isGoalMove(t)) continue;
       if (isWithinInterval(t.date, { start: monthStart, end: monthEnd })) {
         if (t.type === 'income') incomeThisMonth += t.amount;
         else if (t.type === 'expense') expensesThisMonth += t.amount;

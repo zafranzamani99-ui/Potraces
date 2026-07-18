@@ -713,6 +713,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.lg,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   sectionHeader: {
     fontSize: TYPOGRAPHY.size.sm,

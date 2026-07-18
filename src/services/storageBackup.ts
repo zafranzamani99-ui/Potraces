@@ -23,8 +23,16 @@ export const PROTECTED_KEYS = [
   'personal-storage',
   'wallet-storage',
   'savings-storage',
+  'budget-profile-storage', // take-home + must-pay commitments (budget basis)
+  'receipt-storage',        // scanned receipts (metadata; images live on FS)
   'business-storage',
   'seller-storage',
+  'stall-storage',          // stall-mode sessions/sales/products/customers
+  'crm-storage',            // seller customers/orders
+  'freelancer-storage',     // income-mode: clients
+  'parttime-storage',       // income-mode: job details
+  'mixed-storage',          // income-mode: streams
+  'ontheroad-storage',      // income-mode: road details
   'playbook-storage',
   'notes-storage',
   'category-storage',
@@ -41,9 +49,14 @@ export const PERSONAL_BACKUP_KEYS = [
   'personal-storage',
   'wallet-storage',
   'savings-storage',
+  'receipt-storage', // scanned receipts — always wiped on a personal wipe, so purge its backup too
   'playbook-storage',
   'notes-storage',
 ];
+// budget-profile-storage is intentionally NOT in the always-purge list above:
+// its live storage is only dropped on a deliberate (userInitiated) wipe, so its
+// backup is purged there too (see wipePersonalStores). Keeping it out means a
+// demo-data drop before enabling sync preserves the user's real budget profile.
 
 function dayStamp(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

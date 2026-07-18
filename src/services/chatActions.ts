@@ -1230,13 +1230,18 @@ export function executeAction(action: ChatAction): ExecuteResult {
         if (!key) {
           return { success: false, message: 'Which budget? Name the category.', action };
         }
-        // Require >= 3 chars before substring/fuzzy matching so a 1-2 char query
-        // can't sweep an unrelated budget; an exact match is always allowed.
-        const budget = budgets.find((b) => b.category.toLowerCase() === key)
-          || (key.length >= 3
-            ? budgets.find((b) => b.category.toLowerCase().includes(key) || key.includes(b.category.toLowerCase()))
-            : undefined);
+        // Exact match wins. Otherwise (>= 3 chars) collect ALL fuzzy matches and only
+        // act on a UNIQUE one — a query like "car" that matches "car loan" + "car
+        // insurance" must ask, not silently rewrite the first.
+        const exactEdit = budgets.find((b) => b.category.toLowerCase() === key);
+        const fuzzyEdit = !exactEdit && key.length >= 3
+          ? budgets.filter((b) => b.category.toLowerCase().includes(key) || key.includes(b.category.toLowerCase()))
+          : [];
+        const budget = exactEdit || (fuzzyEdit.length === 1 ? fuzzyEdit[0] : undefined);
         if (!budget) {
+          if (fuzzyEdit.length > 1) {
+            return { success: false, message: `Which budget? "${key}" matches: ${fuzzyEdit.map((b) => b.category).join(', ')}`, action };
+          }
           const available = budgets.map((b) => b.category).join(', ');
           return { success: false, message: `No budget matching "${key}". You have: ${available || 'none'}`, action };
         }
@@ -1262,12 +1267,17 @@ export function executeAction(action: ChatAction): ExecuteResult {
         if (!key) {
           return { success: false, message: 'Which budget? Name the category.', action };
         }
-        // Require >= 3 chars before substring/fuzzy matching; exact match always allowed.
-        const budget = budgets.find((b) => b.category.toLowerCase() === key)
-          || (key.length >= 3
-            ? budgets.find((b) => b.category.toLowerCase().includes(key) || key.includes(b.category.toLowerCase()))
-            : undefined);
+        // Exact match wins. Otherwise (>= 3 chars) only DELETE on a UNIQUE fuzzy match
+        // — an ambiguous query must ask, never silently delete the first match.
+        const exactDel = budgets.find((b) => b.category.toLowerCase() === key);
+        const fuzzyDel = !exactDel && key.length >= 3
+          ? budgets.filter((b) => b.category.toLowerCase().includes(key) || key.includes(b.category.toLowerCase()))
+          : [];
+        const budget = exactDel || (fuzzyDel.length === 1 ? fuzzyDel[0] : undefined);
         if (!budget) {
+          if (fuzzyDel.length > 1) {
+            return { success: false, message: `Which budget? "${key}" matches: ${fuzzyDel.map((b) => b.category).join(', ')}`, action };
+          }
           return { success: false, message: `No budget matching "${key}".`, action };
         }
         usePersonalStore.getState().deleteBudget(budget.id);

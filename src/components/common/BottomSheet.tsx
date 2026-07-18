@@ -35,6 +35,14 @@ interface BottomSheetProps {
   maxHeightPct?: number;
   /** Bottom close-link label. Default "close". */
   closeLabel?: string;
+  /**
+   * Full-screen overlay rendered INSIDE this sheet's Modal window, above the sheet
+   * (e.g. a consent/confirm dialog). Use this instead of a sibling <Modal> — iOS
+   * cannot reliably present a second Modal over an already-open one, so a sibling
+   * modal presents behind the sheet (invisible). Rendered on the Modal's absoluteFill
+   * root, so a centered dialog covers the whole screen.
+   */
+  overlay?: React.ReactNode;
 }
 
 /**
@@ -60,6 +68,7 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
   header,
   maxHeightPct = 0.92,
   closeLabel = 'close',
+  overlay,
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -182,6 +191,9 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
             </Pressable>
           </View>
         </Reanimated.View>
+        {/* Overlay (e.g. confirm dialog) — rendered LAST so it sits above the sheet,
+            and inside THIS Modal window (a sibling <Modal> would present behind on iOS). */}
+        {overlay}
       </View>
       </GestureHandlerRootView>
     </Modal>

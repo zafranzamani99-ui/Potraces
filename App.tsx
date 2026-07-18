@@ -28,6 +28,7 @@ import BiometricGate from './src/components/common/BiometricGate';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import ForcedUpdateGate from './src/components/common/ForcedUpdateGate';
 import PersonalSyncManager from './src/components/common/PersonalSyncManager';
+import { initBilling } from './src/services/billing';
 import TapToPayProvider from './src/components/common/TapToPayProvider';
 import { checkStorageIntegrity, clearCorruptedStores } from './src/services/storageIntegrity';
 import { usePersonalStore } from './src/store/personalStore';
@@ -96,6 +97,8 @@ function App() {
     const init = async () => {
       // Configure Google Sign-In SDK (synchronous, no credentials needed at this point)
       configureGoogleSignIn();
+      // RevenueCat billing — no-op until API keys are set (keeps the local unlock in dev).
+      initBilling().catch(() => {});
 
       // Kick off logo pre-decode in parallel — does not block startup
       prefetchWalletLogos();

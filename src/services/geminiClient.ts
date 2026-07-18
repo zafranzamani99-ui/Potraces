@@ -1,8 +1,12 @@
 /**
  * Shared Gemini API client with model fallback + rate-limit handling.
  *
- * Model chain: gemini-2.5-flash → gemini-2.5-flash-lite
- * Free tier: ~20 RPM per model. Google tells us exact retry time in the body.
+ * Model chain: gemini-3.1-flash-lite → gemini-3.5-flash
+ * (Google retired the 2.5 models for new billing accounts on 2026-07-17; the
+ * lite-first order keeps cost at/below the old 2.5-flash pricing, with the
+ * pricier 3.5-flash only as a rate-limit escape hatch. The ai-proxy also
+ * remaps old 2.5 names from shipped builds onto 3.1-flash-lite server-side.)
+ * Google tells us exact retry time in the 429 body.
  * On 429 → skip to fallback model immediately (no retry wait on same model).
  */
 
@@ -12,9 +16,10 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { AI_PROXY_URL, aiProxyHeaders, aiProxyFetch, isAiProxyConfigured } from './aiProxy';
 
-// Model fallback chain — current free tier models. The provider API key lives ONLY
-// on the server (ai-proxy Edge Function); the client never holds it.
-const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+// Model fallback chain — cheap current-gen model first, premium as escape hatch.
+// The provider API key lives ONLY on the server (ai-proxy Edge Function); the
+// client never holds it.
+const MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash'];
 
 // Per-model rate limit tracking
 const modelBlocked: Record<string, number> = {}; // model → unblock timestamp
@@ -172,12 +177,19 @@ function blockModel(model: string, durationMs: number) {
 export async function callGeminiAPI(
   body: GeminiRequestBody,
   timeoutMs = 15_000,
-  noFallback = false
+  noFallback = false,
+  preferModel?: string
 ): Promise<GeminiResponse | null> {
   if (!isGeminiAvailable()) return null;
 
-  const available = getAvailableModels();
+  let available = getAvailableModels();
   if (available.length === 0) return null;
+
+  // Honor a caller's preferred model (e.g. the tier "smarter AI" upsell) by trying
+  // it first, then the rest of the chain as the rate-limit fallback.
+  if (preferModel && available.includes(preferModel)) {
+    available = [preferModel, ...available.filter((m) => m !== preferModel)];
+  }
 
   // For noFallback (vision), only try the first available model
   const modelsToTry = noFallback ? [available[0]] : available;

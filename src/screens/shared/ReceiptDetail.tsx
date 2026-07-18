@@ -26,6 +26,7 @@ import { exportSingleReceiptPdf } from '../../services/pdfExport';
 import { shareCapturedReceipt } from '../../services/receiptImageExport';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
+import { resolveReceiptImageUri } from '../../utils/receiptImage';
 import { useT } from '../../i18n';
 import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
@@ -86,6 +87,8 @@ const ReceiptDetail: React.FC = () => {
 
   const taxCat = MYTAX_CATEGORIES.find((c) => c.id === receipt.myTaxCategory);
   const wallet = wallets.find((w) => w.id === receipt.walletId);
+  // Resolve stored path (relative or legacy-absolute) to a renderable file URI.
+  const resolvedImageUri = resolveReceiptImageUri(receipt.imageUri);
 
   const handleShare = async () => {
     try {
@@ -145,7 +148,7 @@ const ReceiptDetail: React.FC = () => {
             style={styles.heroImageWrap}
           >
             <Image
-              source={{ uri: receipt.imageUri }}
+              source={{ uri: resolvedImageUri }}
               style={styles.heroImage}
               resizeMode="cover"
               onError={() => setImageError(true)}
@@ -261,7 +264,7 @@ const ReceiptDetail: React.FC = () => {
             accessibilityRole="switch"
             accessibilityState={{ checked: hideWalletInShare }}
           >
-            <Text style={styles.toggleLabel}>hide wallet when sharing</Text>
+            <Text style={styles.toggleLabel}>{t.receiptDetail.hideWalletWhenSharing}</Text>
             <View style={[
               styles.toggleTrack,
               hideWalletInShare && { backgroundColor: C.accent },
@@ -394,7 +397,7 @@ const ReceiptDetail: React.FC = () => {
             <Feather name="x" size={28} color="#fff" />
           </TouchableOpacity>
           <Image
-            source={{ uri: receipt.imageUri }}
+            source={{ uri: resolvedImageUri }}
             style={styles.imageOverlayImage}
             resizeMode="contain"
           />

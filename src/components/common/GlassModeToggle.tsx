@@ -32,6 +32,11 @@ const GLASS = isLiquidGlassAvailable();
 // (Apple draws its material; it can't be transparent or take icons). The custom
 // glass control below is the Android / iOS<26 fallback.
 const NATIVE_SEGMENTED = Platform.OS === 'ios' && GLASS;
+// On iPadOS the native tab bar (react-native-bottom-tabs) sits at the TOP of the
+// screen, so this toggle — the first item of each dashboard's content — must clear
+// it. Phones (tab bar at bottom) and older iPads (JS bar at bottom) need no offset.
+const IPAD_TOP_TABBAR = Platform.OS === 'ios' && Platform.isPad && GLASS;
+const TOP_TABBAR_CLEARANCE = 52;
 const SPRING = { damping: 18, stiffness: 220, mass: 0.7 } as const;
 const WIDTH = 220;
 const HEIGHT = 40;
@@ -189,7 +194,11 @@ const GlassModeToggle: React.FC = () => {
 };
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  wrapper: { alignSelf: 'center', marginVertical: SPACING.sm },
+  wrapper: {
+    alignSelf: 'center',
+    marginTop: IPAD_TOP_TABBAR ? TOP_TABBAR_CLEARANCE : SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
   native: { width: WIDTH, height: 32 },
   capsule: {
     width: WIDTH,

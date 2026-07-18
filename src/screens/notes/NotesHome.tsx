@@ -15,8 +15,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { useNotesStore } from '../../store/notesStore';
 import { useAppStore } from '../../store/appStore';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import NeuButton from '../../components/common/NeuButton';
+import NeuIconButton from '../../components/common/NeuIconButton';
+import { useNeu } from '../../components/common/neu';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { NotePage } from '../../types';
@@ -31,6 +33,8 @@ const DELETE_RED = '#E5484D';
 const NotesHome: React.FC = () => {
   const C = useCalm();
   const t = useT();
+  // Onyx: faintDark neu for the floating select bar (soft raise, no outline).
+  const neu = useNeu(undefined, { faintDark: true });
   // ScreenGuide spotlight target — the + FAB (hidden in select mode; the
   // guide falls back to inline points if it can't be measured).
   const guideTargetRef = useRef<any>(null);
@@ -175,7 +179,11 @@ const NotesHome: React.FC = () => {
         </TouchableOpacity>
       );
     },
-    [handleOpenNote, handleLongPress, toggleSelect, selectMode, selectedIds]
+    // styles/C/t MUST be deps: they change on theme switch, and without them the
+    // memoized renderItem keeps the previous theme's colors (near-white title text
+    // painted on the light background = washed-out titles until an unrelated dep
+    // like selectMode changes and forces a rebuild). See extraData below too.
+    [handleOpenNote, handleLongPress, toggleSelect, selectMode, selectedIds, styles, C, t]
   );
 
   const keyExtractor = useCallback((p: NotePage) => p.id, []);
@@ -218,18 +226,19 @@ const NotesHome: React.FC = () => {
         data={modePages}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 + (selectMode ? 72 : 0) }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        extraData={selectMode ? selectedIds.size : 0}
+        extraData={`${selectMode ? selectedIds.size : 0}|${C.textPrimary}`}
         removeClippedSubviews
         maxToRenderPerBatch={10}
         windowSize={5}
         initialNumToRender={10}
       />
-      {/* Selection bar — floating bordered bar: cancel · N selected · delete (red on press) */}
+      {/* Selection bar — Onyx floating bar: cancel · N selected · delete (red on press).
+          Separation comes from the neu raise, not a border. */}
       {selectMode && (
-        <View style={styles.selectBar}>
+        <View style={[styles.selectBar, neu.raisedSoft, { bottom: insets.bottom + 80 }]}>
           <TouchableOpacity
             onPress={cancelSelect}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -264,14 +273,20 @@ const NotesHome: React.FC = () => {
         </View>
       )}
       {!selectMode && (
-        <TouchableOpacity
+        <View
           ref={guideTargetRef}
-          style={[styles.fab, { bottom: insets.bottom + 88 + SPACING.md }]}
-          activeOpacity={0.8}
-          onPress={handleNewNote}
+          collapsable={false}
+          style={[styles.fabWrap, { bottom: insets.bottom + 88 + SPACING.md }]}
         >
-          <Feather name="plus" size={22} color={C.onAccent} />
-        </TouchableOpacity>
+          <NeuIconButton
+            size={56}
+            radius={28}
+            onPress={handleNewNote}
+            accessibilityLabel={t.notes.startWriting}
+          >
+            <Feather name="plus" size={24} color={C.accent} />
+          </NeuIconButton>
+        </View>
       )}
       <ScreenGuide
         id="guide_notes"
@@ -300,6 +315,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
     paddingBottom: 100,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // Page row
@@ -348,7 +366,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // Selection mode — bottom floating bar
   selectBar: {
     position: 'absolute',
-    bottom: SPACING.xl,
+    // `bottom` is set inline (insets.bottom + 80) so the bar rests just above the
+    // floating tab bar (whose top is ~insets.bottom + 62) with a small gap — not
+    // colliding with it, but not floating high like the FAB either.
     left: SPACING.lg,
     right: SPACING.lg,
     flexDirection: 'row',
@@ -358,9 +378,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.md,
     backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
-    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   selectBarCloseBtn: {
     width: 32,
@@ -411,18 +428,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderColor: C.deepOlive,
   },
 
-  // FAB
-  fab: {
+  // FAB — Neu Key (NeuIconButton supplies the neu face; wrapper only positions it)
+  fabWrap: {
     position: 'absolute',
     bottom: SPACING.xl,
     right: SPACING.xl,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
 
   // Empty / guided first write

@@ -1180,6 +1180,12 @@ export interface SavedReceipt {
   location?: string;
   walletId?: string;
   imageUri?: string;
+  /**
+   * Supabase Storage object path for the receipt image (e.g.
+   * '<uid>/personal/<localId>.jpg'). Written ONLY by the personal-sync image
+   * layer; local render always uses imageUri. Optional → backward compatible.
+   */
+  remoteImagePath?: string;
   verified: boolean;
   transactionId?: string;
   year: number;
@@ -1385,7 +1391,7 @@ export interface DebtState {
   recordSharedSubPriceChange: (subId: string, change: Omit<SharedSubPriceChange, 'id' | 'createdAt'>) => void;
   updateMonthAmounts: (subId: string, month: string, newTotal: number, memberShares: { contactId: string; shareAmount: number }[]) => void;
 
-  addContact: (contact: Omit<Contact, 'id'>) => void;
+  addContact: (contact: Omit<Contact, 'id'>) => string;
   deleteContact: (id: string) => void;
 }
 
@@ -1458,7 +1464,7 @@ export interface SavingsState {
 }
 
 // Wallet Types
-export type PremiumTier = 'free' | 'premium';
+export type PremiumTier = 'free' | 'basic' | 'pro' | 'premium';
 export type WalletType = 'bank' | 'ewallet' | 'credit' | 'cash';
 
 export interface Wallet {
@@ -1520,22 +1526,30 @@ export interface PremiumState {
   scanResetDate: Date;
   aiCallsCount: number;
   aiCallsResetDate: Date;
-  trialStartDate: Date | null;
+  /** Back-compat local unlock → top tier ('premium'). Paywall uses setTier once billed. */
   subscribe: () => void;
+  /** Set the active tier directly (basic/pro/premium/free). The paywall's wiring seam. */
+  setTier: (tier: PremiumTier) => void;
   unsubscribe: () => void;
   incrementScanCount: () => void;
   resetScanCountIfNeeded: () => void;
   incrementAiCalls: () => void;
   resetAiCallsIfNeeded: () => void;
+  // Count gates (tier-aware; grandfather over-cap existing counts — block create only)
   canCreateWallet: (currentCount: number) => boolean;
   canCreateBudget: (currentCount: number) => boolean;
   canCreateSavingsAccount: (currentCount: number) => boolean;
+  canCreateGoal: (currentCount: number) => boolean;
+  canCreateSharedSub: (currentCount: number) => boolean;
+  // Metered gates
   canScanReceipt: () => boolean;
   getRemainingScans: () => number;
   canUseAI: () => boolean;
   getRemainingAiCalls: () => number;
-  isInTrial: () => boolean;
-  startTrialIfNeeded: () => void;
+  // Capability gates
+  hasCloudBackup: () => boolean;
+  hasAskEcho: () => boolean;
+  hasPhotoIcon: () => boolean;
 }
 
 // ─── NOTES TYPES ──────────────────────────────────────────
@@ -1562,15 +1576,22 @@ export interface NotePage {
   updatedAt: Date;
   extractions: AIExtraction[];
   mode: AppMode;
+  // Rich-text formatting (inline marks + per-line block styles). Offset-based
+  // metadata over `content`, which stays plain text. Optional/back-compat: notes
+  // saved before rich text simply have no formatting.
+  formatting?: import('../utils/richText').NoteFormatting;
 }
 
 export interface NotesState {
   pages: NotePage[];
   activePageId: string | null;
   isFirstWrite: boolean;
+  // Ephemeral delete tombstones for sync (cleared after a successful push).
+  _deletedNoteIds: string[];
 
   createPage: (mode: AppMode) => string;
   updatePageContent: (id: string, content: string) => void;
+  updatePageFormatting: (id: string, formatting: import('../utils/richText').NoteFormatting) => void;
   deletePage: (id: string) => void;
   deletePages: (ids: string[]) => void;
   setActivePageId: (id: string | null) => void;
@@ -1579,4 +1600,5 @@ export interface NotesState {
   updateExtraction: (pageId: string, extractionId: string, updates: { type?: ExtractionIntent; extractedData?: Record<string, any> }) => void;
   clearPendingExtractions: (pageId: string) => void;
   markFirstWriteComplete: () => void;
+  clearNotesTombstones: () => void;
 }

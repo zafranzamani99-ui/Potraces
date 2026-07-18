@@ -6,6 +6,8 @@ import { withBackoff } from '../../services/syncBackoff';
 import { usePersonalStore } from '../../store/personalStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useDebtStore } from '../../store/debtStore';
+import { useNotesStore } from '../../store/notesStore';
+import { useSavingsStore } from '../../store/savingsStore';
 
 const runSync = () => withBackoff('personalSync', syncPersonal);
 
@@ -95,10 +97,22 @@ export default function PersonalSyncManager() {
         s.contacts !== p.contacts
       ) schedule();
     });
+    const unsubN = useNotesStore.subscribe((s, p) => {
+      if (s.pages !== p.pages) schedule();
+    });
+    // Savings accounts/snapshots are written by the Savings screen AND by Echo
+    // (set-savings / add-savings-account). Without this, those writes never kicked
+    // a debounced push, so a savings change sat local-only until some OTHER store
+    // mutated or the app was backgrounded+reopened.
+    const unsubS = useSavingsStore.subscribe((s, p) => {
+      if (s.accounts !== p.accounts) schedule();
+    });
     return () => {
       unsubP();
       unsubW();
       unsubD();
+      unsubN();
+      unsubS();
       if (timer) clearTimeout(timer);
     };
   }, [enabled]);

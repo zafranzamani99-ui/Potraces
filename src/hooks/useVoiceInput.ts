@@ -120,6 +120,7 @@ const RESTART_DELAY_MS = 180; // let the native recognizer tear down before re-s
 const STREAM_FLUSH_TIMEOUT_MS = 5000; // after a manual stop, give Soniox this long (re-armed on each final) to flush
 const ON_DEVICE_PKG = 'com.google.android.as'; // Android System Intelligence (on-device recognition)
 const LOCALE_PROBE_TIMEOUT_MS = 2000; // getSupportedLocales has been observed to HANG — must race a timeout
+const START_WATCHDOG_MS = 12_000; // start() emitted NO 'start' event this long → recognizer is dead; give up
 const VOICE_DEBUG = __DEV__; // logs capability/error diagnostics to Metro on dev builds
 
 // Errors that retrying / self-heal cannot fix — stop immediately instead of spinning.
@@ -313,12 +314,46 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
   const lastAppliedEpochRef = useRef(opts?.localesEpoch); // detect a model-install epoch bump → re-probe
   const pendingReprobeRef = useRef(false); // a model installed mid-session → re-probe at the NEXT start (not mid-session)
 
+  const startWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ── Helpers ───────────────────────────────────────────────────────────────
   const clearRestartTimer = () => {
     if (restartTimerRef.current) {
       clearTimeout(restartTimerRef.current);
       restartTimerRef.current = null;
     }
+  };
+
+  const clearStartWatchdog = () => {
+    if (startWatchdogRef.current) {
+      clearTimeout(startWatchdogRef.current);
+      startWatchdogRef.current = null;
+    }
+  };
+
+  // Watchdog for a SILENTLY dead recognizer: some environments (observed: SFSpeechRecognizer under the
+  // x86_64/Rosetta simulator) hang inside native start() and emit NO event at all — not even 'error' —
+  // leaving the hook in 'starting' forever with zero feedback on the mic tap. If no 'start' arrives
+  // within the window, abort and surface an honest 'setup' error instead of a dead mic.
+  const armStartWatchdog = () => {
+    clearStartWatchdog();
+    const session = sessionIdRef.current;
+    startWatchdogRef.current = setTimeout(() => {
+      startWatchdogRef.current = null;
+      if (session !== sessionIdRef.current || !mountedRef.current) return; // superseded/unmounted
+      if (phaseRef.current !== 'starting') return; // engaged or already finalized — nothing to rescue
+      try {
+        ExpoSpeechRecognitionModule.abort();
+      } catch {
+        // not running — nothing to abort
+      }
+      if (!lastErrorKindRef.current) lastErrorKindRef.current = 'setup';
+      phaseRef.current = 'idle';
+      setIsRecording(false);
+      setMetering(0);
+      commitOnce();
+      finalizeSession();
+    }, START_WATCHDOG_MS);
   };
 
   const clearStreamFinishTimer = () => {
@@ -707,6 +742,7 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
       }
       try {
         ExpoSpeechRecognitionModule.start(buildStartOptions());
+        armStartWatchdog(); // restart can die silently too — same rescue as the initial start
       } catch {
         phaseRef.current = 'idle';
         setIsRecording(false);
@@ -718,6 +754,7 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
 
   // ── Native events ───────────────────────────────────────────────────────────
   useSpeechRecognitionEvent('start', () => {
+    clearStartWatchdog(); // the recognizer engaged — the silent-death rescue is no longer needed
     phaseRef.current = 'recognizing';
     setIsRecording(true);
   });
@@ -891,6 +928,20 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
     if (e && FATAL_ERRORS.has(e)) fatalErrorRef.current = true; // don't retry the unfixable
     // Record the kind; commitOnce surfaces it once at the true end (a later success clears it).
     lastErrorKindRef.current = mapErrorKind(e);
+    // iOS start-failure hardening: the native module's start() catch emits 'error' WITHOUT a trailing
+    // 'end' (no session ever began — e.g. SFSpeechRecognizer couldn't be created). Waiting for 'end'
+    // would leave us in 'starting' forever with zero feedback on the mic tap. A fatal error before
+    // 'start' means no session exists, so no 'end' is coming — finalize (and surface the error) here.
+    // Idempotent with a late 'end': commitOnce is guarded and the 'end' handler ends up at the same
+    // true-end branch (fatalErrorRef blocks its restarts).
+    if (phaseRef.current === 'starting' && e && FATAL_ERRORS.has(e)) {
+      clearRestartTimer();
+      phaseRef.current = 'idle';
+      setIsRecording(false);
+      setMetering(0);
+      commitOnce();
+      finalizeSession();
+    }
   });
 
   // ── Public methods ──────────────────────────────────────────────────────────
@@ -904,6 +955,7 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
     hasCommittedRef.current = false;
     restartCountRef.current = 0;
     clearRestartTimer();
+    clearStartWatchdog();
     setLiveTranscript('');
     sessionIdRef.current += 1;
     phaseRef.current = 'starting';
@@ -1001,6 +1053,7 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
         return;
       }
       ExpoSpeechRecognitionModule.start(buildStartOptions());
+      armStartWatchdog(); // rescue if the native start dies without emitting ANY event
     } catch (err) {
       phaseRef.current = 'idle';
       if (__DEV__) console.warn('[useVoiceInput] start failed:', err);
@@ -1049,6 +1102,7 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
     cancelledRef.current = true;
     manualStopRef.current = true;
     clearRestartTimer();
+    clearStartWatchdog();
     try {
       ExpoSpeechRecognitionModule.abort();
     } catch {
@@ -1123,6 +1177,7 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
       teardownStream(true); // stop mic + abort socket; never deliver after unmount
       discardCapturedClip(); // delete any captured clip; never transcribe after unmount
       clearRestartTimer();
+      clearStartWatchdog();
       try {
         ExpoSpeechRecognitionModule.abort();
       } catch {

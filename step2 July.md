@@ -1,8 +1,8 @@
 # Potraces — Step 2 Plan (July 2026)
 
-_On `fix/debt-money-integrity` — pushed to origin, **3 commits ahead of `main`, not yet merged**. `tsc` 0, all `tsx` suites green, working tree clean. Last updated 2026-07-16._
+_On `main` — `fix/debt-money-integrity` is **merged & pushed** (`c0b6b99`). New uncommitted WIP in the tree (paywall/monetization + budget-sheet + glass-toggle work). Last updated 2026-07-18._
 
-Three tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the locked 3-material standard), **(B) money data-safety hardening** (correctness), **(C) ScreenGuide walk-throughs** (first-run UX). Track B's CRITICAL tier is shipped. Tracks A and C roll out screen-by-screen.
+Four tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the locked 3-material standard), **(B) money data-safety hardening** (correctness), **(C) ScreenGuide walk-throughs** (first-run UX), and **(D) monetization & paywall** (the pre-beta money layer — design shipped, tier system not built yet). Track B's CRITICAL tier is shipped. Tracks A and C roll out screen-by-screen. **Track D is the current focus** — finalize before beta users.
 
 ---
 
@@ -31,7 +31,7 @@ Three tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the 
 
 | # | Do this | Why | Detail |
 |---|---|---|---|
-| 1 | **Merge `fix/debt-money-integrity` → `main`** — apply the `client_edit_at` migration to Supabase FIRST | The whole LWW money fix + Bills audit lives on this unmerged branch. Migration must land before the app build ships. | [Track B](#track-b--money-data-safety-remaining-ranked) |
+| 1 | ✅ ~~Merge `fix/debt-money-integrity` → `main`~~ **DONE (`c0b6b99`)** — but **confirm the `client_edit_at` migration is applied to Supabase** before the next app build (deploy-order rule; can't verify server-side from repo). | LWW money fix + Bills audit are now on `main`. | [Track B](#track-b--money-data-safety-remaining-ranked) |
 | 2 | **Device-verify Debt + Receipt, light AND dark** | The un-cleared sign-off gate for that rollout. `tsc`/test-proven, but no human has eyeballed it on a phone. | [What to look at](#what-to-look-at-on-device) |
 | 3 | **Track B — remaining sync/backup items** | Tombstone TTL 30d + storageBackup era-mix/account-gate still open (silent cross-device data loss). | [Track B](#track-b--money-data-safety-remaining-ranked) |
 | 4 | **Beta go-live — set the 2 secrets** | Site is already live-ready on `main`; only `BETA_IOS_URL` + `BETA_ANDROID_URL` remain. | [Beta](#beta-distribution--secrets-only) |
@@ -158,6 +158,87 @@ Per screen:
 ### Naming standard — "demo data"
 
 User-facing copy says **demo data** everywhere (Settings, banner, toasts, en+ms). Code identifiers (`sampleDataLoaded`, `clearSampleData`, `SampleDataBanner`) deliberately still say `sample` — renaming them is risky churn and invisible to users. Don't "fix" this.
+
+---
+
+# Track D — Monetization & Paywall (NEW, 2026-07-18)
+
+**Where it stands — design DONE, tier system NOT.** Shipped in-tree: the new `PaywallModal`
+(3-tier neu paywall, Onyx-clean, light+dark), `SubscriptionCard` rewired to open it (Neu
+Select CTA, no more instant-unlock at a stale price), and **`docs/MONETIZATION_AND_PRICING.md`
+is LOCKED** (tiers, per-feature gates, cloud-backup/data model, the "device-only unless you
+subscribe" rule). That doc is the source of truth for everything below.
+
+### Audit — do the screens follow the new plan? (2026-07-18)
+**No. Every gate is still the old 2-tier `premium`/`free`.** Nothing enforces Basic/Pro/
+Premium, and the paywall's Continue still flips a local `premium` flag (no billing).
+Enforcement points found (all need rewiring in Phase 2):
+- **Count caps:** wallets (`WalletManagement` `canCreateWallet`), budgets (`BudgetPlanning`,
+  `chatActions`), savings (`SavingsTracker`, `chatActions`). **Goals + shared-subs have NO cap yet.**
+- **Metered:** scans (`ReceiptScanner`, `CostManagement`, `DebtTracking`), AI (`moneyChat`,
+  `intentEngine`, `playbookAI`, `reportNarrative`, `spendingMirror`, `queryEngine`,
+  `useIntentEngine`, `NoteEditor`, `SavingsSheets`).
+- **Capability (premium-gated all-or-nothing today):** Echo FAB/panel (`EchoFab`,
+  `BudgetPlanning:1260`, `SubscriptionList`) → must split into **Basic** (Ask-Echo enabled) +
+  **Pro** (smart model).
+- **Model routing:** `chatModel.ts` already routes `pro`/`premium` → smart. ✅ *(only file that
+  knows the new tiers.)*
+- **Cloud backup:** `personalSyncEnabled` is a **free** toggle — not gated to a paid tier.
+
+### Decisions locked this round
+- **Pro RM15 → RM14** (annual **RM120/yr → RM10/mo**, −28%, save RM48). Premium stays RM25;
+  Basic RM7.99 monthly-only.
+- **Basic (RM7.99) is the hero** — pre-selected + "Most Popular", the volume play. *(Trade-off:
+  more subscribers, lower ARPU, and it weakens the decoy vs. "Pro is hero" — accepted.)*
+- **Free Echo 100 → 30/mo** so the 5×/10×/20× AI ladder actually converts (at 100 nobody hit it).
+- **"This isn't a backup"** — free users get a device-only notice; **Export stays free** as the
+  safety valve.
+- **Grandfather** existing users who are already over a lowered cap — block *new* creation only,
+  never delete/lock existing data.
+- **RevenueCat billing is LAST** — keep the local unlock until the tier system + gates are proven.
+
+### Build order (ranked — this is the Phase plan)
+
+> **✅ Phase 1 DONE (2026-07-18).** Pure `src/constants/tiers.ts` (4-tier `TIER_LIMITS` + `tierAtLeast`/`canCreate`/`remainingOf`, doc numbers); `premium.ts` re-exports it (dropped stale `FREE_TIER`/`PREMIUM_TIER`/`TRIAL_DAYS`/`PREMIUM_CONFIG`); `PremiumTier` → 4 tiers; `premiumStore` rewritten tier-aware + `setTier`/`canCreateGoal`/`canCreateSharedSub`/`hasCloudBackup`/`hasAskEcho`/`hasPhotoIcon`; trial retired; grandfather automatic (legacy `premium` users unchanged). New `test:tierlimits` (31 checks) in `npm test`; `tsc` clean. **Live now:** free caps set (savings 5→3, Echo 100→30, wallets 6→7; budgets stay 5; new goals/subs caps 3; Basic wallets 13 + 4/type) and Premium metered is CAPPED (scans 300, AI 600) — no real premium users yet (local flag). Screens still hold inline `=== 'premium'` checks → **Phase 2**.
+
+> **✅ Phase 2 DONE (2026-07-18).** All ~30 gate sites rewired to the 4-tier model (8-agent workflow, each diff human-verified): Echo gates → `!TIER_LIMITS[tier].askEchoPerScreen` (Echo opens at **Basic+**), "is-unlimited" checks + display counters → `TIER_LIMITS[tier]` finite-aware — EchoFab, BudgetPlanning, WalletManagement, SavingsTracker, ReceiptScanner, CostManagement, SubscriptionList, playbookStore (DebtTracking scan gates were already tier-aware). **NEW caps:** Goals (`canCreateGoal` — replaced a hardcoded `MAX_GOALS=10` toast with the tier paywall, gated at form-open) and shared subs (`canCreateSharedSub`, gated at the DebtTracking `handleOpenSharedForm` entry). `PaywallModal` gained `goals` + `subscription` features. `tsc` clean; **51 tsx tests pass**; zero leftover `=== 'premium'` gates. (eslint debt in DebtTracking/Goals is pre-existing WIP, not a CI gate.)
+>
+> **⚠️ Decide — Echo for Free:** the per-screen Echo FAB/buttons now open at **Basic+** (were premium-only, so this is strictly *more* access, not less). But the doc promises Free "30 Echo chats/mo". Free still reaches Echo *chat* via MoneyChat (`canUseAI`, 30/mo) — **verify on-device that Free has a real Echo entry**; if the FAB itself should work for Free within their quota, gate those sites on `!canUseAI()` instead of `!askEchoPerScreen`.
+>
+> **✅ Phase 3 DONE (2026-07-18).** Paywall wired to the tier system: **Pro RM15→RM14** (annual **RM120/yr = RM10/mo**, −28%, save RM48); **Basic-hero** layout (Option A) — Basic pre-selected + **"BEST VALUE"** + raised, **monthly-leads** default (keeps the RM7.99→RM14 gap visible; yearly would make Pro ~RM10/mo and cannibalise Basic); **Continue → `setTier(selected)`** (basic/pro/premium) instead of the hardcoded premium unlock. Knock-ons fixed: `SubscriptionCard` now shows the subscribed state for ANY paid tier (+ shows the tier name, not always "Premium"); `BudgetPlannerSheet`'s Echo-planner budget cap is now tier-aware via `remainingOf` (a Phase-2 gate site I'd MISSED — Pro was getting the free cap). `tsc` clean; tier test green; zero stray `=== 'premium'` is-subscribed checks (only `chatModel`'s pro/premium smart-model routing remains, which is correct).
+>
+> **✅ Phase 4 DONE (2026-07-18).** Cloud-backup gate + the "this isn't a backup" notice. (1) **Notice** — a tappable `cloud-off` row in `SubscriptionCard`'s free state (every free user sees it in Settings): *"Saved on this phone only — subscribe for cloud backup so you never lose your data."* → opens the paywall. (2) **Gate** — `AccountScreen`'s cloud-backup toggle now checks `hasCloudBackup()`; a free user turning it on gets the paywall (new capability `feature="backup"`, no-quota headline *"Never lose your money"*, `reason` = the paid-feature line) instead of enabling sync. New i18n `notBackedUp` + `cloudBackupPaid` (en+ms). `tsc` clean; i18n check clean (only pre-existing violations remain). **Note:** the gate only blocks *turning sync on*; an existing free user who already had sync enabled keeps it (grandfathered) — we never force-disable a live backup.
+>
+> **✅ Phase 5 DONE (2026-07-18).** `test:tiermigration` (70 checks) proves the grandfather contract: a legacy count already OVER a lowered cap blocks CREATE only (never deletes), across every resource × tier; `remainingOf` clamps to 0 (never negative); legacy persisted tiers (`free`/`premium`) stay valid keys so rehydration can't crash; upgrading lifts the cap without touching data.
+>
+> **✅ Phase 6 SCAFFOLDED (2026-07-18) — dormant until keys+products exist.** RevenueCat wired: pure `src/services/billingMap.ts` ((tier,billing)→package id; active entitlements→store tier, highest wins; `test:billingmap` 12 checks) + native `src/services/billing.ts` (`initBilling`/`purchaseTier`/`restorePurchases`, entitlement→`setTier` sync via a customer-info listener). Paywall **Continue → `purchaseTier`** when configured (else the local unlock, so dev still works); **Restore** button wired; `initBilling()` called on app launch (App.tsx). `isBillingConfigured()` is **false until API keys are set**, so every native path returns early and the app stays on the local unlock — safe to ship as-is. `tsc` clean (billing.ts validated against the react-native-purchases types).
+>
+> **GO-LIVE checklist for billing** (also in `billing.ts` header): (1) RevenueCat project → PUBLIC SDK keys into `EXPO_PUBLIC_RC_IOS_KEY` / `EXPO_PUBLIC_RC_ANDROID_KEY`; (2) create the 5 products in App Store Connect + Play Console (ids in `billingMap.PACKAGE_ID`); (3) add them to a RevenueCat offering + create 3 entitlements (`basic`/`pro`/`premium`); (4) native rebuild (react-native-purchases is installed but needs a build); (5) sandbox-test purchase + restore. Ideally add server-side entitlement verification so the tier can't be flipped locally.
+>
+> **Monetization layer status: Phases 1–6 all landed** (billing dormant). Pre-beta: on-device verify (paywall + a few gates, light+dark), resolve the Echo-for-Free flag, then commit as an isolated set.
+
+1. **Tier foundation.** `PremiumTier` → `free|basic|pro|premium` (`types/index.ts`); a tier-rank
+   helper (`tierAtLeast`); per-tier limit tables + capability flags in `constants/premium.ts`
+   (wallets/budgets/savings/goals/sharedSubs/scans/aiCalls + `askEchoPerScreen`, `cloudBackup`,
+   `photoCategoryIcons`); rewrite `premiumStore` gates to read the active tier's limits (+ new
+   `canCreateGoal`, `canCreateSharedSub`, `hasCloudBackup`, `hasAskEcho`, `hasPhotoIcon`);
+   persisted-tier migration (old `premium` → `premium`) + grandfather; retire trial logic.
+   **+1 tier-limits tsx test.**
+2. **Rewire enforcement.** Every `tier === 'premium'` site → tier-aware; add goals + shared-subs
+   caps; split the Echo gate (Basic = Ask-Echo, Pro = smart model); per-tier scan/AI remaining.
+3. **Paywall wiring.** Continue sets the *selected* tier (not hardcoded premium); RM14 + Basic-hero
+   layout + final per-tier feats; headline reflects the gate that opened it.
+4. **Cloud-backup gate + "not a backup" notice.** Gate `personalSyncEnabled` behind `hasCloudBackup`;
+   device-only notice for free users (en+ms).
+5. **Grandfather migration test** + device-verify light/dark.
+6. **RevenueCat billing** — separate, store-config-heavy milestone (App Store Connect + Play +
+   RevenueCat products → `purchasePackage()` in `handleContinue` → entitlement → tier; verify
+   server-side). The real money switch.
+
+### Open decision (need your call before Phase 3)
+- **Basic-as-hero placement:** keep ascending price `[Basic⭐][Pro][Premium]` with Basic
+  pre-selected + raised, **or** physically center it `[Pro][Basic⭐][Premium]` (breaks price
+  order). **Recommend the former** — Basic emphasized in place, price stays logical.
 
 ---
 

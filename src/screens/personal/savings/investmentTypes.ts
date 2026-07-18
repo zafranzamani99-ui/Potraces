@@ -23,6 +23,14 @@ export interface TypeInfo {
   icon: string;
   color: string;
   class: SavingsClass;
+  /** Last published/declared annual rate (%) for instruments with a known public
+   *  rate — auto-fills the Add-account rate field so the user doesn't have to
+   *  guess. MAINTENANCE: refresh once a year when dividends are declared
+   *  (ASB ~Dec, Tabung Haji ~Feb/Mar, SSPN ~Feb). Market instruments (crypto,
+   *  stocks, robo, gold) deliberately have none — their returns aren't a rate. */
+  typicalRate?: number;
+  /** Label year/qualifier for the auto-fill hint, e.g. '2024'. */
+  rateAsOf?: string;
 }
 
 const SAVINGS = 'savings' as const;
@@ -32,15 +40,16 @@ const INVESTMENT = 'investment' as const;
 export const INVESTMENT_TYPES: Record<string, TypeInfo> = {
   // ── Savings (capital-stable, rate/dividend based) ──
   bank:         { id: 'bank',         name: 'Bank Savings',   nameBm: 'Simpanan Bank',   icon: 'm/bank',            color: '#4F7CAC', class: SAVINGS },
-  asb:          { id: 'asb',          name: 'ASB',            nameBm: 'ASB',             icon: 'i/lock-closed',     color: '#4F5104', class: SAVINGS },
-  tabung_haji:  { id: 'tabung_haji',  name: 'Tabung Haji',    nameBm: 'Tabung Haji',     icon: 'm/book',            color: '#B8860B', class: SAVINGS },
-  esa:          { id: 'esa',          name: 'ESA',            nameBm: 'ESA',             icon: 'i/shield-checkmark', color: '#6BA3BE', class: SAVINGS },
-  tng_plus:     { id: 'tng_plus',     name: 'TNG GO+',        nameBm: 'TNG GO+',         icon: 'm/cellphone',       color: '#1E88A8', class: SAVINGS },
-  fd:           { id: 'fd',           name: 'Fixed Deposit',  nameBm: 'Simpanan Tetap',  icon: 'm/safe',            color: '#7A8450', class: SAVINGS },
+  asb:          { id: 'asb',          name: 'ASB',            nameBm: 'ASB',             icon: 'logo/asb',          color: '#4F5104', class: SAVINGS, typicalRate: 5.75, rateAsOf: '2024' },
+  tabung_haji:  { id: 'tabung_haji',  name: 'Tabung Haji',    nameBm: 'Tabung Haji',     icon: 'logo/tabung_haji',  color: '#B8860B', class: SAVINGS, typicalRate: 3.25, rateAsOf: '2024' },
+  esa:          { id: 'esa',          name: 'ESA',            nameBm: 'ESA',             icon: 'i/shield-checkmark', color: '#6BA3BE', class: SAVINGS, typicalRate: 3.6, rateAsOf: '2024' },
+  tng_plus:     { id: 'tng_plus',     name: 'TNG GO+',        nameBm: 'TNG GO+',         icon: 'logo/tng_plus',     color: '#1E88A8', class: SAVINGS, typicalRate: 3.5, rateAsOf: '2025' },
+  fd:           { id: 'fd',           name: 'Fixed Deposit',  nameBm: 'Simpanan Tetap',  icon: 'm/safe',            color: '#7A8450', class: SAVINGS, typicalRate: 2.8, rateAsOf: '2025' },
   save_generic: { id: 'save_generic', name: 'Savings',        nameBm: 'Simpanan',        icon: 'm/piggy-bank',      color: '#6B7C5A', class: SAVINGS },
 
   // ── Investments (market / growth, value can fall) ──
   robo:         { id: 'robo',         name: 'Robo-advisor',   nameBm: 'Robo-advisor',    icon: 'm/robot',           color: '#9A6400', class: INVESTMENT },
+  wahed:        { id: 'wahed',        name: 'Wahed',          nameBm: 'Wahed',           icon: 'logo/wahed',        color: '#5E72E4', class: INVESTMENT },
   crypto:       { id: 'crypto',       name: 'Crypto',         nameBm: 'Kripto',          icon: 'm/bitcoin',         color: '#C77A16', class: INVESTMENT },
   stocks:       { id: 'stocks',       name: 'Stocks & ETF',   nameBm: 'Saham & ETF',     icon: 'm/chart-line',      color: '#A06CD5', class: INVESTMENT },
   gold:         { id: 'gold',         name: 'Gold',           nameBm: 'Emas',            icon: 'm/gold',            color: '#C4956A', class: INVESTMENT },

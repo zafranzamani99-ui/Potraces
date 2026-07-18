@@ -139,6 +139,11 @@ console.log('nextBasis (average-cost basis across deposits / withdrawals)');
   // Full close realizes the basis to 0 — no phantom basis on an emptied account.
   check('full withdrawal (value→0) realizes basis to 0', nextBasis(5000, 7000, 0, 'withdrawal') === 0);
   check('withdrawal never goes below 0', nextBasis(1000, 1000, -50000, 'withdrawal') === 0);
+  // Refill an emptied (basis 0) account via a plain manual/dividend update → the
+  // reappearing value seeds the basis (no phantom +gain / incoherent 0% return).
+  check('manual update off a ZERO basis seeds basis from value', nextBasis(0, 0, 3000, 'manual') === 3000);
+  check('dividend off a ZERO basis seeds basis from value', nextBasis(0, 0, 200, 'dividend') === 200);
+  check('manual on a NON-zero basis still leaves basis (real gain)', nextBasis(1000, 1000, 1200, 'manual') === 1000);
   // Over-basis withdrawal on a WINNER no longer clamps to a broken 0%: basis stays
   // proportional, so the remainder keeps a coherent positive return.
   const b2 = nextBasis(1000, 2000, 500, 'withdrawal'); // basis 1000 * (500/2000) = 250

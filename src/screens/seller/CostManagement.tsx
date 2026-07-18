@@ -29,6 +29,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { TIER_LIMITS } from '../../constants/premium';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
@@ -88,6 +89,7 @@ const CostManagement: React.FC = () => {
   const canScanReceipt = usePremiumStore((s) => s.canScanReceipt);
   const incrementScanCount = usePremiumStore((s) => s.incrementScanCount);
   const getRemainingScans = usePremiumStore((s) => s.getRemainingScans);
+  const tier = usePremiumStore((s) => s.tier);
   const addTransaction = usePersonalStore((s) => s.addTransaction);
   const deletePersonalTransaction = usePersonalStore((s) => s.deleteTransaction);
   const addTransferIncome = usePersonalStore((s) => s.addTransferIncome);
@@ -1484,7 +1486,7 @@ const CostManagement: React.FC = () => {
         visible={paywallVisible}
         onClose={() => setPaywallVisible(false)}
         feature="scan"
-        currentUsage={15 - getRemainingScans()}
+        currentUsage={TIER_LIMITS[tier].maxScansPerMonth - getRemainingScans()}
       />
     </View>
   );
