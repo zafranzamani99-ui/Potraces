@@ -10,10 +10,11 @@
  * On 429 → skip to fallback model immediately (no retry wait on same model).
  */
 
-// Expo SDK 54 ships a streaming-capable fetch whose Response exposes a
-// ReadableStream `body` (RN's built-in global fetch does NOT). Required for
-// streamGeminiText below — the global fetch above is fine for non-streaming.
-import { fetch as expoFetch } from 'expo/fetch';
+// react-native-sse uses XMLHttpRequest under the hood — no native module
+// required, so it works in both debug AND release/TestFlight builds. (RN's
+// built-in fetch does NOT support ReadableStream; expo/fetch is broken in
+// release builds.)
+import EventSource from 'react-native-sse';
 import { AI_PROXY_URL, aiProxyHeaders, aiProxyFetch, isAiProxyConfigured } from './aiProxy';
 
 // Model fallback chain — cheap current-gen model first, premium as escape hatch.
@@ -276,87 +277,90 @@ export async function* streamGeminiText(
     throw new Error('AI is busy — try again shortly.');
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = await aiProxyHeaders();
+
+  // Use a promise queue to bridge the event-based EventSource API into an
+  // async generator. Each 'message' event pushes a value; 'error'/'close'
+  // push a sentinel that ends the generator.
+  const queue: Array<{ type: 'data' | 'error' | 'close'; value?: string; error?: Error }> = [];
+  let resolveWait: (() => void) | null = null;
+
+  const push = (item: { type: 'data' | 'error' | 'close'; value?: string; error?: Error }) => {
+    queue.push(item);
+    if (resolveWait) {
+      resolveWait();
+      resolveWait = null;
+    }
+  };
+
+  const es = new EventSource(AI_PROXY_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ provider: 'gemini', mode: 'stream', model, payload: body }),
+    pollingInterval: 0, // disable auto-reconnect — we handle errors manually
+  });
+
+  let accumulated = '';
+  let yieldedAny = false;
+
+  es.addEventListener('message', (event) => {
+    if (!event.data) return;
+    // The ai-proxy streams Gemini SSE verbatim: each line is `data: {json}`.
+    // react-native-sse already strips the `data: ` prefix and gives us the
+    // raw payload, so we just need to parse it.
+    try {
+      const obj = JSON.parse(event.data) as GeminiStreamChunk;
+      const delta = obj?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (delta) {
+        accumulated += delta;
+        yieldedAny = true;
+        push({ type: 'data', value: accumulated });
+      }
+    } catch {
+      // Partial/incomplete JSON — skip; the next event should complete it.
+    }
+  });
+
+  es.addEventListener('error', (event) => {
+    if (event.type === 'error') {
+      push({ type: 'error', error: new Error(event.message || 'Could not reach AI. Please try again.') });
+    } else if (event.type === 'exception') {
+      push({ type: 'error', error: new Error(event.message || 'Could not reach AI. Please try again.') });
+    }
+  });
+
+  es.addEventListener('close', () => {
+    push({ type: 'close' });
+  });
+
+  // Timeout guard: close the stream if it takes too long.
+  const timeout = setTimeout(() => {
+    es.close();
+    push({ type: 'error', error: new Error('Request timed out.') });
+  }, timeoutMs);
 
   try {
-    // Routed through the server proxy, which injects the Gemini key, meters usage,
-    // and streams the provider SSE back unchanged.
-    const headers = await aiProxyHeaders();
-    const response = await expoFetch(AI_PROXY_URL, {
-      method: 'POST',
-      headers,
-      signal: controller.signal,
-      body: JSON.stringify({ provider: 'gemini', mode: 'stream', model, payload: body }),
-    });
-
-    if (response.status === 429) {
-      const retryMs = await parse429(model, response as unknown as Response);
-      blockModel(model, retryMs);
-      throw new Error('AI is busy — try again shortly.');
-    }
-
-    if (!response.ok) {
-      if (__DEV__) console.warn(`[Gemini] ${model} stream error: ${response.status}`);
-      throw new Error('Could not reach AI. Please try again.');
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('Could not reach AI. Please try again.');
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = ''; // leftover for SSE events split across chunk boundaries
-    let accumulated = ''; // running cumulative text
-    let yieldedAny = false;
-
-    // Parse one complete SSE event block, yielding cumulative text if it has any.
-    const handleEvent = function* (event: string): Generator<string> {
-      for (const line of event.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const payload = line.slice('data: '.length).trim();
-        if (!payload || payload === '[DONE]') continue;
-        let obj: GeminiStreamChunk;
-        try {
-          obj = JSON.parse(payload);
-        } catch {
-          // Partial/incomplete line — skip; buffer logic re-feeds complete events.
-          continue;
-        }
-        const delta = obj?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (delta) {
-          accumulated += delta;
-          yieldedAny = true;
-          yield accumulated;
-        }
-      }
-    };
-
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      // Split on SSE event boundaries; keep the trailing incomplete event in buffer.
-      let boundary = buffer.indexOf('\n\n');
-      while (boundary !== -1) {
-        const event = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
-        yield* handleEvent(event);
-        boundary = buffer.indexOf('\n\n');
+      if (queue.length === 0) {
+        await new Promise<void>((resolve) => { resolveWait = resolve; });
       }
-    }
-
-    // Flush any remaining buffered event after the stream ends.
-    if (buffer.trim()) {
-      yield* handleEvent(buffer);
-    }
-
-    if (!yieldedAny) {
-      throw new Error('No response from AI. Please try a clearer photo.');
+      const item = queue.shift()!;
+      if (item.type === 'data') {
+        yield item.value!;
+      } else if (item.type === 'error') {
+        throw item.error!;
+      } else {
+        // close
+        break;
+      }
     }
   } finally {
     clearTimeout(timeout);
+    es.removeAllEventListeners();
+    es.close();
+  }
+
+  if (!yieldedAny) {
+    throw new Error('No response from AI. Please try a clearer photo.');
   }
 }
