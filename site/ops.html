@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<!--
+  Potraces — OPS CONSOLE (founder).  jejakbaki.my/ops.html
+  Self-contained dark ops dashboard: users, AI usage, estimated cost.
+  Sign in with an admin account (app_admins / is_admin()). Anon key only — every
+  read is gated by admin RLS policies + self-gated RPCs. NEVER service_role.
+  Backend: supabase/migrations/20260722000000_admin_ops.sql
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0D100C">
+
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  base-uri 'self';
+  form-action 'self';
+  frame-ancestors 'none';
+  img-src 'self' data:;
+  font-src 'self' https://fonts.gstatic.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  script-src 'self' 'unsafe-inline' https://esm.sh;
+  connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co https://esm.sh https://accounts.google.com;
+">
+
+<title>Potraces Ops — usage console</title>
+<meta name="description" content="Founder ops console: users, AI usage and estimated cost.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/assets/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="/assets/icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#0D100C; --panel:#141813; --panel2:#1A1F18; --panel3:#20261E;
+  --line:rgba(233,238,231,.09); --line2:rgba(233,238,231,.18);
+  --ink:#E9EEE6; --ink-65:rgba(233,238,231,.65); --ink-45:rgba(233,238,231,.45); --ink-25:rgba(233,238,231,.25);
+  --sage:#A9C79F; --sage-hi:#C9E4BC; --sage-dim:rgba(169,199,159,.13);
+  --amber:#DFC08C; --blue:#9DB8C9; --rose:#D69A8F;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Outfit',system-ui,-apple-system,sans-serif;
+  --r-lg:16px; --r-md:11px; --r-sm:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;min-height:100vh;display:flex;flex-direction:column}
+::selection{background:rgba(169,199,159,.28)}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+code{font-family:var(--mono);font-size:.85em;color:var(--sage)}
+.hide{display:none!important}
+.num{font-variant-numeric:tabular-nums}
+
+/* ── top bar ── */
+.topbar{position:sticky;top:0;z-index:50;background:rgba(13,16,12,.86);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.bar-in{max-width:1280px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-weight:600;font-size:1.05rem;letter-spacing:-.01em}
+.brand img{width:30px;height:30px;border-radius:8px}
+.brand .ops-tag{font-family:var(--mono);font-size:.62rem;font-weight:600;letter-spacing:.14em;color:#0D100C;background:var(--sage);border-radius:5px;padding:3px 7px}
+.bar-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.live{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:.66rem;font-weight:600;letter-spacing:.14em;color:var(--sage)}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--sage);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(169,199,159,.5)}50%{opacity:.55;box-shadow:0 0 0 5px rgba(169,199,159,0)}}
+.stamp{font-family:var(--mono);font-size:.72rem;color:var(--ink-45)}
+.gbtn{font-family:var(--mono);font-size:.74rem;font-weight:500;color:var(--ink-65);background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 12px;min-height:36px;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s,color .15s,background .15s;text-decoration:none}
+.gbtn:hover{border-color:var(--line2);color:var(--ink)}
+.gbtn.spin svg{animation:rot 1s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+/* ── layout ── */
+main{flex:1;width:100%;max-width:1280px;margin:0 auto;padding:26px 20px 70px}
+.pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:20px}
+h1{font-size:clamp(1.5rem,3vw,1.9rem);font-weight:600;letter-spacing:-.02em}
+.lede{margin-top:6px;max-width:64ch;color:var(--ink-45);font-size:.9rem;line-height:1.55}
+
+/* range pills */
+.ranges{display:inline-flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px}
+.ranges button{font-family:var(--mono);font-size:.74rem;font-weight:500;color:var(--ink-45);border-radius:999px;padding:8px 15px;min-height:36px;transition:background .15s,color .15s}
+.ranges button:hover{color:var(--ink)}
+.ranges button.active{background:var(--sage-dim);color:var(--sage-hi)}
+
+/* ── KPI cards ── */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:14px}
+.kpi{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:15px 16px 13px;display:flex;flex-direction:column;gap:3px;min-height:118px;transition:border-color .15s,transform .15s,background .15s}
+.kpi.tappable{cursor:pointer}
+.kpi.tappable:hover{border-color:var(--line2);background:var(--panel2);transform:translateY(-2px)}
+.kpi.tappable:active{transform:translateY(0)}
+.k-label{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.62rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-45)}
+.k-info{margin-left:auto;font-style:normal;color:var(--ink-25);cursor:help;font-size:.85rem}
+.k-info:hover{color:var(--sage)}
+.k-value{font-size:1.75rem;font-weight:600;letter-spacing:-.02em;line-height:1.1;font-variant-numeric:tabular-nums}
+.k-value small{font-size:.55em;font-weight:500;color:var(--ink-45)}
+.k-sub{font-family:var(--mono);font-size:.68rem;color:var(--ink-45);line-height:1.45}
+.k-foot{margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:8px;padding-top:8px}
+.k-spark{opacity:.9}
+.k-delta{font-family:var(--mono);font-size:.66rem;font-weight:600;border-radius:6px;padding:3px 7px}
+.k-delta.up{color:var(--sage-hi);background:var(--sage-dim)}
+.k-delta.dn{color:var(--amber);background:rgba(223,192,140,.12)}
+.k-delta.flat{color:var(--ink-25);background:var(--panel3)}
+.k-tap{position:absolute;right:12px;bottom:11px;font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;color:var(--ink-25);opacity:0;transition:opacity .15s}
+.kpi.tappable:hover .k-tap{opacity:1}
+
+/* ── panels & grids ── */
+.grid{display:grid;gap:10px;margin-bottom:10px}
+.g-charts{grid-template-columns:2fr 1.2fr 1fr}
+.g-3{grid-template-columns:1fr 1fr 1.2fr}
+@media (max-width:980px){.g-charts,.g-3{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:18px 18px 16px;min-width:0}
+.p-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.p-head h2{font-family:var(--mono);font-size:.72rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-65)}
+.p-note{font-family:var(--mono);font-size:.66rem;color:var(--ink-25)}
+
+/* ── daily bar chart ── */
+.chart{display:flex;align-items:flex-end;gap:3px;height:150px;padding-top:8px}
+.bar-g{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;height:100%;position:relative;border-radius:4px 4px 0 0;cursor:crosshair}
+.bar-g .seg{width:100%;transition:opacity .15s}
+.bar-g:hover .seg{opacity:.85}
+.bar-g .seg:first-child{border-radius:3px 3px 0 0}
+.bar-g.today::after{content:'';position:absolute;inset:-3px;border:1px dashed var(--ink-25);border-radius:5px;pointer-events:none}
+.chart-x{display:flex;gap:3px;margin-top:7px}
+.chart-x span{flex:1;min-width:0;font-family:var(--mono);font-size:.58rem;color:var(--ink-25);text-align:center;white-space:nowrap;overflow:hidden}
+.legend{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.66rem;color:var(--ink-45)}
+.legend i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.tip{position:fixed;z-index:99;pointer-events:none;background:var(--panel3);border:1px solid var(--line2);border-radius:var(--r-md);padding:10px 12px;font-family:var(--mono);font-size:.7rem;line-height:1.7;color:var(--ink-65);box-shadow:0 8px 30px rgba(0,0,0,.5);white-space:nowrap}
+.tip b{color:var(--ink);font-weight:600}
+
+/* ── horizontal bars (models / top consumers / mix) ── */
+.hrow{padding:9px 0;border-bottom:1px solid var(--line)}
+.hrow:last-child{border-bottom:none}
+.hrow-top{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+.hrow-name{font-family:var(--mono);font-size:.76rem;font-weight:500;color:var(--ink);word-break:break-all}
+.hrow-val{margin-left:auto;font-family:var(--mono);font-size:.76rem;font-weight:600;color:var(--sage-hi);white-space:nowrap}
+.hrow-val.dim{color:var(--ink-45)}
+.hbar{height:6px;background:var(--panel3);border-radius:99px;overflow:hidden}
+.hbar i{display:block;height:100%;border-radius:99px;background:var(--sage);transition:width .4s cubic-bezier(.2,.8,.2,1)}
+.hrow-sub{margin-top:5px;font-family:var(--mono);font-size:.64rem;color:var(--ink-25)}
+.mixbar{display:flex;height:14px;border-radius:99px;overflow:hidden;background:var(--panel3);margin:10px 0 12px}
+.mixbar i{display:block;height:100%;transition:width .4s cubic-bezier(.2,.8,.2,1)}
+
+/* ── events table ── */
+.filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.pills{display:inline-flex;gap:3px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px}
+.pills button{font-family:var(--mono);font-size:.68rem;color:var(--ink-45);border-radius:999px;padding:6px 12px;min-height:32px;transition:background .15s,color .15s}
+.pills button:hover{color:var(--ink)}
+.pills button.active{background:var(--sage-dim);color:var(--sage-hi)}
+.filters select,.filters input{font-family:var(--mono);font-size:.74rem;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 11px;min-height:36px;outline:none}
+.filters select:focus,.filters input:focus{border-color:var(--sage)}
+.filters input{min-width:170px}
+.filters input::placeholder{color:var(--ink-25)}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r-md)}
+.tbl{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.74rem;min-width:860px}
+.tbl th{position:sticky;top:0;background:var(--panel2);text-align:left;font-weight:600;font-size:.62rem;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-45);padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none;white-space:nowrap}
+.tbl th:hover{color:var(--ink)}
+.tbl th.sorted{color:var(--sage-hi)}
+.tbl th .arw{font-size:.85em;margin-left:4px}
+.tbl td{padding:9px 12px;border-bottom:1px solid var(--line);color:var(--ink-65);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tbody tr{transition:background .1s}
+.tbl tbody tr:hover{background:var(--panel2)}
+.tbl td.num,.tbl th.num{text-align:right}
+.tbl td.cost{color:var(--sage-hi)}
+.chip{display:inline-block;font-size:.62rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;border-radius:5px;padding:3px 8px}
+.c-ai{color:var(--sage-hi);background:var(--sage-dim)}
+.c-voice{color:var(--amber);background:rgba(223,192,140,.12)}
+.c-vision{color:var(--blue);background:rgba(157,184,201,.13)}
+.c-text{color:var(--ink-45);background:var(--panel3)}
+.tbl-foot{display:flex;justify-content:center;padding-top:12px}
+.rowcount{font-family:var(--mono);font-size:.66rem;color:var(--ink-25);text-align:center;margin-top:10px}
+
+/* ── pricing editor ── */
+.price-tbl{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.72rem}
+.price-tbl th{text-align:left;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-25);font-weight:600;padding:0 8px 8px 0}
+.price-tbl td{padding:5px 8px 5px 0;border-bottom:1px solid var(--line);color:var(--ink-65);vertical-align:middle}
+.price-tbl tr:last-child td{border-bottom:none}
+.price-tbl input{width:76px;font-family:var(--mono);font-size:.74rem;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 8px;outline:none;text-align:right}
+.price-tbl input:focus{border-color:var(--sage)}
+.price-actions{display:flex;gap:8px;margin-top:12px;align-items:center}
+.price-hint{font-family:var(--mono);font-size:.62rem;color:var(--ink-25);line-height:1.5;margin-top:10px}
+
+/* ── states (loading / signin / deny) ── */
+.state{padding:80px 16px;text-align:center}
+.state .spin{width:34px;height:34px;margin:0 auto 16px;border:3px solid var(--panel3);border-top-color:var(--sage);border-radius:50%;animation:rot 1s linear infinite}
+.state p{font-family:var(--mono);font-size:.8rem;color:var(--ink-45)}
+.card{max-width:420px;margin:60px auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:30px 26px;text-align:left}
+.card h2{font-size:1.3rem;font-weight:600;letter-spacing:-.01em;margin-bottom:8px}
+.card .sub{color:var(--ink-45);font-size:.9rem;line-height:1.6;margin-bottom:20px}
+.btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;border-radius:var(--r-md);padding:12px 16px;min-height:46px;font-weight:500;font-size:.92rem;transition:background .15s,border-color .15s;text-decoration:none}
+.btn-google{background:#fff;color:#1f1f1f;border:1px solid transparent}
+.btn-google:hover{background:#e8e8e8}
+.btn-google svg{width:18px;height:18px}
+.btn-primary{background:var(--sage);color:#10130F;font-weight:600}
+.btn-primary:hover{background:var(--sage-hi)}
+.btn-primary[disabled]{opacity:.5;cursor:not-allowed}
+.divider{display:flex;align-items:center;gap:12px;margin:14px 0;color:var(--ink-25);font-family:var(--mono);font-size:.68rem}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--line)}
+.field{margin-bottom:12px}
+.field label{display:block;font-family:var(--mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-45);margin-bottom:7px}
+.field input{width:100%;font-size:.92rem;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px;outline:none}
+.field input:focus{border-color:var(--sage)}
+.msg{font-size:.85rem;line-height:1.5;margin-top:14px;padding:11px 13px;border-radius:var(--r-md);display:none}
+.msg.show{display:block}
+.msg.ok{background:var(--sage-dim);color:var(--sage-hi)}
+.msg.warn{background:rgba(223,192,140,.1);color:var(--amber)}
+
+/* misc */
+.empty{padding:30px 14px;text-align:center;font-family:var(--mono);font-size:.76rem;color:var(--ink-25);line-height:1.7;border:1px dashed var(--line);border-radius:var(--r-md)}
+.sk{background:linear-gradient(90deg,var(--panel) 25%,var(--panel2) 50%,var(--panel) 75%);background-size:200% 100%;animation:sk 1.4s infinite;border-radius:var(--r-lg);min-height:118px}
+@keyframes sk{to{background-position:-200% 0}}
+.sources{margin-top:22px;font-family:var(--mono);font-size:.66rem;color:var(--ink-25);line-height:1.7;max-width:90ch}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--panel3);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:.76rem;border-radius:99px;padding:10px 18px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:100}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.footer{margin-top:auto;border-top:1px solid var(--line);padding:16px;text-align:center}
+.footer span{font-family:var(--mono);font-size:.68rem;color:var(--ink-25)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="bar-in">
+    <a class="brand" href="/admin.html" title="Back to the triage console">
+      <img src="/assets/icon.png" alt="" width="30" height="30">
+      <span>Potraces</span>
+      <span class="ops-tag">OPS</span>
+    </a>
+    <div class="bar-right">
+      <span class="live"><i></i>LIVE</span>
+      <span class="stamp" id="stamp" title="Last successful refresh">—</span>
+      <button type="button" id="refreshBtn" class="gbtn" title="Refresh now (auto every 60s)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        <span id="cd">60</span>s
+      </button>
+      <button type="button" id="curBtn" class="gbtn" title="Toggle display currency">USD</button>
+      <a class="gbtn" href="/admin.html" title="Beta triage console">Triage</a>
+      <button type="button" id="signoutBtn" class="gbtn hide">Sign out</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- loading -->
+  <div id="loadingState" class="state" role="status" aria-live="polite">
+    <div class="spin"></div><p>Connecting…</p>
+  </div>
+
+  <!-- signed out -->
+  <section id="signinState" class="card hide" aria-labelledby="sih">
+    <h2 id="sih">Ops sign-in</h2>
+    <p class="sub">Founder access only — accounts on the admin list see live usage &amp; cost. Everyone else stops here.</p>
+    <button type="button" id="googleBtn" class="btn btn-google">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.26 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
+      Continue with Google
+    </button>
+    <div class="divider">or</div>
+    <form id="magicForm" novalidate>
+      <div class="field">
+        <label for="magicEmail">Email a sign-in link</label>
+        <input id="magicEmail" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">
+      </div>
+      <button type="submit" id="magicBtn" class="btn btn-primary">Send link</button>
+    </form>
+    <div id="signinMsg" class="msg" role="status" aria-live="polite"></div>
+  </section>
+
+  <!-- signed in, not admin -->
+  <section id="denyState" class="card hide" aria-labelledby="dh">
+    <h2 id="dh">Not an admin account</h2>
+    <p class="sub">You're signed in as <b id="denyEmail">—</b>, but that account isn't on the admin list.</p>
+    <button type="button" id="signoutBtn2" class="btn btn-google">Sign out</button>
+  </section>
+
+  <!-- dashboard -->
+  <section id="dashState" class="hide">
+    <div class="pagehead">
+      <div>
+        <h1>Usage console</h1>
+        <p class="lede">Every AI call, what it likely costs, and who's using it. Costs are token × rate estimates — the provider consoles are the bill of record. All times MYT.</p>
+      </div>
+      <div class="ranges" role="tablist" aria-label="Time range">
+        <button type="button" data-r="today" role="tab">Today</button>
+        <button type="button" data-r="7d" role="tab">7 days</button>
+        <button type="button" data-r="30d" role="tab">30 days</button>
+        <button type="button" data-r="month" role="tab" class="active" aria-selected="true">This month</button>
+      </div>
+    </div>
+
+    <div class="kpis" id="kpis">
+      <div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div>
+    </div>
+
+    <div class="grid g-charts">
+      <section class="panel">
+        <div class="p-head"><h2>Daily activity</h2><span class="p-note">calls by day · stacked by type</span></div>
+        <div class="chart" id="dailyChart"></div>
+        <div class="chart-x" id="dailyX"></div>
+        <div class="legend">
+          <span><i style="background:var(--blue)"></i>vision (scans)</span>
+          <span><i style="background:var(--sage)"></i>text (chat &amp; parse)</span>
+          <span><i style="background:var(--amber)"></i>voice mints</span>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="p-head"><h2>Cost by model</h2><span class="p-note" id="modelNote">tracked per call</span></div>
+        <div id="modelBars"></div>
+      </section>
+      <section class="panel">
+        <div class="p-head"><h2>Traffic mix</h2><span class="p-note">share of calls</span></div>
+        <div id="mixBars"></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="p-head"><h2>Events</h2><span class="p-note" id="evCount"></span></div>
+      <div class="filters">
+        <div class="pills" id="kindPills">
+          <button type="button" data-k="all" class="active">All</button>
+          <button type="button" data-k="ai_call">AI</button>
+          <button type="button" data-k="stt_mint">Voice</button>
+        </div>
+        <div class="pills" id="featPills">
+          <button type="button" data-f="all" class="active">All features</button>
+          <button type="button" data-f="vision">Vision</button>
+          <button type="button" data-f="text">Text</button>
+        </div>
+        <select id="modelSel" aria-label="Filter by model"><option value="all">All models</option></select>
+        <input id="q" type="search" placeholder="Search identity…" aria-label="Search identity">
+        <button type="button" id="resetF" class="gbtn">Reset</button>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl" id="tbl">
+          <thead><tr>
+            <th data-c="ts">Time</th>
+            <th data-c="kind">Kind</th>
+            <th data-c="provider">Provider</th>
+            <th data-c="model">Model</th>
+            <th data-c="feature">Feature</th>
+            <th data-c="i" class="num">In tok</th>
+            <th data-c="o" class="num">Out tok</th>
+            <th data-c="cost" class="num">Est. cost</th>
+            <th data-c="id">Identity</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="tbl-foot"><button type="button" id="moreBtn" class="gbtn hide">Show more</button></div>
+      <div class="rowcount" id="rowCount"></div>
+    </section>
+
+    <div class="grid g-3">
+      <section class="panel">
+        <div class="p-head"><h2>Top consumers</h2><span class="p-note">this range · by tokens</span></div>
+        <div id="topList"></div>
+      </section>
+      <section class="panel">
+        <div class="p-head"><h2>Monthly history</h2><span class="p-note">aggregate counters</span></div>
+        <div id="histList"></div>
+      </section>
+      <section class="panel">
+        <div class="p-head"><h2>Pricing</h2><span class="p-note">editable · recomputes everything</span></div>
+        <div id="priceBox"></div>
+        <div class="price-actions">
+          <button type="button" id="priceReset" class="gbtn">Reset defaults</button>
+        </div>
+        <p class="price-hint">USD per 1M tokens, saved in this browser only. Cross-check the real rates: ai.google.dev/pricing · anthropic.com/pricing. FX is USD→MYR for display.</p>
+      </section>
+    </div>
+
+    <p class="sources">Sources: <code>usage_events</code> (per-call rows, since the tracker shipped) · <code>ai_proxy_usage</code> (monthly counters, since Jun 2026) · <code>admin_user_stats()</code> (users &amp; receipts, point in time). Estimates ≠ invoice.</p>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="tip hide" id="tip"></div>
+
+<footer class="footer"><span>© 2026 Potraces · internal ops</span></footer>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+/* Public anon key — admin RLS + is_admin() gate every read. NEVER the service_role key. */
+const SB_URL = 'https://jngmanwvhbpkpkeklfiv.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZ21hbnd2aGJwa3BrZWtsZml2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMDQxODYsImV4cCI6MjA5OTU4MDE4Nn0.T36knLFwrWBtd-h-37Q-dQrlMNdfk0jeSJOQP_ch5bE';
+const REDIRECT_TO = location.origin + '/ops.html';
+
+const sb = createClient(SB_URL, SB_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' }
+});
+
+const $ = (id) => document.getElementById(id);
+const loadingState=$('loadingState'), signinState=$('signinState'), denyState=$('denyState'), dashState=$('dashState');
+const googleBtn=$('googleBtn'), magicForm=$('magicForm'), magicBtn=$('magicBtn'), magicEmail=$('magicEmail'), signinMsg=$('signinMsg');
+const signoutBtn=$('signoutBtn'), signoutBtn2=$('signoutBtn2'), denyEmail=$('denyEmail');
+const kpisEl=$('kpis'), dailyChartEl=$('dailyChart'), dailyXEl=$('dailyX'), modelBarsEl=$('modelBars'), modelNoteEl=$('modelNote'), mixBarsEl=$('mixBars');
+const tbodyEl=$('tbody'), evCountEl=$('evCount'), rowCountEl=$('rowCount'), moreBtn=$('moreBtn');
+const kindPills=$('kindPills'), featPills=$('featPills'), modelSel=$('modelSel'), qInput=$('q'), resetFBtn=$('resetF');
+const topListEl=$('topList'), histListEl=$('histList'), priceBoxEl=$('priceBox'), priceResetBtn=$('priceReset');
+const refreshBtn=$('refreshBtn'), cdEl=$('cd'), stampEl=$('stamp'), curBtn=$('curBtn'), toastEl=$('toast'), tipEl=$('tip');
+
+function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+function escA(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function setMsg(el,text,kind){ el.textContent=text; el.className='msg show '+(kind||'warn'); }
+function clearMsg(el){ el.textContent=''; el.className='msg'; }
+let toastT;
+function toast(text){ toastEl.textContent=text; toastEl.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove('show'),2200); }
+function show(state){
+  [loadingState,signinState,denyState,dashState].forEach(s=>s.classList.add('hide'));
+  state.classList.remove('hide');
+  signoutBtn.classList.toggle('hide', state!==dashState);
+}
+
+/* ── auth ── */
+googleBtn.addEventListener('click', async () => {
+  clearMsg(signinMsg); googleBtn.disabled=true;
+  const { error } = await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo:REDIRECT_TO, queryParams:{ access_type:'offline', prompt:'select_account' } } });
+  if (error){ googleBtn.disabled=false; setMsg(signinMsg,'Could not start Google sign-in. Try the email link.'); }
+});
+magicForm.addEventListener('submit', async (e) => {
+  e.preventDefault(); clearMsg(signinMsg);
+  const email=(magicEmail.value||'').trim();
+  if(!/\S+@\S+\.\S+/.test(email)){ setMsg(signinMsg,'Enter a valid email.'); return; }
+  magicBtn.disabled=true;
+  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo:REDIRECT_TO, shouldCreateUser:true } });
+  magicBtn.disabled=false;
+  if(error){ setMsg(signinMsg,'Could not send the link. Try again.'); return; }
+  setMsg(signinMsg,'Check your email for the sign-in link.','ok'); magicForm.reset();
+});
+async function doSignOut(){ await sb.auth.signOut(); show(signinState); }
+signoutBtn.addEventListener('click', doSignOut);
+signoutBtn2.addEventListener('click', doSignOut);
+
+/* ═══════════════ PRICING (editable, persisted locally, drives every $ figure) ═══════════════ */
+const DEFAULT_PRICE = {
+  'gemini-3.1-flash-lite':     { i: 0.10, o: 0.40 },
+  'gemini-3.5-flash':          { i: 0.30, o: 2.50 },
+  'claude-haiku-4-5-20251001': { i: 1.00, o: 5.00 },
+  'claude-sonnet-4-6':         { i: 3.00, o: 15.00 },
+};
+const DEFAULT_FALLBACK = { i: 0.30, o: 2.50 };
+const DEFAULT_FX = 4.70;
+let PRICE = { ...DEFAULT_PRICE }, FALLBACK = { ...DEFAULT_FALLBACK }, FX = DEFAULT_FX, CUR = 'USD';
+try {
+  const saved = JSON.parse(localStorage.getItem('ops_pricing_v1') || 'null');
+  if (saved) {
+    if (saved.models) PRICE = { ...DEFAULT_PRICE, ...saved.models };
+    if (saved.fallback) FALLBACK = { ...saved.fallback };
+    if (saved.fx > 0) FX = saved.fx;
+    if (saved.cur === 'MYR' || saved.cur === 'USD') CUR = saved.cur;
+  }
+} catch { /* fresh start */ }
+function savePricing(){
+  try { localStorage.setItem('ops_pricing_v1', JSON.stringify({ models:PRICE, fallback:FALLBACK, fx:FX, cur:CUR })); } catch { /* noop */ }
+}
+function rateFor(m){ return PRICE[m] || FALLBACK; }
+function evUsd(e){
+  if (e.kind !== 'ai_call') return 0;
+  const r = rateFor(e.model);
+  return (Number(e.input_tokens||0)/1e6)*r.i + (Number(e.output_tokens||0)/1e6)*r.o;
+}
+function money(usd, digits){
+  const d = digits == null ? 2 : digits;
+  return CUR === 'MYR' ? 'RM' + (usd*FX).toFixed(d) : '$' + usd.toFixed(d);
+}
+function altMoney(usd){ return CUR === 'MYR' ? '$' + usd.toFixed(2) : 'RM' + (usd*FX).toFixed(2); }
+
+/* ═══════════════ FORMATS / TIME (everything displayed in MYT) ═══════════════ */
+const MYT = 'Asia/Kuala_Lumpur';
+const dayFmt  = new Intl.DateTimeFormat('en-MY',{ timeZone:MYT, day:'numeric', month:'short' });
+const timeFmt = new Intl.DateTimeFormat('en-MY',{ timeZone:MYT, hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+const monthFmt= new Intl.DateTimeFormat('en-MY',{ timeZone:MYT, month:'short', year:'numeric' });
+function fmtNum(n){ return Number(n||0).toLocaleString('en-US'); }
+function shortNum(n){ n=Number(n)||0; if(n>=1e6) return (n/1e6).toFixed(1)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'k'; return String(n); }
+function dayKey(iso){ return new Date(iso).toLocaleDateString('en-CA',{ timeZone:MYT }); }
+function mytParts(d){
+  const p = new Intl.DateTimeFormat('en-CA',{ timeZone:MYT, year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(d);
+  const g = (t) => Number(p.find(x=>x.type===t).value);
+  return { y:g('year'), m:g('month'), d:g('day') };
+}
+function mytMidnight(y,m,d){ return new Date(Date.UTC(y, m-1, d, -8)); } // MYT = UTC+8, no DST
+function utcPeriod(){ const d=new Date(); return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`; }
+function shortId(id){
+  if (!id) return '—';
+  const bare = String(id).replace(/^user:/,'');
+  if (bare.startsWith('dev:')) return 'dev '+bare.slice(4,10)+'…';
+  return bare.slice(0,8)+'…';
+}
+
+/* ═══════════════ STATE ═══════════════ */
+const REFRESH_S = 60;
+let cd = REFRESH_S, loading = false, modelSig = '', priceSig = '', dailyData = [];
+const state = { range:'month', kind:'all', feature:'all', model:'all', q:'', sort:{ c:'ts', dir:-1 }, shown:100 };
+const store = { authed:false, ok:false, stats:{}, agg:[], cur:[], prev:[], rangeStart:null };
+
+function rangeStart(range, now){
+  const { y, m, d } = mytParts(now);
+  if (range === 'today') return mytMidnight(y,m,d);
+  if (range === 'month') return mytMidnight(y,m,1);
+  return new Date(now.getTime() - (range === '7d' ? 7 : 30) * 864e5);
+}
+
+/* ═══════════════ LOAD ═══════════════ */
+async function loadAll(manual){
+  if (!store.authed || loading) return;
+  loading = true;
+  if (manual) refreshBtn.classList.add('spin');
+  const now = new Date();
+  const start = rangeStart(state.range, now);
+  // Fetch one extra equal-length window behind the range so ▲▼ deltas have a "previous" to compare with.
+  const fetchGte = new Date(start.getTime() - (now.getTime() - start.getTime())).toISOString();
+  const startIso = start.toISOString();
+  const [statsRes, aggRes, evRes] = await Promise.all([
+    sb.rpc('admin_user_stats'),
+    sb.from('ai_proxy_usage').select('identity,period,input_tokens,output_tokens,calls'),
+    sb.from('usage_events').select('identity,kind,provider,model,feature,input_tokens,output_tokens,created_at')
+      .gte('created_at', fetchGte).order('created_at', { ascending:false }).limit(8000),
+  ]);
+  loading = false;
+  refreshBtn.classList.remove('spin');
+  if (statsRes.error){
+    toast('Could not load: ' + (statsRes.error.message || 'unknown error'));
+    if (!store.ok) kpisEl.innerHTML = `<div class="empty" style="grid-column:1/-1">Could not load usage data.<br>${esc(statsRes.error.message || '')}</div>`;
+    return;
+  }
+  store.stats = statsRes.data || {};
+  store.agg = aggRes.data || [];
+  const ev = evRes.error ? [] : (evRes.data || []);
+  store.rangeStart = startIso;
+  store.cur  = ev.filter(e => e.created_at >= startIso);
+  store.prev = ev.filter(e => e.created_at <  startIso);
+  store.ok = true;
+  stampEl.textContent = 'Updated ' + timeFmt.format(new Date()) + ' MYT';
+  cd = REFRESH_S; cdEl.textContent = cd;
+  renderAll();
+}
+
+/* ═══════════════ RENDER ═══════════════ */
+function renderAll(){
+  if (!store.ok) return;
+  renderKpis();
+  renderDaily();
+  renderModels();
+  renderMix();
+  renderModelOptions();
+  renderTable();
+  renderTop();
+  renderHistory();
+  renderPricing();
+}
+function rerenderCosts(){ // pricing/currency changed — everything except the editor itself
+  renderKpis(); renderModels(); renderTable(); renderTop(); renderHistory();
+}
+
+/* ── KPI cards ── */
+function deltaChip(cur, prev){
+  if (!prev) return `<span class="k-delta flat">—</span>`;
+  const pct = ((cur - prev) / prev) * 100;
+  if (!isFinite(pct)) return `<span class="k-delta flat">—</span>`;
+  const up = pct >= 0;
+  return `<span class="k-delta ${up?'up':'dn'}">${up?'▲':'▼'} ${Math.abs(pct).toFixed(0)}%</span>`;
+}
+function spark(values, color){
+  if (!values.length || values.every(v=>!v)) return '<span></span>';
+  const w=72, h=22, max=Math.max(...values,1);
+  const step = values.length>1 ? w/(values.length-1) : w;
+  const pts = values.map((v,i)=>`${(i*step).toFixed(1)},${(h-2-(v/max)*(h-5)).toFixed(1)}`).join(' ');
+  return `<svg class="k-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${pts}" fill="none" style="stroke:${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+function seriesByDay(events){
+  const now = new Date(), start = new Date(store.rangeStart);
+  const sp = mytParts(start), np = mytParts(now);
+  const days = [];
+  let cur = mytMidnight(sp.y, sp.m, sp.d);
+  const end = mytMidnight(np.y, np.m, np.d);
+  let guard = 0;
+  while (cur <= end && guard++ < 400){ days.push(new Date(cur)); cur = new Date(cur.getTime() + 864e5); }
+  const map = new Map(days.map(d => [dayKey(d), { key:dayKey(d), label:dayFmt.format(d), vision:0, text:0, voice:0, calls:0, usd:0 }]));
+  for (const e of events){
+    const row = map.get(dayKey(e.created_at));
+    if (!row) continue;
+    if (e.kind === 'stt_mint') row.voice++;
+    else if (e.feature === 'vision') row.vision++;
+    else row.text++;
+    row.calls++;
+    row.usd += evUsd(e);
+  }
+  return [...map.values()];
+}
+function kpiCard(o){
+  return `<div class="kpi ${o.tap?'tappable':''}" ${o.tap?`data-tap="${escA(o.tap)}" role="button" tabindex="0"`:''}>
+    <div class="k-label">${esc(o.label)}${o.info?`<i class="k-info" title="${escA(o.info)}">ⓘ</i>`:''}</div>
+    <div class="k-value">${o.value}</div>
+    <div class="k-sub">${o.sub||''}</div>
+    <div class="k-foot">${o.spark||''}${o.delta||''}</div>
+    ${o.tap?'<span class="k-tap">filter&nbsp;→</span>':''}
+  </div>`;
+}
+function renderKpis(){
+  const s = store.stats, cur = store.cur, prev = store.prev;
+  const ai = cur.filter(e=>e.kind==='ai_call'), aiPrev = prev.filter(e=>e.kind==='ai_call');
+  let usd = ai.reduce((a,e)=>a+evUsd(e),0);
+  const usdPrev = aiPrev.reduce((a,e)=>a+evUsd(e),0);
+  const tin  = ai.reduce((a,e)=>a+Number(e.input_tokens||0),0);
+  const tout = ai.reduce((a,e)=>a+Number(e.output_tokens||0),0);
+  const tinP = aiPrev.reduce((a,e)=>a+Number(e.input_tokens||0),0);
+  const toutP= aiPrev.reduce((a,e)=>a+Number(e.output_tokens||0),0);
+  const vision = ai.filter(e=>e.feature==='vision').length;
+  const voice = cur.filter(e=>e.kind==='stt_mint').length;
+  const days = seriesByDay(cur);
+
+  const period = utcPeriod();
+  const aggCur = store.agg.filter(r=>r.period===period);
+  const aggCalls = aggCur.reduce((a,r)=>a+(r.calls||0),0);
+  const aggIn  = aggCur.reduce((a,r)=>a+Number(r.input_tokens||0),0);
+  const aggOut = aggCur.reduce((a,r)=>a+Number(r.output_tokens||0),0);
+
+  // Cost: prefer tracked per-call math; fall back to a blended estimate over the
+  // monthly counters when the range has no tracked calls yet.
+  const tracked = ai.length > 0;
+  let costSub;
+  if (tracked){
+    costSub = `≈ ${altMoney(usd)} · ${fmtNum(ai.length)} calls tracked`;
+  } else if (state.range==='month' && (aggIn+aggOut) > 0){
+    usd = (aggIn/1e6)*FALLBACK.i + (aggOut/1e6)*FALLBACK.o;
+    costSub = `≈ ${altMoney(usd)} · blended (untracked counters)`;
+  } else {
+    costSub = 'no tracked calls in range yet';
+  }
+
+  kpisEl.innerHTML =
+    kpiCard({ label:'Est. cost', value:money(usd,2), sub:costSub, delta:deltaChip(usd,usdPrev),
+      spark:spark(days.map(d=>d.usd),'var(--sage)'), tap:'kind:all',
+      info:'Tracked tokens × editable rates (see Pricing panel). Estimate — provider consoles are the bill of record.' }) +
+    kpiCard({ label:'AI calls', value:fmtNum(ai.length), sub:`${fmtNum(aggCalls)} this calendar month incl. untracked`,
+      delta:deltaChip(ai.length, aiPrev.length), spark:spark(days.map(d=>d.calls),'var(--sage)'), tap:'kind:ai_call',
+      info:'Count of usage_events rows kind=ai_call in range. The monthly counter (ai_proxy_usage) also covers calls from before per-call tracking shipped.' }) +
+    kpiCard({ label:'Tokens', value:shortNum(tin+tout), sub:`${shortNum(tin)} in · ${shortNum(tout)} out`,
+      delta:deltaChip(tin+tout, tinP+toutP), spark:spark(days.map(d=>d.calls),'var(--blue)'), tap:'kind:ai_call',
+      info:'Sum of prompt + completion tokens reported by the provider for tracked calls.' }) +
+    kpiCard({ label:'Vision calls', value:fmtNum(vision), sub:'receipt &amp; document scans',
+      spark:spark(days.map(d=>d.vision),'var(--blue)'), tap:'feature:vision',
+      info:'AI calls whose payload contained an image (inline_data) — receipt scans, statement parsing, photo captures.' }) +
+    kpiCard({ label:'Voice mints', value:fmtNum(voice), sub:'live voice sessions started',
+      spark:spark(days.map(d=>d.voice),'var(--amber)'), tap:'kind:stt_mint',
+      info:'Short-lived speech-to-text tokens minted (Soniox / Deepgram / Gemini Live). Counts sessions started, not minutes.' }) +
+    kpiCard({ label:'Users', value:fmtNum(s.total_users), sub:`+${fmtNum(s.new_users_this_month)} this month · ${fmtNum(s.active_users_30d)} active 30d`,
+      info:'auth.users via admin_user_stats(). Active = signed in within the last 30 days. Point in time, not range-scoped.' }) +
+    kpiCard({ label:'Receipts stored', value:fmtNum(s.receipts_total), sub:`+${fmtNum(s.receipts_this_month)} this month`,
+      info:'Live rows in personal_receipts (soft-deletes excluded) — receipts that synced to the cloud.' });
+}
+
+/* ── daily activity chart ── */
+function renderDaily(){
+  dailyData = seriesByDay(store.cur);
+  const max = Math.max(...dailyData.map(d=>d.calls), 0);
+  const todayK = dayKey(new Date());
+  if (max === 0){
+    dailyChartEl.innerHTML = `<div class="empty" style="width:100%">No tracked calls in this range yet.<br>Per-call tracking just shipped — bars appear as calls happen.</div>`;
+    dailyXEl.innerHTML = '';
+    return;
+  }
+  dailyChartEl.innerHTML = dailyData.map((d,i) => {
+    const seg = (n, color) => n ? `<div class="seg" style="height:${Math.max(n/max*100, 3)}%;background:${color}"></div>` : '';
+    return `<div class="bar-g ${d.key===todayK?'today':''}" data-i="${i}">${seg(d.vision,'var(--blue)')}${seg(d.text,'var(--sage)')}${seg(d.voice,'var(--amber)')}</div>`;
+  }).join('');
+  const nth = Math.max(1, Math.ceil(dailyData.length / 8));
+  dailyXEl.innerHTML = dailyData.map((d,i) => `<span>${(i % nth === 0 || i === dailyData.length-1) ? esc(d.label) : '&nbsp;'}</span>`).join('');
+}
+dailyChartEl.addEventListener('mousemove', (e) => {
+  const g = e.target.closest('.bar-g');
+  if (!g){ tipEl.classList.add('hide'); return; }
+  const d = dailyData[Number(g.getAttribute('data-i'))];
+  if (!d){ tipEl.classList.add('hide'); return; }
+  tipEl.innerHTML = `<b>${esc(d.label)}</b><br>${d.calls} calls — vision ${d.vision} · text ${d.text} · voice ${d.voice}<br>est ${money(d.usd, d.usd < 0.01 && d.usd > 0 ? 4 : 2)}`;
+  tipEl.classList.remove('hide');
+  const pad = 14, r = tipEl.getBoundingClientRect();
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + r.width > innerWidth - 8) x = e.clientX - r.width - pad;
+  if (y + r.height > innerHeight - 8) y = e.clientY - r.height - pad;
+  tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px';
+});
+dailyChartEl.addEventListener('mouseleave', () => tipEl.classList.add('hide'));
+
+/* ── cost by model ── */
+function renderModels(){
+  const ai = store.cur.filter(e=>e.kind==='ai_call');
+  modelNoteEl.textContent = `${fmtNum(ai.length)} calls tracked`;
+  if (!ai.length){
+    modelBarsEl.innerHTML = `<div class="empty">No per-call data in this range yet.<br>Monthly totals still show on the cards above.</div>`;
+    return;
+  }
+  const per = new Map();
+  for (const e of ai){
+    const m = e.model || '(unknown)';
+    const row = per.get(m) || { calls:0, i:0, o:0, usd:0, fb:!PRICE[m] };
+    row.calls++; row.i += Number(e.input_tokens||0); row.o += Number(e.output_tokens||0); row.usd += evUsd(e);
+    per.set(m, row);
+  }
+  const rows = [...per.entries()].sort((a,b)=>b[1].usd-a[1].usd);
+  const totalUsd = rows.reduce((a,[,r])=>a+r.usd,0);
+  const maxUsd = Math.max(...rows.map(([,r])=>r.usd), 1e-12);
+  modelBarsEl.innerHTML = rows.map(([m,r]) => {
+    const pct = totalUsd ? (r.usd/totalUsd*100) : 0;
+    return `<div class="hrow">
+      <div class="hrow-top"><span class="hrow-name" title="${escA(m)}">${esc(m)}</span><span class="hrow-val">${money(r.usd, r.usd<1?4:2)}</span></div>
+      <div class="hbar"><i style="width:${(r.usd/maxUsd*100).toFixed(1)}%"></i></div>
+      <div class="hrow-sub">${fmtNum(r.calls)} calls · ${shortNum(r.i)} in · ${shortNum(r.o)} out · ${pct.toFixed(0)}% of tracked cost${r.fb?' · fallback rate':''}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── traffic mix ── */
+function renderMix(){
+  const cur = store.cur;
+  const vision = cur.filter(e=>e.kind==='ai_call' && e.feature==='vision').length;
+  const text   = cur.filter(e=>e.kind==='ai_call' && e.feature!=='vision').length;
+  const voice  = cur.filter(e=>e.kind==='stt_mint').length;
+  const total = vision + text + voice;
+  if (!total){ mixBarsEl.innerHTML = `<div class="empty">Nothing tracked in this range yet.</div>`; return; }
+  const row = (label, n, color) => `
+    <div class="hrow-top" style="margin-top:10px"><span class="hrow-name"><i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${color};margin-right:7px"></i>${label}</span><span class="hrow-val dim">${fmtNum(n)} · ${(n/total*100).toFixed(0)}%</span></div>`;
+  mixBarsEl.innerHTML =
+    `<div class="mixbar">
+      <i style="width:${(vision/total*100).toFixed(1)}%;background:var(--blue)"></i>
+      <i style="width:${(text/total*100).toFixed(1)}%;background:var(--sage)"></i>
+      <i style="width:${(voice/total*100).toFixed(1)}%;background:var(--amber)"></i>
+    </div>` +
+    row('Vision (receipt &amp; doc scans)', vision, 'var(--blue)') +
+    row('Text (chat, parse, categorize)', text, 'var(--sage)') +
+    row('Voice sessions', voice, 'var(--amber)');
+}
+
+/* ── events table ── */
+function filteredEvents(){
+  let rows = store.cur;
+  if (state.kind !== 'all') rows = rows.filter(e => e.kind === state.kind);
+  if (state.feature !== 'all') rows = rows.filter(e => e.kind === 'ai_call' && e.feature === state.feature);
+  if (state.model !== 'all') rows = rows.filter(e => (e.model || '(unknown)') === state.model);
+  if (state.q) rows = rows.filter(e => (e.identity || '').toLowerCase().includes(state.q));
+  return rows;
+}
+function sortRows(rows){
+  const { c, dir } = state.sort;
+  const val = (e) =>
+    c==='ts' ? e.created_at :
+    c==='kind' ? e.kind :
+    c==='provider' ? (e.provider||'') :
+    c==='model' ? (e.model||'') :
+    c==='feature' ? (e.feature||'') :
+    c==='i' ? Number(e.input_tokens||0) :
+    c==='o' ? Number(e.output_tokens||0) :
+    c==='cost' ? evUsd(e) : (e.identity||'');
+  return [...rows].sort((a,b)=>{ const va=val(a), vb=val(b); return (va<vb?-1:va>vb?1:0)*dir; });
+}
+function rowHtml(e){
+  const d = new Date(e.created_at);
+  const kind = e.kind==='stt_mint' ? '<span class="chip c-voice">voice</span>' : '<span class="chip c-ai">ai</span>';
+  const feat = e.kind==='stt_mint' ? '—' : (e.feature==='vision' ? '<span class="chip c-vision">vision</span>' : '<span class="chip c-text">text</span>');
+  const usd = evUsd(e);
+  return `<tr>
+    <td title="${escA(d.toLocaleString('en-MY',{ timeZone:MYT }))} MYT">${esc(dayFmt.format(d))} · ${esc(timeFmt.format(d))}</td>
+    <td>${kind}</td>
+    <td>${esc(e.provider||'—')}</td>
+    <td>${esc(e.model||'—')}</td>
+    <td>${feat}</td>
+    <td class="num">${e.kind==='stt_mint'?'—':fmtNum(e.input_tokens)}</td>
+    <td class="num">${e.kind==='stt_mint'?'—':fmtNum(e.output_tokens)}</td>
+    <td class="num cost">${e.kind==='stt_mint'?'—':money(usd, usd<0.01&&usd>0?4:2)}</td>
+    <td title="${escA(e.identity)}">${esc(shortId(e.identity))}</td>
+  </tr>`;
+}
+function renderTable(){
+  const rows = sortRows(filteredEvents());
+  const shown = rows.slice(0, state.shown);
+  tbodyEl.innerHTML = shown.map(rowHtml).join('') ||
+    `<tr><td colspan="9" style="text-align:center;color:var(--ink-25);padding:28px">No events match these filters.</td></tr>`;
+  evCountEl.textContent = `${fmtNum(rows.length)} matching · ${fmtNum(store.cur.length)} tracked in range`;
+  rowCountEl.textContent = rows.length > state.shown ? `showing ${fmtNum(state.shown)} of ${fmtNum(rows.length)}` : (rows.length ? `${fmtNum(rows.length)} rows` : '');
+  moreBtn.classList.toggle('hide', rows.length <= state.shown);
+  document.querySelectorAll('#tbl th').forEach(th => {
+    const c = th.getAttribute('data-c');
+    const on = c === state.sort.c;
+    th.classList.toggle('sorted', on);
+    th.innerHTML = esc(th.dataset.label || th.textContent) + (on ? `<span class="arw">${state.sort.dir===1?'▲':'▼'}</span>` : '');
+  });
+}
+
+/* ── top consumers ── */
+function renderTop(){
+  const per = new Map();
+  for (const e of store.cur){
+    const id = e.identity || '(unknown)';
+    const row = per.get(id) || { calls:0, t:0, usd:0 };
+    row.calls++; row.t += Number(e.input_tokens||0) + Number(e.output_tokens||0); row.usd += evUsd(e);
+    per.set(id, row);
+  }
+  const rows = [...per.entries()].sort((a,b)=>b[1].t-a[1].t).slice(0,8);
+  if (!rows.length){ topListEl.innerHTML = `<div class="empty">No usage in this range yet.</div>`; return; }
+  const maxT = Math.max(...rows.map(([,r])=>r.t), 1);
+  topListEl.innerHTML = rows.map(([id,r]) => `
+    <div class="hrow">
+      <div class="hrow-top"><span class="hrow-name" title="${escA(id)}">${esc(shortId(id))}</span><span class="hrow-val dim">${shortNum(r.t)} tok</span></div>
+      <div class="hbar"><i style="width:${(r.t/maxT*100).toFixed(1)}%"></i></div>
+      <div class="hrow-sub">${fmtNum(r.calls)} calls · est ${money(r.usd, r.usd<0.01&&r.usd>0?4:2)}</div>
+    </div>`).join('');
+}
+
+/* ── monthly history (aggregate counters — pre-date per-call tracking) ── */
+function renderHistory(){
+  const byP = new Map();
+  for (const r of store.agg){
+    const row = byP.get(r.period) || { calls:0, i:0, o:0 };
+    row.calls += r.calls||0; row.i += Number(r.input_tokens||0); row.o += Number(r.output_tokens||0);
+    byP.set(r.period, row);
+  }
+  const rows = [...byP.entries()].sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6);
+  if (!rows.length){ histListEl.innerHTML = `<div class="empty">No usage history yet.</div>`; return; }
+  const curP = utcPeriod();
+  const trackedUsd = store.cur.filter(e=>e.kind==='ai_call').reduce((a,e)=>a+evUsd(e),0);
+  histListEl.innerHTML = rows.map(([p,r]) => {
+    const blended = (r.i/1e6)*FALLBACK.i + (r.o/1e6)*FALLBACK.o;
+    const isCur = p === curP;
+    const tracked = isCur && trackedUsd > 0;
+    const usd = tracked ? trackedUsd : blended;
+    const label = monthFmt.format(new Date(p + '-02T00:00:00Z'));
+    return `<div class="hrow">
+      <div class="hrow-top"><span class="hrow-name">${esc(label)}</span><span class="hrow-val">${tracked?'':'~'}${money(usd,2)}</span></div>
+      <div class="hrow-sub">${fmtNum(r.calls)} calls · ${shortNum(r.i+r.o)} tokens · ${tracked?'tracked per call':'blended estimate'}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── pricing editor ── */
+function renderPricing(){
+  const models = [...new Set([...Object.keys(DEFAULT_PRICE), ...store.cur.filter(e=>e.kind==='ai_call').map(e=>e.model).filter(Boolean)])].sort();
+  const sig = models.join('|') + '|' + CUR;
+  if (sig === priceSig) return;
+  priceSig = sig;
+  const num = (attrs, val) => `<input type="number" min="0" step="0.05" ${attrs} value="${val}">`;
+  priceBoxEl.innerHTML = `<table class="price-tbl"><thead><tr><th>Model</th><th>In /1M</th><th>Out /1M</th></tr></thead><tbody>` +
+    models.map(m => `<tr><td title="${escA(m)}">${esc(m)}${PRICE[m]?'':' <span class="chip c-text">fallback</span>'}</td>
+      <td>${num(`data-pm="${escA(m)}" data-k="i"`, rateFor(m).i)}</td>
+      <td>${num(`data-pm="${escA(m)}" data-k="o"`, rateFor(m).o)}</td></tr>`).join('') +
+    `<tr><td>(fallback rate)</td><td>${num('data-pm="__fb" data-k="i"', FALLBACK.i)}</td><td>${num('data-pm="__fb" data-k="o"', FALLBACK.o)}</td></tr>` +
+    `<tr><td>USD → MYR</td><td colspan="2">${num('data-fx="1" style="text-align:left"', FX)}</td></tr>` +
+    `</tbody></table>`;
+}
+let priceT;
+priceBoxEl.addEventListener('input', (e) => {
+  const inp = e.target.closest('input');
+  if (!inp) return;
+  const v = parseFloat(inp.value);
+  if (!(v >= 0)) return;
+  if (inp.hasAttribute('data-fx')){ FX = v; }
+  else {
+    const m = inp.getAttribute('data-pm'), k = inp.getAttribute('data-k');
+    if (m === '__fb') FALLBACK[k] = v;
+    else { if (!PRICE[m]) PRICE[m] = { ...FALLBACK }; PRICE[m][k] = v; }
+  }
+  clearTimeout(priceT);
+  priceT = setTimeout(() => { savePricing(); rerenderCosts(); }, 250);
+});
+priceResetBtn.addEventListener('click', () => {
+  PRICE = { ...DEFAULT_PRICE }; FALLBACK = { ...DEFAULT_FALLBACK }; FX = DEFAULT_FX;
+  savePricing(); priceSig = ''; renderPricing(); rerenderCosts();
+  toast('Pricing reset to defaults');
+});
+
+/* ═══════════════ FILTER / SORT / TAP WIRING ═══════════════ */
+function syncPills(box, attr, val){
+  box.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.getAttribute('data-'+attr) === val));
+}
+kindPills.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-k]'); if (!b) return;
+  state.kind = b.getAttribute('data-k'); state.shown = 100;
+  syncPills(kindPills, 'k', state.kind); renderTable();
+});
+featPills.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-f]'); if (!b) return;
+  state.feature = b.getAttribute('data-f'); state.shown = 100;
+  syncPills(featPills, 'f', state.feature); renderTable();
+});
+modelSel.addEventListener('change', () => { state.model = modelSel.value; state.shown = 100; renderTable(); });
+let qT;
+qInput.addEventListener('input', () => {
+  clearTimeout(qT);
+  qT = setTimeout(() => { state.q = qInput.value.trim().toLowerCase(); state.shown = 100; renderTable(); }, 150);
+});
+resetFBtn.addEventListener('click', () => {
+  state.kind = 'all'; state.feature = 'all'; state.model = 'all'; state.q = ''; state.shown = 100;
+  syncPills(kindPills, 'k', 'all'); syncPills(featPills, 'f', 'all');
+  modelSel.value = 'all'; qInput.value = '';
+  renderTable(); toast('Filters reset');
+});
+moreBtn.addEventListener('click', () => { state.shown += 100; renderTable(); });
+
+function renderModelOptions(){
+  const models = [...new Set(store.cur.filter(e=>e.kind==='ai_call').map(e=>e.model||'(unknown)'))].sort();
+  const sig = models.join('|');
+  if (sig === modelSig) return;
+  modelSig = sig;
+  modelSel.innerHTML = '<option value="all">All models</option>' + models.map(m => `<option value="${escA(m)}">${esc(m)}</option>`).join('');
+  modelSel.value = [...modelSel.options].some(o => o.value === state.model) ? state.model : 'all';
+  state.model = modelSel.value;
+}
+
+/* KPI card tap → filter the table */
+function applyTap(tap){
+  const [k, v] = tap.split(':');
+  if (k === 'kind'){ state.kind = v; syncPills(kindPills, 'k', v); }
+  if (k === 'feature'){ state.feature = v; syncPills(featPills, 'f', v); state.kind = 'ai_call'; syncPills(kindPills, 'k', 'ai_call'); }
+  state.shown = 100;
+  renderTable();
+  document.getElementById('tbl').scrollIntoView({ behavior:'smooth', block:'start' });
+  toast('Filtered: ' + (k==='kind' ? (v==='all'?'all events':v==='ai_call'?'AI calls':'voice mints') : 'vision calls'));
+}
+kpisEl.addEventListener('click', (e) => {
+  const card = e.target.closest('.kpi.tappable'); if (!card) return;
+  applyTap(card.getAttribute('data-tap'));
+});
+kpisEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const card = e.target.closest('.kpi.tappable'); if (!card) return;
+  e.preventDefault(); applyTap(card.getAttribute('data-tap'));
+});
+
+/* range selector */
+document.querySelectorAll('.ranges button').forEach(b => b.addEventListener('click', () => {
+  if (state.range === b.getAttribute('data-r')) return;
+  state.range = b.getAttribute('data-r'); state.shown = 100;
+  document.querySelectorAll('.ranges button').forEach(x => {
+    const on = x === b;
+    x.classList.toggle('active', on);
+    x.setAttribute('aria-selected', String(on));
+  });
+  loadAll();
+}));
+
+/* sortable headers */
+document.querySelectorAll('#tbl th').forEach(th => {
+  th.dataset.label = th.textContent.trim();
+  th.addEventListener('click', () => {
+    const c = th.getAttribute('data-c');
+    if (state.sort.c === c) state.sort.dir *= -1;
+    else state.sort = { c, dir: c === 'ts' ? -1 : 1 };
+    renderTable();
+  });
+});
+
+/* currency toggle */
+curBtn.textContent = CUR;
+curBtn.addEventListener('click', () => {
+  CUR = CUR === 'USD' ? 'MYR' : 'USD';
+  curBtn.textContent = CUR;
+  savePricing(); renderAll();
+  toast('Showing ' + (CUR === 'USD' ? 'US dollars' : 'ringgit'));
+});
+
+/* auto-refresh (pauses when the tab is hidden) */
+refreshBtn.addEventListener('click', () => { cd = REFRESH_S; cdEl.textContent = cd; loadAll(true); });
+setInterval(() => {
+  if (document.hidden) return;
+  cd--;
+  if (cd <= 0){ loadAll(); return; }
+  cdEl.textContent = cd;
+}, 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) loadAll(); });
+
+/* ═══════════════ BOOT ═══════════════ */
+async function completePkceIfNeeded(){
+  if (location.search.includes('code=')){
+    try { await sb.auth.exchangeCodeForSession(window.location.href); } catch(e){}
+    history.replaceState({}, '', location.pathname);
+  }
+  if (location.hash.includes('error') || new URLSearchParams(location.search).get('error')){
+    history.replaceState({}, '', location.pathname);
+    setMsg(signinMsg,'That sign-in link expired or was already used. Request a new one.');
+  }
+}
+async function gate(session){
+  if (!session){ store.authed = false; show(signinState); return; }
+  const { data: isAdm, error } = await sb.rpc('is_admin');
+  if (error){ show(signinState); setMsg(signinMsg,'Could not verify access. Try again.'); return; }
+  if (isAdm === true){ store.authed = true; show(dashState); loadAll(); }
+  else { store.authed = false; denyEmail.textContent = session.user?.email || 'this account'; show(denyState); }
+}
+sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_OUT' || !session){ store.authed = false; show(signinState); }
+  else gate(session);
+});
+(async function boot(){
+  show(loadingState);
+  await completePkceIfNeeded();
+  const { data: { session } } = await sb.auth.getSession();
+  gate(session);
+})();
+</script>
+</body>
+</html>

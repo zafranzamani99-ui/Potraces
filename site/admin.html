@@ -86,6 +86,11 @@ main{flex:1;padding:32px 0 64px}
 .tablist .tab{border:none;border-bottom:none;margin-bottom:0;background:var(--ink-06);color:var(--ink-65);font-size:.9rem;font-weight:var(--fw-medium);padding:10px 20px;min-height:44px;border-radius:var(--radius-pill);transition:color var(--dur-fast) var(--ease-out),background var(--dur-fast) var(--ease-out)}
 .tablist .tab:hover{color:var(--ink)}
 .tablist .tab.active,.tablist .tab[aria-selected="true"]{background:var(--sage-pale);color:var(--sage-text);border-bottom:none}
+/* ops-console link — filled dark pill with arrow, signals "leaves this page" */
+.tablist a.tab{text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+.tablist .tab-ops{background:var(--ink);color:var(--on-ink)}
+.tablist .tab-ops:hover{background:var(--ink-panel-2);color:var(--on-ink)}
+.tablist .tab-ops svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 
 /* stat tiles — quiet mono figures in ink; JS emits <div class="stat"><b class="tnum">…</b><span>…</span></div> */
 .stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}
@@ -131,9 +136,6 @@ main{flex:1;padding:32px 0 64px}
 .loading{text-align:center;padding:50px 16px;color:var(--ink-45);font-family:var(--font-mono);font-size:.86rem}
 .loading .spinner{margin-bottom:14px}
 
-/* usage view — section labels between the row groups */
-.u-h{font-family:var(--font-mono);font-size:.78rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45);margin:28px 0 12px}
-
 /* colophon — pinned, centred internal line */
 .footer{margin-top:auto}
 .footer .container{text-align:center}
@@ -167,7 +169,7 @@ main{flex:1;padding:32px 0 64px}
       <span class="badge badge--sage" data-en="Internal · Dalaman" data-bm="Dalaman · Internal">Internal · Dalaman</span>
       <span class="console-eyebrow">Founder console</span>
       <h2 class="console-title">Beta <span class="accent-word">triage</span></h2>
-      <p class="console-sub">Tester reports, the launch waitlist, and live usage — in one place.</p>
+      <p class="console-sub">Tester reports and the launch waitlist — usage &amp; cost have their own ops console.</p>
     </div>
   </div>
 </section>
@@ -219,7 +221,7 @@ main{flex:1;padding:32px 0 64px}
         <div class="tablist" role="tablist" aria-label="Admin views">
           <button type="button" id="tabFeedback" class="tab active" role="tab" aria-selected="true">Beta feedback</button>
           <button type="button" id="tabWaitlist" class="tab" role="tab" aria-selected="false">Waitlist</button>
-          <button type="button" id="tabUsage" class="tab" role="tab" aria-selected="false">Usage</button>
+          <a class="tab tab-ops" href="/ops.html" target="_blank" rel="noopener" title="Open the live usage & cost console in a new tab">Usage console<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
         </div>
 
         <!-- feedback view -->
@@ -271,25 +273,6 @@ main{flex:1;padding:32px 0 64px}
           </div>
           <div id="wlList"></div>
         </div><!-- /waitlistView -->
-
-        <!-- usage view -->
-        <div id="usageView" class="hide">
-          <div class="head">
-            <h1>Usage &amp; cost</h1>
-            <p class="lead">Users, AI calls, and what they're likely costing. Cost figures are token-based estimates — the provider consoles (Google / Anthropic / Soniox) are the bill of record.</p>
-          </div>
-          <div class="stats" id="uStats"></div>
-          <div class="stats" id="uStats2"></div>
-          <div class="toolbar">
-            <button type="button" id="uRefreshBtn" class="refresh">Refresh</button>
-          </div>
-          <h2 class="u-h">By model · this month (tracked per call)</h2>
-          <div id="uModels"></div>
-          <h2 class="u-h">Top consumers · this month</h2>
-          <div id="uTop"></div>
-          <h2 class="u-h">History · by month (blended estimate)</h2>
-          <div id="uHistory"></div>
-        </div><!-- /usageView -->
       </section>
 
     </div>
@@ -322,14 +305,12 @@ const loadingState=$('loadingState'), signinState=$('signinState'), denyState=$(
 const googleBtn=$('googleBtn'), magicForm=$('magicForm'), magicBtn=$('magicBtn'), magicEmail=$('magicEmail'), signinMsg=$('signinMsg');
 const signoutBtn=$('signoutBtn'), signoutBtn2=$('signoutBtn2'), denyEmail=$('denyEmail');
 const listEl=$('list'), statsEl=$('stats'), fStatus=$('fStatus'), fSev=$('fSev'), fSearch=$('fSearch'), refreshBtn=$('refreshBtn'), flash=$('flash');
-const tabFeedback=$('tabFeedback'), tabWaitlist=$('tabWaitlist'), tabUsage=$('tabUsage'), feedbackView=$('feedbackView'), waitlistView=$('waitlistView'), usageView=$('usageView');
+const tabFeedback=$('tabFeedback'), tabWaitlist=$('tabWaitlist'), feedbackView=$('feedbackView'), waitlistView=$('waitlistView');
 const wlStatsEl=$('wlStats'), wlListEl=$('wlList'), wlSearch=$('wlSearch'), wlExportBtn=$('wlExportBtn'), wlRefreshBtn=$('wlRefreshBtn');
 const wlSendBtn=$('wlSendBtn'), wlSendCount=$('wlSendCount'), wlSendLabel=$('wlSendLabel');
-const uStatsEl=$('uStats'), uStats2El=$('uStats2'), uRefreshBtn=$('uRefreshBtn'), uModelsEl=$('uModels'), uTopEl=$('uTop'), uHistEl=$('uHistory');
 
 let allReports = [];
 let allWaitlist = [], wlLoaded = false;
-let usageLoaded = false;
 
 const STATUS = [['new','New'],['triaged','Looking into it'],['fixed','Fixed'],['wontfix','Noted'],['dup','Duplicate'],['done','Done']];
 const SEV = { idea:'Idea', minor:'Minor', major:'Annoying', blocker:'Blocks me' };
@@ -367,7 +348,7 @@ magicForm.addEventListener('submit', async (e) => {
   if(error){ setMsg(signinMsg,'Could not send the link. Try again.','warn'); return; }
   setMsg(signinMsg,'Check your email for the sign-in link.','ok'); magicForm.reset();
 });
-async function doSignOut(){ await sb.auth.signOut(); wlLoaded=false; usageLoaded=false; switchTab('feedback'); show(signinState); }
+async function doSignOut(){ await sb.auth.signOut(); wlLoaded=false; switchTab('feedback'); show(signinState); }
 signoutBtn.addEventListener('click', doSignOut);
 signoutBtn2.addEventListener('click', doSignOut);
 
@@ -481,9 +462,9 @@ fSev.addEventListener('change', render);
 fSearch.addEventListener('input', render);
 refreshBtn.addEventListener('click', loadAll);
 
-/* ── view tabs (feedback / waitlist / usage) ── */
+/* ── view tabs (feedback / waitlist); usage & cost live in ops.html (new tab) ── */
 function switchTab(which){
-  const tabs = { feedback:[tabFeedback,feedbackView], waitlist:[tabWaitlist,waitlistView], usage:[tabUsage,usageView] };
+  const tabs = { feedback:[tabFeedback,feedbackView], waitlist:[tabWaitlist,waitlistView] };
   for (const [k,[btn,view]] of Object.entries(tabs)){
     const on = k===which;
     btn.classList.toggle('active', on);
@@ -491,7 +472,6 @@ function switchTab(which){
     view.classList.toggle('hide', !on);
   }
   if (which==='waitlist' && !wlLoaded) loadWaitlist();
-  if (which==='usage' && !usageLoaded) loadUsage();
 }
 
 async function loadWaitlist(){
@@ -610,139 +590,10 @@ function exportWaitlistCsv(){
 
 tabFeedback.addEventListener('click', () => switchTab('feedback'));
 tabWaitlist.addEventListener('click', () => switchTab('waitlist'));
-tabUsage.addEventListener('click', () => switchTab('usage'));
-uRefreshBtn.addEventListener('click', loadUsage);
 wlSearch.addEventListener('input', renderWaitlist);
 wlRefreshBtn.addEventListener('click', loadWaitlist);
 wlExportBtn.addEventListener('click', exportWaitlistCsv);
 wlSendBtn.addEventListener('click', sendLaunchEmail);
-
-/* ── usage & cost view ── */
-/* PRICING — USD per 1M tokens. EDIT ME when provider rates change (last reviewed
-   2026-07-21). All cost figures on this page are ESTIMATES from tracked tokens;
-   the provider consoles are the bill of record. Unknown models use PRICE_FALLBACK. */
-const PRICE = {
-  'gemini-3.1-flash-lite':     { i: 0.10, o: 0.40 },
-  'gemini-3.5-flash':          { i: 0.30, o: 2.50 },
-  'claude-haiku-4-5-20251001': { i: 1.00, o: 5.00 },
-  'claude-sonnet-4-6':         { i: 3.00, o: 15.00 },
-};
-const PRICE_FALLBACK = { i: 0.30, o: 2.50 }; // blended guess for unknown models / aggregate history
-const USD_MYR = 4.70; // EDIT ME — display conversion only
-
-function monthStartIso(){ const d=new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString(); }
-function currentPeriod(){ const d=new Date(); return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`; }
-function fmtNum(n){ return Number(n||0).toLocaleString('en-US'); }
-function shortNum(n){ n=Number(n)||0; if(n>=1e6) return (n/1e6).toFixed(1)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'k'; return String(n); }
-function uTile(v,l){ return `<div class="stat"><b class="tnum">${v}</b><span>${l}</span></div>`; }
-function blendedUsd(i,o){ return (i/1e6)*PRICE_FALLBACK.i + (o/1e6)*PRICE_FALLBACK.o; }
-
-async function loadUsage(){
-  usageLoaded = true;
-  uStatsEl.innerHTML = uTile('…','loading'); uStats2El.innerHTML=''; uModelsEl.innerHTML=''; uTopEl.innerHTML=''; uHistEl.innerHTML='';
-  const [statsRes, aggRes, evRes] = await Promise.all([
-    sb.rpc('admin_user_stats'),
-    sb.from('ai_proxy_usage').select('identity,period,input_tokens,output_tokens,calls'),
-    sb.from('usage_events').select('kind,provider,model,feature,input_tokens,output_tokens,created_at')
-      .gte('created_at', monthStartIso()).order('created_at', { ascending:false }).limit(10000),
-  ]);
-  if (statsRes.error){
-    uStatsEl.innerHTML='';
-    uModelsEl.innerHTML = `<div class="empty">Could not load usage data.<br><small>${esc(statsRes.error.message)}</small></div>`;
-    return;
-  }
-  const s = statsRes.data || {};
-  const agg = aggRes.data || [];
-  const ev = evRes.data || [];
-  const period = currentPeriod();
-  const cur = agg.filter(r => r.period === period);
-  const callsMo = cur.reduce((a,r)=>a+(r.calls||0),0);
-  const inMo  = cur.reduce((a,r)=>a+Number(r.input_tokens||0),0);
-  const outMo = cur.reduce((a,r)=>a+Number(r.output_tokens||0),0);
-
-  const aiEvents = ev.filter(e => e.kind==='ai_call');
-  const sttEvents = ev.filter(e => e.kind==='stt_mint');
-  // Per-call events only exist since the proxy logging shipped; before that, fall
-  // back to a blended estimate over the aggregate monthly counters.
-  const tracked = aiEvents.length > 0;
-  const usdMo = tracked ? modelCost(aiEvents).usd : blendedUsd(inMo, outMo);
-
-  uStatsEl.innerHTML =
-    uTile(fmtNum(s.total_users),'Users total') +
-    uTile(fmtNum(s.new_users_this_month),'New this month') +
-    uTile(fmtNum(s.active_users_30d),'Active 30d') +
-    uTile(fmtNum(callsMo),'AI calls · mo') +
-    uTile(shortNum(inMo+outMo),'Tokens · mo') +
-    uTile('$'+usdMo.toFixed(2)+' <small style="font-size:.6em">≈RM'+(usdMo*USD_MYR).toFixed(0)+'</small>', 'Est. cost · mo'+(tracked?'':' · blended'));
-
-  uStats2El.innerHTML =
-    uTile(fmtNum(s.receipts_total),'Receipt scans · total') +
-    uTile(fmtNum(s.receipts_this_month),'Receipts · mo') +
-    uTile(fmtNum(aiEvents.filter(e=>e.feature==='vision').length),'Vision calls · mo') +
-    uTile(fmtNum(sttEvents.length),'Voice mints · mo');
-
-  renderModels(aiEvents, tracked);
-  renderTop(cur);
-  renderHistory(agg);
-}
-
-function modelCost(events){
-  const per = new Map(); let usd = 0;
-  for (const e of events){
-    const m = e.model || '(unknown)';
-    const p = PRICE[m] || PRICE_FALLBACK;
-    const c = (Number(e.input_tokens||0)/1e6)*p.i + (Number(e.output_tokens||0)/1e6)*p.o;
-    usd += c;
-    const row = per.get(m) || { calls:0, i:0, o:0, usd:0 };
-    row.calls++; row.i += Number(e.input_tokens||0); row.o += Number(e.output_tokens||0); row.usd += c;
-    per.set(m, row);
-  }
-  return { usd, per };
-}
-
-function renderModels(aiEvents, tracked){
-  if (!tracked){
-    uModelsEl.innerHTML = `<div class="empty">No per-call data yet — tracking started when the updated proxy was deployed.<br>Until calls accumulate, the totals above use the blended estimate.</div>`;
-    return;
-  }
-  const { per } = modelCost(aiEvents);
-  const rows = [...per.entries()].sort((a,b)=>b[1].usd-a[1].usd);
-  uModelsEl.innerHTML = rows.map(([m,r]) =>
-    `<article class="arow"><div class="arow-head"><span class="arow-email">${esc(m)}</span><span class="ri-date">$${r.usd.toFixed(4)} · RM${(r.usd*USD_MYR).toFixed(2)}</span></div>
-      <div class="ri-body">${fmtNum(r.calls)} calls · ${shortNum(r.i)} in · ${shortNum(r.o)} out</div></article>`).join('');
-}
-
-function shortId(id){
-  if (!id) return '—';
-  if (id.startsWith('dev:')) return 'device '+id.slice(4,12)+'…';
-  return id.slice(0,8)+'…';
-}
-
-function renderTop(cur){
-  const rows = cur
-    .map(r => ({ id:r.identity, calls:r.calls||0, t:Number(r.input_tokens||0)+Number(r.output_tokens||0) }))
-    .sort((a,b)=>b.t-a.t).slice(0,10);
-  if (!rows.length){ uTopEl.innerHTML = `<div class="empty">No usage yet this month.</div>`; return; }
-  uTopEl.innerHTML = rows.map(r =>
-    `<article class="arow"><div class="arow-head"><span class="arow-email">${esc(shortId(r.id))}</span><span class="ri-date">${shortNum(r.t)} tok</span></div>
-      <div class="ri-body">${fmtNum(r.calls)} calls this month</div></article>`).join('');
-}
-
-function renderHistory(agg){
-  const byP = new Map();
-  for (const r of agg){
-    const row = byP.get(r.period) || { calls:0, i:0, o:0 };
-    row.calls += r.calls||0; row.i += Number(r.input_tokens||0); row.o += Number(r.output_tokens||0);
-    byP.set(r.period, row);
-  }
-  const rows = [...byP.entries()].sort((a,b)=> b[0].localeCompare(a[0]));
-  if (!rows.length){ uHistEl.innerHTML = `<div class="empty">No usage history yet.</div>`; return; }
-  uHistEl.innerHTML = rows.map(([p,r]) => {
-    const usd = blendedUsd(r.i, r.o);
-    return `<article class="arow"><div class="arow-head"><span class="arow-email">${esc(p)}</span><span class="ri-date">~$${usd.toFixed(2)} · RM${(usd*USD_MYR).toFixed(2)}</span></div>
-      <div class="ri-body">${fmtNum(r.calls)} calls · ${shortNum(r.i+r.o)} tokens · blended estimate</div></article>`;
-  }).join('');
-}
 
 /* ── PKCE finish ── */
 async function completePkceIfNeeded(){
