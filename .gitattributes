@@ -1,0 +1,9 @@
+# Shell scripts and Xcode env files must keep LF line endings, even on
+# Windows checkouts (core.autocrlf=true). EAS Build uploads the local
+# working copy to macOS builders — CRLF in these files fails the build
+# with ".xcode.env: line N: command not found".
+*.sh text eol=lf
+gradlew text eol=lf
+gradlew.bat text eol=crlf
+ios/.xcode.env text eol=lf
+ios/.xcode.env.local text eol=lf
