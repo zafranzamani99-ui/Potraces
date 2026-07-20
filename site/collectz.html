@@ -18,7 +18,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#FEFDFB">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: https://jngmanwvhbpkpkeklfiv.supabase.co; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co">
 
 <title>Join the kutipan — Potraces Collectz</title>
 <meta name="description" content="Someone shared a Potraces Collectz group payment with you — check who's paid, then open it in the app to claim your spot.">
@@ -369,6 +369,42 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
 /* ════════════ Collectz session ════════════ */
 (function(){
   var SB_URL = 'https://jngmanwvhbpkpkeklfiv.supabase.co';
+
+  /* Club icon presets — mirrors src/constants/clubIcons.ts (Noto Emoji, Apache 2.0). */
+  var CLUB_PRESETS = {
+    badminton: 'assets/clubs/club00.png', futsal: 'assets/clubs/club01.png',
+    basketball: 'assets/clubs/club02.png', bowling: 'assets/clubs/club03.png',
+    tennis: 'assets/clubs/club04.png', volleyball: 'assets/clubs/club05.png',
+    pingpong: 'assets/clubs/club06.png', cycling: 'assets/clubs/club07.png',
+    makan: 'assets/clubs/club08.png', trip: 'assets/clubs/club09.png',
+    gift: 'assets/clubs/club10.png', stadium: 'assets/clubs/club11.png'
+  };
+  function clubImgSrc(imagePath){
+    if (!imagePath) return null;
+    if (imagePath.indexOf('preset:') === 0) return CLUB_PRESETS[imagePath.slice(7)] || null;
+    return SB_URL + '/storage/v1/object/public/collectz-images/' + imagePath;
+  }
+
+  /* Google Maps / Waze coords — mirrors src/utils/mapLink.ts (keep in lockstep). */
+  function parseMapCoords(url){
+    if (!url) return null;
+    var u = String(url).trim();
+    function ok(lat, lon){ return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && (lat !== 0 || lon !== 0); }
+    var m = u.match(/[?&]ll=(-?\d{1,2}(?:\.\d+)?)%2C(-?\d{1,3}(?:\.\d+)?)/i)
+         || u.match(/[?&]ll=(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/i);
+    if (m && ok(+m[1], +m[2])) return { lat: +m[1], lon: +m[2] };
+    m = u.match(/@(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/);
+    if (m && ok(+m[1], +m[2])) return { lat: +m[1], lon: +m[2] };
+    var keys = ['q','query','ll','daddr','destination','saddr'];
+    for (var i = 0; i < keys.length; i++) {
+      m = u.match(new RegExp('[?&]' + keys[i] + '=([^&]+)'));
+      if (!m) continue;
+      var dec; try { dec = decodeURIComponent(m[1]); } catch (e) { dec = m[1]; }
+      var c = dec.match(/(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)/);
+      if (c && ok(+c[1], +c[2])) return { lat: +c[1], lon: +c[2] };
+    }
+    return null;
+  }
   var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZ21hbnd2aGJwa3BrZWtsZml2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMDQxODYsImV4cCI6MjA5OTU4MDE4Nn0.T36knLFwrWBtd-h-37Q-dQrlMNdfk0jeSJOQP_ch5bE';
 
   var T = {
@@ -495,8 +531,11 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     var parts = DATA.participants || [];
     var pr = DATA.progress || {};
 
-    /* ── head card: title (+ settled badge), date/time, venue, pay-by ── */
-    var headHtml = '<h2 class="cz-title">' + esc(session.title || 'Collectz') + '</h2>';
+    /* ── head card: club image, title (+ settled badge), date/time, venue, pay-by ── */
+    var headHtml = '';
+    var imgSrc = clubImgSrc(session.image_path);
+    if (imgSrc) headHtml += '<img src="' + esc(imgSrc) + '" alt="" style="width:56px;height:56px;border-radius:28px;margin-bottom:8px">';
+    headHtml += '<h2 class="cz-title">' + esc(session.title || 'Collectz') + '</h2>';
     if (session.status === 'settled') {
       headHtml += '<span class="badge badge--sage">' + esc(s.settled) + '</span>';
     }
@@ -508,6 +547,19 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     var payBy = fmtDate(session.pay_by);
     if (payBy) rows += metaRow(s.payBy, esc(payBy));
     if (rows) headHtml += '<div class="cz-rows">' + rows + '</div>';
+    /* map preview (static via map-preview fn; falls back to plain link buttons) */
+    if (session.maps_url) {
+      var mc = parseMapCoords(session.maps_url);
+      var gUrl = mc ? ('https://www.google.com/maps/search/?api=1&query=' + mc.lat + ',' + mc.lon) : session.maps_url;
+      var wUrl = mc ? ('https://waze.com/ul?ll=' + mc.lat + ',' + mc.lon + '&navigate=yes') : session.maps_url;
+      if (mc) {
+        headHtml += '<img src="' + SB_URL + '/functions/v1/map-preview?lat=' + mc.lat + '&lon=' + mc.lon + '&w=600&h=300" alt="map" loading="lazy" style="width:100%;border-radius:12px;margin-top:8px;display:block">';
+      }
+      headHtml += '<div style="display:flex;gap:8px;margin-top:8px">'
+        + '<a href="' + esc(gUrl) + '" target="_blank" rel="noopener" style="flex:1;text-align:center;padding:8px;border-radius:8px;background:rgba(79,81,4,.08);color:var(--olive,#4F5104);text-decoration:none;font-size:13px;font-weight:600">Google Maps</a>'
+        + '<a href="' + esc(wUrl) + '" target="_blank" rel="noopener" style="flex:1;text-align:center;padding:8px;border-radius:8px;background:rgba(79,81,4,.08);color:var(--olive,#4F5104);text-decoration:none;font-size:13px;font-weight:600">Waze</a>'
+        + '</div>';
+    }
     els.head.innerHTML = headHtml;
 
     /* ── progress card ── */

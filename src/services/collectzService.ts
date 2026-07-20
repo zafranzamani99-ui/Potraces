@@ -10,6 +10,7 @@
 //     direct access is limited to their own participant row (proof upload +
 //     status). Proofs live in the private `collectz-proofs` bucket.
 import { supabasePersonal as supabase } from './supabase';
+import { startOfWeek } from 'date-fns';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { computeShares, computeProgress } from './collectzMath';
 
@@ -40,6 +41,12 @@ export interface CollectzSession {
   pay_by: string | null;
   qr_payload: string | null;
   qr_image_path: string | null;
+  /** Club identity: 'preset:<id>' (bundled icon) or a collectz-images storage path. */
+  image_path: string | null;
+  /** Google Maps / Waze link for the venue (preview card parses it). */
+  maps_url: string | null;
+  /** 24h cooldown marker for collectz-remind. */
+  last_reminded_at: string | null;
   share_code: string;
   status: CollectzSessionStatus;
   created_at: string;
@@ -58,6 +65,8 @@ export interface CollectzParticipant {
   reject_note: string | null;
   marked_at: string | null;
   confirmed_at: string | null;
+  /** Participant self-hide (their Home list only). */
+  archived_at: string | null;
   created_at: string;
 }
 
@@ -85,6 +94,8 @@ export interface CollectzJoinView {
     | 'currency'
     | 'pay_by'
     | 'status'
+    | 'image_path'
+    | 'maps_url'
   >;
   participants: CollectzRosterEntry[];
   progress: {
@@ -115,12 +126,16 @@ export interface CollectzSessionInput {
   scheme: CollectzScheme;
   total_amount?: number | null;
   default_share?: number | null;
+  currency?: string;
   pay_by?: string | null;
   qr_payload?: string | null;
   qr_image_path?: string | null;
+  image_path?: string | null;
+  maps_url?: string | null;
 }
 
 const PROOFS_BUCKET = 'collectz-proofs';
+const IMAGES_BUCKET = 'collectz-images';
 const SITE_BASE = 'https://jejakbaki.my/collectz';
 
 // ── Links & announcement ─────────────────────────────────────────────────────
@@ -157,7 +172,7 @@ function fmtEventTime(iso: string | null): string | null {
 export function buildWhatsappAnnouncement(
   session: Pick<
     CollectzSession,
-    'title' | 'event_at' | 'venue' | 'details_text' | 'rules_text' | 'scheme' | 'total_amount' | 'default_share' | 'currency' | 'pay_by' | 'share_code'
+    'title' | 'event_at' | 'venue' | 'details_text' | 'rules_text' | 'scheme' | 'total_amount' | 'default_share' | 'currency' | 'pay_by' | 'share_code' | 'maps_url'
   >,
   activeCount: number,
 ): string {
@@ -167,6 +182,7 @@ export function buildWhatsappAnnouncement(
   if (date) lines.push(`📅 ${date}`);
   if (time) lines.push(`🕰️ ${time}`);
   if (session.venue) lines.push(`📍 ${session.venue}`);
+  if (session.maps_url) lines.push(`🗺️ ${session.maps_url}`);
   if (session.details_text) lines.push(`🏟️ ${session.details_text}`);
 
   if (session.scheme === 'flat' && session.default_share != null) {
@@ -226,6 +242,24 @@ function throwIfError(error: { message?: string } | null, fallback: string): voi
 }
 
 // ── Organizer: session CRUD ──────────────────────────────────────────────────
+
+/**
+ * Sessions I created since Monday 00:00 (calendar week, weekStartsOn: 1) — the
+ * usage counter for the free tier's create cap (TIER_LIMITS.maxCollectzSessionsPerWeek).
+ * Fail-OPEN (0 on error): the paywall is UX, not a security boundary — an
+ * offline user hits the create call's own failure soon enough anyway.
+ */
+export async function countSessionsCreatedThisWeek(): Promise<number> {
+  const uid = await requireUserId();
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).toISOString();
+  const { count, error } = await supabase
+    .from('collectz_sessions')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_id', uid)
+    .gte('created_at', weekStart);
+  if (error) return 0;
+  return count ?? 0;
+}
 
 export async function createSession(input: CollectzSessionInput): Promise<CollectzSession> {
   const uid = await requireUserId();
@@ -292,6 +326,31 @@ export async function getSessionWithRoster(
   return { session: session as CollectzSession, participants: (participants ?? []) as CollectzParticipant[] };
 }
 
+// ── Roster avatars ───────────────────────────────────────────────────────────
+
+export interface CollectzProfile {
+  user_id: string;
+  avatar_id: string | null;
+  avatar_uri: string | null;
+}
+
+/**
+ * Avatars for roster participants who claimed with a real account (user_id
+ * set). Read from user_profiles (migration 20260721010000). Decorative only —
+ * any failure returns an empty map so the roster always renders (initials).
+ */
+export async function fetchRosterProfiles(userIds: string[]): Promise<Record<string, CollectzProfile>> {
+  if (userIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('user_id, avatar_id, avatar_uri')
+    .in('user_id', userIds);
+  if (error) return {};
+  const map: Record<string, CollectzProfile> = {};
+  for (const row of data ?? []) map[(row as CollectzProfile).user_id] = row as CollectzProfile;
+  return map;
+}
+
 // ── Organizer: roster management ─────────────────────────────────────────────
 
 export async function addParticipant(
@@ -322,6 +381,13 @@ export async function updateParticipant(
 }
 
 export async function removeParticipant(id: string): Promise<void> {
+  // Clean up the proof file first — row deletes don't cascade into storage.
+  const { data: row } = await supabase
+    .from('collectz_participants')
+    .select('proof_path')
+    .eq('id', id)
+    .single();
+  if (row?.proof_path) await deleteProofObjects([row.proof_path]);
   const { error } = await supabase.from('collectz_participants').delete().eq('id', id);
   throwIfError(error, 'Could not remove the participant.');
 }
@@ -330,9 +396,26 @@ export async function removeParticipant(id: string): Promise<void> {
 
 /** Confirm payment — also the organizer's manual tick for offline people. */
 export async function confirmParticipant(id: string): Promise<void> {
+  // Share-lock: freeze the computed share at confirm time, so a later roster
+  // edit (removal / promotion) never moves money someone already paid.
+  const { data: row, error: readErr } = await supabase
+    .from('collectz_participants')
+    .select('session_id, share_amount')
+    .eq('id', id)
+    .single();
+  throwIfError(readErr, 'Could not confirm.');
+  let lockShare: number | null = null;
+  if (row && row.share_amount === null) {
+    const { session, participants } = await getSessionWithRoster(row.session_id);
+    lockShare = computeShares(session, participants).get(id) ?? null;
+  }
   const { error } = await supabase
     .from('collectz_participants')
-    .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
+    .update({
+      status: 'confirmed',
+      confirmed_at: new Date().toISOString(),
+      ...(lockShare !== null ? { share_amount: lockShare } : {}),
+    })
     .eq('id', id);
   throwIfError(error, 'Could not confirm.');
 }
@@ -347,6 +430,12 @@ export async function rejectParticipant(id: string, note: string): Promise<void>
 
 /** Move a participant back to unpaid (e.g. a confirm tapped by mistake). */
 export async function resetParticipantToUnpaid(id: string): Promise<void> {
+  const { data: row } = await supabase
+    .from('collectz_participants')
+    .select('proof_path')
+    .eq('id', id)
+    .single();
+  if (row?.proof_path) await deleteProofObjects([row.proof_path]);
   const { error } = await supabase
     .from('collectz_participants')
     .update({ status: 'unpaid', proof_path: null, marked_at: null, confirmed_at: null, reject_note: null })
@@ -442,9 +531,15 @@ export async function markPaidWithProof(
 
 /** Withdraw a pending mark (before the organizer reviews it). */
 export async function withdrawProof(participantId: string): Promise<void> {
+  const { data: row } = await supabase
+    .from('collectz_participants')
+    .select('proof_path')
+    .eq('id', participantId)
+    .single();
+  if (row?.proof_path) await deleteProofObjects([row.proof_path]);
   const { error } = await supabase
     .from('collectz_participants')
-    .update({ status: 'unpaid' })
+    .update({ status: 'unpaid', proof_path: null })
     .eq('id', participantId);
   throwIfError(error, 'Could not withdraw the proof.');
 }
@@ -456,6 +551,31 @@ export async function proofSignedUrl(path: string): Promise<string | null> {
   return data.signedUrl;
 }
 
+/** Public URL for a club image (collectz-images is a public bucket). */
+export function clubImageUrl(imagePath: string): string {
+  const { data } = supabase.storage.from(IMAGES_BUCKET).getPublicUrl(imagePath);
+  return data.publicUrl;
+}
+
+/** Upload a club image (owner, from the create/edit form) → its storage path. */
+export async function uploadClubImage(
+  sessionId: string,
+  file: { uri: string; mimeType?: string },
+): Promise<string> {
+  const resized = await manipulateAsync(file.uri, [{ resize: { width: 512 } }], {
+    compress: 0.75,
+    format: SaveFormat.JPEG,
+  });
+  const path = `${sessionId}/club.jpg`;
+  const formData = new FormData();
+  formData.append('', { uri: resized.uri, name: 'club.jpg', type: 'image/jpeg' } as any);
+  const { error } = await supabase.storage
+    .from(IMAGES_BUCKET)
+    .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
+  throwIfError(error, 'Could not upload the image.');
+  return path;
+}
+
 // ── Organizer: reminders ─────────────────────────────────────────────────────
 
 export async function remindUnpaid(sessionId: string): Promise<number> {
@@ -464,6 +584,157 @@ export async function remindUnpaid(sessionId: string): Promise<number> {
   });
   if (error) throw new Error(error.message || 'Could not send reminders.');
   return (data as { sent?: number })?.sent ?? 0;
+}
+
+// ── Session lifecycle v2: delete / cancel / archive / duplicate / notify ─────
+
+/** Best-effort storage cleanup — never throws (orphan risk beats blocking UX). */
+export async function deleteProofObjects(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  await supabase.storage.from(PROOFS_BUCKET).remove(paths).catch(() => {});
+}
+
+/** Hard delete: proofs out of storage first, then the row (participants cascade). */
+export async function deleteSession(id: string): Promise<void> {
+  const { data: rows } = await supabase
+    .from('collectz_participants')
+    .select('proof_path')
+    .eq('session_id', id);
+  const paths = (rows ?? []).map((r) => r.proof_path).filter((p): p is string => !!p);
+  await deleteProofObjects(paths);
+  const { error } = await supabase.from('collectz_sessions').delete().eq('id', id);
+  throwIfError(error, 'Could not delete the session.');
+}
+
+/** Soft cancel: join link dies (410), history stays. Participants are notified by the caller. */
+export async function cancelSession(id: string): Promise<void> {
+  await updateSession(id, { status: 'cancelled' });
+}
+
+/** New share code — the remedy for a leaked link (old one stops working instantly). */
+export async function regenerateShareCode(id: string): Promise<CollectzSession> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data, error } = await supabase
+      .from('collectz_sessions')
+      .update({ share_code: generateShareCode() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (!error && data) return data as CollectzSession;
+    if ((error as { code?: string } | null)?.code !== '23505') {
+      throwIfError(error, 'Could not regenerate the link.');
+    }
+  }
+  throw new Error('Could not regenerate the link.');
+}
+
+/** Participant self-hide (their own Home list only; organizer unaffected). */
+export async function archiveParticipant(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('collectz_participants')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', id);
+  throwIfError(error, 'Could not archive.');
+}
+
+export async function unarchiveParticipant(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('collectz_participants')
+    .update({ archived_at: null })
+    .eq('id', id);
+  throwIfError(error, 'Could not unarchive.');
+}
+
+export interface JoinedRow {
+  id: string;
+  session_id: string;
+  status: CollectzParticipantStatus;
+  archived_at: string | null;
+}
+
+/** My participant rows across every session I joined (RLS self-select). */
+export async function listMyJoinedParticipantRows(): Promise<JoinedRow[]> {
+  const uid = await requireUserId();
+  const { data, error } = await supabase
+    .from('collectz_participants')
+    .select('id, session_id, status, archived_at')
+    .eq('user_id', uid);
+  if (error) return [];
+  return (data ?? []) as JoinedRow[];
+}
+
+/** The organizer's most recent session (template source), null on first-ever. */
+export async function getLastSession(): Promise<CollectzSession | null> {
+  const uid = await requireUserId();
+  const { data, error } = await supabase
+    .from('collectz_sessions')
+    .select('*')
+    .eq('owner_id', uid)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return (data as CollectzSession) ?? null;
+}
+
+/**
+ * "Same as previous": copies a session's setup + roster into a NEW session.
+ * Statuses reset to unpaid; proofs never carry; event/pay-by shift +7 days
+ * (weekly clubs); uploaded club image is copied to the new session's folder;
+ * share_code is freshly generated by createSession.
+ */
+export async function duplicateSession(sourceId: string): Promise<CollectzSession> {
+  const { session: src, participants } = await getSessionWithRoster(sourceId);
+  const plus7 = (iso: string | null) =>
+    iso ? new Date(new Date(iso).getTime() + 7 * 86_400_000).toISOString() : null;
+  const created = await createSession({
+    title: src.title,
+    category: src.category,
+    event_at: plus7(src.event_at),
+    venue: src.venue,
+    details_text: src.details_text,
+    rules_text: src.rules_text,
+    scheme: src.scheme,
+    total_amount: src.total_amount,
+    default_share: src.default_share,
+    currency: src.currency,
+    pay_by: plus7(src.pay_by),
+    qr_payload: src.qr_payload,
+    qr_image_path: src.qr_image_path,
+    image_path: src.image_path,
+    maps_url: src.maps_url,
+  });
+  // Uploaded images live under the OLD session folder — copy, don't share the
+  // path (deleting the old session would orphan the duplicate's image).
+  if (src.image_path && !src.image_path.startsWith('preset:')) {
+    const fileName = src.image_path.split('/').pop() ?? 'club.jpg';
+    const newPath = `${created.id}/${fileName}`;
+    const { error: copyErr } = await supabase.storage
+      .from(IMAGES_BUCKET)
+      .copy(src.image_path, newPath);
+    if (!copyErr) {
+      await supabase.from('collectz_sessions').update({ image_path: newPath }).eq('id', created.id);
+      created.image_path = newPath;
+    }
+  }
+  for (const p of participants) {
+    await addParticipant(created.id, p.name, { slot: p.slot, share_amount: p.share_amount });
+  }
+  return created;
+}
+
+/** Organizer push to all app-linked participants (collectz-notify function). */
+export async function notifySession(
+  sessionId: string,
+  kind: 'edited' | 'cancelled' | 'settled',
+  message?: string,
+): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('collectz-notify', {
+    body: { sessionId, kind, message },
+  });
+  if (error) throw new Error(error.message || 'Could not notify participants.');
+  const payload = data as { error?: string } | null;
+  if (payload?.error) throw new Error(payload.error);
 }
 
 // ── Realtime ─────────────────────────────────────────────────────────────────

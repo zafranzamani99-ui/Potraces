@@ -33,6 +33,7 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import GlassModeToggle from '../../components/common/GlassModeToggle';
+import Avatar from '../../components/common/Avatar';
 import QuickActions from '../../components/common/QuickActions';
 import { listFailedReceipts } from '../../services/receiptQueue';
 import NeuIconButton from '../../components/common/NeuIconButton';
@@ -719,7 +720,10 @@ const PersonalDashboard: React.FC = () => {
         <OfflineBanner />
         {/* Zone 1 — Greeting (small) */}
         <View style={styles.greetingRow}>
-          <Text style={styles.greeting}>{greeting}</Text>
+          <View style={styles.greetingLeft}>
+            <Avatar size={28} />
+            <Text style={styles.greeting}>{greeting}</Text>
+          </View>
           <NeuIconButton
             size={44}
             radius={14}
@@ -1274,6 +1278,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: SPACING.lg,
+  },
+  greetingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   greeting: {
     fontSize: TYPOGRAPHY.size.xs,

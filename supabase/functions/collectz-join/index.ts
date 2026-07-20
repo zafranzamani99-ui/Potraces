@@ -152,6 +152,8 @@ Deno.serve(async (req: Request) => {
         currency: session.currency,
         pay_by: session.pay_by,
         status: session.status,
+        image_path: session.image_path,
+        maps_url: session.maps_url,
       },
       participants: roster.map((p) => ({
         id: p.id,
@@ -171,8 +173,13 @@ Deno.serve(async (req: Request) => {
 
     if (userId) {
       const mine = roster.find((p) => p.user_id === userId);
-      payload.qr_payload = session.qr_payload;
-      payload.qr_image_path = session.qr_image_path;
+      // The QR is the organizer's payment details — only hand it to people
+      // actually in the session (a linked participant or the owner), not to
+      // any signed-in link-holder who hasn't joined.
+      if (mine || session.owner_id === userId) {
+        payload.qr_payload = session.qr_payload;
+        payload.qr_image_path = session.qr_image_path;
+      }
       payload.my_participant = mine
         ? {
             id: mine.id,
@@ -217,7 +224,12 @@ Deno.serve(async (req: Request) => {
     .insert({ session_id: session.id, name, user_id: userId })
     .select('id')
     .single();
-  if (error) return json({ error: 'join_failed' }, 500);
+  if (error) {
+    // Unique violation (23505) = lost the check-then-insert race with another
+    // join/claim for the same user — that's a conflict, not a server error.
+    if (error.code === '23505') return json({ error: 'already_joined' }, 409);
+    return json({ error: 'join_failed' }, 500);
+  }
 
   return json({ ok: true, participant_id: inserted.id });
 });

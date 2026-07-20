@@ -37,7 +37,10 @@ import {
   withdrawProof,
   subscribeToSession,
   isCollectzAuthError,
+  clubImageUrl,
 } from '../../../services/collectzService';
+import { presetClubIcon } from '../../../constants/clubIcons';
+import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
 import { fmtDateTime, fmtMoney, fill } from './collectzFormat';
 
 const CollectzJoin: React.FC = () => {
@@ -359,7 +362,16 @@ const CollectzJoin: React.FC = () => {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* Event header */}
       <View style={styles.headerCard}>
-        <Text style={styles.title}>{session.title}</Text>
+        <View style={styles.titleRow}>
+          {(() => {
+            const preset = presetClubIcon(session.image_path);
+            const uri = !preset && session.image_path ? clubImageUrl(session.image_path) : null;
+            return preset || uri ? (
+              <Image source={preset ? preset.source : { uri: uri! }} style={styles.clubImage} />
+            ) : null;
+          })()}
+          <Text style={[styles.title, { flex: 1 }]}>{session.title}</Text>
+        </View>
         {!!dateLine && (
           <View style={styles.metaRow}>
             <Feather name="calendar" size={13} color={C.textMuted} />
@@ -372,6 +384,7 @@ const CollectzJoin: React.FC = () => {
             <Text style={styles.meta}>{session.venue}</Text>
           </View>
         )}
+        {!!session.maps_url && <MapPreviewCard mapsUrl={session.maps_url} venue={session.venue} />}
         {!!payByLine && (
           <View style={styles.metaRow}>
             <Feather name="clock" size={13} color={C.bronze} />
@@ -627,6 +640,8 @@ const makeStyles = (C: typeof CALM) =>
       marginBottom: SPACING.md,
     },
     title: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary },
+    titleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+    clubImage: { width: 44, height: 44, borderRadius: 22 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     meta: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
     closedBanner: {

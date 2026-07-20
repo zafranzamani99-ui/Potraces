@@ -16,7 +16,7 @@ import {
   Share,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
@@ -40,7 +40,18 @@ import {
   computeShares,
   computeProgress,
   buildWhatsappAnnouncement,
+  fetchRosterProfiles,
+  deleteSession,
+  cancelSession,
+  regenerateShareCode,
+  duplicateSession,
+  notifySession,
+  clubImageUrl,
+  type CollectzProfile,
 } from '../../../services/collectzService';
+import { AvatarView } from '../../../components/common/Avatar';
+import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
+import { presetClubIcon } from '../../../constants/clubIcons';
 import { fmtDateTime, fmtMoney, fill } from './collectzFormat';
 
 const CollectzDetail: React.FC = () => {
@@ -48,11 +59,14 @@ const CollectzDetail: React.FC = () => {
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<any>();
+  const navigation = useNavigation<any>();
   const { showToast } = useToast();
   const sessionId: string = route.params?.sessionId;
 
   const [session, setSession] = useState<CollectzSession | null>(null);
   const [participants, setParticipants] = useState<CollectzParticipant[]>([]);
+  // Avatars of claimed participants (user_id → profile); name-only → initials.
+  const [profiles, setProfiles] = useState<Record<string, CollectzProfile>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -70,6 +84,10 @@ const CollectzDetail: React.FC = () => {
         const { session: s, participants: p } = await getSessionWithRoster(sessionId);
         setSession(s);
         setParticipants(p);
+        // Avatars ride along: claimed participants only, decorative (never fails).
+        fetchRosterProfiles(p.map((x) => x.user_id).filter((id): id is string => !!id))
+          .then(setProfiles)
+          .catch(() => {});
       } catch {
         showToast(t.collectz.actionError, 'error');
       } finally {
@@ -159,12 +177,80 @@ const CollectzDetail: React.FC = () => {
       { text: t.common.cancel, style: 'cancel' },
       {
         text: t.collectz.actionSettle,
-        onPress: () => run(() => updateSession(sessionId, { status: 'settled' }), t.collectz.settledToast),
+        onPress: () =>
+          run(async () => {
+            await updateSession(sessionId, { status: 'settled' });
+            notifySession(sessionId, 'settled').catch(() => {}); // best-effort
+          }, t.collectz.settledToast),
       },
     ]);
   };
 
   const reopen = () => run(() => updateSession(sessionId, { status: 'open' }), t.collectz.reopenedToast);
+
+  // ── v2 session-level actions ──
+  const edit = () => {
+    lightTap();
+    navigation.navigate('CollectzCreate', { editSessionId: sessionId });
+  };
+
+  const duplicate = () =>
+    run(async () => {
+      const created = await duplicateSession(sessionId);
+      navigation.replace('CollectzDetail', { sessionId: created.id });
+    }, t.collectz.duplicateDone);
+
+  const regenLink = () => {
+    Alert.alert(t.collectz.regenTitle, t.collectz.regenBody, [
+      { text: t.common.cancel, style: 'cancel' },
+      {
+        text: t.collectz.actionRegenLink,
+        onPress: () => run(async () => { await regenerateShareCode(sessionId); }, t.collectz.regenDone),
+      },
+    ]);
+  };
+
+  const cancelSess = () => {
+    Alert.alert(t.collectz.cancelTitle, t.collectz.cancelBody, [
+      { text: t.common.cancel, style: 'cancel' },
+      {
+        text: t.collectz.actionCancel,
+        style: 'destructive',
+        onPress: () =>
+          run(async () => {
+            await cancelSession(sessionId);
+            notifySession(sessionId, 'cancelled').catch(() => {});
+          }, t.collectz.cancelledToast),
+      },
+    ]);
+  };
+
+  const deleteSess = () => {
+    const anyPaid = participants.some((p) => p.status === 'pending' || p.status === 'confirmed');
+    Alert.alert(t.collectz.deleteTitle, anyPaid ? t.collectz.deleteBodyPaid : t.collectz.deleteBody, [
+      { text: t.common.cancel, style: 'cancel' },
+      {
+        text: t.common.delete,
+        style: 'destructive',
+        onPress: async () => {
+          // Notify FIRST (the join link dies with the row), then delete + leave.
+          setBusy(true);
+          try {
+            await notifySession(sessionId, 'cancelled').catch(() => {});
+            await deleteSession(sessionId);
+            successNotification();
+            showToast(t.collectz.deletedToast, 'success');
+            navigation.goBack();
+          } catch {
+            errorNotification();
+            showToast(t.collectz.actionError, 'error');
+          } finally {
+            setBusy(false);
+          }
+        },
+      },
+    ]);
+  };
 
   // ── Participant-level actions ──
   const openProof = async (p: CollectzParticipant) => {
@@ -202,10 +288,15 @@ const CollectzDetail: React.FC = () => {
     run(() => updateParticipant(p.id, { slot: 'active' }), fill(t.collectz.promotedToast, { name: p.name }));
 
   const remove = (p: CollectzParticipant) => {
-    Alert.alert(fill(t.collectz.removeTitle, { name: p.name }), t.collectz.removeBody, [
-      { text: t.common.cancel, style: 'cancel' },
-      { text: t.common.delete, style: 'destructive', onPress: () => run(() => removeParticipant(p.id), fill(t.collectz.removedToast, { name: p.name })) },
-    ]);
+    const paid = p.status === 'pending' || p.status === 'confirmed';
+    Alert.alert(
+      paid ? fill(t.collectz.removePaidTitle, { name: p.name }) : fill(t.collectz.removeTitle, { name: p.name }),
+      paid ? t.collectz.removePaidBody : t.collectz.removeBody,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.common.delete, style: 'destructive', onPress: () => run(() => removeParticipant(p.id), fill(t.collectz.removedToast, { name: p.name })) },
+      ],
+    );
   };
 
   const confirmFromSheet = () => {
@@ -237,6 +328,12 @@ const CollectzDetail: React.FC = () => {
       >
         <View style={styles.rowMain}>
           <View style={styles.rowNameLine}>
+            <AvatarView
+              size={28}
+              uri={p.user_id ? profiles[p.user_id]?.avatar_uri : null}
+              presetId={p.user_id ? profiles[p.user_id]?.avatar_id : null}
+              name={p.name}
+            />
             <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
             {!!p.user_id && (
               <View style={styles.claimedTag}>
@@ -304,7 +401,16 @@ const CollectzDetail: React.FC = () => {
       <ScrollView contentContainerStyle={styles.content}>
         {/* Header card */}
         <View style={styles.headerCard}>
-          <Text style={styles.title}>{session.title}</Text>
+          <View style={styles.titleRow}>
+            {(() => {
+              const preset = presetClubIcon(session.image_path);
+              const uri = !preset && session.image_path ? clubImageUrl(session.image_path) : null;
+              return preset || uri ? (
+                <Image source={preset ? preset.source : { uri: uri! }} style={styles.clubImage} />
+              ) : null;
+            })()}
+            <Text style={[styles.title, { flex: 1 }]}>{session.title}</Text>
+          </View>
           {!!dateLine && (
             <View style={styles.metaRow}>
               <Feather name="calendar" size={13} color={C.textMuted} />
@@ -317,6 +423,7 @@ const CollectzDetail: React.FC = () => {
               <Text style={styles.meta}>{session.venue}</Text>
             </View>
           )}
+          {!!session.maps_url && <MapPreviewCard mapsUrl={session.maps_url} venue={session.venue} compact />}
           <View style={styles.metaRow}>
             <Feather name="link" size={13} color={C.textMuted} />
             <Text style={styles.meta}>{fill(t.collectz.shareCodeLabel, { code: session.share_code })}</Text>
@@ -368,6 +475,32 @@ const CollectzDetail: React.FC = () => {
               <Text style={styles.actionBtnText}>{t.collectz.actionReopen}</Text>
             </Pressable>
           )}
+        </View>
+
+        {/* v2 actions: edit / duplicate / new link / cancel / delete */}
+        <View style={styles.actionsRow}>
+          <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={edit} disabled={busy}>
+            <Feather name="edit-2" size={15} color={C.accent} />
+            <Text style={styles.actionBtnText}>{t.collectz.actionEdit}</Text>
+          </Pressable>
+          <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={duplicate} disabled={busy}>
+            <Feather name="copy" size={15} color={C.accent} />
+            <Text style={styles.actionBtnText}>{t.collectz.actionDuplicate}</Text>
+          </Pressable>
+          <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={regenLink} disabled={busy}>
+            <Feather name="refresh-cw" size={15} color={C.accent} />
+            <Text style={styles.actionBtnText}>{t.collectz.actionRegenLink}</Text>
+          </Pressable>
+          {isOpen && (
+            <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={cancelSess} disabled={busy}>
+              <Feather name="x-circle" size={15} color={C.overdue} />
+              <Text style={[styles.actionBtnText, { color: C.overdue }]}>{t.collectz.actionCancel}</Text>
+            </Pressable>
+          )}
+          <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={deleteSess} disabled={busy}>
+            <Feather name="trash-2" size={15} color={C.overdue} />
+            <Text style={[styles.actionBtnText, { color: C.overdue }]}>{t.collectz.actionDelete}</Text>
+          </Pressable>
         </View>
 
         {/* Roster */}
@@ -469,6 +602,8 @@ const makeStyles = (C: typeof CALM) =>
       marginBottom: SPACING.md,
     },
     title: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary },
+    titleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+    clubImage: { width: 44, height: 44, borderRadius: 22 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     meta: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
     closedBanner: {

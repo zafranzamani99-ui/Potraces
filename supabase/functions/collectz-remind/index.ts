@@ -6,7 +6,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  * Pushes every app-linked participant whose status is still unpaid/rejected,
  * telling them their share amount. Authz is done in code (the function is
  * JWT-free at the gateway like the other self-authz functions): the caller
- * must be the session owner.
+ * must be the session owner. Rate-limited to one blast per session per 24h
+ * via collectz_sessions.last_reminded_at (HTTP 429 'cooldown' inside).
  *
  * Secrets (Deno env): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY — auto-provided.
  */
@@ -14,6 +15,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+// One reminder blast per session per 24h — the button should nudge, not spam.
+const REMIND_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -55,7 +58,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: session } = await admin
     .from('collectz_sessions')
-    .select('id,title,owner_id,scheme,total_amount,default_share,currency')
+    .select('id,title,owner_id,scheme,total_amount,default_share,currency,last_reminded_at')
     .eq('id', sessionId)
     .maybeSingle();
   if (!session || session.owner_id !== user.id) return json({ error: 'forbidden' }, 403);
@@ -68,6 +71,19 @@ Deno.serve(async (req: Request) => {
     .not('user_id', 'is', null);
   const targets = (participants ?? []).filter((p) => p.slot === 'active');
   if (targets.length === 0) return json({ ok: true, sent: 0 });
+
+  // 24h cooldown between blasts, checked only once there is someone to
+  // remind: a no-target call stays free and does not consume the window.
+  if (session.last_reminded_at) {
+    const elapsedMs = Date.now() - new Date(session.last_reminded_at).getTime();
+    if (elapsedMs < REMIND_COOLDOWN_MS) {
+      return json({
+        ok: false,
+        error: 'cooldown',
+        retry_after_seconds: Math.ceil((REMIND_COOLDOWN_MS - elapsedMs) / 1000),
+      }, 429);
+    }
+  }
 
   // Divisor for an equal split is ALL active participants, not just the
   // unpaid ones — fetch the full active roster count.
@@ -121,6 +137,12 @@ Deno.serve(async (req: Request) => {
       // Push failures must not fail the batch.
     }
   }
+
+  // Stamp the blast so the cooldown above holds for the next 24h.
+  await admin
+    .from('collectz_sessions')
+    .update({ last_reminded_at: new Date().toISOString() })
+    .eq('id', sessionId);
 
   return json({ ok: true, sent });
 });

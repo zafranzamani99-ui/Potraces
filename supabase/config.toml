@@ -415,6 +415,18 @@ verify_jwt = false
 [functions.collectz-remind]
 verify_jwt = false
 
+# Collectz organizer notifications (session edited / cancelled / settled).
+# JWT-free at the gateway like collectz-remind; the function verifies the
+# caller owns the session before pushing to participants.
+[functions.collectz-notify]
+verify_jwt = false
+
+# Public static-map image proxy. JWT-free: it returns a bare cacheable image
+# and holds the Google Static Maps key server-side (same trust model as
+# ai-proxy hiding the AI keys).
+[functions.map-preview]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

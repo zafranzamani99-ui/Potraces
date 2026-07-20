@@ -13,6 +13,7 @@ import {
   TextInput,
   ActivityIndicator,
   Keyboard,
+  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -21,13 +22,22 @@ import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import FAB from '../../../components/common/FAB';
+import PaywallModal from '../../../components/common/PaywallModal';
 import { lightTap, mediumTap } from '../../../services/haptics';
+import { usePremiumStore } from '../../../store/premiumStore';
+import { canCreate } from '../../../constants/tiers';
 import {
   CollectzSession,
   CollectzParticipant,
   listMySessions,
   getSessionWithRoster,
   computeProgress,
+  countSessionsCreatedThisWeek,
+  viewByShareCode,
+  archiveParticipant,
+  unarchiveParticipant,
+  listMyJoinedParticipantRows,
+  type JoinedRow,
 } from '../../../services/collectzService';
 import { fmtDateTime, fmtMoney, fill } from './collectzFormat';
 
@@ -42,8 +52,15 @@ const CollectzHome: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [organizing, setOrganizing] = useState<CollectzSession[]>([]);
   const [joined, setJoined] = useState<CollectzSession[]>([]);
+  // Free tier: 2 session creations per calendar week (joining is always free).
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const [weeklyUsed, setWeeklyUsed] = useState(0);
   const [rosters, setRosters] = useState<Record<string, CollectzParticipant[]>>({});
   const [joinCode, setJoinCode] = useState('');
+  // Joined-side: my participant rows (archive flags) + per-session progress.
+  const [myJoinedRows, setMyJoinedRows] = useState<Record<string, JoinedRow>>({});
+  const [joinedProgress, setJoinedProgress] = useState<Record<string, { active_count: number; confirmed_count: number; target_amount: number | null; confirmed_amount: number }>>({});
+  const [archivedOpen, setArchivedOpen] = useState(false);
 
   const load = useCallback(async (initial = false) => {
     if (initial) setLoading(true);
@@ -64,6 +81,22 @@ const CollectzHome: React.FC = () => {
         }),
       );
       setRosters(Object.fromEntries(entries));
+
+      // Joined-side: my participant rows (archive state) + progress per session
+      // (the join view is the only place a participant sees full progress).
+      const rows = await listMyJoinedParticipantRows();
+      setMyJoinedRows(Object.fromEntries(rows.map((r) => [r.session_id, r])));
+      const progEntries = await Promise.all(
+        mine.joined.map(async (s) => {
+          try {
+            const view = await viewByShareCode(s.share_code);
+            return [s.id, view.progress] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      setJoinedProgress(Object.fromEntries(progEntries.filter((e): e is NonNullable<typeof e> => e !== null)));
     } catch {
       showToast(t.collectz.homeLoadError, 'error');
     } finally {
@@ -97,6 +130,45 @@ const CollectzHome: React.FC = () => {
     else navigation.navigate('CollectzJoin', { sessionId: s.id });
   };
 
+  // Archive rules: explicit flag, or settled/cancelled and untouched 30+ days.
+  const isArchived = useCallback(
+    (s: CollectzSession): boolean => {
+      const row = myJoinedRows[s.id];
+      if (row?.archived_at) return true;
+      if (s.status !== 'open') {
+        const age = Date.now() - new Date(s.updated_at).getTime();
+        return age > 30 * 86_400_000;
+      }
+      return false;
+    },
+    [myJoinedRows],
+  );
+
+  const activeJoined = joined.filter((s) => !isArchived(s));
+  const archivedJoined = joined.filter(isArchived);
+
+  const toggleArchive = (s: CollectzSession) => {
+    const row = myJoinedRows[s.id];
+    if (!row) return;
+    const archived = isArchived(s);
+    Alert.alert(s.title, undefined, [
+      { text: t.common.cancel, style: 'cancel' },
+      {
+        text: archived ? t.collectz.unarchive : t.collectz.archive,
+        onPress: async () => {
+          try {
+            if (archived) await unarchiveParticipant(row.id);
+            else await archiveParticipant(row.id);
+            showToast(archived ? t.collectz.unarchivedToast : t.collectz.archivedToast, 'success');
+            load();
+          } catch {
+            showToast(t.collectz.actionError, 'error');
+          }
+        },
+      },
+    ]);
+  };
+
   const submitJoinCode = () => {
     const code = joinCode.trim().toUpperCase();
     if (!code) return;
@@ -108,6 +180,7 @@ const CollectzHome: React.FC = () => {
 
   const renderCard = (s: CollectzSession, mine: boolean) => {
     const progress = mine ? computeProgress(s, rosters[s.id] ?? []) : null;
+    const jprog = !mine ? joinedProgress[s.id] : null;
     const dateLine = fmtDateTime(s.event_at);
     const pct =
       progress && progress.target && progress.target > 0
@@ -115,11 +188,18 @@ const CollectzHome: React.FC = () => {
         : progress && progress.activeCount > 0
           ? progress.confirmedCount / progress.activeCount
           : 0;
+    const jpct =
+      jprog && jprog.target_amount && jprog.target_amount > 0
+        ? Math.min(jprog.confirmed_amount / jprog.target_amount, 1)
+        : jprog && jprog.active_count > 0
+          ? jprog.confirmed_count / jprog.active_count
+          : 0;
     return (
       <Pressable
         key={s.id}
         style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
         onPress={() => openSession(s, mine)}
+        onLongPress={mine ? undefined : () => toggleArchive(s)}
         accessibilityRole="button"
         accessibilityLabel={s.title}
       >
@@ -159,9 +239,38 @@ const CollectzHome: React.FC = () => {
             </Text>
           </View>
         )}
+        {jprog && jprog.active_count > 0 && (
+          <View style={styles.progressWrap}>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${Math.round(jpct * 100)}%` }]} />
+            </View>
+            <Text style={styles.progressText}>
+              {jprog.target_amount != null
+                ? `${fill(t.collectz.progressOfTarget, {
+                    confirmed: fmtMoney(jprog.confirmed_amount, s.currency),
+                    target: fmtMoney(jprog.target_amount, s.currency),
+                  })} · ${fill(t.collectz.confirmedCount, { n: jprog.confirmed_count, m: jprog.active_count })}`
+                : fill(t.collectz.confirmedCount, { n: jprog.confirmed_count, m: jprog.active_count })}
+            </Text>
+          </View>
+        )}
       </Pressable>
     );
   };
+
+  // Free tier gate: 2 creations per calendar week; paid tiers unlimited.
+  // Joining someone's session is never gated. Fail-open on count errors.
+  const onCreatePress = useCallback(async () => {
+    lightTap();
+    const tier = usePremiumStore.getState().tier;
+    const used = await countSessionsCreatedThisWeek();
+    if (!canCreate(tier, 'maxCollectzSessionsPerWeek', used)) {
+      setWeeklyUsed(used);
+      setPaywallVisible(true);
+      return;
+    }
+    navigation.navigate('CollectzCreate');
+  }, [navigation]);
 
   return (
     <View style={styles.screen}>
@@ -196,7 +305,28 @@ const CollectzHome: React.FC = () => {
                 <Text style={styles.emptyBody}>{t.collectz.homeEmptyJoinedBody}</Text>
               </View>
             ) : (
-              joined.map((s) => renderCard(s, false))
+              <>
+                {activeJoined.length === 0 && archivedJoined.length > 0 && (
+                  <Text style={styles.emptyBody}>{t.collectz.homeEmptyJoinedBody}</Text>
+                )}
+                {activeJoined.map((s) => renderCard(s, false))}
+                {archivedJoined.length > 0 && (
+                  <>
+                    <Pressable
+                      style={styles.archivedHeader}
+                      onPress={() => { lightTap(); setArchivedOpen((v) => !v); }}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: archivedOpen }}
+                    >
+                      <Text style={styles.archivedHeaderText}>
+                        {fill(t.collectz.archivedSection, { count: archivedJoined.length })}
+                      </Text>
+                      <Feather name={archivedOpen ? 'chevron-down' : 'chevron-right'} size={16} color={C.textMuted} />
+                    </Pressable>
+                    {archivedOpen && archivedJoined.map((s) => renderCard(s, false))}
+                  </>
+                )}
+              </>
             )}
 
             {/* ── Join with a code ── */}
@@ -226,7 +356,13 @@ const CollectzHome: React.FC = () => {
         )}
       </ScrollView>
 
-      <FAB onPress={() => navigation.navigate('CollectzCreate')} icon="plus" />
+      <FAB onPress={onCreatePress} icon="plus" />
+      <PaywallModal
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+        feature="collectz"
+        currentUsage={weeklyUsed}
+      />
     </View>
   );
 };
@@ -244,6 +380,21 @@ const makeStyles = (C: typeof CALM) =>
       marginBottom: SPACING.sm,
     },
     sectionGap: { marginTop: SPACING.xl },
+    archivedHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: SPACING.lg,
+      marginBottom: SPACING.sm,
+      paddingVertical: SPACING.xs,
+    },
+    archivedHeaderText: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
     card: {
       backgroundColor: C.surface,
       borderRadius: RADIUS.lg,

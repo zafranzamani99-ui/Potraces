@@ -43,6 +43,8 @@ import { loadSampleData, SAMPLE_PROFILES, DEFAULT_SAMPLE_BRACKET, type SampleBra
 import { SkyBackdrop, FlyingWau } from '../../components/common/WauScene';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
+import Avatar from '../../components/common/Avatar';
+import AvatarPicker from '../../components/common/AvatarPicker';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -539,6 +541,7 @@ const WelcomePage = React.memo<{
   // skipping past welcome cannot lose them.
   const [name, setName] = useState(() => useSettingsStore.getState().userName);
   const [nameFocused, setNameFocused] = useState(false);
+  const [avatarPickerVisible, setAvatarPickerVisible] = useState(false);
   const [selectedLang, setSelectedLang] = useState<'en' | 'ms'>(() =>
     useSettingsStore.getState().language === 'ms' ? 'ms' : 'en',
   );
@@ -620,6 +623,22 @@ const WelcomePage = React.memo<{
               />
             </View>
 
+            {/* Avatar — optional; presets now, Google photo if they sign in */}
+            <View style={[styles.sectionLabelRow, { marginTop: SPACING.xl }]}>
+              <Feather name="smile" size={13} color={sky.sub} />
+              <Text style={styles.welcomeLabel}>{t.onboarding.avatarLabel}</Text>
+            </View>
+            <Pressable
+              style={styles.avatarRow}
+              onPress={() => { lightTap(); setAvatarPickerVisible(true); }}
+              accessibilityRole="button"
+              accessibilityLabel={t.onboarding.avatarLabel}
+            >
+              <Avatar size={44} />
+              <Text style={styles.avatarHint}>{t.onboarding.avatarHint}</Text>
+              <Feather name="chevron-right" size={16} color={sky.sub} />
+            </Pressable>
+
             {/* Language — liquid-glass segmented control. iOS 26 → the genuine
                 system control (real Liquid Glass, text-only); Android / iOS<26 →
                 a glass capsule with a non-glass sliding selection pill. */}
@@ -696,6 +715,7 @@ const WelcomePage = React.memo<{
           </View>
         </View>
       </KeyboardAwareScrollView>
+      <AvatarPicker visible={avatarPickerVisible} onClose={() => setAvatarPickerVisible(false)} />
     </View>
   );
 });
@@ -1242,6 +1262,23 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
   inputCardFocused: {
     borderColor: sky.focusBorder,
     backgroundColor: sky.fieldBgFocus,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: sky.fieldBg,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: sky.fieldBorder,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    ...(skyDark ? NO_SHADOW : { ...WARM_SHADOW, elevation: 0 }),
+  },
+  avatarHint: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: sky.sub,
   },
   inputCardField: {
     flex: 1,

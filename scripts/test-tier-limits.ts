@@ -66,6 +66,16 @@ check('remaining: never negative when over cap', remainingOf('free', 'maxSavings
 check('FREE_TIER === TIER_LIMITS.free', FREE_TIER === TIER_LIMITS.free);
 check('PREMIUM_TIER === TIER_LIMITS.premium', PREMIUM_TIER === TIER_LIMITS.premium);
 
+// ── Collectz weekly create cap (joining is always free — only organizing) ──
+check('collectz: free 2/week', FREE_TIER.maxCollectzSessionsPerWeek === 2);
+check('collectz: basic/pro/premium unlimited',
+  TIER_LIMITS.basic.maxCollectzSessionsPerWeek === Infinity &&
+  TIER_LIMITS.pro.maxCollectzSessionsPerWeek === Infinity &&
+  PREMIUM_TIER.maxCollectzSessionsPerWeek === Infinity);
+check('collectz boundary (free): 1 ok, 2 blocked',
+  canCreate('free', 'maxCollectzSessionsPerWeek', 1) === true &&
+  canCreate('free', 'maxCollectzSessionsPerWeek', 2) === false);
+
 if (failures.length) { console.error('FAIL:\n' + failures.join('\n')); process.exit(1); }
 console.log(`tier-limits OK (${passed} checks)`);
 process.exit(0);

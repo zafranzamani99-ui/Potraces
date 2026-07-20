@@ -23,6 +23,9 @@ export interface TierLimits {
   maxSharedSubs: number;
   maxActivePlaybooks: number;
   maxSavedPlaybooks: number;
+  /** Collectz session CREATIONS per calendar week. Joining someone's session
+   *  is always free — only organizing is capped. */
+  maxCollectzSessionsPerWeek: number;
   // Metered per month — stay finite even on Premium (see principle above)
   maxScansPerMonth: number;
   maxAiCallsPerMonth: number;
@@ -39,6 +42,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxWallets: 7, maxWalletsPerType: 2,
     maxBudgets: 5, maxSavingsAccounts: 3, maxGoals: 3, maxSharedSubs: 3,
     maxActivePlaybooks: 2, maxSavedPlaybooks: 5,
+    maxCollectzSessionsPerWeek: 2,
     maxScansPerMonth: 15, maxAiCallsPerMonth: 30,
     exportData: true, googleDocsSync: false,
     cloudBackup: false, askEchoPerScreen: false, photoCategoryIcons: false,
@@ -47,6 +51,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxWallets: 13, maxWalletsPerType: 4,
     maxBudgets: 10, maxSavingsAccounts: 6, maxGoals: 6, maxSharedSubs: 6,
     maxActivePlaybooks: 2, maxSavedPlaybooks: Infinity,
+    maxCollectzSessionsPerWeek: Infinity,
     maxScansPerMonth: 75, maxAiCallsPerMonth: 300,
     exportData: true, googleDocsSync: false,
     cloudBackup: true, askEchoPerScreen: true, photoCategoryIcons: true,
@@ -55,6 +60,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxWallets: Infinity, maxWalletsPerType: Infinity,
     maxBudgets: Infinity, maxSavingsAccounts: Infinity, maxGoals: Infinity, maxSharedSubs: Infinity,
     maxActivePlaybooks: 2, maxSavedPlaybooks: Infinity,
+    maxCollectzSessionsPerWeek: Infinity,
     maxScansPerMonth: 150, maxAiCallsPerMonth: 800,
     exportData: true, googleDocsSync: true,
     cloudBackup: true, askEchoPerScreen: true, photoCategoryIcons: true,
@@ -63,6 +69,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxWallets: Infinity, maxWalletsPerType: Infinity,
     maxBudgets: Infinity, maxSavingsAccounts: Infinity, maxGoals: Infinity, maxSharedSubs: Infinity,
     maxActivePlaybooks: 2, maxSavedPlaybooks: Infinity,
+    maxCollectzSessionsPerWeek: Infinity,
     maxScansPerMonth: 300, maxAiCallsPerMonth: 1500,
     exportData: true, googleDocsSync: true,
     cloudBackup: true, askEchoPerScreen: true, photoCategoryIcons: true,
@@ -79,7 +86,7 @@ export function tierAtLeast(tier: PremiumTier, min: PremiumTier): boolean {
 type CountKey =
   | 'maxWallets' | 'maxWalletsPerType' | 'maxBudgets' | 'maxSavingsAccounts'
   | 'maxGoals' | 'maxSharedSubs' | 'maxActivePlaybooks' | 'maxSavedPlaybooks'
-  | 'maxScansPerMonth' | 'maxAiCallsPerMonth';
+  | 'maxScansPerMonth' | 'maxAiCallsPerMonth' | 'maxCollectzSessionsPerWeek';
 
 export function limitFor(tier: PremiumTier, key: CountKey): number {
   return TIER_LIMITS[tier][key];

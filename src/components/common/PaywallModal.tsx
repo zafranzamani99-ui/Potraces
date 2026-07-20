@@ -49,7 +49,7 @@ const openLegal = (url: string) => {
 // the disclosure must name the RIGHT store per platform (Apple ID / App Store account on iOS,
 // Google Play account / Google Play subscriptions on Android), not hardcode Apple everywhere.
 
-type PaywallFeature = 'wallet' | 'budget' | 'savings' | 'goals' | 'subscription' | 'scan' | 'ai' | 'backup';
+type PaywallFeature = 'wallet' | 'budget' | 'savings' | 'goals' | 'subscription' | 'scan' | 'ai' | 'backup' | 'collectz';
 
 interface PaywallModalProps {
   visible: boolean;
@@ -83,6 +83,7 @@ const buildFeatureConfig = (t: Translations): Record<PaywallFeature, FeatureConf
   goals: { headA: t.paywall.goalsHeadA, headEm: t.paywall.goalsHeadEm, headB: t.paywall.goalsHeadB, unit: t.paywall.unitGoals, freeLimit: FREE_TIER.maxGoals },
   subscription: { headA: t.paywall.subscriptionHeadA, headEm: t.paywall.subscriptionHeadEm, headB: t.paywall.subscriptionHeadB, unit: t.paywall.unitSharedSubs, freeLimit: FREE_TIER.maxSharedSubs },
   backup: { headA: t.paywall.backupHeadA, headEm: t.paywall.backupHeadEm, headB: t.paywall.backupHeadB, unit: '', freeLimit: 0 },
+  collectz: { headA: t.paywall.collectzHeadA, headEm: t.paywall.collectzHeadEm, headB: t.paywall.collectzHeadB, unit: t.paywall.unitCollectzSessions, freeLimit: FREE_TIER.maxCollectzSessionsPerWeek },
 });
 
 // ─── Plans ────────────────────────────────────────────────────────────

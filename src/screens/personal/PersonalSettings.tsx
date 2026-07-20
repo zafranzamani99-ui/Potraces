@@ -27,6 +27,8 @@ import CategoryManager from '../../components/common/CategoryManager';
 import PaymentMethodManager from '../../components/common/PaymentMethodManager';
 import OcrDebugHarness from '../../components/dev/OcrDebugHarness';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import Avatar from '../../components/common/Avatar';
+import AvatarPicker from '../../components/common/AvatarPicker';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useWalletStore } from '../../store/walletStore';
@@ -72,6 +74,7 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
   const setMode = useAppStore((s) => s.setMode);
   const userName = useSettingsStore((s) => s.userName);
   const setUserName = useSettingsStore((s) => s.setUserName);
+  const [avatarPickerVisible, setAvatarPickerVisible] = useState(false);
   const currency = useSettingsStore((s) => s.currency);
   const businessModeEnabled = useSettingsStore((s) => s.businessModeEnabled);
   const setBusinessModeEnabled = useSettingsStore((s) => s.setBusinessModeEnabled);
@@ -271,7 +274,14 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
             <Card style={styles.card}>
               <View style={styles.settingRow}>
                 <View style={styles.settingLabelRow}>
-                  <Feather name="user" size={18} color={C.textSecondary} />
+                  <Pressable
+                    onPress={() => { lightTap(); setAvatarPickerVisible(true); }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.settings.avatarTitle}
+                  >
+                    <Avatar size={34} />
+                  </Pressable>
                   <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.name}</Text>
                 </View>
                 <TextInput
@@ -699,6 +709,8 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
       </Modal>
 
       {__DEV__ && <OcrDebugHarness />}
+
+      <AvatarPicker visible={avatarPickerVisible} onClose={() => setAvatarPickerVisible(false)} />
     </View>
   );
 };

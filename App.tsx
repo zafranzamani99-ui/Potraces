@@ -24,6 +24,7 @@ import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
 import './src/services/quickLogCategories'; // side-effect: keeps the Shortcut's live category list fresh
+import './src/services/profileSync'; // side-effect: keeps the shared avatar profile fresh
 import { parseAmountLoose } from './src/utils/parseAmountLoose';
 import BiometricGate from './src/components/common/BiometricGate';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
@@ -609,7 +610,11 @@ function App() {
       if (
         (data?.type === 'collectz_confirmed' ||
           data?.type === 'collectz_rejected' ||
-          data?.type === 'collectz_reminder') &&
+          data?.type === 'collectz_reminder' ||
+          // v2: organizer edits / cancels / settles — participant lands on their join screen
+          data?.type === 'collectz_edited' ||
+          data?.type === 'collectz_cancelled' ||
+          data?.type === 'collectz_settled') &&
         data.sessionId
       ) {
         useAppStore.getState().setMode('personal');

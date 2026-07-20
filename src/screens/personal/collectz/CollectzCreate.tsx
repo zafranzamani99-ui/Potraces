@@ -2,7 +2,7 @@
 // scroll: event facts, payment scheme, roster editor, QR picker (payload-only),
 // and the "paste WhatsApp announcement" AI prefill. On save it creates the
 // session + roster rows, opens the detail screen, and fires the share sheet.
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,10 +16,12 @@ import {
   Platform,
   Share,
   KeyboardAvoidingView,
+  Image,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
 import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
@@ -29,11 +31,22 @@ import { lightTap, mediumTap, selectionChanged, successNotification, errorNotifi
 import {
   CollectzScheme,
   CollectzSlot,
+  CollectzSession,
+  CollectzParticipant,
   createSession,
   addParticipant,
+  updateParticipant,
+  removeParticipant,
+  updateSession,
+  getSessionWithRoster,
+  uploadClubImage,
   buildWhatsappAnnouncement,
+  notifySession,
 } from '../../../services/collectzService';
 import { parseCollectzAnnouncement } from '../../../services/collectzParser';
+import { CLUB_ICONS, presetClubIcon, CLUB_PRESET_PREFIX } from '../../../constants/clubIcons';
+import { isMapsLink } from '../../../utils/mapLink';
+import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
 import { fmtDate, fmtTime } from './collectzFormat';
 
 type CategoryKey = 'sport' | 'makan' | 'trip' | 'gift' | 'other';
@@ -41,6 +54,8 @@ const CATEGORIES: CategoryKey[] = ['sport', 'makan', 'trip', 'gift', 'other'];
 
 interface RosterRow {
   key: string;
+  /** Set for rows loaded from the DB in edit mode — updates, not inserts. */
+  id?: string;
   name: string;
   slot: CollectzSlot;
   amount: string;
@@ -58,15 +73,22 @@ const CollectzCreate: React.FC = () => {
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { showToast } = useToast();
-  const currency = useSettingsStore((s) => s.currency);
+  const appCurrency = useSettingsStore((s) => s.currency);
   const paymentQrs = useSettingsStore((s) => s.paymentQrs);
+
+  // Modes: blank create · edit existing (editSessionId) · template (templateFrom = duplicate-from-previous)
+  const editSessionId: string | undefined = route.params?.editSessionId;
+  const templateFrom: string | undefined = route.params?.templateFrom;
+  const isEdit = !!editSessionId;
 
   // ── Form state ──
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<CategoryKey | null>(null);
   const [eventAt, setEventAt] = useState<Date | null>(null);
   const [venue, setVenue] = useState('');
+  const [mapsUrl, setMapsUrl] = useState('');
   const [details, setDetails] = useState('');
   const [scheme, setScheme] = useState<CollectzScheme>('flat');
   const [shareAmount, setShareAmount] = useState('');
@@ -77,7 +99,18 @@ const CollectzCreate: React.FC = () => {
   const [qrPayload, setQrPayload] = useState<string | null>(null);
   const [qrLabel, setQrLabel] = useState<string | null>(null);
   const [qrWarnLabel, setQrWarnLabel] = useState<string | null>(null);
+  const [currency, setCurrency] = useState(appCurrency);
   const [saving, setSaving] = useState(false);
+
+  // v2: club image + edit/template bookkeeping
+  const [imagePreset, setImagePreset] = useState<string | null>(null); // CLUB_ICONS id
+  const [imageUpload, setImageUpload] = useState<{ uri: string; mimeType?: string } | null>(null);
+  const [oldImagePath, setOldImagePath] = useState<string | null>(null); // DB value on load (edit/template)
+  const [removedIds, setRemovedIds] = useState<string[]>([]); // edit-mode roster deletions
+  const [notifyChanges, setNotifyChanges] = useState(true);
+  const [templateTitle, setTemplateTitle] = useState<string | null>(null);
+  const [prefilling, setPrefilling] = useState(isEdit || !!templateFrom);
+  const original = useRef<CollectzSession | null>(null); // change detection for edit-notify
 
   // ── Paste-parse modal ──
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -89,6 +122,58 @@ const CollectzCreate: React.FC = () => {
 
   const keySeq = useRef(0);
   const nextKey = () => `row-${++keySeq.current}`;
+
+  // Prefill for edit / template. Template shifts dates +7d and starts as a NEW session.
+  useEffect(() => {
+    const sourceId = editSessionId ?? templateFrom;
+    if (!sourceId) return;
+    let alive = true;
+    getSessionWithRoster(sourceId)
+      .then(({ session: s, participants }) => {
+        if (!alive) return;
+        const shift = (iso: string | null) =>
+          iso ? new Date(new Date(iso).getTime() + 7 * 86_400_000) : null;
+        const toDate = (iso: string | null) => {
+          if (!iso) return null;
+          const d = new Date(iso);
+          return isNaN(d.getTime()) ? null : d;
+        };
+        const ev = toDate(s.event_at);
+        const pb = toDate(s.pay_by);
+        original.current = isEdit ? s : null;
+        setTitle(s.title);
+        setCategory((s.category as CategoryKey | null) ?? null);
+        setEventAt(isEdit ? ev : (ev ? shift(s.event_at) : null));
+        setVenue(s.venue ?? '');
+        setMapsUrl(s.maps_url ?? '');
+        setDetails(s.details_text ?? '');
+        setScheme(s.scheme);
+        setShareAmount(s.default_share != null ? String(s.default_share) : '');
+        setTotalAmount(s.total_amount != null ? String(s.total_amount) : '');
+        setPayBy(isEdit ? pb : (pb ? shift(s.pay_by) : null));
+        setRules(s.rules_text ?? '');
+        setCurrency(s.currency || appCurrency);
+        setQrPayload(s.qr_payload ?? null);
+        setQrLabel(null);
+        const preset = presetClubIcon(s.image_path);
+        setImagePreset(preset ? preset.id : null);
+        setOldImagePath(preset ? null : (s.image_path ?? null));
+        setRoster(
+          participants.map((p) => ({
+            key: nextKey(),
+            id: isEdit ? p.id : undefined,
+            name: p.name,
+            slot: p.slot,
+            amount: p.share_amount != null ? String(p.share_amount) : '',
+          })),
+        );
+        if (templateFrom) setTemplateTitle(s.title);
+      })
+      .catch(() => showToast(t.collectz.createError, 'error'))
+      .finally(() => { if (alive) setPrefilling(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editSessionId, templateFrom]);
 
   const catLabels: Record<CategoryKey, string> = {
     sport: t.collectz.catSport,
@@ -161,7 +246,48 @@ const CollectzCreate: React.FC = () => {
     setRoster((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const removeRow = (key: string) => {
     lightTap();
-    setRoster((rows) => rows.filter((r) => r.key !== key));
+    setRoster((rows) => {
+      const hit = rows.find((r) => r.key === key);
+      if (hit?.id) setRemovedIds((ids) => [...ids, hit.id!]);
+      return rows.filter((r) => r.key !== key);
+    });
+  };
+
+  // ── Club image ──
+  const pickPreset = (id: string) => {
+    lightTap();
+    setImagePreset((cur) => (cur === id ? null : id));
+    setImageUpload(null);
+  };
+  const pickUpload = async () => {
+    lightTap();
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    const a = res.assets?.[0];
+    if (res.canceled || !a) return;
+    setImageUpload({ uri: a.uri, mimeType: a.mimeType ?? 'image/jpeg' });
+    setImagePreset(null);
+  };
+
+  /**
+   * Final image_path for save: upload wins, then preset marker, then (edit)
+   * keeping the old value when untouched. Uploaded images are stored per
+   * session; preset markers are 'preset:<id>' strings, no storage involved.
+   */
+  const resolveImagePath = async (sessionId: string): Promise<string | null> => {
+    if (imageUpload) return uploadClubImage(sessionId, imageUpload);
+    if (imagePreset) return `${CLUB_PRESET_PREFIX}${imagePreset}`;
+    return oldImagePath;
+  };
+
+  // One-line change summary for the edit-notify push ("Venue → X", etc.).
+  const changeSummary = (next: { venue: string | null; event_at: string | null; pay_by: string | null }): string | null => {
+    const s = original.current;
+    if (!s) return null;
+    const parts: string[] = [];
+    if ((s.venue ?? '') !== (next.venue ?? '')) parts.push(`${t.collectz.changeVenue.replace('{v}', next.venue ?? '—')}`);
+    if ((s.event_at ?? '') !== (next.event_at ?? '')) parts.push(t.collectz.changeTime);
+    if ((s.pay_by ?? '') !== (next.pay_by ?? '')) parts.push(t.collectz.changePayBy);
+    return parts.length ? parts.join(' · ') : null;
   };
 
   // ── QR picker — payload-only: a photo-only QR can't render for others ──
@@ -223,19 +349,66 @@ const CollectzCreate: React.FC = () => {
     if (saving) return;
     setSaving(true);
     try {
+      if (isEdit && editSessionId) {
+        // ── Edit path: update the session, reconcile the roster, maybe notify ──
+        const next = {
+          title: title.trim(),
+          category,
+          event_at: eventAt ? eventAt.toISOString() : null,
+          venue: venue.trim() || null,
+          maps_url: mapsUrl.trim() || null,
+          details_text: details.trim() || null,
+          rules_text: rules.trim() || null,
+          scheme,
+          total_amount: scheme === 'equal' ? parseAmount(totalAmount) : null,
+          default_share: scheme === 'flat' ? parseAmount(shareAmount) : null,
+          currency,
+          pay_by: payBy ? payBy.toISOString() : null,
+          qr_payload: qrPayload,
+          image_path: null as string | null,
+        };
+        next.image_path = await resolveImagePath(editSessionId);
+        await updateSession(editSessionId, next);
+        // Roster diff: removals first, then updates, then additions.
+        for (const id of removedIds) await removeParticipant(id);
+        for (const r of roster) {
+          const amount = scheme === 'custom' ? parseAmount(r.amount) : null;
+          if (r.id) await updateParticipant(r.id, { name: r.name.trim(), slot: r.slot, share_amount: amount });
+          else await addParticipant(editSessionId, r.name.trim(), { slot: r.slot, share_amount: amount });
+        }
+        // Notify participants when the change matters and the box is ticked.
+        const summary = changeSummary(next);
+        if (notifyChanges && summary) {
+          notifySession(editSessionId, 'edited', summary).catch(() => {});
+        }
+        successNotification();
+        navigation.goBack();
+        return;
+      }
+
+      // ── Create path (blank or template) ──
       const session = await createSession({
         title: title.trim(),
         category,
         event_at: eventAt ? eventAt.toISOString() : null,
         venue: venue.trim() || null,
+        maps_url: mapsUrl.trim() || null,
         details_text: details.trim() || null,
         rules_text: rules.trim() || null,
         scheme,
         total_amount: scheme === 'equal' ? parseAmount(totalAmount) : null,
         default_share: scheme === 'flat' ? parseAmount(shareAmount) : null,
+        currency,
         pay_by: payBy ? payBy.toISOString() : null,
         qr_payload: qrPayload,
+        image_path: imagePreset ? `${CLUB_PRESET_PREFIX}${imagePreset}` : oldImagePath,
       });
+      // Upload comes after create — it needs the session id for its storage path.
+      if (imageUpload) {
+        const path = await uploadClubImage(session.id, imageUpload);
+        await updateSession(session.id, { image_path: path });
+        session.image_path = path;
+      }
       const rows = roster.filter((r) => r.name.trim());
       for (const r of rows) {
         // Sequential keeps failures attributable to a specific name.
@@ -256,7 +429,7 @@ const CollectzCreate: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [saving, title, category, eventAt, venue, details, rules, scheme, totalAmount, shareAmount, payBy, qrPayload, roster, navigation, showToast, t]);
+  }, [saving, isEdit, editSessionId, title, category, eventAt, venue, mapsUrl, details, rules, scheme, totalAmount, shareAmount, currency, payBy, qrPayload, imagePreset, imageUpload, oldImagePath, removedIds, roster, notifyChanges, navigation, showToast, t]);
 
   const handleSave = () => {
     if (!title.trim()) {
@@ -288,11 +461,27 @@ const CollectzCreate: React.FC = () => {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {prefilling ? (
+          <ActivityIndicator size="small" color={C.accent} style={{ marginVertical: SPACING.xl }} />
+        ) : (
+        <>
+        {/* Template banner — "same as previous" prefill */}
+        {!!templateTitle && (
+          <View style={[styles.templateBanner, { backgroundColor: withAlpha(C.accent, 0.08) }]}>
+            <Feather name="copy" size={14} color={C.accent} />
+            <Text style={[styles.templateBannerText, { color: C.accent }]}>
+              {t.collectz.templateBanner.replace('{title}', templateTitle)}
+            </Text>
+          </View>
+        )}
+
         {/* Paste prefill */}
+        {!isEdit && (
         <Pressable style={({ pressed }) => [styles.pasteBtn, pressed && { opacity: 0.85 }]} onPress={() => { lightTap(); setPasteOpen(true); }}>
           <Feather name="clipboard" size={16} color={C.accent} />
           <Text style={styles.pasteBtnText}>{t.collectz.pasteWhatsapp}</Text>
         </Pressable>
+        )}
 
         {/* Title */}
         <View style={styles.fieldGroup}>
@@ -322,6 +511,36 @@ const CollectzCreate: React.FC = () => {
           </View>
         </View>
 
+        {/* Club image / icon */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>{t.collectz.fieldImage}</Text>
+          <View style={styles.chipRow}>
+            {CLUB_ICONS.map((icon) => (
+              <Pressable
+                key={icon.id}
+                style={[styles.iconTile, imagePreset === icon.id && styles.iconTileActive]}
+                onPress={() => pickPreset(icon.id)}
+                accessibilityRole="button"
+                accessibilityLabel={icon.id}
+              >
+                <Image source={icon.source} style={styles.iconImage} />
+              </Pressable>
+            ))}
+            <Pressable
+              style={[styles.iconTile, (imageUpload || (!imagePreset && oldImagePath)) && styles.iconTileActive]}
+              onPress={pickUpload}
+              accessibilityRole="button"
+              accessibilityLabel={t.collectz.imageUpload}
+            >
+              {imageUpload ? (
+                <Image source={{ uri: imageUpload.uri }} style={styles.iconImage} />
+              ) : (
+                <Feather name="upload" size={20} color={C.textSecondary} />
+              )}
+            </Pressable>
+          </View>
+        </View>
+
         {renderWhenRow(t.collectz.fieldEventAt, eventAt, 'event')}
 
         {/* Venue */}
@@ -334,6 +553,23 @@ const CollectzCreate: React.FC = () => {
             placeholder={t.collectz.fieldVenuePlaceholder}
             placeholderTextColor={C.textMuted}
           />
+        </View>
+
+        {/* Maps link + preview */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>{t.collectz.fieldMaps}</Text>
+          <TextInput
+            style={styles.input}
+            value={mapsUrl}
+            onChangeText={setMapsUrl}
+            placeholder={t.collectz.fieldMapsPlaceholder}
+            placeholderTextColor={C.textMuted}
+            autoCapitalize="none"
+            keyboardType="url"
+          />
+          {!!mapsUrl.trim() && isMapsLink(mapsUrl.trim()) && (
+            <MapPreviewCard mapsUrl={mapsUrl.trim()} compact />
+          )}
         </View>
 
         {/* Details */}
@@ -383,6 +619,22 @@ const CollectzCreate: React.FC = () => {
               keyboardType="decimal-pad"
             />
           )}
+        </View>
+
+        {/* Currency */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>{t.collectz.fieldCurrency}</Text>
+          <View style={styles.chipRow}>
+            {Array.from(new Set([appCurrency, 'MYR', 'SGD', 'USD'])).map((cur) => (
+              <Pressable
+                key={cur}
+                style={[styles.chip, currency === cur && styles.chipActive]}
+                onPress={() => { selectionChanged(); setCurrency(cur); }}
+              >
+                <Text style={[styles.chipText, currency === cur && styles.chipTextActive]}>{cur}</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
         {renderWhenRow(t.collectz.fieldPayBy, payBy, 'payBy', () => setPayBy(null))}
@@ -473,20 +725,35 @@ const CollectzCreate: React.FC = () => {
           {!!qrWarnLabel && <Text style={styles.warnHint}>{t.collectz.qrNoPayload}</Text>}
         </View>
 
+        {/* Edit mode: notify participants of the change */}
+        {isEdit && (
+          <Pressable
+            style={styles.notifyRow}
+            onPress={() => { selectionChanged(); setNotifyChanges((v) => !v); }}
+            accessibilityRole="button"
+            accessibilityState={{ checked: notifyChanges }}
+          >
+            <Feather name={notifyChanges ? 'check-square' : 'square'} size={16} color={notifyChanges ? C.accent : C.textMuted} />
+            <Text style={[styles.notifyText, { color: C.textPrimary }]}>{t.collectz.notifyChanges}</Text>
+          </Pressable>
+        )}
+
         {/* Save */}
         <Pressable
           style={({ pressed }) => [styles.saveBtn, (pressed || saving) && { opacity: 0.85 }]}
           onPress={handleSave}
           disabled={saving}
           accessibilityRole="button"
-          accessibilityLabel={t.collectz.createSave}
+          accessibilityLabel={isEdit ? t.collectz.editSave : t.collectz.createSave}
         >
           {saving ? (
             <ActivityIndicator size="small" color={C.onAccent} />
           ) : (
-            <Text style={styles.saveBtnText}>{t.collectz.createSave}</Text>
+            <Text style={styles.saveBtnText}>{isEdit ? t.collectz.editSave : t.collectz.createSave}</Text>
           )}
         </Pressable>
+        </>
+        )}
       </ScrollView>
 
       {/* Android renders the picker as a system dialog. */}
@@ -608,6 +875,40 @@ const makeStyles = (C: typeof CALM) =>
       color: C.textSecondary,
     },
     chipTextActive: { color: C.onAccent },
+    iconTile: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: C.pillBg,
+      borderWidth: 2,
+      borderColor: 'transparent',
+      overflow: 'hidden',
+    },
+    iconTileActive: { borderColor: C.accent },
+    iconImage: { width: 44, height: 44, borderRadius: 22 },
+    templateBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      borderRadius: RADIUS.lg,
+      padding: SPACING.md,
+      marginBottom: SPACING.md,
+    },
+    templateBannerText: {
+      flex: 1,
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    notifyRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      paddingVertical: SPACING.sm,
+      marginBottom: SPACING.sm,
+    },
+    notifyText: { flex: 1, fontSize: TYPOGRAPHY.size.sm },
     whenRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
     whenBtn: {
       flexDirection: 'row',

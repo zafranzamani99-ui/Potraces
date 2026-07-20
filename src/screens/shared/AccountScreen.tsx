@@ -164,6 +164,15 @@ export default function AccountScreen() {
       useAuthStore.getState().setPersonalAuth({
         isAuthenticated: true, userId: result.userId, provider: 'google',
       });
+      // Google profile photo becomes the avatar — and it STAYS (re-synced on
+      // every sign-in, matching Google's auto-update; a manual preset pick
+      // overrides it until the next sign-in).
+      getAuthSession(supabasePersonal)
+        .then((s) => {
+          const url = (s?.user as { user_metadata?: { avatar_url?: unknown } })?.user_metadata?.avatar_url;
+          if (typeof url === 'string' && url) useSettingsStore.getState().setAvatarUri(url);
+        })
+        .catch(() => {});
       await enableBackup();
       // Skip the cross-mode reuse prompt when the user came here mid-setup
       // from another screen — it derails the flow they were in.

@@ -113,5 +113,23 @@ console.log('\nedge cases');
   check('equal without total → null share', noTotal.get('a') === null);
 }
 
+// ── share-lock: a locked (explicit) share survives roster edits ─────────────
+console.log('\nshare-lock (confirm-time freeze)');
+{
+  const session = { scheme: 'equal' as const, total_amount: 100, default_share: null };
+  const before = [p('a'), p('b'), p('c')];
+  const sharesBefore = computeShares(session, before);
+  // Simulate confirmParticipant's lock: 'a' confirmed → share_amount written
+  const lockedA = sharesBefore.get('a')!; // 33.34
+  // Later the organizer removes 'c' — the equal split recomputes for b…
+  const after = [p('a', 'active', lockedA, 'confirmed'), p('b')];
+  const sharesAfter = computeShares(session, after);
+  close('locked share unchanged after removal', sharesAfter.get('a')!, lockedA);
+  check('recomputed share differs (only unlocked rows move)', sharesAfter.get('b')! !== sharesBefore.get('b')!);
+  // Progress with the locked row must not double-count or drift
+  const prog = computeProgress(session, after);
+  close('confirmed sum uses the locked share', prog.confirmed, lockedA);
+}
+
 console.log(failures === 0 ? '\nAll collectz math checks passed ✓' : `\n${failures} check(s) FAILED`);
 process.exit(failures === 0 ? 0 : 1);
