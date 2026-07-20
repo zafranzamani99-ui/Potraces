@@ -17,13 +17,13 @@
   default-src 'self';
   base-uri 'self';
   form-action 'self';
-  frame-ancestors 'none';
   img-src 'self' data:;
   font-src 'self' https://fonts.gstatic.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   script-src 'self' 'unsafe-inline' https://esm.sh;
   connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co https://esm.sh https://accounts.google.com;
 ">
+<!-- frame-ancestors is sent as an HTTP header (vercel.json) — it is ignored inside <meta> -->
 
 <title>Potraces Ops — usage console</title>
 <meta name="description" content="Founder ops console: users, AI usage and estimated cost.">
@@ -134,6 +134,8 @@ h1{font-size:clamp(1.45rem,2.6vw,1.8rem);font-weight:800;letter-spacing:-.025em}
 .p-ic svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
 /* ── daily bar chart ── */
+.chart-scroll{overflow-x:auto;margin:0 -4px;padding:0 4px;scrollbar-width:thin}
+.chart-inner{min-width:560px}
 .chart{display:flex;align-items:flex-end;gap:6px;height:190px;position:relative}
 .chart::before,.chart .gridline{content:'';position:absolute;left:0;right:0;height:1px;background:var(--line)}
 .chart::before{top:33%}
@@ -357,8 +359,10 @@ h1{font-size:clamp(1.45rem,2.6vw,1.8rem);font-weight:800;letter-spacing:-.025em}
           <h2>Daily activity</h2>
           <span class="p-note">AI calls per day · hover a bar for the breakdown</span>
         </div>
-        <div class="chart" id="dailyChart"><div class="gridline"></div></div>
-        <div class="chart-x" id="dailyX"></div>
+        <div class="chart-scroll"><div class="chart-inner">
+          <div class="chart" id="dailyChart"><div class="gridline"></div></div>
+          <div class="chart-x" id="dailyX"></div>
+        </div></div>
         <div class="legend">
           <span><i style="background:var(--dark)"></i>Calls</span>
           <span><i style="background:var(--sage)"></i>Today</span>
@@ -676,12 +680,13 @@ function deltaChip(cur, prev){
   const up = pct >= 0;
   return `<span class="k-delta ${up?'up':'dn'}">${up?'↗':'↘'} ${Math.abs(pct).toFixed(1)}%</span>`;
 }
-function spark(values, color){
+function spark(values, color, fill){
   if (!values.length || values.every(v=>!v)) return '<span></span>';
-  const w=76, h=26, max=Math.max(...values,1);
+  const w=76, h=26, max=Math.max(...values,1)*1.15; // headroom so peaks don't kiss the top
   const step = values.length>1 ? w/(values.length-1) : w;
   const pts = values.map((v,i)=>`${(i*step).toFixed(1)},${(h-2-(v/max)*(h-5)).toFixed(1)}`).join(' ');
-  return `<svg class="k-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${pts}" fill="none" style="stroke:${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+  const area = `0,${h} ${pts} ${w},${h}`;
+  return `<svg class="k-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polygon points="${area}" fill="${fill||'rgba(23,24,29,.07)'}" stroke="none"/><polyline points="${pts}" fill="none" style="stroke:${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
 }
 function seriesByDay(events){
   const now = new Date(), start = new Date(store.rangeStart);
@@ -742,7 +747,7 @@ function renderKpis(){
 
   kpisEl.innerHTML =
     kpiCard({ dark:true, label:'Estimated cost', value:money(usd,2), sub:costSub, delta:deltaChip(usd,usdPrev),
-      spark:spark(days.map(d=>d.usd),'rgba(255,255,255,.85)'), tap:'kind:all',
+      spark:spark(days.map(d=>d.usd),'rgba(255,255,255,.9)','rgba(255,255,255,.22)'), tap:'kind:all',
       info:'Tracked tokens × editable rates (see Pricing). Estimate — provider consoles are the bill of record.' }) +
     kpiCard({ label:'AI calls', value:fmtNum(ai.length), sub:`${fmtNum(aggCalls)} this calendar month incl. untracked`,
       delta:deltaChip(ai.length, aiPrev.length), spark:spark(days.map(d=>d.calls),'var(--dark)'), tap:'kind:ai_call',

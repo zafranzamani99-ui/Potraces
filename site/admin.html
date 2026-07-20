@@ -17,13 +17,13 @@
   default-src 'self';
   base-uri 'self';
   form-action 'self';
-  frame-ancestors 'none';
   img-src 'self' data:;
   font-src 'self' https://fonts.gstatic.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   script-src 'self' 'unsafe-inline' https://esm.sh;
   connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co https://esm.sh https://accounts.google.com;
 ">
+<!-- frame-ancestors is sent as an HTTP header (vercel.json) — it is ignored inside <meta> -->
 
 <title>Potraces — Beta admin</title>
 <meta name="description" content="Founder triage view for Potraces beta feedback.">
