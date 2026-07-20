@@ -129,11 +129,27 @@ export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
   cardColor: '', cardFont: '',
 };
 
+/**
+ * Default pinned Quick Actions (Dashboard inline rows), in order. Keys match
+ * getQuickActions() in src/components/common/QuickActions.tsx — tiles absent
+ * from a user's saved order appear under the sheet's "More actions" instead.
+ */
+export const DEFAULT_QUICK_ACTION_ORDER: string[] = [
+  'wallets', 'savings', 'debts', 'bills', 'reports',
+  'calculator', 'goals', 'receipts', 'chat', 'pulse',
+];
+
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type AppLanguage = 'en' | 'ms';
 
 interface SettingsState {
   userName: string;
+  /** Chosen preset avatar id (see constants/avatars.ts). null = none picked. */
+  avatarId: string | null;
+  /** Remote photo URL from the OAuth provider (Google sign-in). WINS over
+   *  avatarId when present; picking a preset manually clears it (user override),
+   *  and the next Google sign-in re-syncs it (matches Google's auto-update). */
+  avatarUri: string | null;
   currency: string;
   hapticEnabled: boolean;
   notificationsEnabled: boolean;
@@ -147,6 +163,8 @@ interface SettingsState {
   businessProfile: BusinessProfile;
   customPaymentMethods: CategoryOption[];
   paymentMethodOverrides: Record<string, Partial<CategoryOption> & { hidden?: boolean }>;
+  /** Ordered keys of the tiles pinned to the Dashboard's inline Quick Actions rows. */
+  quickActionOrder: string[];
   hasCompletedOnboarding: boolean;
   gettingStartedDismissed: boolean;
   dismissedHints: string[];
@@ -219,10 +237,13 @@ interface SettingsState {
   removeCustomPaymentMethod: (id: string) => void;
   updatePaymentMethodOverride: (id: string, overrides: Partial<CategoryOption> & { hidden?: boolean }) => void;
   setUserName: (name: string) => void;
+  setAvatarId: (id: string | null) => void;
+  setAvatarUri: (uri: string | null) => void;
   setCurrency: (currency: string) => void;
   setHapticEnabled: (enabled: boolean) => void;
   setEchoDailyCheckin: (enabled: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
+  setQuickActionOrder: (order: string[]) => void;
   setBusinessModeEnabled: (enabled: boolean) => void;
   setDefaultMode: (mode: 'personal' | 'business') => void;
   setThemePreference: (pref: ThemePreference) => void;
@@ -417,9 +438,12 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       userName: '',
+      avatarId: null,
+      avatarUri: null,
       currency: 'RM',
       hapticEnabled: true,
       notificationsEnabled: true,
+      quickActionOrder: [...DEFAULT_QUICK_ACTION_ORDER],
       echoDailyCheckin: false,
       businessModeEnabled: false,
       defaultMode: 'personal',
@@ -496,10 +520,13 @@ export const useSettingsStore = create<SettingsState>()(
         paymentMethodOverrides: { ...s.paymentMethodOverrides, [id]: { ...s.paymentMethodOverrides[id], ...overrides } },
       })),
       setUserName: (userName) => set({ userName }),
+      setAvatarId: (avatarId) => set({ avatarId }),
+      setAvatarUri: (avatarUri) => set({ avatarUri }),
       setCurrency: (currency) => set({ currency }),
       setHapticEnabled: (hapticEnabled) => set({ hapticEnabled }),
       setEchoDailyCheckin: (echoDailyCheckin) => set({ echoDailyCheckin }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
+      setQuickActionOrder: (quickActionOrder) => set({ quickActionOrder }),
       setBusinessModeEnabled: (businessModeEnabled) => set({ businessModeEnabled }),
       setDefaultMode: (defaultMode) => set({ defaultMode }),
       setThemePreference: (themePreference) => set({ themePreference }),
@@ -559,6 +586,8 @@ export const useSettingsStore = create<SettingsState>()(
           lastSyncedUserId: null,
           lastPersonalSyncError: null,
           userName: '',
+          avatarId: null,
+          avatarUri: null,
           hasCompletedOnboarding: false,
           gettingStartedDismissed: false,
           dismissedHints: [],
@@ -720,6 +749,10 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (!state.customPaymentMethods) state.customPaymentMethods = [];
         if (!state.paymentMethodOverrides) state.paymentMethodOverrides = {};
+        // Ensure quickActionOrder exists (added after some installs shipped)
+        if (!Array.isArray(state.quickActionOrder)) {
+          state.quickActionOrder = [...DEFAULT_QUICK_ACTION_ORDER];
+        }
         // Rehydrate sync timestamp (stored as ISO)
         const rawSync = (state as any).lastPersonalSyncAt;
         if (rawSync && typeof rawSync === 'string') {
@@ -731,6 +764,9 @@ export const useSettingsStore = create<SettingsState>()(
         if (typeof state.personalSyncEnabled !== 'boolean') {
           state.personalSyncEnabled = false;
         }
+        // Avatar fields (added after some installs shipped)
+        if (typeof state.avatarId !== 'string') state.avatarId = null;
+        if (typeof state.avatarUri !== 'string') state.avatarUri = null;
         if (typeof state.tapToPayEnabled !== 'boolean') {
           state.tapToPayEnabled = false;
         }

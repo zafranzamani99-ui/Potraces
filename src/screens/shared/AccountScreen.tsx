@@ -73,6 +73,9 @@ export default function AccountScreen() {
   // Set when another screen (e.g. Quick Log setup) sent the user here just to
   // enable Cloud Backup: return there on success and skip unrelated prompts.
   const returnTo = route.params?.returnTo as string | undefined;
+  // Optional params to hand back to the returnTo screen (e.g. CollectzJoin's
+  // share code, so the participant lands back on the same session).
+  const returnParams = route.params?.returnParams as Record<string, unknown> | undefined;
   const { showToast } = useToast();
 
   const isAuthenticated = useAuthStore((s) => s.personal.isAuthenticated);
@@ -136,21 +139,21 @@ export default function AccountScreen() {
       if (!useSettingsStore.getState().personalSyncEnabled && returnTo !== 'QuickLogSetup') {
         showToast(tr.settings.cloudBackupPaid, 'info');
       }
-      if (returnTo) navigation.navigate(returnTo as never);
+      if (returnTo) navigation.navigate(returnTo as never, returnParams as never);
       return;
     }
     useSettingsStore.getState().setPersonalSyncEnabled(true);
     showToast(tr.auth.acctBackingUp, 'info');
     // Came from another screen's gate (Quick Log setup)? Take the user back
     // there immediately — the sync continues in the background.
-    if (returnTo) navigation.navigate(returnTo as never);
+    if (returnTo) navigation.navigate(returnTo as never, returnParams as never);
     try {
       await syncPersonal();
       showToast(tr.settings.syncedToCloud, 'success');
     } catch {
       showToast(tr.settings.syncFailedRetry, 'info');
     }
-  }, [showToast, tr, returnTo, navigation]);
+  }, [showToast, tr, returnTo, returnParams, navigation]);
 
   const handleGoogle = useCallback(async () => {
     if (busy) return;

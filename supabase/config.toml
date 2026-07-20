@@ -404,6 +404,17 @@ verify_jwt = false
 [functions.beta-signup]
 verify_jwt = false
 
+# Collectz join/view/claim gateway. JWT-free so the public web page can fetch a
+# session summary by share_code; the function does its own authz (anon gets the
+# public projection only, claim/add_self require a valid user token inside).
+[functions.collectz-join]
+verify_jwt = false
+
+# Collectz organizer reminder sender. JWT-free at the gateway like the other
+# self-authz functions; the function verifies the caller owns the session.
+[functions.collectz-remind]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<!--
+  Potraces — Collectz public join page.  jejakbaki.my/collectz/{CODE}
+  Landing page for shared Collectz (group-payment) links: reads the session
+  code from the path (/collectz/CODE) or query (?c=CODE), fetches the public
+  roster from the collectz-join edge function (action:'view', anon key), and
+  renders event details + per-person payment status. CTAs deep-link back into
+  the app (potraces://collectz/{CODE}, universal link as fallback) or send the
+  visitor to the beta page to get the app.
+  Chrome (nav/footer/lang/grain/buttons/panels) is consumed by name from
+  /tokens.css + /site.css; only the cz-* session layout lives below.
+  No build step, no framework. Dynamic regions must NOT carry .reveal (it
+  starts at opacity:0 and the observer has already run by the time they render).
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#FEFDFB">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co">
+
+<title>Join the kutipan — Potraces Collectz</title>
+<meta name="description" content="Someone shared a Potraces Collectz group payment with you — check who's paid, then open it in the app to claim your spot.">
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://jejakbaki.my/collectz">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Potraces">
+<meta property="og:title" content="Join the kutipan — Potraces Collectz">
+<meta property="og:description" content="Someone shared a Potraces Collectz group payment with you — check who's paid, then open it in the app to claim your spot.">
+<meta property="og:url" content="https://jejakbaki.my/collectz">
+<meta property="og:image" content="https://jejakbaki.my/assets/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+<meta property="og:locale" content="en_MY">
+<meta property="og:locale:alternate" content="ms_MY">
+
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Join the kutipan — Potraces Collectz">
+<meta name="twitter:description" content="Check who's paid, then open the link in the Potraces app to claim your spot.">
+<meta name="twitter:image" content="https://jejakbaki.my/assets/og-card.png">
+<meta name="twitter:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+
+<!-- Favicons -->
+<link rel="icon" href="/assets/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="/assets/icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Shared design system — tokens FIRST, then site. -->
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+
+<style>
+/* Hallmark · TENANG v5 · collectz.html — page-unique only: the cz-* session
+   layout (meta rows, roster chips, progress track, CTA stack). Nav, footer,
+   .hero-center, .panel--sage, .card, .btn-pill--ink/--ghost, .mono-caps,
+   .badge all come from /tokens.css + /site.css. */
+[hidden]{display:none !important}
+
+.cz-body{padding-bottom:var(--space-4xl)}
+.cz-wrap{max-width:640px;margin:0 auto}
+.cz-state{padding:var(--space-2xl) 0;text-align:center;color:var(--ink-65)}
+
+/* session stack — white cards floating on ONE sage panel (gs-* pattern) */
+.cz-stack{display:grid;gap:16px}
+.cz-title{font-size:var(--text-2xl);letter-spacing:var(--tracking-tight);margin:0 0 6px}
+.cz-sub{color:var(--ink-65);font-size:.95rem}
+
+/* meta rows (mono caps label left, value right) */
+.cz-rows{display:grid;gap:10px;margin-top:var(--space-md)}
+.cz-row{display:flex;gap:12px;align-items:baseline}
+.cz-k{flex-shrink:0;width:104px;font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45)}
+.cz-v{color:var(--ink-90);min-width:0;overflow-wrap:anywhere}
+
+/* prose blocks (details / rules) */
+.cz-prose{margin-top:10px;color:var(--ink-65);line-height:var(--leading-relaxed);font-size:.95rem;white-space:pre-line;overflow-wrap:anywhere}
+
+/* progress */
+.cz-progline{font-family:var(--font-mono);font-size:var(--text-sm);color:var(--ink-65)}
+.cz-track{height:8px;border-radius:var(--radius-pill);background:var(--ink-06);overflow:hidden;margin-top:12px}
+.cz-fill{height:100%;border-radius:var(--radius-pill);background:var(--sage-deep)}
+
+/* roster */
+.cz-roster{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:12px}
+.cz-person{display:flex;align-items:center;gap:10px}
+.cz-name{flex:1;min-width:0;font-weight:var(--fw-medium);overflow-wrap:anywhere}
+.cz-share{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);flex-shrink:0}
+.cz-chip{flex-shrink:0;font-family:var(--font-mono);font-size:var(--text-xs);padding:4px 10px;border-radius:var(--radius-pill)}
+.cz-chip--unpaid{background:var(--ink-06);color:var(--ink-65)}
+.cz-chip--pending{background:var(--gold-pale);color:var(--gold-deep)}
+.cz-chip--confirmed{background:var(--sage-pale);color:var(--sage-text)}
+.cz-chip--rejected{background:rgba(168,72,46,.10);color:var(--terracotta)}
+.cz-wait{font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45);margin:18px 0 -4px}
+
+/* CTAs + honest mono footnote */
+.cz-cta{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:var(--space-xl)}
+.cz-note{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);text-align:center;max-width:44ch}
+
+/* error panel */
+.cz-err{text-align:center}
+.cz-err h2{font-size:var(--text-2xl);margin-bottom:10px}
+.cz-err p{color:var(--ink-65);line-height:var(--leading-relaxed);max-width:46ch;margin:0 auto var(--space-lg)}
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<a class="skip" href="#main" data-en="Skip to content" data-bm="Terus ke kandungan">Skip to content</a>
+
+<!-- ════════════ NAV ════════════ -->
+<header class="nav" id="nav">
+  <div class="container">
+    <a class="brand" href="/#top" aria-label="Potraces home">
+      <span class="logo" aria-hidden="true" id="navlogo"></span>
+      <span>Potraces</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/" data-en="Home" data-bm="Laman utama">Home</a>
+      <a href="/quick-log.html" data-en="Quick Log" data-bm="Log Pantas">Quick Log</a>
+    </nav>
+    <div class="nav-right">
+      <div class="lang-toggle" role="group" aria-label="Language / Bahasa">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="ms" aria-pressed="false">BM</button>
+      </div>
+      <a class="btn btn-primary btn-sm btn-beta-nav" href="/beta.html" data-en="Join the beta" data-bm="Sertai beta">Join the beta</a>
+      <button class="hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false" aria-controls="mobileSheet">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- mobile sheet -->
+<div class="mobile-sheet" id="mobileSheet" aria-hidden="true">
+  <a href="/" data-en="Home" data-bm="Laman utama">Home</a>
+  <a href="/quick-log.html" data-en="Quick Log" data-bm="Log Pantas">Quick Log</a>
+  <div class="lang-toggle" role="group" aria-label="Language / Bahasa" style="margin-top:24px;align-self:flex-start">
+    <button type="button" data-lang="en" aria-pressed="true">EN</button>
+    <button type="button" data-lang="ms" aria-pressed="false">BM</button>
+  </div>
+  <a class="btn btn-primary" href="/beta.html" data-en="Join the beta" data-bm="Sertai beta">Join the beta</a>
+</div>
+
+<main id="main">
+<span id="top"></span>
+
+<!-- ════════════ HERO ════════════ -->
+<section class="hero-center">
+  <div class="container">
+    <p class="eyebrow">
+      <span class="ic" aria-hidden="true" id="herowau"></span>
+      <span>Potraces — Collectz</span>
+    </p>
+    <h1>
+      <span data-en="Join the" data-bm="Masuk">Join the</span>
+      <span class="accent-word">kutipan</span>
+    </h1>
+    <p class="lead">
+      <span data-en="Someone shared a Collectz group payment with you. Check the details below, then open it in the app to claim your spot." data-bm="Kawan kau share kutipan Collectz dengan kau. Tengok details kat bawah, lepas tu buka dalam app untuk claim tempat kau." class="block">Someone shared a Collectz group payment with you. Check the details below, then open it in the app to claim your spot.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ════════════ SESSION (dynamic) ════════════ -->
+<section class="cz-body">
+  <div class="container">
+    <div class="cz-wrap">
+
+      <div class="cz-state" id="czLoading" role="status">Loading kutipan…</div>
+
+      <div class="cz-state" id="czError" hidden>
+        <div class="panel panel--sage cz-err">
+          <h2 id="czErrorTitle"></h2>
+          <p id="czErrorMsg"></p>
+          <a class="btn btn-pill--ink" href="/beta.html" data-en="Get the app" data-bm="Dapatkan app">Get the app</a>
+        </div>
+      </div>
+
+      <div id="czSession" hidden>
+        <div class="panel panel--sage">
+          <div class="cz-stack">
+            <article class="card" id="czHeadCard"></article>
+            <article class="card" id="czProgCard"></article>
+            <article class="card" id="czDetailsCard" hidden></article>
+            <article class="card" id="czRulesCard" hidden></article>
+            <article class="card" id="czRosterCard"></article>
+          </div>
+        </div>
+        <div class="cz-cta">
+          <button type="button" class="btn btn-pill--ink btn-lg" id="czOpen" data-en="Open in Potraces" data-bm="Buka dalam Potraces">Open in Potraces</button>
+          <a class="btn btn-pill--ghost btn-lg" href="/beta.html" data-en="Get the app" data-bm="Dapatkan app">Get the app</a>
+          <p class="cz-note" data-en="If nothing happens when you tap Open, you might not have Potraces yet — get the app first." data-bm="Kalau tak jadi apa-apa bila tap Buka, mungkin kau belum ada app Potraces — download dulu.">If nothing happens when you tap Open, you might not have Potraces yet — get the app first.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ════════════ FOOTER ════════════ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="/#top" aria-label="Potraces home">
+          <span class="logo" aria-hidden="true" id="footlogo"></span>
+          <span>Potraces</span>
+        </a>
+        <p class="bline" data-en="Calm money tracking for irregular earners in Malaysia." data-bm="Jejak duit yang tenang untuk pencari rezeki tak tetap di Malaysia.">Calm money tracking for irregular earners in Malaysia.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4 data-en="Product" data-bm="Produk">Product</h4>
+          <a href="/#features" data-en="Features" data-bm="Ciri">Features</a>
+          <a href="/#how" data-en="How it works" data-bm="Cara guna">How it works</a>
+          <a href="/#who" data-en="Who it's for" data-bm="Untuk siapa">Who it's for</a>
+        </div>
+        <div class="footer-col">
+          <h4 data-en="More" data-bm="Lagi">More</h4>
+          <a href="/privacy.html" data-en="Privacy policy" data-bm="Dasar privasi">Privacy policy</a>
+          <a href="/delete-account.html" data-en="Delete account" data-bm="Padam akaun">Delete account</a>
+          <a href="/#faq" data-en="FAQ" data-bm="Soalan">FAQ</a>
+          <a href="/beta.html" data-en="Beta feedback" data-bm="Feedback beta">Beta feedback</a>
+        </div>
+        <div class="footer-col">
+          <h4 data-en="Say hi" data-bm="Tegur kami">Say hi</h4>
+          <a href="mailto:hello@jejakbaki.my" data-en="Email us" data-bm="Emel kami">Email us</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="fb-row">
+        <span class="copy">© <span id="year">2026</span> Potraces · jejakbaki.my</span>
+        <span class="made">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8B7355" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-4.5-9-9a4.8 4.8 0 0 1 9-2 4.8 4.8 0 0 1 9 2c-2 4.5-9 9-9 9z"/></svg>
+          <span data-en="Made in Malaysia" data-bm="Buatan Malaysia">Made in Malaysia</span>
+        </span>
+      </div>
+      <p class="footer-disclaimer" data-en="Potraces is a calm money tracker, not financial advice. Beta software may change without notice." data-bm="Potraces alat jejak duit yang tenang, bukan nasihat kewangan. Perisian beta boleh berubah tanpa notis.">Potraces is a calm money tracker, not financial advice. Beta software may change without notice.</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ── inline wau SVG (sage), injected into logo + watermark slots ── */
+var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" role="img" aria-label="Potraces wau kite logo">\
+<rect width="1024" height="1024" fill="#5E7B6A"/>\
+<circle cx="512" cy="490" r="350" fill="#F1E7D3" opacity="0.05"/>\
+<circle cx="512" cy="490" r="262" fill="#F1E7D3" opacity="0.05"/>\
+<g transform="translate(0 96) rotate(-6 512 420)">\
+<path d="M494 278 L512 92 L530 278 Z" fill="#DEAB22" stroke="#B2780A" stroke-width="5" stroke-linejoin="round"/>\
+<circle cx="512" cy="86" r="9" fill="#DEAB22"/><circle cx="512" cy="86" r="4" fill="#B2780A"/>\
+<rect x="486" y="268" width="52" height="14" rx="7" fill="#B2780A"/>\
+<path d="M512 428 L540 464 L512 502 L484 464 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="6" stroke-linejoin="round"/>\
+<path d="M512 460 C470 535 432 600 374 660 C416 670 466 644 494 594 C504 560 510 510 512 460 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="7" stroke-linejoin="round"/>\
+<path d="M512 460 C554 535 592 600 650 660 C608 670 558 644 530 594 C520 560 514 510 512 460 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="7" stroke-linejoin="round"/>\
+<path d="M508 480 C478 546 448 598 402 646" stroke="#DEAB22" stroke-width="5" stroke-linecap="round"/>\
+<path d="M516 480 C546 546 576 598 622 646" stroke="#DEAB22" stroke-width="5" stroke-linecap="round"/>\
+<path d="M448 596 C432 588 420 592 414 606" stroke="#4F5104" stroke-width="4" stroke-linecap="round"/>\
+<circle cx="411" cy="610" r="4" fill="#DEAB22"/>\
+<path d="M576 596 C592 588 604 592 610 606" stroke="#4F5104" stroke-width="4" stroke-linecap="round"/>\
+<circle cx="613" cy="610" r="4" fill="#DEAB22"/>\
+<path d="M130 560 C250 340 400 272 512 272 C624 272 774 340 894 560 C760 470 640 436 512 436 C384 436 264 470 130 560 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="8" stroke-linejoin="round"/>\
+<path d="M220 500 C310 370 416 310 512 310 C608 310 714 370 804 500" stroke="#DEAB22" stroke-width="7" stroke-linecap="round"/>\
+<path d="M392 372 C352 354 318 360 300 392" stroke="#4F5104" stroke-width="6" stroke-linecap="round"/>\
+<circle cx="296" cy="398" r="6" fill="#DEAB22"/>\
+<path d="M342 440 C312 428 290 432 278 454" stroke="#4F5104" stroke-width="5" stroke-linecap="round"/>\
+<circle cx="274" cy="458" r="5" fill="#DEAB22"/>\
+<ellipse cx="430" cy="340" rx="7" ry="14" fill="#B2780A" opacity="0.85" transform="rotate(-35 430 340)"/>\
+<g transform="matrix(-1 0 0 1 1024 0)">\
+<path d="M392 372 C352 354 318 360 300 392" stroke="#4F5104" stroke-width="6" stroke-linecap="round"/>\
+<circle cx="296" cy="398" r="6" fill="#DEAB22"/>\
+<path d="M342 440 C312 428 290 432 278 454" stroke="#4F5104" stroke-width="5" stroke-linecap="round"/>\
+<circle cx="274" cy="458" r="5" fill="#DEAB22"/>\
+<ellipse cx="430" cy="340" rx="7" ry="14" fill="#B2780A" opacity="0.85" transform="rotate(-35 430 340)"/>\
+</g>\
+<circle cx="133" cy="557" r="6" fill="#DEAB22"/><circle cx="891" cy="557" r="6" fill="#DEAB22"/>\
+<circle cx="512" cy="368" r="48" stroke="#DEAB22" stroke-width="4" opacity="0.6"/>\
+<g>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(60 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(120 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(180 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(240 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(300 512 368)"/>\
+</g>\
+<circle cx="512" cy="368" r="11" fill="#B2780A"/>\
+</g></svg>';
+['navlogo','footlogo','herowau'].forEach(function(id){
+  var el = document.getElementById(id);
+  if (el) el.innerHTML = WAU_SVG;
+});
+
+/* ── language toggle (persisted; shared 'potraces_lang' key across ALL pages) ── */
+(function(){
+  var STORAGE='potraces_lang';
+  function apply(lang){
+    document.documentElement.setAttribute('lang', lang);
+    document.querySelectorAll('.lang-toggle button').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang')===lang));
+    });
+    document.querySelectorAll('[data-en]').forEach(function(el){
+      if(el.children.length) return;                         /* leaf-only swap */
+      var t = lang==='ms' ? el.getAttribute('data-bm') : el.getAttribute('data-en');
+      if(t!=null) el.textContent = t;
+    });
+    try{ localStorage.setItem(STORAGE, lang); }catch(e){}
+    window.dispatchEvent(new CustomEvent('pt:lang',{detail:{lang:lang}}));  /* dynamic content re-renders */
+  }
+  window.__ptLang = function(){ return document.documentElement.getAttribute('lang')==='ms' ? 'ms' : 'en'; };
+  var saved='en';
+  try{ saved = localStorage.getItem(STORAGE) || 'en'; }catch(e){}
+  apply(saved);
+  document.querySelectorAll('.lang-toggle button').forEach(function(b){
+    b.addEventListener('click', function(){ apply(b.getAttribute('data-lang')); });
+  });
+})();
+
+/* ── nav scroll-shadow state ── */
+(function(){
+  var nav=document.getElementById('nav');
+  if(!nav || nav.classList.contains('nav--sticky')) return;
+  function onScroll(){ nav.classList.toggle('scrolled', window.scrollY>12); }
+  onScroll();
+  window.addEventListener('scroll', onScroll, {passive:true});
+})();
+
+/* ── mobile menu ── */
+(function(){
+  var btn=document.getElementById('hamburger');
+  var sheet=document.getElementById('mobileSheet');
+  if(!btn || !sheet) return;
+  function setOpen(open){
+    btn.setAttribute('aria-expanded', String(open));
+    btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    sheet.classList.toggle('open', open);
+    sheet.setAttribute('aria-hidden', String(!open));
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+  btn.addEventListener('click', function(){ setOpen(!sheet.classList.contains('open')); });
+  sheet.querySelectorAll('a').forEach(function(a){ a.addEventListener('click', function(){ setOpen(false); }); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') setOpen(false); });
+})();
+
+/* ── scroll reveal (static elements only — dynamic session regions render later) ── */
+(function(){
+  var els=document.querySelectorAll('.reveal');
+  if(!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    els.forEach(function(el){ el.classList.add('in'); }); return;
+  }
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, {threshold:0.12, rootMargin:'0px 0px -40px 0px'});
+  els.forEach(function(el){ io.observe(el); });
+})();
+
+/* ── current year ── */
+(function(){ var y=document.getElementById('year'); if(y) y.textContent=new Date().getFullYear(); })();
+
+/* ════════════ Collectz session ════════════ */
+(function(){
+  var SB_URL = 'https://jngmanwvhbpkpkeklfiv.supabase.co';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZ21hbnd2aGJwa3BrZWtsZml2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMDQxODYsImV4cCI6MjA5OTU4MDE4Nn0.T36knLFwrWBtd-h-37Q-dQrlMNdfk0jeSJOQP_ch5bE';
+
+  var T = {
+    en: {
+      loading: 'Loading kutipan…',
+      noCodeT: 'This link is incomplete',
+      noCodeM: 'There’s no Collectz code in this link. Ask the organizer to send it again.',
+      notFoundT: 'Kutipan not found',
+      notFoundM: 'We couldn’t find this group payment. The link may be wrong, or the organizer removed it.',
+      cancelledT: 'This kutipan was cancelled',
+      cancelledM: 'The organizer cancelled this group payment — no payment is needed.',
+      genericT: 'Something went wrong',
+      genericM: 'We couldn’t load this kutipan. Check your connection and try again.',
+      date: 'Date', venue: 'Venue', payBy: 'Pay by',
+      details: 'Details', rules: 'House rules', roster: 'Who’s in',
+      waiting: 'Waiting list',
+      unpaid: 'Unpaid', pending: 'Pending', confirmed: 'Confirmed', rejected: 'Rejected',
+      settled: 'Settled',
+      progFull: function(x, y, n, m){ return x + ' confirmed of ' + y + ' — ' + n + '/' + m + ' paid'; },
+      progOpen: function(x, n, m){ return x + ' confirmed — ' + n + '/' + m + ' paid'; }
+    },
+    ms: {
+      loading: 'Tengah load kutipan…',
+      noCodeT: 'Link ni tak lengkap',
+      noCodeM: 'Takde kod Collectz dalam link ni. Minta organizer hantar balik link tu.',
+      notFoundT: 'Kutipan tak jumpa',
+      notFoundM: 'Kami tak jumpa kutipan ni. Link mungkin salah, atau organizer dah padam ia.',
+      cancelledT: 'Kutipan ni dah dibatalkan',
+      cancelledM: 'Organizer dah batalkan kutipan ni — tak payah bayar apa-apa.',
+      genericT: 'Ada masalah sikit',
+      genericM: 'Kutipan ni tak dapat load. Check internet kau dan cuba lagi.',
+      date: 'Tarikh', venue: 'Tempat', payBy: 'Bayar sebelum',
+      details: 'Butiran', rules: 'Peraturan', roster: 'Siapa masuk',
+      waiting: 'Senarai menunggu',
+      unpaid: 'Belum bayar', pending: 'Menunggu', confirmed: 'Disahkan', rejected: 'Ditolak',
+      settled: 'Selesai',
+      progFull: function(x, y, n, m){ return x + ' disahkan daripada ' + y + ' — ' + n + '/' + m + ' dah bayar'; },
+      progOpen: function(x, n, m){ return x + ' disahkan — ' + n + '/' + m + ' dah bayar'; }
+    }
+  };
+
+  var els = {
+    loading: document.getElementById('czLoading'),
+    error: document.getElementById('czError'),
+    errT: document.getElementById('czErrorTitle'),
+    errM: document.getElementById('czErrorMsg'),
+    session: document.getElementById('czSession'),
+    head: document.getElementById('czHeadCard'),
+    prog: document.getElementById('czProgCard'),
+    details: document.getElementById('czDetailsCard'),
+    rules: document.getElementById('czRulesCard'),
+    roster: document.getElementById('czRosterCard'),
+    open: document.getElementById('czOpen')
+  };
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch){
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
+  function lang(){ return window.__ptLang ? window.__ptLang() : 'en'; }
+  function t(){ return T[lang()] || T.en; }
+  function rm(n){
+    var v = Number(n);
+    if (!isFinite(v)) return null;
+    return 'RM ' + v.toFixed(2);
+  }
+  /* Malaysian-friendly: "17 Jul 2026" (month name follows the page language) */
+  function fmtDate(iso){
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    try {
+      return d.toLocaleDateString(lang() === 'ms' ? 'ms-MY' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch (e) { return d.toDateString(); }
+  }
+  /* "9:00 PM" */
+  function fmtTime(iso){
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    try {
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    } catch (e) { return ''; }
+  }
+
+  /* Code from /collectz/{CODE} (or /collectz.html/{CODE}) path, else ?c={CODE}. */
+  function getCode(){
+    var m = location.pathname.match(/\/collectz(?:\.html)?\/([^/?#]+)/i);
+    var raw = m ? m[1] : '';
+    if (!raw) {
+      try { raw = new URLSearchParams(location.search).get('c') || ''; }
+      catch (e) {
+        var q = location.search.match(/[?&]c=([^&#]+)/);
+        raw = q ? q[1] : '';
+      }
+    }
+    try { return decodeURIComponent(raw).trim(); } catch (e) { return String(raw).trim(); }
+  }
+
+  var CODE = getCode();
+  var DATA = null;
+
+  function showState(which){
+    els.loading.hidden = which !== 'loading';
+    els.error.hidden = which !== 'error';
+    els.session.hidden = which !== 'session';
+  }
+
+  var lastErrKind = 'generic';
+  function showError(kind){
+    lastErrKind = kind;
+    var s = t();
+    els.errT.textContent = s[kind + 'T'] || s.genericT;
+    els.errM.textContent = s[kind + 'M'] || s.genericM;
+    showState('error');
+  }
+
+  function metaRow(k, v){
+    return '<div class="cz-row"><span class="cz-k">' + esc(k) + '</span><span class="cz-v">' + v + '</span></div>';
+  }
+
+  function renderSession(){
+    var s = t();
+    var session = DATA.session || {};
+    var parts = DATA.participants || [];
+    var pr = DATA.progress || {};
+
+    /* ── head card: title (+ settled badge), date/time, venue, pay-by ── */
+    var headHtml = '<h2 class="cz-title">' + esc(session.title || 'Collectz') + '</h2>';
+    if (session.status === 'settled') {
+      headHtml += '<span class="badge badge--sage">' + esc(s.settled) + '</span>';
+    }
+    var rows = '';
+    var dateStr = fmtDate(session.event_at);
+    var timeStr = fmtTime(session.event_at);
+    if (dateStr) rows += metaRow(s.date, esc(dateStr + (timeStr ? ', ' + timeStr : '')));
+    if (session.venue) rows += metaRow(s.venue, esc(session.venue));
+    var payBy = fmtDate(session.pay_by);
+    if (payBy) rows += metaRow(s.payBy, esc(payBy));
+    if (rows) headHtml += '<div class="cz-rows">' + rows + '</div>';
+    els.head.innerHTML = headHtml;
+
+    /* ── progress card ── */
+    var confirmedAmt = rm(pr.confirmed_amount || 0) || 'RM 0.00';
+    var target = pr.target_amount != null ? rm(pr.target_amount) : null;
+    var n = pr.confirmed_count || 0;
+    var m = pr.active_count || 0;
+    var line = target ? s.progFull(confirmedAmt, target, n, m) : s.progOpen(confirmedAmt, n, m);
+    var progHtml = '<p class="cz-progline">' + esc(line) + '</p>';
+    if (target && Number(pr.target_amount) > 0) {
+      var pct = Math.max(0, Math.min(100, Math.round(100 * Number(pr.confirmed_amount || 0) / Number(pr.target_amount))));
+      progHtml += '<div class="cz-track" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100"><div class="cz-fill" style="width:' + pct + '%"></div></div>';
+    }
+    els.prog.innerHTML = progHtml;
+
+    /* ── details / rules (only when present) ── */
+    if (session.details_text) {
+      els.details.innerHTML = '<p class="mono-caps">' + esc(s.details) + '</p><p class="cz-prose">' + esc(session.details_text) + '</p>';
+      els.details.hidden = false;
+    } else { els.details.hidden = true; }
+    if (session.rules_text) {
+      els.rules.innerHTML = '<p class="mono-caps">' + esc(s.rules) + '</p><p class="cz-prose">' + esc(session.rules_text) + '</p>';
+      els.rules.hidden = false;
+    } else { els.rules.hidden = true; }
+
+    /* ── roster: actives first, then the waiting list ── */
+    var actives = parts.filter(function(p){ return p.slot !== 'reserve'; });
+    var reserves = parts.filter(function(p){ return p.slot === 'reserve'; });
+    function person(p){
+      var status = s[p.status] || p.status || s.unpaid;
+      var chip = '<span class="cz-chip cz-chip--' + esc(p.status || 'unpaid') + '">' + esc(status) + '</span>';
+      var share = rm(p.effective_share);
+      return '<li class="cz-person"><span class="cz-name">' + esc(p.name) + '</span>' +
+        (share ? '<span class="cz-share">' + esc(share) + '</span>' : '') + chip + '</li>';
+    }
+    var rosterHtml = '<p class="mono-caps">' + esc(s.roster) + '</p><ul class="cz-roster">' +
+      actives.map(person).join('') + '</ul>';
+    if (reserves.length) {
+      rosterHtml += '<p class="cz-wait">' + esc(s.waiting) + '</p><ul class="cz-roster">' +
+        reserves.map(person).join('') + '</ul>';
+    }
+    els.roster.innerHTML = rosterHtml;
+
+    showState('session');
+  }
+
+  function load(){
+    if (!CODE) { showError('noCode'); return; }
+    els.loading.textContent = t().loading;
+    showState('loading');
+    fetch(SB_URL + '/functions/v1/collectz-join', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SB_KEY,
+        'Authorization': 'Bearer ' + SB_KEY
+      },
+      body: JSON.stringify({ share_code: CODE, action: 'view' })
+    }).then(function(res){
+      return res.json().catch(function(){ return {}; }).then(function(body){
+        if (!res.ok || (body && body.error)) {
+          var e = body && body.error;
+          showError(e === 'not_found' ? 'notFound' : e === 'cancelled' ? 'cancelled' : 'generic');
+          return;
+        }
+        DATA = body;
+        renderSession();
+      });
+    }).catch(function(){ showError('generic'); });
+  }
+
+  /* Open in Potraces: try the custom scheme, fall back to the universal link
+     (this very URL — Android App Links may still hand it to the app; otherwise
+     the page simply reloads). */
+  els.open.addEventListener('click', function(){
+    if (!CODE) return;
+    var enc = encodeURIComponent(CODE);
+    var t0 = Date.now();
+    window.location.href = 'potraces://collectz/' + enc;
+    setTimeout(function(){
+      if (Date.now() - t0 < 4000) window.location.href = 'https://jejakbaki.my/collectz/' + enc;
+    }, 1600);
+  });
+
+  /* Re-render dynamic copy when the language flips. */
+  window.addEventListener('pt:lang', function(){
+    els.loading.textContent = t().loading;
+    if (DATA) renderSession();
+    else if (!els.error.hidden) showError(lastErrKind);
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

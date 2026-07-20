@@ -22,6 +22,7 @@ import { DEFAULT_PAYMENT_METHODS } from '../../constants/taxCategories';
 import { CategoryOption } from '../../types';
 import { lightTap } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
+import { useT } from '../../i18n';
 
 const ICON_OPTIONS: string[] = [
   'm/cash', 'i/card', 'm/wallet', 'm/qrcode', 'm/bank',
@@ -42,6 +43,7 @@ interface PaymentMethodManagerProps {
 const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, onClose }) => {
   const C = useCalm();
   const isDark = useIsDark();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const getPaymentMethods = useSettingsStore((s) => s.getPaymentMethods);
@@ -258,7 +260,7 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
 
             <View style={styles.editActions}>
               <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-                <Text style={styles.saveButtonText}>Save</Text>
+                <Text style={styles.saveButtonText}>{t.common.save}</Text>
               </TouchableOpacity>
               {editingMethod && (
                 <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>

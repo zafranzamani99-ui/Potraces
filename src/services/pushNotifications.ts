@@ -32,6 +32,7 @@ export const ANDROID_CHANNELS = {
   spendingAlerts: 'spending-alerts',
   subscription: 'bills', // matches subscriptionNotifications.ts existing channel
   qrPaymentReminder: 'qr-payment-reminder',
+  collectz: 'collectz',
 } as const;
 
 /**
@@ -72,6 +73,12 @@ export async function registerAndroidNotificationChannels(): Promise<void> {
         sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
+      }),
+      Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.collectz, {
+        name: 'Kutipan',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        vibrationPattern: [0, 250, 250, 250],
       }),
     ]);
   } catch (e) {

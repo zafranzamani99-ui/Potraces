@@ -27,6 +27,7 @@ import { useCategories } from '../../hooks/useCategories';
 import { CategoryOption } from '../../types';
 import { lightTap } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
+import { useT } from '../../i18n';
 
 const ICON_OPTIONS: string[] = [
   'm/silverware-fork-knife', 'm/coffee', 'm/car', 'm/bus', 'm/cart', 'i/bag-handle',
@@ -57,6 +58,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
 }) => {
   const C = useCalm();
   const isDark = useIsDark();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const categories = useCategories(type, mode);
@@ -343,7 +345,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                   onPress={handleDelete}
                 >
                   <Feather name="trash-2" size={16} color={C.neutral} />
-                  <Text style={styles.deleteText}>Delete</Text>
+                  <Text style={styles.deleteText}>{t.common.delete}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.saveButton} onPress={handleSave}>

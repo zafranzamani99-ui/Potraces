@@ -11,6 +11,7 @@ import {
 import { ScrollView } from 'react-native-gesture-handler';
 import * as ImagePicker from 'expo-image-picker';
 import type { Text as MLKitText } from '@infinitered/react-native-mlkit-text-recognition';
+import { useT } from '../../i18n';
 
 // Lazy-load the native OCR module so this DEV harness never crashes a dev build
 // that wasn't compiled with ML Kit. The lib calls requireNativeModule() at import
@@ -42,6 +43,7 @@ interface OcrRun {
 }
 
 export default function OcrDebugHarness() {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +121,7 @@ export default function OcrDebugHarness() {
           <View style={styles.headerRow}>
             <Text style={styles.title}>OCR Debug · Phase 0</Text>
             <TouchableOpacity onPress={() => setOpen(false)}>
-              <Text style={styles.close}>Close</Text>
+              <Text style={styles.close}>{t.common.close}</Text>
             </TouchableOpacity>
           </View>
 

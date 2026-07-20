@@ -36,6 +36,10 @@ import ImportFromStatement from '../screens/personal/ImportFromStatement';
 import ImportFromCsv from '../screens/personal/ImportFromCsv';
 import AccountOverview from '../screens/personal/AccountOverview';
 import SavingsTracker from '../screens/personal/SavingsTracker';
+import CollectzHome from '../screens/personal/collectz/CollectzHome';
+import CollectzCreate from '../screens/personal/collectz/CollectzCreate';
+import CollectzDetail from '../screens/personal/collectz/CollectzDetail';
+import CollectzJoin from '../screens/personal/collectz/CollectzJoin';
 import MoneyChat from '../screens/personal/MoneyChat';
 import Goals from '../screens/personal/Goals';
 import FinancialPulse from '../screens/personal/FinancialPulse';
@@ -386,6 +390,26 @@ const RootNavigator: React.FC = () => {
           name="SavingsTracker"
           component={SavingsTracker}
           options={makeBackHeader(C, mode, 'Savings & Investments')}
+        />
+        <Stack.Screen
+          name="CollectzHome"
+          component={CollectzHome}
+          options={makeBackHeader(C, mode, 'Collectz')}
+        />
+        <Stack.Screen
+          name="CollectzCreate"
+          component={CollectzCreate}
+          options={makeBackHeader(C, mode, 'New Session')}
+        />
+        <Stack.Screen
+          name="CollectzDetail"
+          component={CollectzDetail}
+          options={makeBackHeader(C, mode, 'Collectz')}
+        />
+        <Stack.Screen
+          name="CollectzJoin"
+          component={CollectzJoin}
+          options={makeBackHeader(C, mode, 'Collectz')}
         />
         <Stack.Screen
           name="MoneyChat"

@@ -12,6 +12,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { CALM, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
 
 type ButtonSize = 'small' | 'medium' | 'large';
@@ -54,6 +55,7 @@ const GradientButton: React.FC<GradientButtonProps> = ({
   accessibilityHint,
 }) => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const opacityAnim = useRef(new Animated.Value(1)).current;
   const sizeCfg = SIZE_CONFIG[size];
@@ -108,7 +110,7 @@ const GradientButton: React.FC<GradientButtonProps> = ({
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={C.onAccent} />
-              <Text style={[styles.label, { fontSize: sizeCfg.fontSize }, textStyle]}>Loading...</Text>
+              <Text style={[styles.label, { fontSize: sizeCfg.fontSize }, textStyle]}>{t.common.loading}</Text>
             </View>
           ) : (
             <View style={styles.content}>

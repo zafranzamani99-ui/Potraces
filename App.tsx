@@ -451,6 +451,8 @@ function App() {
   //                                                   → log it directly (with Undo)
   //   potraces://add?amount=20&type=income&note=gig   → log income directly
   //   potraces://quick-add                            → legacy alias (open, expense)
+  //   potraces://collectz/{CODE}                      → open the Collectz join screen
+  //   https://jejakbaki.my/collectz/{CODE}            → same (universal link; also ?c={CODE})
   // A Shortcut collects amount/category/date with native prompts, then hands the
   // values here. With an amount we log straight away (the Shortcut already
   // confirmed the details) and show an Undo toast; without one we just open the
@@ -460,9 +462,8 @@ function App() {
       if (!url) return;
       const rest = url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
       const [pathRaw, queryRaw = ''] = rest.split('?');
-      const head = pathRaw.split('/').filter(Boolean)[0]?.toLowerCase() || '';
-      const isAdd = ['add', 'quick-add', 'quickadd', 'add-income', 'add-expense', 'income', 'log'].includes(head);
-      if (!isAdd) return;
+      const segs = pathRaw.split('/').filter(Boolean);
+      const head = segs[0]?.toLowerCase() || '';
 
       const params: Record<string, string> = {};
       queryRaw.split('&').forEach((pair) => {
@@ -476,6 +477,37 @@ function App() {
           params[k] = v;
         }
       });
+
+      // Collectz join link (custom scheme or jejakbaki.my universal link).
+      // Like the quick-add links below, NOT gated on auth/onboarding — the
+      // join screen handles a signed-out user itself. Personal mode first:
+      // Collectz lives on the personal account.
+      const isWebCollectz =
+        (head === 'jejakbaki.my' || head === 'www.jejakbaki.my') &&
+        segs[1]?.toLowerCase() === 'collectz';
+      if (head === 'collectz' || isWebCollectz) {
+        const code = (segs[isWebCollectz ? 2 : 1] || params.c || '').trim();
+        if (!code) return;
+        if (useAppStore.getState().mode !== 'personal') {
+          useAppStore.getState().setMode('personal');
+        }
+        // The navigator can still be mounting on a cold start — retry briefly
+        // instead of dropping the link (same race as push taps, below).
+        let tries = 0;
+        const go = () => {
+          tries += 1;
+          if (navigationRef.isReady()) {
+            (navigationRef as any).navigate('CollectzJoin', { code });
+          } else if (tries < 8) {
+            setTimeout(go, 300);
+          }
+        };
+        setTimeout(go, 300);
+        return;
+      }
+
+      const isAdd = ['add', 'quick-add', 'quickadd', 'add-income', 'add-expense', 'income', 'log'].includes(head);
+      if (!isAdd) return;
 
       const wantsIncome =
         head === 'income' || head === 'add-income' ||
@@ -530,14 +562,15 @@ function App() {
     return () => sub.remove();
   }, []);
 
-  // Push notification tap → navigate (order / quick-log)
+  // Push notification tap → navigate (order / quick-log / collectz)
   React.useEffect(() => {
     let handledId: string | null = null;
     const handleResponse = (response: Notifications.NotificationResponse, delay: number) => {
       const id = response.notification.request.identifier;
       if (handledId === id) return; // cold-start check + live listener overlap
       handledId = id;
-      const data = response.notification.request.content.data as { type?: string; orderId?: string } | undefined;
+      const data = response.notification.request.content.data as
+        { type?: string; orderId?: string; sessionId?: string } | undefined;
       if (data?.type === 'quick_log') {
         // Switch to personal mode (RootNavigator re-renders to PersonalNavigator)
         // and open the full transactions list, where the new entry is visible.
@@ -556,6 +589,33 @@ function App() {
         setTimeout(() => {
           if (navigationRef.isReady()) {
             (navigationRef as any).navigate('SellerOrderList', { orderId: data.orderId });
+          }
+        }, delay);
+        return;
+      }
+      // Collectz (personal mode): a participant marked themselves paid → the
+      // organizer reviews the proof on the detail screen; confirm / reject /
+      // remind go to the participant, landing on the join screen (it accepts
+      // { code?: string; sessionId?: string }).
+      if (data?.type === 'collectz_pending' && data.sessionId) {
+        useAppStore.getState().setMode('personal');
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            (navigationRef as any).navigate('CollectzDetail', { sessionId: data.sessionId });
+          }
+        }, delay);
+        return;
+      }
+      if (
+        (data?.type === 'collectz_confirmed' ||
+          data?.type === 'collectz_rejected' ||
+          data?.type === 'collectz_reminder') &&
+        data.sessionId
+      ) {
+        useAppStore.getState().setMode('personal');
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            (navigationRef as any).navigate('CollectzJoin', { sessionId: data.sessionId });
           }
         }, delay);
       }
