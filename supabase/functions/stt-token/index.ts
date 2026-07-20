@@ -122,10 +122,36 @@ Deno.serve(async (req: Request) => {
     // NOTE: add an ai_proxy_usage budget check here (mirror ai-proxy) before minting, to meter voice
     // minutes per identity and prevent a rotated device-id from draining the provider key.
 
-    if (provider === 'deepgram') return await mintDeepgram(identity);
-    if (provider === 'gemini') return await mintGemini(identity);
-    return await mintSoniox(identity);
+    const res = provider === 'deepgram' ? await mintDeepgram(identity)
+              : provider === 'gemini'   ? await mintGemini(identity)
+              :                           await mintSoniox(identity);
+    if (res.ok) background(logMint(identity, provider)); // metering never blocks the mint
+    return res;
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }
 });
+
+// One row per mint in usage_events (admin ops dashboard). NOTE: identity keeps its
+// 'user:' / 'dev:' prefix from resolveIdentity — ai-proxy stores bare user ids for
+// signed-in users. Cosmetic only; the dashboard's top-consumers view reads
+// ai_proxy_usage, not these rows.
+async function logMint(identity: string, provider: string) {
+  try {
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    await admin.rpc('record_usage_event', {
+      p_identity: identity, p_kind: 'stt_mint', p_provider: provider,
+      p_model: null, p_feature: null, p_input: 0, p_output: 0,
+    });
+  } catch { /* metering must never break token minting */ }
+}
+
+// Best-effort background work without killing the response (same pattern as ai-proxy).
+function background(p: Promise<unknown>) {
+  // deno-lint-ignore no-explicit-any
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt?.waitUntil) rt.waitUntil(p);
+  else p.catch(() => {});
+}

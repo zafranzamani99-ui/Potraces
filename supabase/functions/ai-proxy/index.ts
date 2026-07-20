@@ -156,8 +156,27 @@ Deno.serve(async (req: Request) => {
     }
   } catch { /* if the usage read fails, fail open (don't block the user on a DB hiccup) */ }
 
-  const record = (input: number, output: number) =>
-    admin.rpc('add_ai_proxy_usage', { p_identity: identity, p_period: period, p_input: input, p_output: output });
+  // Coarse feature tag for the ops dashboard: receipt/statement scans send images
+  // inline; chat and text features don't. Computed once from the raw payload.
+  const feature = provider === 'gemini'
+    ? (geminiHasMedia(payload as Record<string, unknown>) ? 'vision' : 'text')
+    : (anthropicHasMedia(payload as Record<string, unknown>) ? 'vision' : 'text');
+
+  // Writes BOTH the monthly budget counter (add_ai_proxy_usage) and one row per call
+  // (usage_events, for the admin ops dashboard). Event logging rides the same
+  // background path; its failures are swallowed so metering never breaks budgeting.
+  const record = (input: number, output: number) => {
+    const usage = admin.rpc('add_ai_proxy_usage', { p_identity: identity, p_period: period, p_input: input, p_output: output });
+    const event = (async () => {
+      try {
+        await admin.rpc('record_usage_event', {
+          p_identity: identity, p_kind: 'ai_call', p_provider: provider,
+          p_model: upstreamModel, p_feature: feature, p_input: input, p_output: output,
+        });
+      } catch { /* noop */ }
+    })();
+    return Promise.all([usage, event]);
+  };
 
   // ── GEMINI ────────────────────────────────────────────────────────────────
   if (provider === 'gemini') {
@@ -296,4 +315,27 @@ async function meterGeminiStream(
   } finally {
     try { reader.releaseLock(); } catch { /* noop */ }
   }
+}
+
+// Receipt/statement scans send images inline; chat and text features don't. Used only
+// to tag usage_events rows with a coarse 'vision' | 'text' feature hint.
+function geminiHasMedia(payload: Record<string, unknown>): boolean {
+  try {
+    const contents = payload.contents as Array<{ parts?: Array<Record<string, unknown>> }> | undefined;
+    if (!Array.isArray(contents)) return false;
+    return contents.some(
+      (c) => Array.isArray(c?.parts) && c.parts.some((p) => p && (p.inline_data || p.inlineData)),
+    );
+  } catch { return false; }
+}
+
+function anthropicHasMedia(payload: Record<string, unknown>): boolean {
+  try {
+    const messages = payload.messages as Array<{ content?: unknown }> | undefined;
+    if (!Array.isArray(messages)) return false;
+    return messages.some(
+      (m) => Array.isArray(m?.content) &&
+        (m.content as Array<{ type?: string }>).some((b) => b && (b.type === 'image' || b.type === 'document')),
+    );
+  } catch { return false; }
 }
