@@ -8,6 +8,7 @@ import { useT } from '../../i18n';
 import { useCalm } from '../../hooks/useCalm';
 import { useToast } from '../../context/ToastContext';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useAuthStore } from '../../store/authStore';
 import { SPACING, RADIUS, withAlpha } from '../../constants';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
@@ -18,6 +19,7 @@ import {
 } from '../../services/quickLogKey';
 import { registerPersonalDeviceToken, getPersonalPushStatus } from '../../services/pushNotifications';
 import { getQuickLogRealtimeStatus } from '../../services/quickLogInbox';
+import { pushQuickLogCategories } from '../../services/quickLogCategories';
 
 // Signed shortcut built by scripts/build-quick-log-shortcut.py, hosted on the
 // public `web` bucket, served via the branded jejakbaki.my redirect
@@ -33,9 +35,9 @@ export default function QuickLogSetup() {
   const neu = useNeu();
   const navigation = useNavigation<any>();
   const { showToast } = useToast();
-  // Quick Log is a cloud feature (it logs to the account via the server), so it
-  // requires Cloud Backup — which AccountScreen turns on by setting this flag.
-  const cloudOn = useSettingsStore((s) => s.personalSyncEnabled);
+  // Quick Log logs to the account via the server, so it needs a signed-in
+  // (FREE) account — NOT Cloud Backup, which stays a paid feature on its own.
+  const signedIn = useAuthStore((s) => s.personal.isAuthenticated);
   // In-app toggle (Settings → Preferences → Notifications): when OFF, the
   // foreground handler suppresses ALL banners while the app is open.
   const inAppNotifs = useSettingsStore((s) => s.notificationsEnabled);
@@ -66,13 +68,15 @@ export default function QuickLogSetup() {
   }, []);
 
   useEffect(() => {
-    if (cloudOn) {
+    if (signedIn) {
       getQuickLogKeyStatus().then((s) => setHasKey(s.hasActiveKey));
       refreshNotifStatus();
+      // Keep the Shortcut's live category list current for this account.
+      pushQuickLogCategories().catch(() => {});
     }
     // Re-check when returning from iPhone Settings (app becomes active again).
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active' && cloudOn) refreshNotifStatus();
+      if (s === 'active' && signedIn) refreshNotifStatus();
     });
     // Realtime channel status, polled while the screen is open.
     const liveTimer = setInterval(() => setLiveState(getQuickLogRealtimeStatus()), 2000);
@@ -81,7 +85,7 @@ export default function QuickLogSetup() {
       clearInterval(liveTimer);
       if (copiedTimer.current) clearTimeout(copiedTimer.current);
     };
-  }, [cloudOn, refreshNotifStatus]);
+  }, [signedIn, refreshNotifStatus]);
 
   const onTestNotification = async () => {
     // Local notification with the quick_log payload: proves banner rendering
@@ -193,8 +197,8 @@ export default function QuickLogSetup() {
           {t.settings.quickLog.intro}
         </Text>
 
-        {!cloudOn ? (
-          // ── Gate: Quick Log needs Cloud Backup ──────────────────────────────
+        {!signedIn ? (
+          // ── Gate: Quick Log needs a signed-in (free) account ─────────────
           <View style={[styles.stepCard, neu.raisedSoft, { backgroundColor: C.surface }]}>
             <Text style={[styles.stepTitle, { color: C.textPrimary }]}>
               {t.settings.quickLog.cloudTitle}
@@ -290,7 +294,35 @@ export default function QuickLogSetup() {
                 would save garbage — this ordering is load-bearing. */}
             {renderStep('3', t.settings.quickLog.s3Title, t.settings.quickLog.s3Body)}
 
-            {/* Step 4 — Back Tap */}
+            {/* Apple Pay auto-log — hero trigger, shown FIRST (bigger sell than
+                Back Tap). Not collapsed: visibility is the point. Reuses the key
+                from steps 1–3, shared with Quick Log. */}
+            <Text style={[styles.afterSetup, { color: C.textPrimary }]}>
+              {t.settings.quickLog.apTitle}
+            </Text>
+            <View style={[styles.stepCard, neu.raisedSoft, { backgroundColor: C.surface }]}>
+              <Text style={[styles.stepBody, { color: C.textSecondary }]}>
+                {t.settings.quickLog.apIntro}
+              </Text>
+              <Text style={[styles.caption, { color: C.overdue }]}>
+                {t.settings.quickLog.apNeedBackTap}
+              </Text>
+              <NeuButton
+                label={t.settings.quickLog.apGet}
+                icon="download"
+                onPress={() => Linking.openURL(AUTOLOG_URL).catch(() => {})}
+              />
+              {[t.settings.quickLog.apS1, t.settings.quickLog.apS2, t.settings.quickLog.apS3,
+                t.settings.quickLog.apS4, t.settings.quickLog.apS5, t.settings.quickLog.apS6]
+                .map((s, i) => (
+                  <Text key={i} style={[styles.stepBody, { color: C.textPrimary }]}>{s}</Text>
+                ))}
+              <Text style={[styles.afterSetup, { color: C.textPrimary }]}>
+                {t.settings.quickLog.apDone}
+              </Text>
+            </View>
+
+            {/* Step 4 — Back Tap (optional alternative trigger) */}
             {renderStep('4', t.settings.quickLog.s4Title, t.settings.quickLog.s4Body)}
 
             <Text style={[styles.afterSetup, { color: C.textPrimary }]}>
@@ -299,31 +331,6 @@ export default function QuickLogSetup() {
             <Text style={[styles.caption, { color: C.textSecondary }]}>
               {t.settings.quickLog.regenNote}
             </Text>
-
-            {/* Apple Pay auto-log — optional/advanced, collapsed by default */}
-            <CollapsibleSection title={t.settings.quickLog.apTitle}>
-              <View style={[styles.stepCard, neu.raisedSoft, { backgroundColor: C.surface }]}>
-                <Text style={[styles.stepBody, { color: C.textSecondary }]}>
-                  {t.settings.quickLog.apIntro}
-                </Text>
-                <Text style={[styles.caption, { color: C.overdue }]}>
-                  {t.settings.quickLog.apNeedBackTap}
-                </Text>
-                <NeuButton
-                  label={t.settings.quickLog.apGet}
-                  icon="download"
-                  onPress={() => Linking.openURL(AUTOLOG_URL).catch(() => {})}
-                />
-                {[t.settings.quickLog.apS1, t.settings.quickLog.apS2, t.settings.quickLog.apS3,
-                  t.settings.quickLog.apS4, t.settings.quickLog.apS5, t.settings.quickLog.apS6]
-                  .map((s, i) => (
-                    <Text key={i} style={[styles.stepBody, { color: C.textPrimary }]}>{s}</Text>
-                  ))}
-                <Text style={[styles.afterSetup, { color: C.textPrimary }]}>
-                  {t.settings.quickLog.apDone}
-                </Text>
-              </View>
-            </CollapsibleSection>
 
             {/* Diagnostics — on-device truth for push + live-update delivery.
                 Collapsed by default: power-user/debug content, not setup. */}

@@ -23,8 +23,10 @@ Shortcut behaviour (all native Shortcuts actions, no third-party deps):
      Ask (clipboard PRE-FILLED, user just taps Done) -> variable only.
      Otherwise: variable = file. The key is persisted ONLY after the server
      accepts it (success branch), so clipboard garbage never gets stored.
-  2. Ask amount (number) -> choose category -> FETCH the user's real wallets
-     (POST {key, action:'wallets'}) -> choose payment from them -> ask note.
+  2. Ask amount (number) -> FETCH the user's real categories (POST {key,
+     action:'categories'} — app uploads labels to quick_log_prefs; server
+     falls back to the default set) -> choose category -> FETCH the user's
+     real wallets (POST {key, action:'wallets'}) -> choose payment -> ask note.
   3. POST JSON {key, amount, category, wallet, note} to the quick-log function.
      Offline: this aborts the shortcut (visible iOS error) — no silent loss,
      no duplicate risk. Offline retry is deferred (needs server idempotency).
@@ -33,7 +35,7 @@ Shortcut behaviour (all native Shortcuts actions, no third-party deps):
      card (amount · category · wallet) and save the now-validated key; the
      Potraces push is the secondary "it's in your app" confirmation.
 
-Category labels carry emoji for looks; the server's resolveCategory() strips
+Category labels may carry emoji; the app's resolveCategory() strips
 non-alphanumerics, so "🍔 Food & Dining" still matches the food category.
 """
 import plistlib
@@ -44,25 +46,11 @@ ENDPOINT = "https://jngmanwvhbpkpkeklfiv.supabase.co/functions/v1/quick-log"
 KEY_FILE = "potraces-key.txt"
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "shortcut"
 
-# Labels shown in the pickers. Names chosen so the server's fuzzy matcher
-# (normalize -> lowercase alnum) resolves them to the app's default categories.
-CATEGORIES = [
-    "🍔 Food & Dining",
-    "🚗 Transportation",
-    "🛍️ Shopping",
-    "🎬 Entertainment",
-    "🧾 Bills & Utilities",
-    "❤️ Healthcare",
-    "🎓 Education",
-    "👪 Family",
-    "🔁 Subscriptions",
-    "💼 Business Cost",
-    "💳 Debt Payment",
-    "🐷 Savings Goal",
-    "💸 Other",
-]
-# Payment methods are NOT a static list — the Shortcut fetches the user's REAL
-# wallets live (see the {key, action:'wallets'} call below).
+# Pickers are NOT static lists — the Shortcut fetches the user's REAL
+# categories ({key, action:'categories'}) and wallets ({key, action:'wallets'})
+# live from the endpoint. The server-side DEFAULT_CATEGORIES (in
+# supabase/functions/quick-log/index.ts) is the fallback set when the user
+# hasn't uploaded their own labels yet.
 
 OBJ = "￼"  # object-replacement char used by WFTextTokenString attachments
 
@@ -76,6 +64,7 @@ U_GETFILE = new_uuid()
 U_CLIP = new_uuid()
 U_ASKKEY = new_uuid()
 U_AMT = new_uuid()
+U_CATRESP = new_uuid()
 U_CATLIST = new_uuid()
 U_CAT = new_uuid()
 U_WALRESP = new_uuid()
@@ -198,14 +187,35 @@ actions = [
         "WFAskActionPrompt": "Amount (RM)",
         "WFInputType": "Number",
     }),
-    action("is.workflow.actions.list", {
+    # Category picker = the user's REAL categories, fetched live from the
+    # endpoint (the app uploads labels to quick_log_prefs; renames + customs
+    # included). The server returns the DEFAULT set (mirrored in
+    # quick-log/index.ts) when nothing is uploaded yet, so the picker is never
+    # empty. Offline aborts here — same failure semantics as the wallets fetch.
+    action("is.workflow.actions.downloadurl", {
+        "UUID": U_CATRESP,
+        "WFURL": ENDPOINT,
+        "WFHTTPMethod": "POST",
+        "WFHTTPBodyType": "JSON",
+        "WFJSONValues": {
+            "WFSerializationType": "WFDictionaryFieldValue",
+            "Value": {
+                "WFDictionaryFieldValueItems": [
+                    dict_item("key", [var_ref(VAR_KEY)]),
+                    dict_item("action", ["categories"]),
+                ],
+            },
+        },
+    }),
+    action("is.workflow.actions.getvalueforkey", {
         "UUID": U_CATLIST,
-        "WFItems": CATEGORIES,
+        "WFInput": token_attachment(out_ref(U_CATRESP, "Contents of URL")),
+        "WFDictionaryKey": "categories",
     }),
     action("is.workflow.actions.choosefromlist", {
         "UUID": U_CAT,
         "WFChooseFromListActionPrompt": "Category",
-        "WFInput": token_attachment(out_ref(U_CATLIST, "List")),
+        "WFInput": token_attachment(out_ref(U_CATLIST, "Dictionary Value")),
     }),
     # Payment picker = the user's REAL wallets, fetched live from the endpoint
     # (default-first). The server returns a generic Cash/Bank/E-wallet/Credit

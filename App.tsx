@@ -23,6 +23,7 @@ import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
+import './src/services/quickLogCategories'; // side-effect: keeps the Shortcut's live category list fresh
 import { parseAmountLoose } from './src/utils/parseAmountLoose';
 import BiometricGate from './src/components/common/BiometricGate';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
@@ -401,13 +402,14 @@ function App() {
   }, []);
 
   // Drain any entries the Back Tap Shortcut logged while the app was closed.
-  // Gated on Cloud Backup: without it Quick Log can't function, and gating
-  // avoids holding a realtime websocket open for every user who never uses
-  // the feature (concurrent-connection quota at scale). Toggling Cloud Backup
-  // re-runs the effect, so the subscription attaches/detaches live.
-  const quickLogCloudOn = useSettingsStore((s) => s.personalSyncEnabled);
+  // Gated on a signed-in (FREE) personal account: Quick Log only needs the
+  // session, not paid Cloud Backup. Gating (vs. always-on) avoids holding a
+  // realtime websocket open for every user who never uses the feature
+  // (concurrent-connection quota at scale). Sign-in/out re-runs the effect,
+  // so the subscription attaches/detaches live.
+  const quickLogSignedIn = useAuthStore((s) => s.personal.isAuthenticated);
   React.useEffect(() => {
-    if (!quickLogCloudOn) return;
+    if (!quickLogSignedIn) return;
     const run = () => { drainQuickLogInbox().catch(() => {}); };
     run(); // cold start / just enabled
     // Keep the PERSONAL user's device token registered (quick-log pushes are
@@ -440,7 +442,7 @@ function App() {
       unsubRealtime();
       if (graceTimer) clearTimeout(graceTimer);
     };
-  }, [quickLogCloudOn]);
+  }, [quickLogSignedIn]);
 
   // Deep link / Back Tap / Apple Shortcut: log or open Quick Add from outside.
   //   potraces://add                                  → open Quick Add (expense)

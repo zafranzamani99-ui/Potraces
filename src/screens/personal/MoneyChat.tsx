@@ -991,6 +991,9 @@ const MoneyChat: React.FC = () => {
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // Messages sent while Echo is still answering. Drained one-by-one when the
+  // in-flight request settles (see the effect below handleSend).
+  const [sendQueue, setSendQueue] = useState<Array<{ text: string; imageUri: string | null }>>([]);
   // Live assistant text while streaming. null = not streaming; '' = started but
   // no token yet (show typing dots); non-empty = render the streaming bubble.
   const [streamingText, setStreamingText] = useState<string | null>(null);
@@ -1850,19 +1853,10 @@ const MoneyChat: React.FC = () => {
     }
   }, [initialContext, extractionContext, budgetContext, budgetQuestion, walletContext, walletQuestion]);
 
-  const handleSend = useCallback(async () => {
-    const question = input.trim();
-    const hasImage = !!imageUri;
-    if ((!question && !hasImage) || isLoading) return;
-
-    lightTap();
-    // Strip any model-control tokens a user might paste so they can't inject an
-    // [ACTION] block by echoing it back into the chat (B16 / contract #4).
-    const sendText = sanitizeUserText(question);
-    const sendImageUri = imageUri;
-    setInput('');
-    setImageUri(null);
-    setErrorNotice(null);
+  // Core send: appends the user bubble, streams the reply, processes actions.
+  // Runs strictly one at a time — sends that arrive while Echo is answering
+  // are parked in sendQueue and drained by the effect below.
+  const executeSend = useCallback(async (sendText: string, sendImageUri: string | null) => {
     addChatMessage({
       role: 'user',
       content: sendText,
@@ -1922,7 +1916,39 @@ const MoneyChat: React.FC = () => {
     }
 
     setIsLoading(false);
-  }, [input, imageUri, isLoading, chatMessages, addChatMessage, showError, processResponse, followStream]);
+  }, [chatMessages, addChatMessage, showError, processResponse, followStream]);
+
+  const handleSend = useCallback(() => {
+    const question = input.trim();
+    const hasImage = !!imageUri;
+    if (!question && !hasImage) return;
+
+    lightTap();
+    // Strip any model-control tokens a user might paste so they can't inject an
+    // [ACTION] block by echoing it back into the chat (B16 / contract #4).
+    const sendText = sanitizeUserText(question);
+    const sendImageUri = imageUri;
+    setInput('');
+    setImageUri(null);
+    setErrorNotice(null);
+
+    if (isLoading) {
+      // Echo is still answering — park it; the effect below fires it next.
+      setSendQueue((q) => [...q, { text: sendText, imageUri: sendImageUri }]);
+      return;
+    }
+
+    executeSend(sendText, sendImageUri);
+  }, [input, imageUri, isLoading, executeSend]);
+
+  // Drain the queue: whenever Echo finishes (isLoading flips false) and a
+  // parked message is waiting, send it. Chains until the queue is empty.
+  useEffect(() => {
+    if (isLoading || sendQueue.length === 0) return;
+    const [next, ...rest] = sendQueue;
+    setSendQueue(rest);
+    executeSend(next.text, next.imageUri);
+  }, [isLoading, sendQueue, executeSend]);
 
   const handleRetry = useCallback(async () => {
     if (!lastFailedSend || isLoading) return;
@@ -2384,6 +2410,14 @@ const MoneyChat: React.FC = () => {
           </View>
         )}
 
+        {/* Queued message hint — typing stays open while Echo answers */}
+        {sendQueue.length > 0 && (
+          <View style={styles.errorNotice}>
+            <Feather name="clock" size={14} color={C.bronze} />
+            <Text style={styles.errorNoticeText}>{t.moneyChat.queued}</Text>
+          </View>
+        )}
+
         <View ref={guideTargetRef} style={[styles.inputBar, navBarInset ? { marginBottom: navBarInset } : null]} collapsable={false}>
           {attachVisible && (
             <View style={styles.attachPopover} onStartShouldSetResponder={() => true}>
@@ -2402,7 +2436,7 @@ const MoneyChat: React.FC = () => {
           <TouchableOpacity
             style={styles.inputIconButton}
             onPress={() => { lightTap(); setAttachVisible((v) => !v); }}
-            disabled={isLoading || isRecording}
+            disabled={isRecording}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityLabel={t.moneyChat.attach}
@@ -2410,7 +2444,7 @@ const MoneyChat: React.FC = () => {
             <Feather
               name="plus"
               size={22}
-              color={isLoading || isRecording ? C.border : C.textSecondary}
+              color={isRecording ? C.border : C.textSecondary}
             />
           </TouchableOpacity>
 
@@ -2422,17 +2456,16 @@ const MoneyChat: React.FC = () => {
             placeholder={isRecording ? '' : dynamicPlaceholder}
             placeholderTextColor={C.textSecondary}
             multiline
-            editable={!isLoading && !isRecording && !isTranscribing}
+            editable={!isRecording && !isTranscribing}
           />
 
           {/* Mic / Send toggle */}
           {input.trim() || imageUri ? (
             <TouchableOpacity
-              style={[styles.sendButton, { backgroundColor: C.accent }, isLoading && styles.sendButtonDisabled]}
+              style={[styles.sendButton, { backgroundColor: C.accent }]}
               onPress={handleSend}
-              disabled={isLoading}
             >
-              <Feather name="send" size={20} color={!isLoading ? '#fff' : C.textSecondary} />
+              <Feather name="send" size={20} color="#fff" />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity

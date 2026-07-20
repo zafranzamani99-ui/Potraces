@@ -54,6 +54,26 @@ const CATEGORY_LABELS: Record<string, string> = {
   entertainment: '🎬 Entertainment', health: '❤️ Healthcare', other: 'Other',
 };
 
+// Returned by action:'categories' when the user hasn't uploaded their own
+// labels yet (or has no cloud backup). MIRRORS the list baked into
+// scripts/build-quick-log-shortcut.py — the app's resolveCategory fuzzy-matches
+// these back to the default category ids.
+const DEFAULT_CATEGORIES = [
+  '🍔 Food & Dining',
+  '🚗 Transportation',
+  '🛍️ Shopping',
+  '🎬 Entertainment',
+  '🧾 Bills & Utilities',
+  '❤️ Healthcare',
+  '🎓 Education',
+  '👪 Family',
+  '🔁 Subscriptions',
+  '💼 Business Cost',
+  '💳 Debt Payment',
+  '🐷 Savings Goal',
+  '💸 Other',
+];
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
@@ -99,6 +119,22 @@ Deno.serve(async (req: Request) => {
     // picker is never empty (the app auto-creates the matching wallet on log).
     const wallets = names.length ? names : ['Cash', 'Bank', 'E-wallet', 'Credit'];
     return json({ ok: true, wallets });
+  }
+
+  // Dynamic Category picker: the Shortcut POSTs {key, action:'categories'} to
+  // fetch the user's REAL category labels (uploaded by the app to
+  // quick_log_prefs — renames + custom categories included). Read-only, same
+  // early-return shape as 'wallets'. Nothing uploaded → the default set, which
+  // is exactly what older Shortcut builds had hardcoded.
+  if (payload.action === 'categories') {
+    const { data: pref } = await admin.from('quick_log_prefs')
+      .select('categories').eq('user_id', userId).maybeSingle();
+    const stored = Array.isArray(pref?.categories)
+      ? (pref.categories as unknown[]).filter(
+          (c): c is string => typeof c === 'string' && c.trim().length > 0
+        )
+      : [];
+    return json({ ok: true, categories: stored.length ? stored : DEFAULT_CATEGORIES });
   }
 
   // Rate limit: a Back Tap human logs a handful per minute; a leaked key

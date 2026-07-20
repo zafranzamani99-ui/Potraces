@@ -31,6 +31,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useLearningStore } from '../store/learningStore';
 import { useAIInsightsStore } from '../store/aiInsightsStore';
 import { buildKnowledgePromptHints } from './echoKnowledgeContext';
+import { isSmallTalk } from './smallTalk';
 
 function buildSystemPrompt(currency: string): string {
   return `You are Echo, the AI inside Potraces, a Malaysian personal finance app built for young adults.
@@ -899,8 +900,15 @@ function _preflightGate(): { ok: false; error: string } | null {
 /** Build the Gemini request body (system prompt + history + current turn). */
 function _buildChatBody(message: string, history: AIMessage[], imageBase64?: string) {
   const currency = useSettingsStore.getState().currency;
+  // Pure small talk gets NO financial data — the heavy context can't help a
+  // greeting, it only adds latency and tokens. Anything with money signals
+  // falls through to the full build. This stub deliberately bypasses the
+  // context cache so a later money turn never reuses it.
+  const casual = !imageBase64 && isSmallTalk(message);
   // Image messages need full context (AI needs everything to categorize what it sees)
-  const context = buildFinancialContext(imageBase64 ? undefined : message);
+  const context = casual
+    ? '(Small talk — no financial data this turn. Reply briefly and warmly; never invent numbers.)'
+    : buildFinancialContext(imageBase64 ? undefined : message);
   const learnedHints = useLearningStore.getState().getPromptHints();
   // ONE BRAIN: the same Malaysian money/debt knowledge the budgeting critic reads
   // (PTPTN/MARA/JPA, BNPL, lending apps, MY economics). Scope-gated — returns '' on

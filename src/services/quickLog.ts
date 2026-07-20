@@ -10,6 +10,8 @@
 import { usePersonalStore } from '../store/personalStore';
 import { useWalletStore } from '../store/walletStore';
 import { useCategoryStore } from '../store/categoryStore';
+import { useLearningStore } from '../store/learningStore';
+import { guessMerchantCategory } from './merchantCategoryGuess';
 import { nowMYT } from '../utils/datetime';
 import { CALM } from '../constants';
 import type { CategoryOption, WalletType } from '../types';
@@ -73,6 +75,10 @@ const WALLET_ALIASES: Record<string, { tokens: string[]; type?: WalletType }> = 
   card: { tokens: ['card', 'credit', 'kad'], type: 'credit' },
   creditcard: { tokens: ['card', 'credit', 'kad'], type: 'credit' },
   bank: { tokens: ['bank'], type: 'bank' },
+  // Apple Pay card names often carry only the brand ("Visa Platinum") — map
+  // brands to the user's credit wallet when no name match exists.
+  visa: { tokens: ['visa'], type: 'credit' },
+  mastercard: { tokens: ['mastercard', 'master'], type: 'credit' },
 };
 
 function resolveWallet(raw?: string): { id: string; name: string } | undefined {
@@ -85,8 +91,10 @@ function resolveWallet(raw?: string): { id: string; name: string } | undefined {
       wallets.find((w) => normalize(w.name) === n) ||
       wallets.find((w) => normalize(w.name).includes(n) || n.includes(normalize(w.name)));
     if (match) return { id: match.id, name: match.name };
-    // Alias layer: match by known name tokens, then by wallet type.
-    const alias = WALLET_ALIASES[n];
+    // Alias layer: exact key first, then a key CONTAINED in the input (Apple
+    // Pay sends "Maybankard Visa" → 'visa' hits), then tokens, then type.
+    const aliasKey = WALLET_ALIASES[n] ? n : Object.keys(WALLET_ALIASES).find((k) => n.includes(k));
+    const alias = aliasKey ? WALLET_ALIASES[aliasKey] : undefined;
     if (alias) {
       const byToken = wallets.find((w) => alias.tokens.some((t) => normalize(w.name).includes(t)));
       if (byToken) return { id: byToken.id, name: byToken.name };
@@ -134,7 +142,26 @@ export function logQuickExpense(params: QuickLogParams): QuickLogResult | null {
   if (!(amount > 0)) return null;
 
   const type = params.type === 'income' ? 'income' : 'expense';
-  const cat = resolveCategory(params.category, type);
+  // Apple Pay Auto Log arrives with category 'other' + the merchant in `note`.
+  // Before accepting 'other', guess the closest category: learned patterns →
+  // the user's own history → built-in MY merchant keywords. 'other' stays the
+  // honest fallback when nothing matches.
+  let category = params.category;
+  if ((!category || normalize(category) === 'other') && params.note?.trim()) {
+    const cats =
+      type === 'income'
+        ? useCategoryStore.getState().getIncomeCategories('personal')
+        : useCategoryStore.getState().getExpenseCategories('personal');
+    const guess = guessMerchantCategory({
+      note: params.note,
+      type,
+      learnedCategoryId: useLearningStore.getState().getSuggestedCategory(params.note),
+      history: usePersonalStore.getState().transactions,
+      validCategoryIds: cats.map((c) => c.id),
+    });
+    if (guess) category = guess;
+  }
+  const cat = resolveCategory(category, type);
   const categoryId = cat?.id ?? 'other';
   const categoryName = cat?.name ?? (params.category || (type === 'income' ? 'Income' : 'Other'));
   const wallet = resolveWallet(params.wallet);

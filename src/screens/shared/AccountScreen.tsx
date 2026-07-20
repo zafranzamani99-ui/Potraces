@@ -131,7 +131,9 @@ export default function AccountScreen() {
     if (!usePremiumStore.getState().hasCloudBackup()) {
       // Only nudge to upgrade if backup isn't already running — a grandfathered free user
       // whose sync is on must not be told "backup is a paid feature" (it contradicts reality).
-      if (!useSettingsStore.getState().personalSyncEnabled) {
+      // Skip the nudge when arriving from the Quick Log gate: they signed in for the FREE
+      // feature, and a paid-backup toast there reads as a bait-and-switch.
+      if (!useSettingsStore.getState().personalSyncEnabled && returnTo !== 'QuickLogSetup') {
         showToast(tr.settings.cloudBackupPaid, 'info');
       }
       if (returnTo) navigation.navigate(returnTo as never);
