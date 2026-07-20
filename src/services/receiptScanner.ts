@@ -182,7 +182,9 @@ async function _doScanReceipt(imageUri: string, preparedBase64?: string): Promis
       },
     },
     30_000, // 30s timeout — images take longer
-    true    // noFallback — vision shares same quota, fallback just wastes a call
+    true,   // noFallback — vision shares same quota, fallback just wastes a call
+    undefined,
+    'receipt-scan'
   );
 
   if (!data) {
@@ -313,6 +315,7 @@ async function _doScanReceiptStream(
         },
       },
       30_000,
+      'receipt-scan',
     )) {
       finalText = textSoFar;
       const items = extractCompleteItems(textSoFar);
@@ -418,7 +421,9 @@ async function _doScanSellerReceipt(imageUri: string): Promise<SellerReceiptResu
       },
     },
     30_000,
-    true
+    true,
+    undefined,
+    'seller-receipt'
   );
 
   if (!data) {

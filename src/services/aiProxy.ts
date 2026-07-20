@@ -28,6 +28,8 @@ export interface AiProxyRequest {
   mode: AiMode;
   model: string;
   payload: unknown;
+  /** Feature tag for usage attribution in the ops console (allowlisted server-side). */
+  source?: string;
 }
 
 /** True when the proxy can be reached (Supabase env present). */

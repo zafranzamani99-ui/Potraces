@@ -188,6 +188,23 @@ Deno.serve(async (req: Request) => {
       console.warn('[parse-statement] usage log failed:', (e as Error).message);
     }
 
+    // Ops console per-call event (admin dashboard). Fire-and-forget — never blocks.
+    try {
+      const um = geminiData?.usageMetadata ?? {};
+      await admin.rpc('record_usage_event', {
+        p_identity: user.id,
+        p_kind: 'ai_call',
+        p_provider: 'gemini',
+        p_model: 'gemini-3.5-flash',
+        p_feature: 'vision',
+        p_source: 'statement-parse',
+        p_input: um?.promptTokenCount ?? 0,
+        p_output: um?.candidatesTokenCount ?? 0,
+      });
+    } catch (e) {
+      console.warn('[parse-statement] event log failed:', (e as Error).message);
+    }
+
     return json({
       currency: parsed?.currency ?? 'MYR',
       transactions,

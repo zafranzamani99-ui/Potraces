@@ -613,6 +613,9 @@ export async function askEchoPlan(
         },
       },
       30_000,
+      undefined,
+      undefined,
+      'echo-playbook',
     );
 
     const candidate = data?.candidates?.[0];
@@ -712,7 +715,7 @@ export async function chatWithEcho(
   const premium = usePremiumStore.getState();
 
   try {
-    const data = await callGeminiAPI(_buildEchoChatBody(playbook, plan, messages), 30_000);
+    const data = await callGeminiAPI(_buildEchoChatBody(playbook, plan, messages), 30_000, undefined, undefined, 'echo-chat');
 
     if (!data) {
       return { ok: false, error: "couldn't reach echo — check your internet" };
@@ -758,7 +761,7 @@ export async function chatWithEchoStream(
   let yieldedAny = false;
   try {
     const body = _buildEchoChatBody(playbook, plan, messages);
-    for await (const textSoFar of streamGeminiText(body, 30_000)) {
+    for await (const textSoFar of streamGeminiText(body, 30_000, 'echo-chat')) {
       last = textSoFar;
       yieldedAny = true;
       onToken(textSoFar);
@@ -813,6 +816,9 @@ Top categories: ${stats.categoryBreakdown.slice(0, 5).map((c) => `${c.category} 
         generationConfig: { temperature: 0.5, maxOutputTokens: 128 },
       },
       15_000,
+      undefined,
+      undefined,
+      'echo-playbook',
     );
 
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();

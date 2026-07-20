@@ -143,7 +143,7 @@ async function logMint(identity: string, provider: string) {
     });
     await admin.rpc('record_usage_event', {
       p_identity: identity, p_kind: 'stt_mint', p_provider: provider,
-      p_model: null, p_feature: null, p_input: 0, p_output: 0,
+      p_model: null, p_feature: null, p_source: 'voice', p_input: 0, p_output: 0,
     });
   } catch { /* metering must never break token minting */ }
 }

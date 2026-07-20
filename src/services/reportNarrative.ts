@@ -92,6 +92,9 @@ Rules:
         generationConfig: { temperature: 0.5, maxOutputTokens: 256 },
       },
       15_000,
+      undefined,
+      undefined,
+      'report',
     );
 
     const text = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();

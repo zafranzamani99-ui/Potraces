@@ -196,7 +196,7 @@ Rules:
         temperature: 0.7,
         maxOutputTokens: 100,
       },
-    });
+    }, undefined, undefined, undefined, 'insights');
 
     if (!data) return null;
 

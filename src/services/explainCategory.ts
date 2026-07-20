@@ -26,6 +26,9 @@ In ONE short sentence (max 25 words), explain why this description fits that cat
         generationConfig: { temperature: 0.3, maxOutputTokens: 80 },
       } as any,
       12_000,
+      undefined,
+      undefined,
+      'category-explain',
     );
     const text = (res as any)?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text || typeof text !== 'string') return null;

@@ -971,6 +971,8 @@ async function _doSendChatMessage(
       _buildChatBody(message, history, imageBase64),
       hasImage ? 45_000 : 30_000,
       hasImage, // noFallback for image — both models share quota
+      undefined,
+      'echo-chat',
     );
 
     if (!data) {
@@ -1043,7 +1045,7 @@ export async function sendChatMessageStream(
     let yieldedAny = false;
     try {
       const body = _buildChatBody(message, history, imageBase64);
-      for await (const textSoFar of streamGeminiText(body, hasImage ? 45_000 : 30_000)) {
+      for await (const textSoFar of streamGeminiText(body, hasImage ? 45_000 : 30_000, 'echo-chat')) {
         lastRaw = textSoFar;
         yieldedAny = true;
         onToken(_displayTextFromPartial(textSoFar));

@@ -57,6 +57,15 @@ const MODEL_REMAP: Record<string, string> = {
   'gemini-2.5-flash-lite': 'gemini-3.1-flash-lite',
 };
 
+// Feature tags the app may attach for per-screen usage attribution (ops console).
+// Anything not on this list is dropped to NULL — never trust free-form client labels.
+const VALID_SOURCES = new Set([
+  'receipt-scan', 'seller-receipt', 'statement-parse',
+  'echo-chat', 'echo-playbook', 'smart-capture',
+  'category-explain', 'intent', 'query', 'report', 'insights',
+  'voice', 'other',
+]);
+
 // Per-identity monthly token budget (input + output). Generous enough for a heavy
 // legitimate user, low enough to bound abuse. Tier-aware limits come later once a
 // server-trusted entitlement (e.g. a RevenueCat webhook) exists.
@@ -122,7 +131,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── Parse + validate request ──────────────────────────────────────────────
-  let reqBody: { provider?: string; mode?: string; model?: string; payload?: unknown };
+  let reqBody: { provider?: string; mode?: string; model?: string; payload?: unknown; source?: string };
   try {
     reqBody = await req.json();
   } catch {
@@ -161,6 +170,10 @@ Deno.serve(async (req: Request) => {
   const feature = provider === 'gemini'
     ? (geminiHasMedia(payload as Record<string, unknown>) ? 'vision' : 'text')
     : (anthropicHasMedia(payload as Record<string, unknown>) ? 'vision' : 'text');
+  // Per-screen label from the client (allowlisted); NULL for older app builds.
+  const source = typeof reqBody.source === 'string' && VALID_SOURCES.has(reqBody.source)
+    ? reqBody.source
+    : null;
 
   // Writes BOTH the monthly budget counter (add_ai_proxy_usage) and one row per call
   // (usage_events, for the admin ops dashboard). Event logging rides the same
@@ -171,7 +184,8 @@ Deno.serve(async (req: Request) => {
       try {
         await admin.rpc('record_usage_event', {
           p_identity: identity, p_kind: 'ai_call', p_provider: provider,
-          p_model: upstreamModel, p_feature: feature, p_input: input, p_output: output,
+          p_model: upstreamModel, p_feature: feature, p_source: source,
+          p_input: input, p_output: output,
         });
       } catch { /* noop */ }
     })();

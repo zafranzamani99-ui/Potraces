@@ -206,7 +206,7 @@ ${context}`;
       temperature: 0.3,
       maxOutputTokens: 256,
     },
-  });
+  }, undefined, undefined, undefined, 'query');
 
   if (!data) return null;
   return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;

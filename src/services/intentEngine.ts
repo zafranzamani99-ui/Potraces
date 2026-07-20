@@ -206,7 +206,7 @@ async function callGemini(
       maxOutputTokens: 1024,
       responseMimeType: 'application/json',
     },
-  });
+  }, undefined, undefined, undefined, 'intent');
 
   if (!data) return null;
   const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;

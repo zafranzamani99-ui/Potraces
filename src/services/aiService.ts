@@ -111,6 +111,7 @@ async function callAI(
     30_000,
     false,
     model,
+    'smart-capture',
   );
   const raw = (data?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
   // Prepend the seed BEFORE trimming so the internal space it continues with (e.g.
@@ -491,7 +492,7 @@ export async function transcribeAudio(
             parts: [{ text: TRANSCRIBE_PROMPT }, { inlineData: { mimeType, data: base64 } }],
           }],
           generationConfig: { temperature: 0, maxOutputTokens: 512 },
-        })) {
+        }, undefined, 'smart-capture')) {
           soFar = partial;
           onPartial(soFar);
         }
@@ -506,6 +507,7 @@ export async function transcribeAudio(
         provider: 'gemini',
         mode: 'generate',
         model: GEMINI_MODEL, // gemini-3.1-flash-lite — accepts audio inlineData
+        source: 'smart-capture',
         payload: {
           contents: [{
             parts: [

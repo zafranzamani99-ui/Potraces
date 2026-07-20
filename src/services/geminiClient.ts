@@ -114,10 +114,11 @@ interface GeminiRequestBody {
 async function doFetch(
   model: string,
   body: GeminiRequestBody,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  source?: string
 ): Promise<Response> {
   // Routed through the server proxy, which injects the Gemini key + meters usage.
-  return aiProxyFetch({ provider: 'gemini', mode: 'generate', model, payload: body }, signal);
+  return aiProxyFetch({ provider: 'gemini', mode: 'generate', model, payload: body, ...(source ? { source } : {}) }, signal);
 }
 
 /**
@@ -174,12 +175,14 @@ function blockModel(model: string, durationMs: number) {
  * @param noFallback If true, only try the primary model — skip fallback.
  *                   Use for vision/image requests where both models share
  *                   the same rate limit quota, so fallback just wastes a call.
+ * @param source Feature tag logged by the proxy for usage attribution (e.g. 'receipt-scan').
  */
 export async function callGeminiAPI(
   body: GeminiRequestBody,
   timeoutMs = 15_000,
   noFallback = false,
-  preferModel?: string
+  preferModel?: string,
+  source?: string
 ): Promise<GeminiResponse | null> {
   if (!isGeminiAvailable()) return null;
 
@@ -200,7 +203,7 @@ export async function callGeminiAPI(
 
   try {
     for (const model of modelsToTry) {
-      const response = await doFetch(model, body, controller.signal);
+      const response = await doFetch(model, body, controller.signal, source);
 
       // On 429 → block this model for Google's specified time, try next immediately
       if (response.status === 429) {
@@ -260,11 +263,13 @@ interface GeminiStreamChunk {
  *
  * @param body       Gemini request body
  * @param timeoutMs  Overall request timeout (default 30s) — aborts the reader.
+ * @param source Feature tag logged by the proxy for usage attribution (e.g. 'receipt-scan').
  * @throws Error if AI is unavailable, busy, unreachable, or returns no text.
  */
 export async function* streamGeminiText(
   body: GeminiRequestBody,
-  timeoutMs = 30_000
+  timeoutMs = 30_000,
+  source?: string
 ): AsyncGenerator<string, void, unknown> {
   if (!isGeminiAvailable()) {
     throw new Error('AI is not available right now.');
@@ -296,7 +301,7 @@ export async function* streamGeminiText(
   const es = new EventSource(AI_PROXY_URL, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ provider: 'gemini', mode: 'stream', model, payload: body }),
+    body: JSON.stringify({ provider: 'gemini', mode: 'stream', model, payload: body, ...(source ? { source } : {}) }),
     pollingInterval: 0, // disable auto-reconnect — we handle errors manually
   });
 
