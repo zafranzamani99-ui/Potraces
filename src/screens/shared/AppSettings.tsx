@@ -17,7 +17,8 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SettingRow from '../../components/common/SettingRow';
-import Card from '../../components/common/Card';
+import NeuGroup from '../../components/common/NeuGroup';
+import { useNeu } from '../../components/common/neu';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useSettingsStore } from '../../store/settingsStore';
 import { isLiveAudioAvailable } from '../../services/liveAudioSource';
@@ -63,6 +64,7 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
   const insets = useSafeAreaInsets();
   const C = useCalm();
   const t = useT();
+  const neu = useNeu(undefined, { faintDark: true });
   const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
 
@@ -177,8 +179,8 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
           <>
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.preferences}</Text>
 
-            {/* Appearance: theme + language pills */}
-            <Card style={styles.card}>
+            {/* Theme — its own card */}
+            <NeuGroup style={styles.card}>
               <View style={{ paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xs }}>
                 <View style={styles.settingLabelRow}>
                   <Feather name="moon" size={18} color={C.textSecondary} />
@@ -189,31 +191,20 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                 {(['light', 'dark', 'system'] as ThemePreference[]).map((opt) => (
                   <TouchableOpacity
                     key={opt}
-                    style={{
-                      flex: 1,
-                      paddingVertical: SPACING.sm,
-                      borderRadius: RADIUS.full,
-                      alignItems: 'center',
-                      borderWidth: 1,
-                      borderColor: themePreference === opt ? C.accent : C.border,
-                      backgroundColor: themePreference === opt ? withAlpha(C.accent, 0.1) : 'transparent',
-                    }}
+                    style={[styles.segPill, neu.raised, themePreference === opt && styles.segPillActive]}
                     onPress={() => { lightTap(); setThemePreference(opt); }}
-                    activeOpacity={0.6}
+                    activeOpacity={0.85}
                   >
-                    <Text style={{
-                      fontSize: TYPOGRAPHY.size.sm,
-                      fontWeight: themePreference === opt ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.medium,
-                      color: themePreference === opt ? C.accent : C.textSecondary,
-                    }}>
+                    <Text style={[styles.segPillText, themePreference === opt && styles.segPillTextActive]}>
                       {opt === 'light' ? t.settings.themeLight : opt === 'dark' ? t.settings.themeDark : t.settings.themeSystem}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
+            </NeuGroup>
 
-              <View style={[styles.divider, { backgroundColor: C.border }]} />
-
+            {/* Language — its own card */}
+            <NeuGroup style={styles.card}>
               <View style={{ paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xs }}>
                 <View style={styles.settingLabelRow}>
                   <Feather name="globe" size={18} color={C.textSecondary} />
@@ -224,32 +215,19 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                 {([{ key: 'en' as AppLanguage, label: 'English' }, { key: 'ms' as AppLanguage, label: 'Bahasa Melayu' }]).map((opt) => (
                   <TouchableOpacity
                     key={opt.key}
-                    style={{
-                      flex: 1,
-                      paddingVertical: SPACING.sm,
-                      borderRadius: RADIUS.full,
-                      alignItems: 'center',
-                      borderWidth: 1,
-                      borderColor: language === opt.key ? C.accent : C.border,
-                      backgroundColor: language === opt.key ? withAlpha(C.accent, 0.1) : 'transparent',
-                    }}
+                    style={[styles.segPill, neu.raised, language === opt.key && styles.segPillActive]}
                     onPress={() => { lightTap(); setLanguage(opt.key); }}
-                    activeOpacity={0.6}
+                    activeOpacity={0.85}
                   >
-                    <Text style={{
-                      fontSize: TYPOGRAPHY.size.sm,
-                      fontWeight: language === opt.key ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.medium,
-                      color: language === opt.key ? C.accent : C.textSecondary,
-                    }}>
+                    <Text style={[styles.segPillText, language === opt.key && styles.segPillTextActive]}>
                       {opt.label}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
-            </Card>
+            </NeuGroup>
 
-            {/* Shared toggles */}
-            <Card style={styles.card}>
+            {/* Shared toggles — each its own card */}
               <SettingRow
                 icon="m/cash"
                 chipColor="#4F5104"
@@ -295,11 +273,10 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                   last
                 />
               )}
-            </Card>
 
-            {/* Voice input (device STT engine) — Android only */}
+            {/* Voice input (device STT engine) — Android only, each its own card */}
             {Platform.OS === 'android' && (
-              <Card style={styles.card}>
+              <>
                 <SettingRow
                   icon="i/mic"
                   chipColor="#8B7355"
@@ -340,7 +317,7 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                     last
                   />
                 )}
-              </Card>
+              </>
             )}
           </>
         )}
@@ -348,7 +325,6 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
         {section === 'security' && (
           <>
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.security}</Text>
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/lock-closed"
                 chipColor="#6BA3BE"
@@ -362,34 +338,25 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                     thumbColor={C.surface}
                   />
                 }
-                last={false}
               />
               {biometricLockEnabled && (
-                <View style={{ paddingHorizontal: SPACING.lg, paddingBottom: SPACING.md }}>
+                <NeuGroup style={styles.card}>
+                <View style={{ paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md }}>
                   <Text style={[styles.settingLabel, { color: C.textSecondary, marginBottom: SPACING.sm }]}>{t.settings.lockAfter}</Text>
                   <View style={{ flexDirection: 'row', gap: SPACING.xs }}>
                     {[0, 1, 5, 15].map((m) => (
                       <TouchableOpacity
                         key={m}
                         onPress={() => { lightTap(); setBiometricLockTimeoutMin(m); }}
-                        style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          borderRadius: RADIUS.full,
-                          borderWidth: 1,
-                          borderColor: biometricLockTimeoutMin === m ? C.accent : C.border,
-                          backgroundColor: biometricLockTimeoutMin === m ? withAlpha(C.accent, 0.1) : 'transparent',
-                        }}
+                        activeOpacity={0.85}
+                        style={[styles.timePill, neu.raised, biometricLockTimeoutMin === m && styles.timePillActive]}
                       >
-                        <Text style={{
-                          fontSize: TYPOGRAPHY.size.xs,
-                          fontWeight: TYPOGRAPHY.weight.medium,
-                          color: biometricLockTimeoutMin === m ? C.accent : C.textSecondary,
-                        }}>{m === 0 ? t.settings.always : `${m}m`}</Text>
+                        <Text style={[styles.timePillText, biometricLockTimeoutMin === m && styles.timePillTextActive]}>{m === 0 ? t.settings.always : `${m}m`}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
+                </NeuGroup>
               )}
               <SettingRow
                 icon="i/document-text-outline"
@@ -404,16 +371,13 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                 label={t.settings.privacyPolicy}
                 onPress={() => Linking.openURL(PRIVACY_URL).catch(() => {})}
                 external
-                last
               />
-            </Card>
           </>
         )}
 
         {section === 'about' && (
           <>
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.aboutSection}</Text>
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/information-circle-outline"
                 chipColor="#5A5320"
@@ -425,9 +389,7 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                 chipColor="#5A5320"
                 label={t.settings.version}
                 value="1.0.0"
-                last
               />
-            </Card>
             <Text style={{ fontSize: TYPOGRAPHY.size.xs, lineHeight: 18, color: C.textMuted, textAlign: 'center', paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
               {t.settings.financialDisclaimer}
             </Text>
@@ -445,7 +407,7 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
           onRequestClose={() => setCurrencyModalVisible(false)}
         >
           <Pressable style={styles.currencyOverlay} onPress={() => setCurrencyModalVisible(false)}>
-            <View style={[styles.currencyCard, { backgroundColor: C.surface }]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.currencyCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
               <Text style={styles.currencyTitle}>{t.settings.selectCurrency}</Text>
               <ScrollView style={styles.currencyList} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                 {CURRENCY_OPTIONS.map((opt) => {
@@ -522,15 +484,44 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.border,
     marginVertical: SPACING.xs,
   },
+  // Neu Pills — segmented selectors (theme / language). faintDark raised idle,
+  // olive fill when selected (Onyx rule 3). neu.raised is spread at the call site.
+  segPill: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
+  },
+  segPillActive: { backgroundColor: C.accent },
+  segPillText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  segPillTextActive: { color: C.onAccent, fontWeight: TYPOGRAPHY.weight.bold },
+  // Neu Pills — compact variant (lock-after timeout).
+  timePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
+  },
+  timePillActive: { backgroundColor: C.accent },
+  timePillText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  timePillTextActive: { color: C.onAccent, fontWeight: TYPOGRAPHY.weight.bold },
   currencyOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: SPACING['2xl'],
   },
   currencyCard: {
-    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     width: '100%',

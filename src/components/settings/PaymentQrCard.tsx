@@ -119,7 +119,6 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
 
   return (
     <View onLayout={onLayout}>
-      <View style={[styles.divider, { backgroundColor: C.border }]} />
       <View style={{ paddingHorizontal: SPACING.lg, paddingTop: SPACING.md }}>
         <View style={styles.settingLabelRow}>
           <View style={{ width: 34, height: 34, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha('#B2780A', isDark ? 0.2 : 0.12) }}>
@@ -178,7 +177,10 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
           );
         })}
       </View>
-      {paymentQrs.length < 2 && (
+      {/* Scan-standee: BUSINESS ONLY — a printed DuitNow standee is a seller
+          thing; personal users add QRs from bank-app screenshots (owner call,
+          2026-07-22). */}
+      {mode === 'business' && paymentQrs.length < 2 && (
         <View style={{ paddingHorizontal: SPACING.lg, paddingBottom: SPACING.sm }}>
           <Button
             title={t.qrPay.scanStandee}

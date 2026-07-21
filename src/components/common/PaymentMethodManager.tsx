@@ -13,8 +13,10 @@ import {
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from './neu';
+import NeuButton from './NeuButton';
 import ModalToastHost from './ModalToastHost';
 import CategoryIcon from './CategoryIcon';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -45,6 +47,8 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // Onyx: rows = faintDark neu over C.background (Neu Card recipe).
+  const neu = useNeu(undefined, { faintDark: true });
   const { showToast } = useToast();
   const getPaymentMethods = useSettingsStore((s) => s.getPaymentMethods);
   const addCustomPaymentMethod = useSettingsStore((s) => s.addCustomPaymentMethod);
@@ -165,9 +169,11 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
             style={{ maxHeight: Dimensions.get('window').height * 0.45 }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            // Seam rule: the list clips — give row shadows room inside the clip.
+            contentContainerStyle={{ padding: SPACING.xs }}
             renderItem={({ item }) => (
               <TouchableOpacity
-                style={styles.methodRow}
+                style={[styles.methodRow, neu.raisedSoft]}
                 onPress={() => openEdit(item)}
                 activeOpacity={0.6}
               >
@@ -212,19 +218,25 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
               nestedScrollEnabled
               showsVerticalScrollIndicator={false}
               style={{ maxHeight: Dimensions.get('window').height * 0.55 }}
+              // Seam rule: the scroller clips — give the field card's neu shadow room.
+              contentContainerStyle={{ paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm }}
             >
-              <Text style={styles.fieldLabel}>Name</Text>
-              <TextInput
-                style={styles.input}
-                value={editName}
-                onChangeText={setEditName}
-                placeholder="e.g. Sarawak Pay"
-                placeholderTextColor={C.neutral}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
-              />
+              {/* Debt-style field card — label inside a borderless neu card
+                  (DebtTracking dDebtFieldCard recipe). */}
+              <View style={[styles.fieldCard, neu.raisedSoft]}>
+                <Text style={styles.fieldCardLabel}>Name</Text>
+                <TextInput
+                  style={styles.fieldCardInput}
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="e.g. Sarawak Pay"
+                  placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={withAlpha(C.accent, 0.25)}
+                />
+              </View>
 
               <Text style={styles.fieldLabel}>Icon</Text>
               <View style={styles.iconGrid}>
@@ -259,9 +271,8 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
             </ScrollView>
 
             <View style={styles.editActions}>
-              <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-                <Text style={styles.saveButtonText}>{t.common.save}</Text>
-              </TouchableOpacity>
+              {/* Neu Select — the one primary CTA (olive fill, white label). */}
+              <NeuButton icon="check" label={t.common.save} onPress={handleSave} />
               {editingMethod && (
                 <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
                   <Feather name="trash-2" size={16} color={C.bronze} />
@@ -287,14 +298,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // Onyx: dialog card = C.background + shadow, NO container outline.
   modal: {
     width: '88%',
     maxHeight: '80%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: C.border,
+    ...SHADOWS.lg,
   },
   header: {
     flexDirection: 'row',
@@ -312,11 +323,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
     marginBottom: SPACING.md,
   },
+  // Neu Card row: C.background base + raisedSoft (spread at the call site).
   methodRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
     gap: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: C.background,
+    marginBottom: SPACING.sm,
   },
   methodIcon: {
     width: 36,
@@ -363,11 +379,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   editModal: {
     width: '88%',
     maxHeight: '80%',
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: C.border,
+    ...SHADOWS.lg,
   },
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -378,15 +393,28 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  input: {
+  // Debt-style field card (dDebtFieldCard): borderless C.background card + neu
+  // raisedSoft (spread at call site); label inside, bare input under it.
+  fieldCard: {
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md + 2,
+    paddingVertical: SPACING.sm + 4,
+  },
+  fieldCardLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginBottom: 4,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  fieldCardInput: {
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
-    backgroundColor: C.pillBg,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
-    borderWidth: 1,
-    borderColor: C.border,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    paddingVertical: 2,
+    minHeight: 22,
   },
   iconGrid: {
     flexDirection: 'row',
@@ -423,17 +451,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   editActions: {
     gap: SPACING.sm,
     marginTop: SPACING.md,
-  },
-  saveButton: {
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.sm + 2,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
   },
   deleteButton: {
     flexDirection: 'row',

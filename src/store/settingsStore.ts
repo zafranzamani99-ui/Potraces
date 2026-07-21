@@ -25,7 +25,12 @@ import { useSavingsStore } from './savingsStore';
 import { useBudgetProfileStore } from './budgetProfileStore';
 import { usePendingPaymentsStore } from './pendingPaymentsStore';
 import { useCalculatorStore } from './calculatorStore';
-import { clearBusinessDataRemote, clearPersonalDataRemote, signOut, supabaseBusiness } from '../services/supabase';
+import {
+  clearBusinessDataRemote,
+  clearPersonalDataRemote,
+  signOut,
+  supabaseBusiness,
+} from '../services/supabase';
 import { isSharedAccount } from '../services/accountLink';
 import { purgeBackups, PERSONAL_BACKUP_KEYS } from '../services/storageBackup';
 import { clearProfileCache } from '../services/sellerSync';
@@ -54,16 +59,31 @@ export async function clearBusinessLocalData(): Promise<void> {
     suppliers: [],
   });
   useSellerStore.setState({
-    products: [], orders: [], seasons: [], ingredientCosts: [],
-    customUnits: [], sellerCustomers: [], seenOnlineOrderIds: [],
-    costTemplates: [], recurringCosts: [],
-    costCategories: DEFAULT_COST_CATEGORIES, costCategoriesSeeded: false,
-    stockAdjustments: [], productOrder: [],
-    _deletedProductIds: [], _deletedOrderIds: [], _deletedSeasonIds: [],
-    _deletedCustomerIds: [], _deletedCostIds: [], _deletedCostCategoryIds: [],
+    products: [],
+    orders: [],
+    seasons: [],
+    ingredientCosts: [],
+    customUnits: [],
+    sellerCustomers: [],
+    seenOnlineOrderIds: [],
+    costTemplates: [],
+    recurringCosts: [],
+    costCategories: DEFAULT_COST_CATEGORIES,
+    costCategoriesSeeded: false,
+    stockAdjustments: [],
+    productOrder: [],
+    _deletedProductIds: [],
+    _deletedOrderIds: [],
+    _deletedSeasonIds: [],
+    _deletedCustomerIds: [],
+    _deletedCostIds: [],
+    _deletedCostCategoryIds: [],
   });
   useStallStore.setState({
-    sessions: [], activeSessionId: null, products: [], regularCustomers: [],
+    sessions: [],
+    activeSessionId: null,
+    products: [],
+    regularCustomers: [],
   });
   useFreelancerStore.setState({ clients: [] });
   usePartTimeStore.setState({ jobDetails: { jobName: '', setupComplete: false } });
@@ -79,10 +99,18 @@ export async function clearBusinessLocalData(): Promise<void> {
   // Module-level derived caches survive the store reset above — clear them too.
   clearSellerCaches();
 
-  await Promise.all([
-    'business-storage', 'seller-storage', 'stall-storage', 'freelancer-storage',
-    'parttime-storage', 'ontheroad-storage', 'mixed-storage', 'crm-storage',
-  ].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
+  await Promise.all(
+    [
+      'business-storage',
+      'seller-storage',
+      'stall-storage',
+      'freelancer-storage',
+      'parttime-storage',
+      'ontheroad-storage',
+      'mixed-storage',
+      'crm-storage',
+    ].map((k) => AsyncStorage.removeItem(k).catch(() => {}))
+  );
 }
 
 export interface PaymentQr {
@@ -125,8 +153,16 @@ export interface BusinessProfile {
 }
 
 export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
-  shopName: '', ownerName: '', whatsapp: '', address: '', email: '', ssm: '', hours: '', logoUri: '',
-  cardColor: '', cardFont: '',
+  shopName: '',
+  ownerName: '',
+  whatsapp: '',
+  address: '',
+  email: '',
+  ssm: '',
+  hours: '',
+  logoUri: '',
+  cardColor: '',
+  cardFont: '',
 };
 
 /**
@@ -135,8 +171,16 @@ export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
  * from a user's saved order appear under the sheet's "More actions" instead.
  */
 export const DEFAULT_QUICK_ACTION_ORDER: string[] = [
-  'wallets', 'savings', 'debts', 'bills', 'reports',
-  'calculator', 'goals', 'receipts', 'chat', 'pulse',
+  'wallets',
+  'savings',
+  'debts',
+  'bills',
+  'reports',
+  'calculator',
+  'goals',
+  'receipts',
+  'chat',
+  'collectz',
 ];
 
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -150,10 +194,20 @@ interface SettingsState {
    *  avatarId when present; picking a preset manually clears it (user override),
    *  and the next Google sign-in re-syncs it (matches Google's auto-update). */
   avatarUri: string | null;
+  /** Custom background color for the initial-letter avatar (null = theme
+   *  default soft-accent). Preset illustrations have a baked bg, so this only
+   *  recolors the monogram circle. */
+  avatarBg: string | null;
   currency: string;
   hapticEnabled: boolean;
   notificationsEnabled: boolean;
   echoDailyCheckin: boolean;
+  /** Daily check-in reminder times, 24h "HH:mm" (local notifications fire daily at each). */
+  echoCheckinTimes: string[];
+  /** Cached "user has an active Quick-Log key" (server truth lives in
+   *  quick_log_keys). Refreshed at app start + sign-in; lets Echo and other
+   *  screens know auto-log is set up without a server call. */
+  quickLogConfigured: boolean;
   businessModeEnabled: boolean;
   defaultMode: 'personal' | 'business';
   themePreference: ThemePreference;
@@ -225,6 +279,9 @@ interface SettingsState {
   /** One-time: the user has consented to note text being sent to Echo's cloud AI for extraction. */
   notesAiNoticeSeen: boolean;
   setNotesAiNoticeSeen: (value: boolean) => void;
+  /** One-time: the user has acknowledged Echo will use the offline reader when out of AI credits. */
+  notesOfflineNoticeSeen: boolean;
+  setNotesOfflineNoticeSeen: (value: boolean) => void;
   /** Opt-in: transcribe Malay voice via the cloud (works on any phone; no on-device model download). */
   malayCloudVoice: boolean;
   setMalayCloudVoice: (value: boolean) => void;
@@ -235,22 +292,39 @@ interface SettingsState {
   getPaymentMethods: () => CategoryOption[];
   addCustomPaymentMethod: (method: CategoryOption) => void;
   removeCustomPaymentMethod: (id: string) => void;
-  updatePaymentMethodOverride: (id: string, overrides: Partial<CategoryOption> & { hidden?: boolean }) => void;
+  updatePaymentMethodOverride: (
+    id: string,
+    overrides: Partial<CategoryOption> & { hidden?: boolean }
+  ) => void;
   setUserName: (name: string) => void;
   setAvatarId: (id: string | null) => void;
   setAvatarUri: (uri: string | null) => void;
+  setAvatarBg: (color: string | null) => void;
   setCurrency: (currency: string) => void;
   setHapticEnabled: (enabled: boolean) => void;
   setEchoDailyCheckin: (enabled: boolean) => void;
+  setEchoCheckinTimes: (times: string[]) => void;
+  setQuickLogConfigured: (configured: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setQuickActionOrder: (order: string[]) => void;
   setBusinessModeEnabled: (enabled: boolean) => void;
   setDefaultMode: (mode: 'personal' | 'business') => void;
   setThemePreference: (pref: ThemePreference) => void;
   setLanguage: (lang: AppLanguage) => void;
-  addPaymentQr: (uri: string, label: string, mode?: 'personal' | 'business', meta?: PaymentQrMeta) => void;
+  addPaymentQr: (
+    uri: string,
+    label: string,
+    mode?: 'personal' | 'business',
+    meta?: PaymentQrMeta
+  ) => void;
   removePaymentQr: (index: number, mode?: 'personal' | 'business') => void;
-  replacePaymentQr: (index: number, uri: string, label?: string, mode?: 'personal' | 'business', meta?: PaymentQrMeta) => void;
+  replacePaymentQr: (
+    index: number,
+    uri: string,
+    label?: string,
+    mode?: 'personal' | 'business',
+    meta?: PaymentQrMeta
+  ) => void;
   updatePaymentQrLabel: (index: number, label: string, mode?: 'personal' | 'business') => void;
   getPaymentQrs: (mode: 'personal' | 'business') => PaymentQr[];
   setBusinessProfile: (patch: Partial<BusinessProfile>) => void;
@@ -297,7 +371,10 @@ interface SettingsState {
 const wipePersonalStores = async ({
   remote,
   userInitiated,
-}: { remote: boolean; userInitiated: boolean }): Promise<void> => {
+}: {
+  remote: boolean;
+  userInitiated: boolean;
+}): Promise<void> => {
   usePersonalStore.setState({
     transactions: [],
     subscriptions: [],
@@ -440,11 +517,14 @@ export const useSettingsStore = create<SettingsState>()(
       userName: '',
       avatarId: null,
       avatarUri: null,
+      avatarBg: null,
       currency: 'RM',
       hapticEnabled: true,
       notificationsEnabled: true,
       quickActionOrder: [...DEFAULT_QUICK_ACTION_ORDER],
       echoDailyCheckin: false,
+      echoCheckinTimes: ['21:00'],
+      quickLogConfigured: false,
       businessModeEnabled: false,
       defaultMode: 'personal',
       themePreference: 'light',
@@ -486,6 +566,7 @@ export const useSettingsStore = create<SettingsState>()(
       voiceModelEpoch: 0,
       voiceCloudNoticeSeen: false,
       notesAiNoticeSeen: false,
+      notesOfflineNoticeSeen: false,
       malayCloudVoice: false,
       malayLiveStreaming: false,
 
@@ -500,31 +581,41 @@ export const useSettingsStore = create<SettingsState>()(
       bumpVoiceModelEpoch: () => set((s) => ({ voiceModelEpoch: s.voiceModelEpoch + 1 })),
       setVoiceCloudNoticeSeen: (voiceCloudNoticeSeen) => set({ voiceCloudNoticeSeen }),
       setNotesAiNoticeSeen: (notesAiNoticeSeen) => set({ notesAiNoticeSeen }),
+      setNotesOfflineNoticeSeen: (notesOfflineNoticeSeen) => set({ notesOfflineNoticeSeen }),
       setMalayCloudVoice: (malayCloudVoice) => set({ malayCloudVoice }),
       setMalayLiveStreaming: (malayLiveStreaming) => set({ malayLiveStreaming }),
 
       getPaymentMethods: () => {
         const { customPaymentMethods, paymentMethodOverrides } = get();
-        const defaults = DEFAULT_PAYMENT_METHODS
-          .filter((m) => !paymentMethodOverrides[m.id]?.hidden)
-          .map((m) => ({ ...m, ...paymentMethodOverrides[m.id] }));
+        const defaults = DEFAULT_PAYMENT_METHODS.filter(
+          (m) => !paymentMethodOverrides[m.id]?.hidden
+        ).map((m) => ({ ...m, ...paymentMethodOverrides[m.id] }));
         return [...defaults, ...customPaymentMethods];
       },
-      addCustomPaymentMethod: (method) => set((s) => ({
-        customPaymentMethods: [...s.customPaymentMethods, method],
-      })),
-      removeCustomPaymentMethod: (id) => set((s) => ({
-        customPaymentMethods: s.customPaymentMethods.filter((m) => m.id !== id),
-      })),
-      updatePaymentMethodOverride: (id, overrides) => set((s) => ({
-        paymentMethodOverrides: { ...s.paymentMethodOverrides, [id]: { ...s.paymentMethodOverrides[id], ...overrides } },
-      })),
+      addCustomPaymentMethod: (method) =>
+        set((s) => ({
+          customPaymentMethods: [...s.customPaymentMethods, method],
+        })),
+      removeCustomPaymentMethod: (id) =>
+        set((s) => ({
+          customPaymentMethods: s.customPaymentMethods.filter((m) => m.id !== id),
+        })),
+      updatePaymentMethodOverride: (id, overrides) =>
+        set((s) => ({
+          paymentMethodOverrides: {
+            ...s.paymentMethodOverrides,
+            [id]: { ...s.paymentMethodOverrides[id], ...overrides },
+          },
+        })),
       setUserName: (userName) => set({ userName }),
       setAvatarId: (avatarId) => set({ avatarId }),
       setAvatarUri: (avatarUri) => set({ avatarUri }),
+      setAvatarBg: (avatarBg) => set({ avatarBg }),
       setCurrency: (currency) => set({ currency }),
       setHapticEnabled: (hapticEnabled) => set({ hapticEnabled }),
       setEchoDailyCheckin: (echoDailyCheckin) => set({ echoDailyCheckin }),
+      setEchoCheckinTimes: (echoCheckinTimes) => set({ echoCheckinTimes }),
+      setQuickLogConfigured: (quickLogConfigured) => set({ quickLogConfigured }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setQuickActionOrder: (quickActionOrder) => set({ quickActionOrder }),
       setBusinessModeEnabled: (businessModeEnabled) => set({ businessModeEnabled }),
@@ -532,37 +623,49 @@ export const useSettingsStore = create<SettingsState>()(
       setThemePreference: (themePreference) => set({ themePreference }),
       setLanguage: (language) => set({ language }),
       setSampleDataLoaded: (sampleDataLoaded) => set({ sampleDataLoaded }),
-      addPaymentQr: (uri, label, mode, meta) => set((s) => {
-        const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
-        const arr = s[key] || [];
-        return { [key]: arr.length < 2 ? [...arr, { uri, label, ...(meta || {}) }] : arr };
-      }),
-      removePaymentQr: (index, mode) => set((s) => {
-        const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
-        return { [key]: (s[key] || []).filter((_, i) => i !== index) };
-      }),
+      addPaymentQr: (uri, label, mode, meta) =>
+        set((s) => {
+          const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
+          const arr = s[key] || [];
+          return { [key]: arr.length < 2 ? [...arr, { uri, label, ...(meta || {}) }] : arr };
+        }),
+      removePaymentQr: (index, mode) =>
+        set((s) => {
+          const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
+          return { [key]: (s[key] || []).filter((_, i) => i !== index) };
+        }),
       // Replacing with a plain photo (no meta) intentionally drops any stale
       // payload/network/merchantName — it's a different QR now.
-      replacePaymentQr: (index, uri, label, mode, meta) => set((s) => {
-        const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
-        return { [key]: (s[key] || []).map((q, i) => i === index ? { uri, label: label ?? q.label, ...(meta || {}) } : q) };
-      }),
-      updatePaymentQrLabel: (index, label, mode) => set((s) => {
-        const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
-        return { [key]: (s[key] || []).map((q, i) => i === index ? { ...q, label } : q) };
-      }),
+      replacePaymentQr: (index, uri, label, mode, meta) =>
+        set((s) => {
+          const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
+          return {
+            [key]: (s[key] || []).map((q, i) =>
+              i === index ? { uri, label: label ?? q.label, ...(meta || {}) } : q
+            ),
+          };
+        }),
+      updatePaymentQrLabel: (index, label, mode) =>
+        set((s) => {
+          const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
+          return { [key]: (s[key] || []).map((q, i) => (i === index ? { ...q, label } : q)) };
+        }),
       getPaymentQrs: (mode) => {
         const s = get();
         return mode === 'business' ? s.businessPaymentQrs : s.paymentQrs;
       },
-      setBusinessProfile: (patch) => set((s) => ({ businessProfile: { ...s.businessProfile, ...patch } })),
+      setBusinessProfile: (patch) =>
+        set((s) => ({ businessProfile: { ...s.businessProfile, ...patch } })),
       setHasCompletedOnboarding: (hasCompletedOnboarding) => set({ hasCompletedOnboarding }),
       setGettingStartedDismissed: (gettingStartedDismissed) => set({ gettingStartedDismissed }),
       setBiometricLockEnabled: (biometricLockEnabled) => set({ biometricLockEnabled }),
       setBiometricLockTimeoutMin: (biometricLockTimeoutMin) => set({ biometricLockTimeoutMin }),
-      dismissHint: (id) => set((s) => ({
-        dismissedHints: s.dismissedHints.includes(id) ? s.dismissedHints : [...s.dismissedHints, id],
-      })),
+      dismissHint: (id) =>
+        set((s) => ({
+          dismissedHints: s.dismissedHints.includes(id)
+            ? s.dismissedHints
+            : [...s.dismissedHints, id],
+        })),
       setReuseNeverAsk: (reuseNeverAsk) => set({ reuseNeverAsk }),
 
       clearPersonalData: async () => {
@@ -735,8 +838,16 @@ export const useSettingsStore = create<SettingsState>()(
           delete raw.paymentQrUri;
         }
         // Migrate from string array
-        if (raw.paymentQrUris && Array.isArray(raw.paymentQrUris) && raw.paymentQrUris.length > 0 && (!state.paymentQrs || state.paymentQrs.length === 0)) {
-          state.paymentQrs = raw.paymentQrUris.map((uri: string, i: number) => ({ uri, label: `QR ${i + 1}` }));
+        if (
+          raw.paymentQrUris &&
+          Array.isArray(raw.paymentQrUris) &&
+          raw.paymentQrUris.length > 0 &&
+          (!state.paymentQrs || state.paymentQrs.length === 0)
+        ) {
+          state.paymentQrs = raw.paymentQrUris.map((uri: string, i: number) => ({
+            uri,
+            label: `QR ${i + 1}`,
+          }));
           delete raw.paymentQrUris;
         }
         // Ensure businessProfile exists (added after some installs shipped)
@@ -764,9 +875,17 @@ export const useSettingsStore = create<SettingsState>()(
         if (typeof state.personalSyncEnabled !== 'boolean') {
           state.personalSyncEnabled = false;
         }
+        // Check-in reminder times (added after some installs shipped)
+        if (!Array.isArray(state.echoCheckinTimes)) {
+          state.echoCheckinTimes = ['21:00'];
+        }
+        if (typeof state.quickLogConfigured !== 'boolean') {
+          state.quickLogConfigured = false;
+        }
         // Avatar fields (added after some installs shipped)
         if (typeof state.avatarId !== 'string') state.avatarId = null;
         if (typeof state.avatarUri !== 'string') state.avatarUri = null;
+        if (typeof state.avatarBg !== 'string') state.avatarBg = null;
         if (typeof state.tapToPayEnabled !== 'boolean') {
           state.tapToPayEnabled = false;
         }

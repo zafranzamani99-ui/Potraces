@@ -17,10 +17,14 @@ import DraggableFlatList, {
 } from 'react-native-draggable-flatlist';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import CategoryIcon from './CategoryIcon';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import CategoryIcon, { isPhotoIcon, pickPhotoIconAsync, deletePhotoIconFile } from './CategoryIcon';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from './neu';
+import NeuButton from './NeuButton';
 import ModalToastHost from './ModalToastHost';
+import PaywallModal from './PaywallModal';
+import { usePremiumStore } from '../../store/premiumStore';
 import { useCategoryStore } from '../../store/categoryStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useCategories } from '../../hooks/useCategories';
@@ -60,6 +64,8 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // Onyx: rows/pills = faintDark neu over C.background (Neu Card recipe).
+  const neu = useNeu(undefined, { faintDark: true });
   const { showToast } = useToast();
   const categories = useCategories(type, mode);
   const { updateCategoryOverride, addCustomCategory, deleteCustomCategory, updateCustomCategory, setCategoryOrder } =
@@ -71,8 +77,35 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
   const [editName, setEditName] = useState('');
   const [editIcon, setEditIcon] = useState('');
   const [editColor, setEditColor] = useState('');
+  // Photo icons ("photo:<uri>" in the icon field) are a Basic+ perk.
+  const [photoPaywallVisible, setPhotoPaywallVisible] = useState(false);
+  const photoIconAllowed = usePremiumStore((s) => s.hasPhotoIcon());
 
   const isCustom = (id: string) => id.startsWith('custom_');
+
+  // Pick a gallery photo as the icon. Free tier → paywall (asOverlay: this
+  // dialog is already a <Modal>, iOS can't present a second Modal over it).
+  const handlePickPhotoIcon = useCallback(async () => {
+    lightTap();
+    if (!usePremiumStore.getState().hasPhotoIcon()) {
+      setPhotoPaywallVisible(true);
+      return;
+    }
+    // A photo picked earlier in THIS session (not yet saved) is replaced —
+    // clean its file up. The persisted icon is only cleaned at save time.
+    const prevUnsaved =
+      isPhotoIcon(editIcon) && editIcon !== editingCategory?.icon ? editIcon : undefined;
+    const uri = await pickPhotoIconAsync(prevUnsaved);
+    if (uri) setEditIcon('photo:' + uri);
+  }, [editIcon, editingCategory]);
+
+  // Cancel-path close: drop a photo file picked this session but never saved.
+  const cancelEdit = useCallback(() => {
+    if (isPhotoIcon(editIcon) && editIcon !== editingCategory?.icon) {
+      deletePhotoIconFile(editIcon);
+    }
+    setEditModalVisible(false);
+  }, [editIcon, editingCategory]);
 
   const openEdit = useCallback((category: CategoryOption) => {
     lightTap();
@@ -100,6 +133,11 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
     if (!trimmedName) {
       showToast('Category name is required', 'error');
       return;
+    }
+
+    // Replacing a previously SAVED photo icon — its file is now orphaned.
+    if (editingCategory && isPhotoIcon(editingCategory.icon) && editingCategory.icon !== editIcon) {
+      deletePhotoIconFile(editingCategory.icon);
     }
 
     if (isNewCategory) {
@@ -148,6 +186,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
         style: 'destructive',
         onPress: () => {
           deleteCustomCategory(type, catId, mode);
+          deletePhotoIconFile(editingCategory.icon); // photo-icon file goes with it
           const deleteBudget = usePersonalStore.getState().deleteBudget;
           linkedBudgets.forEach((b) => deleteBudget(b.id));
           setEditModalVisible(false);
@@ -167,6 +206,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
       <TouchableOpacity
         style={[
           styles.categoryRow,
+          neu.raisedSoft,
           isActive && styles.categoryRowDragging,
         ]}
         onPress={() => openEdit(item)}
@@ -195,7 +235,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
         <Feather name="menu" size={18} color={isActive ? C.accent : C.neutral} />
       </TouchableOpacity>
     </ScaleDecorator>
-  ), [styles, C, openEdit]);
+  ), [styles, C, neu, openEdit]);
 
   return (
     <Modal
@@ -247,19 +287,23 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
         transparent
         statusBarTranslucent
         animationType="fade"
-        onRequestClose={() => setEditModalVisible(false)}
+        onRequestClose={() => {
+          // Android back peels the paywall overlay first, then the dialog.
+          if (photoPaywallVisible) { setPhotoPaywallVisible(false); return; }
+          cancelEdit();
+        }}
       >
         <View style={styles.overlay}>
           <Pressable
             style={StyleSheet.absoluteFill}
-            onPress={() => setEditModalVisible(false)}
+            onPress={cancelEdit}
           />
           <View style={styles.editModal}>
             <View style={styles.header}>
               <Text style={styles.title}>
                 {isNewCategory ? 'New Category' : 'Edit Category'}
               </Text>
-              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+              <TouchableOpacity onPress={cancelEdit}>
                 <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
@@ -271,19 +315,22 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
             >
-              {/* Name */}
-              <Text style={styles.fieldLabel}>Name</Text>
-              <TextInput
-                style={styles.input}
-                value={editName}
-                onChangeText={setEditName}
-                placeholder="Category name"
-                placeholderTextColor={C.neutral}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
-              />
+              {/* Name — Debt-style field card (label inside a borderless neu card,
+                  DebtTracking dDebtFieldCard recipe). */}
+              <View style={[styles.fieldCard, neu.raisedSoft]}>
+                <Text style={styles.fieldCardLabel}>Name</Text>
+                <TextInput
+                  style={styles.fieldCardInput}
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="Category name"
+                  placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={withAlpha(C.accent, 0.25)}
+                />
+              </View>
 
               {/* Icon Picker */}
               <Text style={styles.fieldLabel}>Icon</Text>
@@ -300,6 +347,10 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                     ]}
                     onPress={() => {
                       lightTap();
+                      // Switching back to a glyph discards an unsaved photo pick.
+                      if (isPhotoIcon(editIcon) && editIcon !== editingCategory?.icon) {
+                        deletePhotoIconFile(editIcon);
+                      }
                       setEditIcon(iconName);
                     }}
                   >
@@ -310,6 +361,30 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                     />
                   </TouchableOpacity>
                 ))}
+                {/* Photo icon — gallery pick (Basic+ perk; locked tile on free) */}
+                <TouchableOpacity
+                  style={[
+                    styles.iconOption,
+                    isPhotoIcon(editIcon) && {
+                      backgroundColor: withAlpha(editColor, 0.2),
+                      borderColor: editColor,
+                    },
+                  ]}
+                  onPress={handlePickPhotoIcon}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.settings.iconFromGallery}
+                >
+                  {isPhotoIcon(editIcon) ? (
+                    <CategoryIcon icon={editIcon} size={20} color={editColor} />
+                  ) : (
+                    <Feather name="image" size={20} color={C.textSecondary} />
+                  )}
+                  {!photoIconAllowed && (
+                    <View style={styles.iconLockBadge} pointerEvents="none">
+                      <Feather name="lock" size={9} color={C.textMuted} />
+                    </View>
+                  )}
+                </TouchableOpacity>
               </View>
 
               {/* Color Picker (only for custom categories) */}
@@ -348,14 +423,30 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                   <Text style={styles.deleteText}>{t.common.delete}</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-                <Text style={styles.saveText}>
-                  {isNewCategory ? 'Add' : 'Save'}
-                </Text>
-              </TouchableOpacity>
+              {/* Neu Select — the one primary CTA (olive fill, white label). */}
+              <NeuButton
+                icon="check"
+                label={isNewCategory ? 'Add' : 'Save'}
+                onPress={handleSave}
+                style={styles.saveButton}
+              />
             </View>
           </View>
         </View>
+        {/* asOverlay: lives in THIS modal's window. A nested <Modal> would
+            present behind the dialog and be invisible on iOS. The absolute-fill
+            host keeps the flex:1 paywall from splitting space with the dialog. */}
+        {photoPaywallVisible && (
+          <View style={StyleSheet.absoluteFill}>
+            <PaywallModal
+              visible
+              asOverlay
+              feature="backup"
+              reason={t.paywall.itemPhotoIcons}
+              onClose={() => setPhotoPaywallVisible(false)}
+            />
+          </View>
+        )}
         <ModalToastHost />
       </Modal>
       <ModalToastHost />
@@ -364,25 +455,25 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
 };
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  // Onyx: 0.4 scrim, dialog card = C.background + shadow, NO container outline
+  // (the FabChoiceModal centered-dialog recipe).
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
   modal: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     maxHeight: '70%',
-    borderWidth: 1,
-    borderColor: C.border,
+    ...SHADOWS.lg,
   },
   editModal: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     maxHeight: '80%',
-    borderWidth: 1,
-    borderColor: C.border,
+    ...SHADOWS.lg,
   },
   header: {
     flexDirection: 'row',
@@ -403,22 +494,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     textAlign: 'center',
     paddingTop: SPACING.sm,
   },
+  // Seam rule: the list CLIPS to its bounds, so content padding must give each
+  // row's neu shadow room to render (≥ its blur) or it shears into a hard edge.
   listContent: {
-    padding: SPACING.sm,
+    padding: SPACING.md,
   },
+  // Neu Card row: C.background base + raisedSoft (spread at the call site).
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     gap: SPACING.md,
-    borderRadius: RADIUS.md,
-    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    backgroundColor: C.background,
+    marginBottom: SPACING.sm,
   },
   categoryRowDragging: {
     backgroundColor: withAlpha(C.accent, 0.06),
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.2),
   },
   categoryIcon: {
     width: 40,
@@ -468,15 +561,29 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.sm,
     marginTop: SPACING.md,
   },
-  input: {
+  // Debt-style field card (dDebtFieldCard): borderless C.background card + neu
+  // raisedSoft (spread at call site); label inside, bare input under it.
+  fieldCard: {
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md + 2,
+    paddingVertical: SPACING.sm + 4,
+    marginTop: SPACING.md,
+  },
+  fieldCardLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginBottom: 4,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  fieldCardInput: {
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    paddingVertical: 2,
+    minHeight: 22,
   },
   iconGrid: {
     flexDirection: 'row',
@@ -492,6 +599,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
     borderWidth: 2,
     borderColor: 'transparent',
+  },
+  // Free-tier lock on the gallery tile (photo icons are Basic+).
+  iconLockBadge: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
+    width: 15,
+    height: 15,
+    borderRadius: 7.5,
+    backgroundColor: C.background,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   colorRow: {
     flexDirection: 'row',
@@ -533,16 +652,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.neutral,
   },
+  // Inline NeuButton beside delete: undo the default 100% width.
   saveButton: {
-    paddingHorizontal: SPACING['2xl'],
+    width: undefined,
+    minHeight: 44,
     paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.md,
-    backgroundColor: C.accent,
-  },
-  saveText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
+    paddingHorizontal: SPACING.xl,
   },
 });
 

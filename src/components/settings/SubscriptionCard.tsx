@@ -1,12 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Linking } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import Card from '../common/Card';
+import { useNavigation } from '@react-navigation/native';
+import NeuGroup from '../common/NeuGroup';
 import NeuButton from '../common/NeuButton';
 import PaywallModal from '../common/PaywallModal';
 import { usePremiumStore } from '../../store/premiumStore';
-import { useWalletStore } from '../../store/walletStore';
-import { usePersonalStore } from '../../store/personalStore';
 import { FREE_TIER } from '../../constants/premium';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha, TERMS_URL, PRIVACY_URL } from '../../constants';
 import { isBillingConfigured, restorePurchases } from '../../services/billing';
@@ -20,24 +19,35 @@ import { useT } from '../../i18n';
  * usage is personal-only, so the `variant` prop hides those rows in business —
  * showing personal counts in business mode would be misleading.
  *
- * The "Upgrade" CTA opens the shared PaywallModal (the single source of pricing
+ * The "See plans" CTA opens the shared PaywallModal (the single source of pricing
  * truth — 3 tiers, cloud-backup promise) rather than instantly subscribing at a
  * hardcoded price. The paywall's Continue does the actual unlock.
+ *
+ * `variant` is kept for call-site compat: it used to hide the personal-only
+ * wallet/budget rows in business mode, but those moved to the MyPlan screen —
+ * everything left here (scans / AI) is account-wide, so both modes show it all.
  */
-const SubscriptionCard: React.FC<{ variant: 'personal' | 'business' }> = ({ variant }) => {
+const SubscriptionCard: React.FC<{ variant: 'personal' | 'business' }> = () => {
   const C = useCalm();
   const styles = React.useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const t = useT();
+  const navigation = useNavigation<any>();
 
   const [paywallOpen, setPaywallOpen] = React.useState(false);
+  // The backup notice and the See-plans button share ONE modal instance but sell
+  // different things — the notice opens on the cloud-backup pitch, the button on
+  // the general (ai) pitch.
+  const [paywallFeature, setPaywallFeature] = React.useState<'ai' | 'backup'>('ai');
+  const openPaywall = (feature: 'ai' | 'backup') => {
+    setPaywallFeature(feature);
+    setPaywallOpen(true);
+  };
 
   const tier = usePremiumStore((s) => s.tier);
   const unsubscribe = usePremiumStore((s) => s.unsubscribe);
   const scanCount = usePremiumStore((s) => s.scanCount);
   const aiCallsCount = usePremiumStore((s) => s.aiCallsCount);
-  const walletCount = useWalletStore((s) => s.wallets.length);
-  const budgetCount = usePersonalStore((s) => s.budgets.length);
 
   // Restore Purchases — Apple requires it reachable outside the paywall. No-op while billing
   // is dormant (dev); once RevenueCat is live it re-applies any active entitlement.
@@ -53,7 +63,7 @@ const SubscriptionCard: React.FC<{ variant: 'personal' | 'business' }> = ({ vari
 
   return (
     <>
-      <Card style={styles.card}>
+      <NeuGroup style={styles.card}>
         {tier !== 'free' ? (
           <View style={[styles.premiumStatusRow, { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md }]}>
             <View style={styles.premiumBadge}>
@@ -85,24 +95,6 @@ const SubscriptionCard: React.FC<{ variant: 'personal' | 'business' }> = ({ vari
         ) : (
           <View style={{ paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md }}>
             <View style={styles.usageLimits}>
-              {variant === 'personal' && (
-                <>
-                  <View style={styles.usageRow}>
-                    <View style={styles.settingLabelRow}>
-                      <Feather name="credit-card" size={16} color={C.textSecondary} />
-                      <Text style={styles.usageLabel}>{t.settings.walletsUsage}</Text>
-                    </View>
-                    <Text style={styles.usageValue}>{walletCount}/{FREE_TIER.maxWallets}</Text>
-                  </View>
-                  <View style={styles.usageRow}>
-                    <View style={styles.settingLabelRow}>
-                      <Feather name="pie-chart" size={16} color={C.textSecondary} />
-                      <Text style={styles.usageLabel}>{t.settings.budgetsUsage}</Text>
-                    </View>
-                    <Text style={styles.usageValue}>{budgetCount}/{FREE_TIER.maxBudgets}</Text>
-                  </View>
-                </>
-              )}
               <View style={styles.usageRow}>
                 <View style={styles.settingLabelRow}>
                   <Feather name="camera" size={16} color={C.textSecondary} />
@@ -123,7 +115,7 @@ const SubscriptionCard: React.FC<{ variant: 'personal' | 'business' }> = ({ vari
                 that makes cloud backup worth paying for; taps straight to the paywall. */}
             <TouchableOpacity
               style={styles.backupNotice}
-              onPress={() => setPaywallOpen(true)}
+              onPress={() => openPaywall('backup')}
               activeOpacity={0.7}
             >
               <Feather name="cloud-off" size={15} color={C.bronze} />
@@ -134,11 +126,24 @@ const SubscriptionCard: React.FC<{ variant: 'personal' | 'business' }> = ({ vari
             <NeuButton
               label={t.settings.upgradeButton}
               icon="award"
-              onPress={() => setPaywallOpen(true)}
+              onPress={() => openPaywall('ai')}
               style={styles.upgradeBtn}
             />
           </View>
         )}
+
+        {/* "See my plan" — the full per-tier usage breakdown (wallets, budgets,
+            savings, goals, shared subs, Collectz, scans, AI) lives on the MyPlan
+            screen; paid users reach their real caps (e.g. 42/300) through here. */}
+        <TouchableOpacity
+          style={styles.myPlanRow}
+          onPress={() => navigation.navigate('MyPlan')}
+          accessibilityRole="button"
+          accessibilityLabel={t.settings.myPlanSee}
+        >
+          <Text style={styles.myPlanText}>{t.settings.myPlanSee}</Text>
+          <Feather name="arrow-right" size={15} color={C.accent} />
+        </TouchableOpacity>
 
         {/* Restore + legal — Apple wants Restore reachable outside the paywall, and Terms/
             Privacy present wherever the subscription lives. Same trio as the paywall footer. */}
@@ -163,12 +168,12 @@ const SubscriptionCard: React.FC<{ variant: 'personal' | 'business' }> = ({ vari
             <Text style={styles.legalLink}>{t.settings.privacyPolicy}</Text>
           </TouchableOpacity>
         </View>
-      </Card>
+      </NeuGroup>
 
       <PaywallModal
         visible={paywallOpen}
         onClose={() => setPaywallOpen(false)}
-        feature="ai"
+        feature={paywallFeature}
       />
     </>
   );
@@ -246,6 +251,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   upgradeBtn: {
     marginTop: SPACING.md,
   },
+  myPlanRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  myPlanText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.accent,
+  },
   legalRow: {
     flexDirection: 'row',
     flexWrap: 'wrap', // wrap to a 2nd line rather than overflow (long Malay labels / large type)
@@ -253,8 +270,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     rowGap: SPACING.xs,
+    // NeuGroup adds no inner padding (unlike the old Card), so pad here directly.
+    paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
-    // no paddingHorizontal — Card already pads SPACING.lg each side; extra padding starved the row
+    paddingBottom: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.textPrimary, 0.08),
   },

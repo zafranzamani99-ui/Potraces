@@ -6,6 +6,10 @@ anyone yet.** The tier shape *and the specific feature gates* below are now deci
 today the in-app "Upgrade" button opens the paywall, whose Continue just flips a local
 premium flag for free. RevenueCat is the #1 blocker (see §6).
 
+> **Changelog — 2026-07-22:** Pro price confirmed **RM14/mo · RM120/yr**; paywall hero
+> tier is **Basic** (pre-selected, "BEST VALUE" ribbon — not Pro); **×N multiplier copy
+> style adopted** (reverses the old "always absolute numbers" rule). See §3.
+
 ---
 
 ## 1. Philosophy
@@ -33,11 +37,11 @@ Dual goal: **genuinely help users AND make money.** The two must not fight.
 ## 2. The Tiers
 
 Four levels, RM/month. **Business mode (basic) is FREE at every level.** Prices:
-**Free · Basic RM7.99 · Pro RM15 ⭐ · Premium RM25.**
+**Free · Basic RM7.99 · Pro RM14 ⭐ · Premium RM25.**
 
 ### A. Personal (the everyday app)
 
-| Feature | Free | Basic RM7.99 | Pro RM15 ⭐ | Premium RM25 |
+| Feature | Free | Basic RM7.99 | Pro RM14 ⭐ | Premium RM25 |
 |---|---|---|---|---|
 | **Echo AI chat** / mo | 30 · lite model | 300 (10×) · lite | 800 · **smart** | 1500 · smart |
 | **"Ask Echo" on every screen** | — | ✓ | ✓ | ✓ |
@@ -65,7 +69,7 @@ server-side, so the "300 chats" number means real asks. Implemented 2026-07-18.*
 
 ### B. Business / storefront layer (business mode basic = free)
 
-| Feature | Free | Basic | Pro RM15 | Premium RM25 |
+| Feature | Free | Basic | Pro RM14 | Premium RM25 |
 |---|---|---|---|---|
 | Business mode (basic) | ✓ | ✓ | ✓ | ✓ |
 | Free storefront + custom domain + DuitNow QR | ✓ | ✓ | ✓ | ✓ |
@@ -76,7 +80,7 @@ server-side, so the "300 chats" number means real asks. Implemented 2026-07-18.*
 
 ### C. Premium's edge — the power / future tier (the RM25 story)
 
-| Feature | Pro RM15 | Premium RM25 |
+| Feature | Pro RM14 | Premium RM25 |
 |---|---|---|
 | **Tap-to-Pay** (accept cards) | — | ✓ |
 | **DuitNow QR — accept payments** / advanced | — | ✓ first access |
@@ -90,7 +94,7 @@ server-side, so the "300 chats" number means real asks. Implemented 2026-07-18.*
 - **Basic (RM7.99)** — "turn Echo on + lift my everyday caps" for a **personal** power
   user. Key unlock is capability (Ask Echo everywhere, cloud backup, photo icons) plus
   5× the metered caps. Deliberately withholds *unlimited* and the whole business layer.
-- **Pro (RM15) ⭐ the hero** — everything personal goes **unlimited**, Echo gets the
+- **Pro (RM14) ⭐ the hero** — everything personal goes **unlimited**, Echo gets the
   **smart model**, and the seller layer opens (own shop, remove branding, custom design,
   insights preview).
 - **Premium (RM25)** — the business layer in full (analytics + full AI insights) **plus
@@ -102,11 +106,11 @@ also nudges annual-minded users up to Pro/Premium.
 
 | Plan | Monthly ×12 | **Annual** | You save | Per month |
 |---|---|---|---|---|
-| **Pro** RM15/mo | RM180 | **RM130** | RM50 (**28%**) | **RM10.83/mo** |
+| **Pro** RM14/mo | RM168 | **RM120** | RM48 (**29%**) | **RM10/mo** |
 | **Premium** RM25/mo | RM300 | **RM200** | RM100 (**33%**) | **RM16.67/mo** |
 
 - The paywall **leads with the per-month price** (RM10.83) and shows the annual total
-  (RM130/yr) as small print — never front-load the big number. **No "N months free"
+  (RM120/yr) as small print — never front-load the big number. **No "N months free"
   framing** (removed by decision — it read as gimmicky).
 - Premium's annual discount (33%) is deeper than Pro's (28%); this nudges committed
   annual buyers up toward Premium. Equalise if you'd rather keep Pro the hero on annual.
@@ -153,9 +157,16 @@ Goal: make **Pro the obviously-right choice**, with Premium anchoring it from ab
   That pause **anchors Pro as the smart buy** while **capturing serious sellers**.
 
 **UI tactics (already in the shipped paywall):**
-- "Most Popular" ribbon on **Pro**, centre-stage and pre-selected; Premium to its right.
-- Show **absolute numbers** on the wall ("300 chats/mo"), never "×10 more" — don't make
-  the buyer do math.
+- **Hero tier = Basic** (owner decision 2026-07-22): the shipped paywall **pre-selects
+  Basic RM7.99** and puts the **"BEST VALUE" ribbon** on it. Owner's call: *"get everyone
+  paying something, upsell later"* — the first conversion matters more than its size, and
+  Basic→Pro upsells happen in-app at feature walls. A Pro-hero variant ("Most Popular"
+  ribbon on Pro, centre-stage, pre-selected) is a possible **future A/B test**, not the
+  shipped state.
+- **Multiplier copy** ("×10 more chats") is the **preferred style** on the wall (owner
+  decision 2026-07-22 — REVERSES the earlier "always absolute numbers, never ×N" rule).
+  "×10" sells the *jump*; absolute numbers ("300 chats/mo") are the supporting small
+  print, not the headline.
 - **Cloud backup** is a pinned always-visible promise strip ("your money, never lost") —
   the single benefit that alone justifies paying in a money app.
 - At a Basic-level wall (business insight / shop customise), CTA reads **"Upgrade with
@@ -179,11 +190,11 @@ the business data they already track — e.g. `potraces.com/shop/their-name`.
 
 - **Free for all**, including **custom domain** — a real edge (Beacons charges ~RM45/mo
   for a custom domain; Linktree never offers one).
-- **"Made with Potraces" badge:** free/Basic keep it; **Pro (RM15) and Premium can remove
+- **"Made with Potraces" badge:** free/Basic keep it; **Pro (RM14) and Premium can remove
   it.** (Changed 2026-07-18 — previously permanent-on-all-tiers as a growth lock.
   **Trade-off:** removing it costs some free viral reach, but "remove the badge" is a
-  strong, concrete RM15 upgrade reason and most free stores still carry it.)
-- **Pro (RM15):** templates + custom colours/logo + AI business-insights *preview*.
+  strong, concrete RM14 upgrade reason and most free stores still carry it.)
+- **Pro (RM14):** templates + custom colours/logo + AI business-insights *preview*.
 - **Premium (RM25):** storefront analytics (views/clicks) + *full* AI business insights.
 
 Closest model: **Linktree / Beacons / Carrd** (free micro-site → pay to customise), *not*
@@ -254,8 +265,8 @@ Gate only what works. Unfinished features are "coming soon" upside of the higher
 - Western budgeting apps cost **RM58–67/mo** — nobody in Malaysia pays that. Our whole
   ladder undercuts even local competitors. **Low price = low friction.**
 - **Business is the strongest paying segment.** Malaysian SMEs already pay **Bukku from
-  RM35/mo, Financio from RM40/mo** for accounting. Our RM15 business tier is ~half that →
-  **the RM15 tier may even be underpriced** (could support RM19). Low launch price is fine
+  RM35/mo, Financio from RM40/mo** for accounting. Our RM14 business tier is ~half that →
+  **the RM14 tier may even be underpriced** (could support RM19). Low launch price is fine
   for adoption; raise later.
 
 ---
@@ -269,7 +280,7 @@ Gate only what works. Unfinished features are "coming soon" upside of the higher
   ~RM12 avg ≈ **~RM3,600/mo**, scaling ~linearly with users.
 - **The lever is (a) how many free users we get and (b) how badly they need the gated
   feature** — not price. Free business mode + viral storefront drive (a); genuinely great
-  RM15 insights + shop drive (b).
+  RM14 insights + shop drive (b).
 - Metered walls (Echo, scans, imports) are the **highest-converting** upsells — the user
   hitting them already got value and has a concrete reason to pay. This is exactly why
   free Echo dropped **100 → 30**: at 100 almost nobody hit the wall, so the AI ladder
@@ -282,7 +293,7 @@ Gate only what works. Unfinished features are "coming soon" upside of the higher
 - ~~**Wallets "3× each"**~~ — RESOLVED: Basic = **13 total**, **4 per type** (free = 7 total, 2 per type).
 - Import caps (5 / 25 / 100 / 300) are the least-discussed metered row — tune to real
   server cost once measured.
-- Business/Pro tier at RM15 vs RM19 (SME willingness-to-pay suggests room).
+- Business/Pro tier at RM14 vs RM19 (SME willingness-to-pay suggests room).
 - Whether to add a **Basic annual** and whether to equalise Pro/Premium annual discounts
   (28% vs 33%).
 - Exact scope of "AI business insights" (Pro preview vs Premium full — what does each

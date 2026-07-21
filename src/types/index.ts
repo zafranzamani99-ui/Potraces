@@ -649,6 +649,10 @@ export type RootStackParamList = {
   ReceiptHistory: undefined;
   ReceiptDetail: { receiptId: string };
   Settings: { section?: SettingsSection; scrollTo?: string } | undefined;
+  /** Dedicated category manager (category deep-links forward here). */
+  ManageCategories: { mode: 'personal' | 'business' } | undefined;
+  /** Per-tier usage + upgrade screen (opened from the Settings subscription card). */
+  MyPlan: undefined;
   SellerSettings: undefined;
   SettingsDetail: { section?: SettingsSection; scrollTo?: string } | undefined;
   BusinessProfile: undefined;
@@ -1027,6 +1031,9 @@ export interface Debt {
   category?: string;
   payments: Payment[];
   mode: AppMode;
+  /** How the debt was created — 'notes' = captured by Echo from a note; its amount is
+   *  locked in the edit form (you can still remap the contact). Undefined = manual. */
+  source?: 'notes';
   dueDate?: Date;
   splitId?: string;
   sharedSubId?: string;

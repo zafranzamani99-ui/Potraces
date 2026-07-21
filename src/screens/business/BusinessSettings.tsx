@@ -9,17 +9,17 @@ import {
   Platform,
   Share,
   InteractionManager,
+  LayoutAnimation,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SettingRow from '../../components/common/SettingRow';
-import Card from '../../components/common/Card';
+import NeuGroup from '../../components/common/NeuGroup';
 import PaymentQrCard from '../../components/settings/PaymentQrCard';
 import SubscriptionCard from '../../components/settings/SubscriptionCard';
-import CategoryManager from '../../components/common/CategoryManager';
-import PaymentMethodManager from '../../components/common/PaymentMethodManager';
 import UnitManager from '../../components/common/UnitManager';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
@@ -54,9 +54,6 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
   const { showToast } = useToast();
 
   const [ready, setReady] = useState(false);
-  const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
-  const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment'>('expense');
-  const [paymentMethodManagerVisible, setPaymentMethodManagerVisible] = useState(false);
   const [unitManagerVisible, setUnitManagerVisible] = useState(false);
   const scrollRef = useRef<any>(null);
   const sectionY = useRef<Record<string, number>>({});
@@ -80,6 +77,12 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
 
   useEffect(() => {
     if (!scrollTo || !ready) return;
+    // Category deep-links now land on the dedicated screen — forward.
+    if (scrollTo === 'categories') {
+      navigation.setParams({ scrollTo: undefined } as never);
+      navigation.navigate('ManageCategories', { mode: 'business' });
+      return;
+    }
     const timer = setTimeout(() => {
       if (sectionY.current[scrollTo] !== undefined) {
         scrollRef.current?.scrollTo({ y: sectionY.current[scrollTo], animated: true });
@@ -162,7 +165,6 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
           <>
             {/* Business profile (the shop's "business card") — replaces the personal
                 name field so business settings no longer shows a personal setting. */}
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/briefcase"
                 chipColor="#5A5320"
@@ -171,11 +173,9 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 onPress={() => { lightTap(); navigation.navigate('BusinessProfile'); }}
                 last
               />
-            </Card>
 
             {/* Account */}
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.accountSection}</Text>
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/person-circle-outline"
                 chipColor="#6BA3BE"
@@ -184,11 +184,9 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 onPress={() => { lightTap(); navigation.navigate('Account' as never); }}
                 last
               />
-            </Card>
 
             <SubscriptionCard variant="business" />
 
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/gift"
                 chipColor="#4F5104"
@@ -208,10 +206,8 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 }}
                 last
               />
-            </Card>
 
-            {/* Hub nav */}
-            <Card style={styles.card}>
+            {/* Hub nav — each its own card */}
               <SettingRow
                 icon="m/tune-variant"
                 chipColor="#A688B8"
@@ -251,7 +247,6 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'about' }); }}
                 last
               />
-            </Card>
 
             <Text style={{ fontSize: TYPOGRAPHY.size.xs, lineHeight: 18, color: C.textMuted, textAlign: 'center', paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
               {t.settings.financialDisclaimer}
@@ -259,7 +254,6 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
 
             {/* Danger zone — business only */}
             <Text style={[styles.sectionHeader, { color: '#B5705A' }]}>{t.settings.dangerZone}</Text>
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/log-out-outline"
                 chipColor="#B5705A"
@@ -273,7 +267,6 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 onPress={handleClearBusinessData}
                 last
               />
-            </Card>
           </>
         )}
 
@@ -281,7 +274,6 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
         {section === 'money' && (
           <>
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.moneySetup}</Text>
-            <Card style={styles.card}>
               {/* Income type — sellers change this from the Manage tab's "Change
                   Business Setup", so exclude them here to avoid a duplicate entry.
                   Every other sub-mode (stall/freelance/rider/parttime/mixed) has no
@@ -305,36 +297,22 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 />
               )}
 
-              {ready && !isProductBusiness && (
+              {!isProductBusiness && (
                 <View onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>
+                  {/* One entry for all four managers — its own screen. */}
                   <SettingRow
                     icon="i/pricetags"
                     chipColor="#9A6400"
-                    label={t.settings.expenseCategories}
-                    onPress={() => { lightTap(); setCategoryManagerType('expense'); setCategoryManagerVisible(true); }}
-                  />
-                  <SettingRow
-                    icon="i/trending-up"
-                    chipColor="#4F5104"
-                    label={t.settings.incomeCategories}
-                    onPress={() => { lightTap(); setCategoryManagerType('income'); setCategoryManagerVisible(true); }}
-                  />
-                  <SettingRow
-                    icon="i/pie-chart"
-                    chipColor="#A688B8"
-                    label={t.settings.investmentCategories}
-                    onPress={() => { lightTap(); setCategoryManagerType('investment'); setCategoryManagerVisible(true); }}
-                  />
-                  <SettingRow
-                    icon="i/card"
-                    chipColor="#6BA3BE"
-                    label={t.settings.paymentMethods}
-                    onPress={() => { lightTap(); setPaymentMethodManagerVisible(true); }}
+                    label={t.settings.manageCategoriesRow}
+                    sublabel={t.settings.manageCategoriesDesc}
+                    onPress={() => { lightTap(); navigation.navigate('ManageCategories', { mode: 'business' }); }}
                   />
                 </View>
               )}
 
-              <PaymentQrCard mode="business" onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }} />
+              <NeuGroup style={styles.card} onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }}>
+                <PaymentQrCard mode="business" />
+              </NeuGroup>
 
               {Platform.OS === 'ios' && (() => {
                 const av = tapToPayAvailable();
@@ -349,8 +327,6 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                             : av.reason === 'platform' ? t.tapToPay.statusPlatform
                               : t.tapToPay.statusFlag;
                 return (
-                  <>
-                    <View style={[styles.divider, { backgroundColor: C.border }]} />
                     <SettingRow
                       icon="i/card"
                       chipColor="#6BA3BE"
@@ -366,38 +342,18 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                       }
                       last
                     />
-                  </>
                 );
               })()}
-            </Card>
           </>
         )}
 
         <View style={{ height: SPACING['3xl'] }} />
 
-        {ready && (
-          <>
-            {categoryManagerVisible && (
-              <CategoryManager
-                visible
-                onClose={() => setCategoryManagerVisible(false)}
-                type={categoryManagerType}
-                mode="business"
-              />
-            )}
-            {unitManagerVisible && (
-              <UnitManager
-                visible
-                onClose={() => setUnitManagerVisible(false)}
-              />
-            )}
-            {paymentMethodManagerVisible && (
-              <PaymentMethodManager
-                visible
-                onClose={() => setPaymentMethodManagerVisible(false)}
-              />
-            )}
-          </>
+        {ready && unitManagerVisible && (
+          <UnitManager
+            visible
+            onClose={() => setUnitManagerVisible(false)}
+          />
         )}
       </ScrollView>
       <ModalToastHost />

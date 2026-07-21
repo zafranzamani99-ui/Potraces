@@ -46,6 +46,8 @@ import FinancialPulse from '../screens/personal/FinancialPulse';
 import { useBusinessStore } from '../store/businessStore';
 import BusinessSetup from '../screens/business/Setup';
 import Settings from '../screens/shared/Settings';
+import MyPlan from '../screens/shared/MyPlan';
+import ManageCategories from '../screens/shared/ManageCategories';
 import BusinessProfile from '../screens/business/BusinessProfile';
 import LogIncome from '../screens/business/LogIncome';
 import ClientList from '../screens/business/ClientList';
@@ -97,17 +99,21 @@ const Stack = createNativeStackNavigator();
 // no back stack. Replaces the ~25-line boilerplate that was duplicated across
 // every Stack.Screen below. New screens should use this helper directly:
 //   <Stack.Screen name="Foo" component={Foo} options={makeBackHeader(C, mode, 'Title')} />
+// `title` may be a function of the route when the header depends on params
+// (e.g. CollectzCreate shows "Edit Session" when opened with editSessionId).
 function makeBackHeader(
   C: typeof import('../constants').CALM,
   mode: 'personal' | 'business',
-  title: string,
+  title: string | ((route: any) => string),
 ) {
-  return ({ navigation }: any) => ({
+  return ({ navigation, route }: any) => {
+    const resolved = typeof title === 'function' ? title(route) : title;
+    return {
     headerShown: true,
-    headerTitle: title,
+    headerTitle: resolved,
     headerStyle: { backgroundColor: C.background },
     // Empty-title headers (hero screens like Account) render seamless — no hairline over the body.
-    headerShadowVisible: title !== '',
+    headerShadowVisible: resolved !== '',
     headerTintColor: C.textPrimary,
     headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
     headerLeft: () => (
@@ -125,7 +131,8 @@ function makeBackHeader(
         <Feather name="arrow-left" size={22} color={C.textPrimary} />
       </TouchableOpacity>
     ),
-  });
+    };
+  };
 }
 
 /** Wraps business mode with auth gating + setup gating. */
@@ -399,7 +406,10 @@ const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="CollectzCreate"
           component={CollectzCreate}
-          options={makeBackHeader(C, mode, 'New Session')}
+          // Same screen serves create / edit / duplicate — title follows the mode.
+          options={makeBackHeader(C, mode, (route) =>
+            route?.params?.editSessionId ? 'Edit Session' : 'New Session',
+          )}
         />
         <Stack.Screen
           name="CollectzDetail"
@@ -495,6 +505,16 @@ const RootNavigator: React.FC = () => {
           name="SettingsDetail"
           component={Settings}
           options={makeBackHeader(C, mode, 'Settings')}
+        />
+        <Stack.Screen
+          name="MyPlan"
+          component={MyPlan}
+          options={makeBackHeader(C, mode, 'My Plan')}
+        />
+        <Stack.Screen
+          name="ManageCategories"
+          component={ManageCategories}
+          options={makeBackHeader(C, mode, 'Categories')}
         />
         <Stack.Screen
           name="BusinessProfile"

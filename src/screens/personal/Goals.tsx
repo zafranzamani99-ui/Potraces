@@ -30,7 +30,6 @@ import Reanimated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialCommunityIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import {
   format,
   differenceInCalendarDays,
@@ -74,6 +73,7 @@ import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, successNotification, selectionChanged } from '../../services/haptics';
 import { Goal, GoalContribution } from '../../types';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import { pickPhotoIconAsync, deletePhotoIconFile } from '../../components/common/CategoryIcon';
 import EchoInlineChat, { EchoChip } from '../../components/common/EchoInlineChat';
 import WalletPicker from '../../components/common/WalletPicker';
 import CircularProgress from '../../components/common/CircularProgress';
@@ -81,6 +81,18 @@ import CircularProgress from '../../components/common/CircularProgress';
 // ── ICON RENDERING (multi-library) ───────────────────────────
 function renderGoalIcon(iconId: string, size: number, color: string) {
   const safe = iconId || 'f/target'; // tolerate goals saved without an icon
+  // "photo:<uri>" — gallery-photo icon (Basic+ perk). Checked BEFORE the lib
+  // split: a file uri contains "/". Circle-cropped, slightly larger than a
+  // glyph so it fills the surrounding slot; clip is on the Image itself, never
+  // on a shadowed ancestor (seam rule).
+  if (safe.startsWith('photo:')) {
+    const d = Math.round(size * 1.4);
+    return (
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <Image source={{ uri: safe.slice('photo:'.length) }} style={{ width: d, height: d, borderRadius: d / 2 }} contentFit="cover" />
+      </View>
+    );
+  }
   const [lib, name] = safe.includes('/') ? safe.split('/') : ['f', safe];
   switch (lib) {
     case 'm': return <MaterialCommunityIcons name={name as any} size={size} color={color} />;
@@ -534,6 +546,9 @@ const Goals: React.FC = () => {
   const [iconPickerVisible, setIconPickerVisible] = useState(false);
   const [pickerSelection, setPickerSelection] = useState<string | undefined>(undefined);
   const suggestedIcons = useMemo(() => suggestGoalIcons(goalName), [goalName]);
+  // Photo icons (gallery photo as the goal icon) are a Basic+ perk.
+  const [photoPaywallVisible, setPhotoPaywallVisible] = useState(false);
+  const photoIconAllowed = TIER_LIMITS[tier].photoCategoryIcons;
 
   // ── Contribute Modal state ──
   const [contributeModalVisible, setContributeModalVisible] = useState(false);
@@ -708,9 +723,15 @@ const Goals: React.FC = () => {
   const goalFinishClose = useCallback(() => {
     if (!goalClosingRef.current) return;
     goalClosingRef.current = false;
+    // Orphan sweep: a photo copied into documents during THIS form session that
+    // no saved goal references (i.e. the form was cancelled) gets deleted. After
+    // a save the store already references it, so it survives.
+    if (goalImageUri && !usePersonalStore.getState().goals.some((g) => g.imageUri === goalImageUri)) {
+      deletePhotoIconFile(goalImageUri);
+    }
     setGoalModalVisible(false);
     resetGoalForm();
-  }, [resetGoalForm]);
+  }, [resetGoalForm, goalImageUri]);
 
   const closeGoalModal = useCallback(() => {
     if (goalClosingRef.current) return;
@@ -825,6 +846,10 @@ const Goals: React.FC = () => {
     }
 
     if (editingGoal) {
+      // Replacing/removing a previously SAVED photo icon — its file is orphaned.
+      if (editingGoal.imageUri && editingGoal.imageUri !== goalImageUri) {
+        deletePhotoIconFile(editingGoal.imageUri);
+      }
       updateGoal(editingGoal.id, {
         name: goalName.trim(),
         targetAmount: target,
@@ -877,6 +902,7 @@ const Goals: React.FC = () => {
             style: 'destructive',
             onPress: () => {
               deleteGoal(goal.id);
+              deletePhotoIconFile(goal.imageUri); // photo-icon file goes with it
               showToast(t.goals.goalRemoved, 'success');
             },
           },
@@ -1457,8 +1483,12 @@ const Goals: React.FC = () => {
     setGoalName(template.name);
     setGoalIcon(template.icon ? (template.icon.includes('/') ? template.icon : `f/${template.icon}`) : 'f/target');
     setGoalColor(template.color);
+    // Templates replace an UNSAVED photo pick — drop its copied file.
+    if (goalImageUri && goalImageUri !== editingGoal?.imageUri) {
+      deletePhotoIconFile(goalImageUri);
+    }
     setGoalImageUri(undefined);
-  }, [goalTemplates]);
+  }, [goalTemplates, goalImageUri, editingGoal]);
 
   const openIconPicker = useCallback(() => {
     Keyboard.dismiss();
@@ -1474,26 +1504,40 @@ const Goals: React.FC = () => {
   const saveIconSelection = useCallback(() => {
     if (pickerSelection) {
       setGoalIcon(pickerSelection);
+      // Choosing a glyph discards an UNSAVED photo pick — drop its copied file
+      // (a persisted photo is only cleaned up when the goal is saved).
+      if (goalImageUri && goalImageUri !== editingGoal?.imageUri) {
+        deletePhotoIconFile(goalImageUri);
+      }
       setGoalImageUri(undefined);
     }
     setIconPickerVisible(false);
-  }, [pickerSelection]);
+  }, [pickerSelection, goalImageUri, editingGoal]);
 
   const pickGoalImage = useCallback(() => {
+    // Basic+ perk gate. The paywall renders asOverlay INSIDE the goal-form
+    // Modal (iOS can't present a second Modal over an open one), stacked
+    // above the icon picker.
+    if (!usePremiumStore.getState().hasPhotoIcon()) {
+      lightTap();
+      setPhotoPaywallVisible(true);
+      return;
+    }
     setIconPickerVisible(false);
     setTimeout(async () => {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-      });
-      if (!result.canceled && result.assets[0]) {
+      // A photo picked earlier THIS session (not yet saved) gets replaced —
+      // clean its file up. The persisted one is only cleaned at save time.
+      const prevUnsaved =
+        goalImageUri && goalImageUri !== editingGoal?.imageUri ? goalImageUri : undefined;
+      // Copies the pick into documentDirectory so iOS can't purge it from the
+      // picker's tmp cache (raw uri — goals store it in their imageUri field).
+      const uri = await pickPhotoIconAsync(prevUnsaved);
+      if (uri) {
         lightTap();
-        setGoalImageUri(result.assets[0].uri);
+        setGoalImageUri(uri);
       }
     }, 50);
-  }, []);
+  }, [goalImageUri, editingGoal]);
 
   // ── Swipe action renderers ──
   const GoalSwipeEdit = useCallback(({ drag }: { drag: SharedValue<number> }) => {
@@ -1683,7 +1727,12 @@ const Goals: React.FC = () => {
       )}
 
       {/* ═══ ADD / EDIT GOAL SHEET ═══ */}
-      {goalModalVisible && <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeGoalModal}>
+      {goalModalVisible && <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={() => {
+        // Android back peels the topmost overlay first, not the whole sheet.
+        if (photoPaywallVisible) { setPhotoPaywallVisible(false); return; }
+        if (iconPickerVisible) { setIconPickerVisible(false); return; }
+        closeGoalModal();
+      }}>
         <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={StyleSheet.absoluteFill}>
           <Reanimated.View style={[styles.detailBackdrop, goalBackdropAnimStyle]}>
@@ -2011,15 +2060,32 @@ const Goals: React.FC = () => {
 
                   <View style={styles.ipDivider} />
 
-                  <TouchableOpacity style={styles.ipGalleryRow} onPress={pickGoalImage} activeOpacity={0.7}>
-                    <Feather name="image" size={16} color={C.textPrimary} />
+                  <TouchableOpacity
+                    style={styles.ipGalleryRow}
+                    onPress={pickGoalImage}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.settings.iconFromGallery}
+                  >
+                    {goalImageUri
+                      ? <Image source={{ uri: goalImageUri }} style={{ width: 20, height: 20, borderRadius: 10 }} contentFit="cover" />
+                      : <Feather name="image" size={16} color={C.textPrimary} />}
                     <Text style={[styles.ipGalleryText, { color: C.textPrimary }]}>{t.goals.chooseFromGallery}</Text>
+                    {!photoIconAllowed && <Feather name="lock" size={12} color={C.textMuted} />}
                   </TouchableOpacity>
 
                   <NeuButton icon="check" label={t.goals.save} color={goalColor} onPress={saveIconSelection} style={[FLAT_BTN, { marginTop: SPACING.md }]} />
 
                   {(goalImageUri || pickerSelection) && (
-                    <Pressable style={styles.ipRemoveBtn} onPress={() => { setGoalImageUri(undefined); setPickerSelection('f/target'); }}>
+                    <Pressable style={styles.ipRemoveBtn} onPress={() => {
+                      // Removing an UNSAVED photo pick drops its copied file; a
+                      // persisted one is only cleaned up when the goal is saved.
+                      if (goalImageUri && goalImageUri !== editingGoal?.imageUri) {
+                        deletePhotoIconFile(goalImageUri);
+                      }
+                      setGoalImageUri(undefined);
+                      setPickerSelection('f/target');
+                    }}>
                       {({ pressed }) => (
                         <View style={[styles.ipRemoveBtnInner, pressed && { opacity: 0.55 }]}>
                           <Feather name="x" size={12} color={C.textMuted} />
@@ -2031,6 +2097,22 @@ const Goals: React.FC = () => {
                 </View>
               </View>
             </>
+          )}
+
+          {/* Photo-icon paywall — asOverlay: lives in THIS modal's window (a
+              nested <Modal> would present behind the sheet, invisible on iOS).
+              Rendered after the icon picker so it stacks on top of it; the
+              absolute-fill host guarantees full-screen overlay layout. */}
+          {photoPaywallVisible && (
+            <View style={StyleSheet.absoluteFill}>
+              <PaywallModal
+                visible
+                asOverlay
+                feature="backup"
+                reason={t.paywall.itemPhotoIcons}
+                onClose={() => setPhotoPaywallVisible(false)}
+              />
+            </View>
           )}
         </View>
         <ModalToastHost />

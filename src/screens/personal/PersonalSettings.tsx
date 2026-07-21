@@ -13,18 +13,22 @@ import {
   InteractionManager,
   Platform,
   Share,
+  LayoutAnimation,
+  useWindowDimensions,
 } from 'react-native';
+import { FullWindowOverlay } from 'react-native-screens';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SettingRow from '../../components/common/SettingRow';
-import Card from '../../components/common/Card';
+import NeuGroup from '../../components/common/NeuGroup';
+import NeuButton from '../../components/common/NeuButton';
+import { useNeu } from '../../components/common/neu';
 import PaymentQrCard from '../../components/settings/PaymentQrCard';
 import SubscriptionCard from '../../components/settings/SubscriptionCard';
-import CategoryManager from '../../components/common/CategoryManager';
-import PaymentMethodManager from '../../components/common/PaymentMethodManager';
 import OcrDebugHarness from '../../components/dev/OcrDebugHarness';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import Avatar from '../../components/common/Avatar';
@@ -39,8 +43,9 @@ import { exportTransactionsCsv, exportWalletsCsv, exportSubscriptionsCsv, export
 import { exportMonthlyStatement, exportTaxYearPdf } from '../../services/pdfExport';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { getOrCreateReferralCode, referralMessage } from '../../services/referrals';
+import { syncCheckinReminders, formatCheckinTime } from '../../services/checkinReminders';
 import { loadSampleData, SAMPLE_PROFILES, type SampleBracket } from '../../utils/sampleData';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { RootStackParamList, SettingsSection } from '../../types';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
@@ -56,18 +61,26 @@ import { useT } from '../../i18n';
 const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string }> = ({ section, scrollTo }) => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
+  // Explicit size for the FullWindowOverlay child (time picker).
+  const { width: winW, height: winH } = useWindowDimensions();
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
+  const neu = useNeu(undefined, { faintDark: true });
+  const neuFull = useNeu(); // full neu for focal hero icons (icons LIFT)
   const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
 
   const [ready, setReady] = useState(false);
   const [businessInfoVisible, setBusinessInfoVisible] = useState(false);
   const [sampleModalVisible, setSampleModalVisible] = useState(false);
-  const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
-  const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment'>('expense');
-  const [paymentMethodManagerVisible, setPaymentMethodManagerVisible] = useState(false);
+  // Daily check-in reminder times: overlay time-picker shown while adding.
+  const [addingCheckinTime, setAddingCheckinTime] = useState(false);
+  const [checkinDraft, setCheckinDraft] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(21, 0, 0, 0);
+    return d;
+  });
   const scrollRef = useRef<any>(null);
   const sectionY = useRef<Record<string, number>>({});
 
@@ -84,8 +97,23 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
   const setBudgetEchoHidden = useSettingsStore((s) => s.setBudgetEchoHidden);
   const commitmentEchoHidden = useSettingsStore((s) => s.commitmentEchoHidden);
   const setCommitmentEchoHidden = useSettingsStore((s) => s.setCommitmentEchoHidden);
+  const savingsEchoHidden = useSettingsStore((s) => s.savingsEchoHidden);
+  const setSavingsEchoHidden = useSettingsStore((s) => s.setSavingsEchoHidden);
+  const pulseEchoHidden = useSettingsStore((s) => s.pulseEchoHidden);
+  const setPulseEchoHidden = useSettingsStore((s) => s.setPulseEchoHidden);
   const echoDailyCheckin = useSettingsStore((s) => s.echoDailyCheckin);
   const setEchoDailyCheckin = useSettingsStore((s) => s.setEchoDailyCheckin);
+  const echoCheckinTimes = useSettingsStore((s) => s.echoCheckinTimes);
+  const setEchoCheckinTimes = useSettingsStore((s) => s.setEchoCheckinTimes);
+
+  // Check-in toggle/time changes re-sync the OS notification schedule.
+  const applyCheckin = useCallback(async (enabled: boolean, times: string[]) => {
+    setEchoDailyCheckin(enabled);
+    setEchoCheckinTimes(times);
+    const ok = await syncCheckinReminders(enabled, times);
+    if (enabled && !ok) showToast(t.settings.checkinPermissionNeeded, 'info');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t]);
   const quickAddConfirm = useSettingsStore((s) => s.quickAddConfirm);
   const setQuickAddConfirm = useSettingsStore((s) => s.setQuickAddConfirm);
   const spendingAlertsEnabled = useSettingsStore((s) => s.spendingAlertsEnabled);
@@ -107,6 +135,13 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
 
   useEffect(() => {
     if (!scrollTo || !ready) return;
+    // Category deep-links (CategoryPicker "manage", MoneyChat, NoteEditor…)
+    // now land on the dedicated screen — forward instead of scrolling.
+    if (scrollTo === 'categories') {
+      navigation.setParams({ scrollTo: undefined } as never);
+      navigation.navigate('ManageCategories', { mode: 'personal' });
+      return;
+    }
     const timer = setTimeout(() => {
       if (sectionY.current[scrollTo] !== undefined) {
         scrollRef.current?.scrollTo({ y: sectionY.current[scrollTo], animated: true });
@@ -271,8 +306,8 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
         {/* ── HUB ── */}
         {!section && (
           <>
-            <Card style={styles.card}>
-              <View style={styles.settingRow}>
+            <NeuGroup style={styles.card}>
+              <View style={[styles.settingRow, { paddingVertical: 13, minHeight: 56 }]}>
                 <View style={styles.settingLabelRow}>
                   <Pressable
                     onPress={() => { lightTap(); setAvatarPickerVisible(true); }}
@@ -280,7 +315,7 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                     accessibilityRole="button"
                     accessibilityLabel={t.settings.avatarTitle}
                   >
-                    <Avatar size={34} />
+                    <Avatar size={34} raised />
                   </Pressable>
                   <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.name}</Text>
                 </View>
@@ -296,11 +331,10 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                   selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
-            </Card>
+            </NeuGroup>
 
             {/* Mode */}
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.modeSection}</Text>
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/briefcase"
                 chipColor="#5A5320"
@@ -322,11 +356,9 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 onPress={() => { lightTap(); setBusinessInfoVisible(true); }}
                 last
               />
-            </Card>
 
             {/* Account */}
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.accountSection}</Text>
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/person-circle-outline"
                 chipColor="#6BA3BE"
@@ -335,11 +367,9 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 onPress={() => { lightTap(); navigation.navigate('Account' as never); }}
                 last
               />
-            </Card>
 
             <SubscriptionCard variant="personal" />
 
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/gift"
                 chipColor="#4F5104"
@@ -359,10 +389,8 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 }}
                 last
               />
-            </Card>
 
-            {/* Hub nav */}
-            <Card style={styles.card}>
+            {/* Hub nav — each its own card */}
               <SettingRow
                 icon="m/tune-variant"
                 chipColor="#A688B8"
@@ -394,7 +422,6 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 onPress={() => { lightTap(); navigation.navigate('SettingsDetail', { section: 'about' }); }}
                 last
               />
-            </Card>
 
             <Text style={{ fontSize: TYPOGRAPHY.size.xs, lineHeight: 18, color: C.textMuted, textAlign: 'center', paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
               {t.settings.financialDisclaimer}
@@ -402,7 +429,6 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
 
             {/* Danger zone — personal only */}
             <Text style={[styles.sectionHeader, { color: '#B5705A' }]}>{t.settings.dangerZone}</Text>
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/trash-outline"
                 chipColor="#B5705A"
@@ -410,7 +436,6 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 onPress={handleDeleteAccount}
                 last
               />
-            </Card>
           </>
         )}
 
@@ -418,13 +443,6 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
         {section === 'money' && (
           <>
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.moneySetup}</Text>
-            <Card style={styles.card}>
-              <SettingRow
-                icon="i/wallet"
-                chipColor="#4F5104"
-                label={t.settings.wallets}
-                onPress={() => { lightTap(); navigation.navigate('WalletManagement'); }}
-              />
               {Platform.OS === 'ios' && !Platform.isPad && (
                 <SettingRow
                   icon="i/flash"
@@ -434,39 +452,51 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 />
               )}
 
-              {ready && (
-                <View onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>
-                  <SettingRow
-                    icon="i/pricetags"
-                    chipColor="#9A6400"
-                    label={t.settings.expenseCategories}
-                    onPress={() => { lightTap(); setCategoryManagerType('expense'); setCategoryManagerVisible(true); }}
-                  />
-                  <SettingRow
-                    icon="i/trending-up"
-                    chipColor="#4F5104"
-                    label={t.settings.incomeCategories}
-                    onPress={() => { lightTap(); setCategoryManagerType('income'); setCategoryManagerVisible(true); }}
-                  />
-                  <SettingRow
-                    icon="i/pie-chart"
-                    chipColor="#A688B8"
-                    label={t.settings.investmentCategories}
-                    onPress={() => { lightTap(); setCategoryManagerType('investment'); setCategoryManagerVisible(true); }}
-                  />
-                  <SettingRow
-                    icon="i/card"
-                    chipColor="#6BA3BE"
-                    label={t.settings.paymentMethods}
-                    onPress={() => { lightTap(); setPaymentMethodManagerVisible(true); }}
-                  />
-                </View>
-              )}
+              {/* One entry for all four managers — its own screen. */}
+              <SettingRow
+                icon="i/pricetags"
+                chipColor="#9A6400"
+                label={t.settings.manageCategoriesRow}
+                sublabel={t.settings.manageCategoriesDesc}
+                onPress={() => { lightTap(); navigation.navigate('ManageCategories', { mode: 'personal' }); }}
+              />
 
-              <PaymentQrCard mode="personal" onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }} />
+              {/* Transaction-entry preferences — ABOVE the QR section (owner request). */}
+              <SettingRow
+                icon="i/checkmark-circle"
+                chipColor="#4F5104"
+                label={t.settings.quickAddConfirm}
+                sublabel={t.settings.quickAddConfirmDesc}
+                rightElement={
+                  <Switch
+                    value={quickAddConfirm}
+                    onValueChange={(v) => { lightTap(); setQuickAddConfirm(v); }}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                }
+              />
+              <SettingRow
+                icon="i/trending-up"
+                chipColor="#B2780A"
+                label={t.settings.spendingAlerts}
+                sublabel={t.settings.spendingAlertsDesc}
+                rightElement={
+                  <Switch
+                    value={spendingAlertsEnabled}
+                    onValueChange={(v) => { lightTap(); setSpendingAlertsEnabled(v); }}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                }
+              />
 
-              {/* Echo visibility */}
-              <View style={[styles.divider, { backgroundColor: C.border }]} />
+              <NeuGroup style={styles.card} onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }}>
+                <PaymentQrCard mode="personal" />
+              </NeuGroup>
+
+              {/* Echo visibility — its own card */}
+              <NeuGroup style={styles.card}>
               <View style={{ paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xs }}>
                 <View style={styles.settingLabelRow}>
                   <View style={{ width: 34, height: 34, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha('#B2780A', isDark ? 0.2 : 0.12) }}>
@@ -503,50 +533,81 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 />
               </View>
               <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg }]}>
+                <Text style={[styles.settingLabel, { color: C.textSecondary, flex: 1 }]}>{t.settings.echoOnSavings}</Text>
+                <Switch
+                  value={!savingsEchoHidden}
+                  onValueChange={(v) => { lightTap(); setSavingsEchoHidden(!v); }}
+                  trackColor={{ false: C.border, true: C.positive }}
+                  thumbColor={C.surface}
+                />
+              </View>
+              <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg }]}>
+                <Text style={[styles.settingLabel, { color: C.textSecondary, flex: 1 }]}>{t.settings.echoOnPulse}</Text>
+                <Switch
+                  value={!pulseEchoHidden}
+                  onValueChange={(v) => { lightTap(); setPulseEchoHidden(!v); }}
+                  trackColor={{ false: C.border, true: C.positive }}
+                  thumbColor={C.surface}
+                />
+              </View>
+              <View style={[styles.settingRow, { paddingHorizontal: SPACING.lg, paddingBottom: echoDailyCheckin ? 0 : SPACING.md }]}>
                 <View style={{ flex: 1, paddingRight: 12 }}>
                   <Text style={[styles.settingLabel, { color: C.textSecondary }]}>{t.settings.echoCheckin}</Text>
                   <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2 }}>{t.settings.echoCheckinDesc}</Text>
                 </View>
                 <Switch
                   value={echoDailyCheckin}
-                  onValueChange={(v) => { lightTap(); setEchoDailyCheckin(v); }}
+                  onValueChange={(v) => {
+                    lightTap();
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    applyCheckin(v, echoCheckinTimes.length ? echoCheckinTimes : ['21:00']);
+                  }}
                   trackColor={{ false: C.border, true: C.positive }}
                   thumbColor={C.surface}
                 />
               </View>
+              {echoDailyCheckin && (
+                <View style={{ paddingHorizontal: SPACING.lg, paddingBottom: SPACING.md }}>
+                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginBottom: SPACING.xs }}>
+                    {t.settings.checkinTimesLabel}
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
+                    {echoCheckinTimes.map((tm) => (
+                      <Pressable
+                        key={tm}
+                        onPress={() => {
+                          lightTap();
+                          // Tap a chip to remove it (last one can't be removed —
+                          // turn the toggle off instead, so "on" always reminds).
+                          if (echoCheckinTimes.length <= 1) return;
+                          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                          applyCheckin(true, echoCheckinTimes.filter((x) => x !== tm));
+                        }}
+                        style={[styles.checkinChip, neu.raised]}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary }}>
+                          {formatCheckinTime(tm)}
+                        </Text>
+                        {echoCheckinTimes.length > 1 && <Feather name="x" size={13} color={C.textMuted} />}
+                      </Pressable>
+                    ))}
+                    <Pressable
+                      onPress={() => { lightTap(); setAddingCheckinTime(true); }}
+                      style={[styles.checkinChip, neu.raised]}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.settings.checkinAddTime}
+                    >
+                      <Feather name="plus" size={14} color={C.accent} />
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent }}>
+                        {t.settings.checkinAddTime}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
 
-              {/* Transaction-entry preferences */}
-              <View style={[styles.divider, { backgroundColor: C.border }]} />
-              <SettingRow
-                icon="i/checkmark-circle"
-                chipColor="#4F5104"
-                label={t.settings.quickAddConfirm}
-                sublabel={t.settings.quickAddConfirmDesc}
-                rightElement={
-                  <Switch
-                    value={quickAddConfirm}
-                    onValueChange={(v) => { lightTap(); setQuickAddConfirm(v); }}
-                    trackColor={{ false: C.border, true: C.positive }}
-                    thumbColor={C.surface}
-                  />
-                }
-              />
-              <SettingRow
-                icon="i/trending-up"
-                chipColor="#B2780A"
-                label={t.settings.spendingAlerts}
-                sublabel={t.settings.spendingAlertsDesc}
-                rightElement={
-                  <Switch
-                    value={spendingAlertsEnabled}
-                    onValueChange={(v) => { lightTap(); setSpendingAlertsEnabled(v); }}
-                    trackColor={{ false: C.border, true: C.positive }}
-                    thumbColor={C.surface}
-                  />
-                }
-                last
-              />
-            </Card>
+              </NeuGroup>
           </>
         )}
 
@@ -554,7 +615,6 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
         {section === 'data' && (
           <>
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.data}</Text>
-            <Card style={styles.card}>
               <SettingRow
                 icon="i/stats-chart"
                 chipColor="#4F5104"
@@ -592,31 +652,46 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 onPress={handleLoadSampleData}
                 last
               />
-            </Card>
           </>
         )}
 
         <View style={{ height: SPACING['3xl'] }} />
-
-        {ready && (
-          <>
-            {categoryManagerVisible && (
-              <CategoryManager
-                visible
-                onClose={() => setCategoryManagerVisible(false)}
-                type={categoryManagerType}
-                mode="personal"
-              />
-            )}
-            {paymentMethodManagerVisible && (
-              <PaymentMethodManager
-                visible
-                onClose={() => setPaymentMethodManagerVisible(false)}
-              />
-            )}
-          </>
-        )}
       </ScrollView>
+
+      {/* Check-in time picker — overlay card (no inline dropdown, owner call).
+          FullWindowOverlay so the dim covers the nav header too; explicit size
+          because its window gives absoluteFill nothing to resolve against. */}
+      {addingCheckinTime && (
+        <FullWindowOverlay>
+          <View style={[styles.timeOverlay, { width: winW, height: winH }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setAddingCheckinTime(false)} accessibilityLabel={t.common.close} />
+            <View style={styles.timeCard}>
+              <DateTimePicker
+                value={checkinDraft}
+                mode="time"
+                display="spinner"
+                themeVariant={isDark ? 'dark' : 'light'}
+                accentColor={C.accent}
+                style={styles.timeSpinner}
+                onChange={(_e, d) => { if (d) setCheckinDraft(d); }}
+              />
+              <NeuButton
+                icon="check"
+                label={t.common.done}
+                onPress={() => {
+                  const hh = String(checkinDraft.getHours()).padStart(2, '0');
+                  const mm = String(checkinDraft.getMinutes()).padStart(2, '0');
+                  const next = `${hh}:${mm}`;
+                  setAddingCheckinTime(false);
+                  if (!echoCheckinTimes.includes(next)) {
+                    applyCheckin(true, [...echoCheckinTimes, next].sort());
+                  }
+                }}
+              />
+            </View>
+          </View>
+        </FullWindowOverlay>
+      )}
 
       {/* Business mode explainer */}
       <Modal
@@ -627,26 +702,22 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
         onRequestClose={() => setBusinessInfoVisible(false)}
       >
         <Pressable
-          style={{ flex: 1, backgroundColor: withAlpha('#000000', isDark ? 0.6 : 0.4), justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}
           onPress={() => setBusinessInfoVisible(false)}
         >
           <View
             onStartShouldSetResponder={() => true}
-            style={{ width: '100%', maxWidth: 440, backgroundColor: C.surface, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: C.border, padding: SPACING.xl }}
+            style={[{ width: '100%', maxWidth: 440, borderRadius: RADIUS.xl, padding: SPACING.xl }, neu.raisedModal]}
           >
-            <View style={{ width: 52, height: 52, borderRadius: RADIUS.lg, backgroundColor: withAlpha(C.accent, 0.12), alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
+            <View style={[{ width: 52, height: 52, borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }, neuFull.raised, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
               <Feather name="briefcase" size={24} color={C.accent} />
             </View>
             <Text style={{ fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, marginBottom: SPACING.sm }}>{t.settings.businessModeInfoTitle}</Text>
             <Text style={{ fontSize: TYPOGRAPHY.size.sm, lineHeight: 22, color: C.textSecondary, marginBottom: SPACING.lg }}>{t.settings.businessModeInfoBody}</Text>
-            <TouchableOpacity
-              onPress={() => { lightTap(); setBusinessInfoVisible(false); }}
-              style={{ backgroundColor: C.accent, paddingVertical: SPACING.md, borderRadius: RADIUS.md, alignItems: 'center' }}
-              accessibilityRole="button"
-              accessibilityLabel={t.settings.businessModeInfoGotIt}
-            >
-              <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.onAccent }}>{t.settings.businessModeInfoGotIt}</Text>
-            </TouchableOpacity>
+            <NeuButton
+              label={t.settings.businessModeInfoGotIt}
+              onPress={() => setBusinessInfoVisible(false)}
+            />
           </View>
         </Pressable>
       </Modal>
@@ -660,12 +731,12 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
         onRequestClose={() => setSampleModalVisible(false)}
       >
         <Pressable
-          style={{ flex: 1, backgroundColor: withAlpha('#000000', isDark ? 0.6 : 0.4), justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}
           onPress={() => setSampleModalVisible(false)}
         >
           <View
             onStartShouldSetResponder={() => true}
-            style={{ width: '100%', maxWidth: 440, backgroundColor: C.surface, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: C.border, padding: SPACING.xl }}
+            style={[{ width: '100%', maxWidth: 440, borderRadius: RADIUS.xl, padding: SPACING.xl }, neu.raisedModal]}
           >
             <Text style={{ fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, marginBottom: SPACING.xs }}>{t.sampleData.pickTitle}</Text>
             <Text style={{ fontSize: TYPOGRAPHY.size.sm, lineHeight: 20, color: C.textSecondary, marginBottom: SPACING.lg }}>{t.settings.loadSampleDataConfirm}</Text>
@@ -679,18 +750,15 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                   activeOpacity={0.7}
                   accessibilityRole="button"
                   accessibilityLabel={`${info.name} · ${p.age}`}
-                  style={{
+                  style={[{
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: SPACING.md,
                     paddingVertical: SPACING.md,
                     paddingHorizontal: SPACING.md,
                     borderRadius: RADIUS.lg,
-                    backgroundColor: C.background,
-                    borderWidth: 1,
-                    borderColor: C.border,
                     marginTop: i === 0 ? 0 : SPACING.sm,
-                  }}
+                  }, neu.raisedSoft]}
                 >
                   <View style={{ width: 40, height: 40, borderRadius: RADIUS.md, backgroundColor: withAlpha(C.accent, 0.12), alignItems: 'center', justifyContent: 'center' }}>
                     <Feather name={p.icon as keyof typeof Feather.glyphMap} size={20} color={C.accent} />
@@ -747,6 +815,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
     minHeight: 44,
   },
   settingLabelRow: {
@@ -758,6 +827,34 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
+  },
+  // Check-in time-picker overlay (FabChoiceModal centered-dialog recipe).
+  timeOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.xl,
+  },
+  timeCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: C.background,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    // NO alignItems:'center' — it let the Done button shrink to its content;
+    // children stretch by default so the CTA spans the card (owner: wider Done).
+    ...SHADOWS.lg,
+  },
+  timeSpinner: { alignSelf: 'center' },
+  // Daily check-in reminder-time chips (Neu Pills recipe: faintDark raised).
+  checkinChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
   },
   input: {
     fontSize: TYPOGRAPHY.size.base,

@@ -29,6 +29,17 @@ export interface TierLimits {
   // Metered per month — stay finite even on Premium (see principle above)
   maxScansPerMonth: number;
   maxAiCallsPerMonth: number;
+  // Echo chat shape (owner-locked 2026-07-22)
+  /** SAVED history: total bubbles kept readable across current chat + archived
+   *  conversations. Beyond this the OLDEST conversations LOCK (never delete) —
+   *  upgrading unlocks them. User-visible perk. */
+  chatSavedBubbles: number;
+  /** AI MEMORY: recent bubbles re-sent to the model per reply (the invisible
+   *  cost dial — every bubble here is paid tokens on EVERY message). */
+  chatMemoryBubbles: number;
+  /** Transactions sent in per-line detail to Echo (older ones collapse into
+   *  per-month summary lines). 500 = the "full" safety ceiling. */
+  chatTxnDetail: number;
   // Capabilities
   exportData: boolean;
   googleDocsSync: boolean;
@@ -44,6 +55,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxActivePlaybooks: 2, maxSavedPlaybooks: 5,
     maxCollectzSessionsPerWeek: 2,
     maxScansPerMonth: 15, maxAiCallsPerMonth: 30,
+    chatSavedBubbles: 50, chatMemoryBubbles: 15, chatTxnDetail: 30,
     exportData: true, googleDocsSync: false,
     cloudBackup: false, askEchoPerScreen: false, photoCategoryIcons: false,
   },
@@ -51,8 +63,9 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxWallets: 13, maxWalletsPerType: 4,
     maxBudgets: 10, maxSavingsAccounts: 6, maxGoals: 6, maxSharedSubs: 6,
     maxActivePlaybooks: 2, maxSavedPlaybooks: Infinity,
-    maxCollectzSessionsPerWeek: Infinity,
+    maxCollectzSessionsPerWeek: 4, // owner 2026-07-22: Basic 4/week; Pro+ unlimited
     maxScansPerMonth: 75, maxAiCallsPerMonth: 300,
+    chatSavedBubbles: 150, chatMemoryBubbles: 30, chatTxnDetail: 100,
     exportData: true, googleDocsSync: false,
     cloudBackup: true, askEchoPerScreen: true, photoCategoryIcons: true,
   },
@@ -62,6 +75,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxActivePlaybooks: 2, maxSavedPlaybooks: Infinity,
     maxCollectzSessionsPerWeek: Infinity,
     maxScansPerMonth: 150, maxAiCallsPerMonth: 800,
+    chatSavedBubbles: 600, chatMemoryBubbles: 45, chatTxnDetail: 500,
     exportData: true, googleDocsSync: true,
     cloudBackup: true, askEchoPerScreen: true, photoCategoryIcons: true,
   },
@@ -71,6 +85,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxActivePlaybooks: 2, maxSavedPlaybooks: Infinity,
     maxCollectzSessionsPerWeek: Infinity,
     maxScansPerMonth: 300, maxAiCallsPerMonth: 1500,
+    chatSavedBubbles: 3000, chatMemoryBubbles: 90, chatTxnDetail: 500,
     exportData: true, googleDocsSync: true,
     cloudBackup: true, askEchoPerScreen: true, photoCategoryIcons: true,
   },

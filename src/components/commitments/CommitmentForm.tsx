@@ -11,7 +11,6 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { Feather, MaterialCommunityIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { format, isValid, addMonths } from 'date-fns';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
@@ -28,6 +27,9 @@ import CategoryPicker from '../common/CategoryPicker';
 import CalendarPicker from '../common/CalendarPicker';
 import WalletLogo from '../common/WalletLogo';
 import ModalToastHost from '../common/ModalToastHost';
+import PaywallModal from '../common/PaywallModal';
+import { pickPhotoIconAsync, deletePhotoIconFile } from '../common/CategoryIcon';
+import { usePremiumStore } from '../../store/premiumStore';
 import { useNeu } from '../common/neu';
 import NeuButton from '../common/NeuButton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,7 +39,18 @@ type SubView = 'form' | 'calendar' | 'walletPicker';
 type SavePayload = Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>;
 
 // Icon format: "library/name" — f/ = Feather, m/ = MaterialCommunityIcons, i/ = Ionicons, fa/ = FontAwesome5
+// Plus "photo:<uri>" — gallery-photo icon (Basic+ perk), rendered as a circle-cropped Image.
 export function renderIcon(iconId: string, size: number, color: string) {
+  // Checked BEFORE the lib split: a file uri contains "/". Clip lives on the
+  // Image itself, never on a shadowed ancestor (seam rule).
+  if (iconId.startsWith('photo:')) {
+    const d = Math.round(size * 1.4);
+    return (
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <Image source={{ uri: iconId.slice('photo:'.length) }} style={{ width: d, height: d, borderRadius: d / 2 }} contentFit="cover" />
+      </View>
+    );
+  }
   const [lib, name] = iconId.includes('/') ? iconId.split('/') : ['f', iconId];
   switch (lib) {
     case 'm': return <MaterialCommunityIcons name={name as any} size={size} color={color} />;
@@ -278,6 +291,9 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
   const [imageUri, setImageUri] = useState<string | undefined>(undefined);
   const [iconName, setIconName] = useState<string | undefined>(undefined);
   const [iconPickerVisible, setIconPickerVisible] = useState(false);
+  // Photo icons (gallery photo as the bill's icon) are a Basic+ perk.
+  const [photoPaywallVisible, setPhotoPaywallVisible] = useState(false);
+  const photoIconAllowed = usePremiumStore((s) => s.hasPhotoIcon());
   const [installModalVisible, setInstallModalVisible] = useState(false);
   const [durationUnit, setDurationUnit] = useState<'months' | 'years'>('months');
   const [durationValue, setDurationValue] = useState('');
@@ -426,21 +442,29 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
   const selectedWallet = useMemo(() => wallets.find(w => w.id === walletId), [wallets, walletId]);
 
   const pickImage = useCallback(() => {
+    // Basic+ perk gate. The paywall renders asOverlay INSIDE this form's Modal
+    // (iOS can't present a second Modal over an open one), above the picker.
+    if (!usePremiumStore.getState().hasPhotoIcon()) {
+      lightTap();
+      setPhotoPaywallVisible(true);
+      return;
+    }
     setIconPickerVisible(false);
     setTimeout(async () => {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-      });
-      if (!result.canceled && result.assets[0]) {
+      // A photo picked earlier THIS session (not yet saved) gets replaced —
+      // clean its file up. The persisted one is only cleaned at save time.
+      const prevUnsaved =
+        imageUri && imageUri !== subscription?.imageUri ? imageUri : undefined;
+      // Copies the pick into documentDirectory so iOS can't purge it from the
+      // picker's tmp cache (raw uri — commitments store it in imageUri).
+      const uri = await pickPhotoIconAsync(prevUnsaved);
+      if (uri) {
         lightTap();
-        setImageUri(result.assets[0].uri);
+        setImageUri(uri);
         setIconName(undefined);
       }
     }, 50);
-  }, []);
+  }, [imageUri, subscription?.imageUri]);
 
   const openIconPicker = useCallback(() => {
     setPickerSelection(iconName);
@@ -455,17 +479,24 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
   const saveIconSelection = useCallback(() => {
     mediumTap();
     setIconName(pickerSelection);
-    if (pickerSelection) setImageUri(undefined);
+    if (pickerSelection) {
+      // Choosing a glyph discards an UNSAVED photo pick — drop its copied file.
+      // A persisted photo is only cleaned up when the commitment is saved.
+      if (imageUri && imageUri !== subscription?.imageUri) deletePhotoIconFile(imageUri);
+      setImageUri(undefined);
+    }
     setIconPickerVisible(false);
-  }, [pickerSelection]);
+  }, [pickerSelection, imageUri, subscription?.imageUri]);
 
   const removeAvatar = useCallback(() => {
     lightTap();
+    // Same unsaved-photo cleanup as saveIconSelection.
+    if (imageUri && imageUri !== subscription?.imageUri) deletePhotoIconFile(imageUri);
     setPickerSelection(undefined);
     setImageUri(undefined);
     setIconName(undefined);
     setIconPickerVisible(false);
-  }, []);
+  }, [imageUri, subscription?.imageUri]);
 
   const suggested = useMemo(() => suggestIcons(name), [name]);
 
@@ -547,6 +578,10 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
       completedInstallments: completedInst,
       outstandingBalance: remainingBalance,
     };
+    // Replacing/removing a previously SAVED photo icon — its file is orphaned.
+    if (subscription?.imageUri && subscription.imageUri !== imageUri) {
+      deletePhotoIconFile(subscription.imageUri);
+    }
     mediumTap();
     onSave(payload);
   }, [name, amount, note, category, billingCycle, startDate, reminderDays, isInstallment, totalInstallments, completedStr, isPaused, walletId, outstandingBalance, imageUri, iconName, subscription, onSave, onError, t]);
@@ -1038,6 +1073,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
       onRequestClose={() => {
         // Android hardware back: peel off the topmost overlay first, so back doesn't
         // tear down the whole sheet (and lose typed edits) while a picker is open.
+        if (photoPaywallVisible) { setPhotoPaywallVisible(false); return; }
         if (iconPickerVisible) { setIconPickerVisible(false); return; }
         if (installModalVisible) { setInstallModalVisible(false); return; }
         if (subView !== 'form') { setSubView('form'); return; }
@@ -1174,9 +1210,18 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
 
               <View style={styles.iconPickerDivider} />
 
-              <TouchableOpacity style={styles.iconPickerRow} onPress={pickImage} activeOpacity={0.7}>
-                <Feather name="image" size={16} color={C.accent} />
+              <TouchableOpacity
+                style={styles.iconPickerRow}
+                onPress={pickImage}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.settings.iconFromGallery}
+              >
+                {imageUri
+                  ? <Image source={{ uri: imageUri }} style={{ width: 20, height: 20, borderRadius: 10 }} contentFit="cover" />
+                  : <Feather name="image" size={16} color={C.accent} />}
                 <Text style={styles.iconPickerRowText}>choose from gallery</Text>
+                {!photoIconAllowed && <Feather name="lock" size={12} color={C.textMuted} />}
               </TouchableOpacity>
 
               {/* Save button */}
@@ -1341,6 +1386,21 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
         >
           <Feather name="check" size={20} color={C.onAccent} />
         </TouchableOpacity>
+      )}
+      {/* Photo-icon paywall — asOverlay: lives in THIS modal's window (a nested
+          <Modal> would present behind the sheet, invisible on iOS). Rendered
+          after the icon picker so it stacks on top of it; the absolute-fill
+          host guarantees full-screen overlay layout. */}
+      {photoPaywallVisible && (
+        <View style={StyleSheet.absoluteFill}>
+          <PaywallModal
+            visible
+            asOverlay
+            feature="backup"
+            reason={t.paywall.itemPhotoIcons}
+            onClose={() => setPhotoPaywallVisible(false)}
+          />
+        </View>
       )}
       <ModalToastHost />
       </GestureHandlerRootView>
