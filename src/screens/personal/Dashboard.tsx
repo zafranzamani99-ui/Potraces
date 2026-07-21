@@ -22,7 +22,15 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { ScrollView as RNScrollView } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { addDays, isWithinInterval, startOfMonth, endOfMonth, startOfDay, subMonths, getDaysInMonth } from 'date-fns';
+import {
+  addDays,
+  isWithinInterval,
+  startOfMonth,
+  endOfMonth,
+  startOfDay,
+  subMonths,
+  getDaysInMonth,
+} from 'date-fns';
 
 import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
@@ -34,6 +42,7 @@ import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import GlassModeToggle from '../../components/common/GlassModeToggle';
 import Avatar from '../../components/common/Avatar';
+import ProfileCardModal from '../../components/common/ProfileCardModal';
 import QuickActions from '../../components/common/QuickActions';
 import { listFailedReceipts } from '../../services/receiptQueue';
 import NeuIconButton from '../../components/common/NeuIconButton';
@@ -62,8 +71,16 @@ import { useBNPLTotal } from '../../hooks/useBNPLTotal';
 import { useKeptNumber } from '../../hooks/useKeptNumber';
 import { useBudgetProfileStore } from '../../store/budgetProfileStore';
 import { scopeTxns, getRange } from '../../utils/insights';
-import { pulseScore, expandBills, baselineDailySpend, last14DailySpend, PulseBand } from '../../utils/pulseMath';
+import {
+  pulseScore,
+  expandBills,
+  baselineDailySpend,
+  last14DailySpend,
+  PulseBand,
+} from '../../utils/pulseMath';
 import PulseWave from '../../components/pulse/PulseWave';
+// PAUSED 2026-07-22: generation call below is commented out until the Spending
+// Mirror display card ships (see "step3 July.md"). Import kept for easy re-enable.
 import { generateSpendingMirror } from '../../services/spendingMirror';
 import BreathingRoom from '../../components/common/BreathingRoom';
 import FreshStart from '../../components/common/FreshStart';
@@ -114,8 +131,8 @@ const DotCalendar: React.FC<{
             d > dayOfMonth
               ? withAlpha(C.textMuted, 0.14)
               : activeDays.has(d)
-              ? color
-              : withAlpha(C.textMuted, 0.3),
+                ? color
+                : withAlpha(C.textMuted, 0.3),
         }}
       />
     ))}
@@ -123,19 +140,36 @@ const DotCalendar: React.FC<{
 );
 
 // came-in vs went-out side by side — the net explains itself.
-const TwinBars: React.FC<{ inAmt: number; outAmt: number; C: typeof CALM }> = ({ inAmt, outAmt, C }) => {
+const TwinBars: React.FC<{ inAmt: number; outAmt: number; C: typeof CALM }> = ({
+  inAmt,
+  outAmt,
+  C,
+}) => {
   const max = Math.max(inAmt, outAmt, 1);
   const h = (v: number) => 8 + Math.round(24 * (v / max));
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 5 }}>
-      <View style={{ width: 9, height: h(inAmt), borderRadius: 4.5, backgroundColor: C.positive }} />
-      <View style={{ width: 9, height: h(outAmt), borderRadius: 4.5, backgroundColor: withAlpha(C.bronze, 0.75) }} />
+      <View
+        style={{ width: 9, height: h(inAmt), borderRadius: 4.5, backgroundColor: C.positive }}
+      />
+      <View
+        style={{
+          width: 9,
+          height: h(outAmt),
+          borderRadius: 4.5,
+          backgroundColor: withAlpha(C.bronze, 0.75),
+        }}
+      />
     </View>
   );
 };
 
 // next 7 days; a tall tick where a bill lands.
-const WeekTicks: React.FC<{ flags: boolean[]; color: string; C: typeof CALM }> = ({ flags, color, C }) => (
+const WeekTicks: React.FC<{ flags: boolean[]; color: string; C: typeof CALM }> = ({
+  flags,
+  color,
+  C,
+}) => (
   <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3 }}>
     {flags.map((on, i) => (
       <View
@@ -170,8 +204,8 @@ const PersonalDashboard: React.FC = () => {
   const updateIngredientCost = useSellerStore((s) => s.updateIngredientCost);
   const deleteTransfer = useBusinessStore((s) => s.deleteTransfer);
   const debts = useDebtStore((s) => s.debts);
-  const currency = useSettingsStore(state => state.currency);
-  const paymentQrs = useSettingsStore(state => state.paymentQrs);
+  const currency = useSettingsStore((state) => state.currency);
+  const paymentQrs = useSettingsStore((state) => state.paymentQrs);
   const expenseCategories = useCategories('expense');
   const incomeCategories = useCategories('income');
   const wallets = useWalletStore((s) => s.wallets);
@@ -189,7 +223,7 @@ const PersonalDashboard: React.FC = () => {
   }, [expenseCategories, incomeCategories]);
 
   const walletMap = useMemo(() => {
-    const map = new Map<string, typeof wallets[0]>();
+    const map = new Map<string, (typeof wallets)[0]>();
     for (const w of wallets) map.set(w.id, w);
     return map;
   }, [wallets]);
@@ -208,6 +242,9 @@ const PersonalDashboard: React.FC = () => {
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [qrViewIndex, setQrViewIndex] = useState(0);
 
+  // Profile card (tap greeting avatar → view/change avatar + name)
+  const [profileVisible, setProfileVisible] = useState(false);
+
   const userName = useSettingsStore((s) => s.userName);
   const greeting = useMemo(() => {
     const base = t.dashboard[getGreetingKey()];
@@ -216,10 +253,13 @@ const PersonalDashboard: React.FC = () => {
   const bnpl = useBNPLTotal();
   const kept = useKeptNumber();
 
-  useEffect(() => {
-    // Generate spending mirror on mount (cached, won't re-call if recent)
-    generateSpendingMirror();
-  }, []);
+  // PAUSED 2026-07-22: Spending Mirror generation is disabled — the display card
+  // was never built (parked in "step3 July.md"), so this daily AI call produced
+  // text nobody sees: pure token burn. Re-enable together with the display card.
+  // useEffect(() => {
+  //   // Generate spending mirror on mount (cached, won't re-call if recent)
+  //   generateSpendingMirror();
+  // }, []);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -244,10 +284,13 @@ const PersonalDashboard: React.FC = () => {
 
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const upcomingBills = subscriptions.filter(
-      (sub) => sub.isActive && !sub.isPaused && isWithinInterval(sub.nextBillingDate, {
-        start: today,
-        end: addDays(today, 7),
-      })
+      (sub) =>
+        sub.isActive &&
+        !sub.isPaused &&
+        isWithinInterval(sub.nextBillingDate, {
+          start: today,
+          end: addDays(today, 7),
+        })
     );
 
     const totalUpcoming = upcomingBills.reduce((sum, sub) => sum + sub.amount, 0);
@@ -290,7 +333,10 @@ const PersonalDashboard: React.FC = () => {
     }
     // Credit-only user: there is no cash balance — show available credit
     // (limit − used) so the hero isn't a misleading RM 0.00.
-    return wallets.reduce((sum, w) => sum + Math.max(0, (w.creditLimit || 0) - (w.usedCredit || 0)), 0);
+    return wallets.reduce(
+      (sum, w) => sum + Math.max(0, (w.creditLimit || 0) - (w.usedCredit || 0)),
+      0
+    );
   }, [wallets, stats.balance]);
 
   const netThisMonth = useMemo(() => stats.income - stats.expenses, [stats.income, stats.expenses]);
@@ -305,9 +351,8 @@ const PersonalDashboard: React.FC = () => {
     // day you're still budgeting for, so it counts — and this makes the "last 3
     // days" check below exactly 3 days and avoids a "0 days left" on the 31st.
     const daysLeft = getDaysInMonth(now) - dayOfMonth + 1;
-    const savingsRate = stats.income > 0
-      ? Math.round(((stats.income - stats.expenses) / stats.income) * 100)
-      : 0;
+    const savingsRate =
+      stats.income > 0 ? Math.round(((stats.income - stats.expenses) / stats.income) * 100) : 0;
     const h = t.dashboard.hero;
 
     // Journey ladder (FIRSTRUN) — guidance → fact-echo → earned judgment.
@@ -339,7 +384,10 @@ const PersonalDashboard: React.FC = () => {
       })
       .reduce((s, tx) => s + tx.amount, 0);
     if (todayIncome > stats.income * 0.5 && todayIncome > 0) {
-      return { headline: h.paydayLanded, subLine: `${currency} ${todayIncome.toFixed(0)} ${h.cameInToday}` };
+      return {
+        headline: h.paydayLanded,
+        subLine: `${currency} ${todayIncome.toFixed(0)} ${h.cameInToday}`,
+      };
     }
 
     // Early days: acknowledge and describe, don't evaluate — judgment needs
@@ -348,7 +396,7 @@ const PersonalDashboard: React.FC = () => {
       return { headline: h.journeyFirst, subLine: h.journeyFirstSub };
     }
     const firstTxTime = Math.min(
-      ...transactions.map((tx) => (tx.date instanceof Date ? tx.date : new Date(tx.date)).getTime()),
+      ...transactions.map((tx) => (tx.date instanceof Date ? tx.date : new Date(tx.date)).getTime())
     );
     const daysSinceFirstTx = Math.floor((now.getTime() - firstTxTime) / 86400000);
     if (transactions.length < 10 || daysSinceFirstTx < 7) {
@@ -371,7 +419,10 @@ const PersonalDashboard: React.FC = () => {
 
     // First day of month
     if (dayOfMonth === 1) {
-      return { headline: h.freshStart, subLine: `${h.newMonth} — ${currency} ${heroBalance.toFixed(0)} ${h.toWorkWith}` };
+      return {
+        headline: h.freshStart,
+        subLine: `${h.newMonth} — ${currency} ${heroBalance.toFixed(0)} ${h.toWorkWith}`,
+      };
     }
 
     // Last 3 days
@@ -424,10 +475,14 @@ const PersonalDashboard: React.FC = () => {
     band === 'good' || band === 'steady'
       ? C.accent
       : band === 'building'
-      ? (isDark ? C.gold : '#8E6610')
-      : band === 'starting'
-      ? C.bronze
-      : (isDark ? C.lavender : '#6E6776');
+        ? isDark
+          ? C.gold
+          : '#8E6610'
+        : band === 'starting'
+          ? C.bronze
+          : isDark
+            ? C.lavender
+            : '#6E6776';
 
   // ─── Insight strip data ───────────────────────────────────
   const insightStrip = useMemo(() => {
@@ -491,15 +546,22 @@ const PersonalDashboard: React.FC = () => {
   const [receiptsBadge, setReceiptsBadge] = useState(0);
   useFocusEffect(
     useCallback(() => {
-      listFailedReceipts().then((l) => setReceiptsBadge(l.length)).catch(() => {});
+      listFailedReceipts()
+        .then((l) => setReceiptsBadge(l.length))
+        .catch(() => {});
     }, [])
   );
 
   const billsBadge = useMemo(() => {
     const today = startOfDay(new Date());
-    return subscriptions.filter(sub => {
+    return subscriptions.filter((sub) => {
       if (!sub.isActive || sub.isPaused) return false;
-      if (sub.isInstallment && sub.totalInstallments && (sub.completedInstallments || 0) >= sub.totalInstallments) return false;
+      if (
+        sub.isInstallment &&
+        sub.totalInstallments &&
+        (sub.completedInstallments || 0) >= sub.totalInstallments
+      )
+        return false;
       const dueDate = new Date(sub.nextBillingDate);
       return dueDate <= addDays(today, sub.reminderDays || 3);
     }).length;
@@ -519,7 +581,7 @@ const PersonalDashboard: React.FC = () => {
   const ladderComplete = wallets.length > 0 && transactions.length > 0 && budgets.length > 0;
   const showGettingStarted = useMemo(
     () => !gettingStartedDismissed && !ladderComplete && transactions.length < 5,
-    [gettingStartedDismissed, ladderComplete, transactions.length],
+    [gettingStartedDismissed, ladderComplete, transactions.length]
   );
   const showFreshStart = useMemo(() => {
     const now = new Date();
@@ -527,7 +589,7 @@ const PersonalDashboard: React.FC = () => {
   }, [showGettingStarted]);
 
   const editCategories = useMemo(
-    () => editType === 'expense' ? expenseCategories : incomeCategories,
+    () => (editType === 'expense' ? expenseCategories : incomeCategories),
     [editType, expenseCategories, incomeCategories]
   );
 
@@ -542,10 +604,13 @@ const PersonalDashboard: React.FC = () => {
     setEditModalVisible(true);
   }, []);
 
-  const handleItemPress = useCallback((id: string) => {
-    const txn = transactions.find((t) => t.id === id);
-    if (txn) handleEditTransaction(txn);
-  }, [transactions, handleEditTransaction]);
+  const handleItemPress = useCallback(
+    (id: string) => {
+      const txn = transactions.find((t) => t.id === id);
+      if (txn) handleEditTransaction(txn);
+    },
+    [transactions, handleEditTransaction]
+  );
 
   const handleUpdateTransaction = useCallback(() => {
     if (!editingTransaction) return;
@@ -572,7 +637,12 @@ const PersonalDashboard: React.FC = () => {
       category: editCategory,
       type: editType,
       walletId: editWalletId || undefined,
-      tags: editTags ? editTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      tags: editTags
+        ? editTags
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : [],
     });
 
     // Learn from user edits
@@ -603,9 +673,9 @@ const PersonalDashboard: React.FC = () => {
     }
 
     // Sync back to seller ingredient cost if linked
-    const linkedCost = useSellerStore.getState().ingredientCosts.find(
-      (c) => c.personalTransactionId === editingTransaction.id
-    );
+    const linkedCost = useSellerStore
+      .getState()
+      .ingredientCosts.find((c) => c.personalTransactionId === editingTransaction.id);
     if (linkedCost) {
       const desc = editDescription.trim();
       updateIngredientCost(linkedCost.id, {
@@ -617,7 +687,21 @@ const PersonalDashboard: React.FC = () => {
     setEditModalVisible(false);
     setEditingTransaction(null);
     showToast(t.transaction.transactionUpdated, 'success');
-  }, [editingTransaction, editAmount, editDescription, editCategory, editType, editWalletId, editTags, addToWallet, deductFromWallet, updateTransaction, updateIngredientCost, showToast, t]);
+  }, [
+    editingTransaction,
+    editAmount,
+    editDescription,
+    editCategory,
+    editType,
+    editWalletId,
+    editTags,
+    addToWallet,
+    deductFromWallet,
+    updateTransaction,
+    updateIngredientCost,
+    showToast,
+    t,
+  ]);
 
   const handleDeleteTransaction = useCallback(() => {
     if (!editingTransaction) return;
@@ -638,9 +722,9 @@ const PersonalDashboard: React.FC = () => {
         useDebtStore.getState().deletePayment(linkedDebtId, linkedPaymentId);
       }
       // Clean up linked seller ingredient cost
-      const linkedCost = useSellerStore.getState().ingredientCosts.find(
-        (c) => c.personalTransactionId === editingTransaction.id
-      );
+      const linkedCost = useSellerStore
+        .getState()
+        .ingredientCosts.find((c) => c.personalTransactionId === editingTransaction.id);
       if (linkedCost) useSellerStore.getState().deleteIngredientCost(linkedCost.id);
       usePlaybookStore.getState().unlinkAllFromTransaction(editingTransaction.id);
       deleteTransaction(editingTransaction.id);
@@ -651,41 +735,62 @@ const PersonalDashboard: React.FC = () => {
 
     // Extra warning if linked to a debt payment
     if (linkedDebtId) {
-      Alert.alert(
-        t.transaction.deleteWithLinkTitle,
-        t.transaction.deleteWithLinkMessage,
-        [
-          { text: t.common.cancel, style: 'cancel' },
-          { text: t.transaction.deleteBoth, style: 'destructive', onPress: doDelete },
-        ]
-      );
+      Alert.alert(t.transaction.deleteWithLinkTitle, t.transaction.deleteWithLinkMessage, [
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.transaction.deleteBoth, style: 'destructive', onPress: doDelete },
+      ]);
     } else {
       Alert.alert(
         t.transaction.deleteTransactionTitle,
-        isTransferLinked
-          ? t.transaction.deleteTransferMessage
-          : t.transaction.deleteConfirm,
+        isTransferLinked ? t.transaction.deleteTransferMessage : t.transaction.deleteConfirm,
         [
           { text: t.common.cancel, style: 'cancel' },
           { text: t.common.delete, style: 'destructive', onPress: doDelete },
         ]
       );
     }
-  }, [editingTransaction, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast, t]);
+  }, [
+    editingTransaction,
+    addToWallet,
+    deductFromWallet,
+    unmarkOrdersTransferred,
+    deleteTransfer,
+    deleteTransaction,
+    showToast,
+    t,
+  ]);
 
-  const handleEditTypeChange = useCallback((newType: 'expense' | 'income') => {
-    setEditType(newType);
-    const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
-    setEditCategory(newCategories[0]?.id || 'other');
-  }, [expenseCategories, incomeCategories]);
+  const handleEditTypeChange = useCallback(
+    (newType: 'expense' | 'income') => {
+      setEditType(newType);
+      const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
+      setEditCategory(newCategories[0]?.id || 'other');
+    },
+    [expenseCategories, incomeCategories]
+  );
 
-  const handleQuickAction = useCallback((screen: string) => {
-    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker' || screen === 'MoneyChat' || screen === 'Goals' || screen === 'FinancialPulse' || screen === 'ReceiptHistory' || screen === 'Calculator' || screen === 'CollectzHome') {
-      navigation.getParent()?.navigate(screen);
-    } else {
-      navigation.navigate(screen);
-    }
-  }, [navigation]);
+  const handleQuickAction = useCallback(
+    (screen: string) => {
+      if (
+        screen === 'PersonalReports' ||
+        screen === 'SubscriptionList' ||
+        screen === 'DebtTracking' ||
+        screen === 'WalletManagement' ||
+        screen === 'SavingsTracker' ||
+        screen === 'MoneyChat' ||
+        screen === 'Goals' ||
+        screen === 'FinancialPulse' ||
+        screen === 'ReceiptHistory' ||
+        screen === 'Calculator' ||
+        screen === 'CollectzHome'
+      ) {
+        navigation.getParent()?.navigate(screen);
+      } else {
+        navigation.navigate(screen);
+      }
+    },
+    [navigation]
+  );
 
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -707,13 +812,21 @@ const PersonalDashboard: React.FC = () => {
     <View style={styles.container}>
       <RNScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
         scrollEventThrottle={16}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.textMuted} colors={[C.accent]} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={C.textMuted}
+            colors={[C.accent]}
+          />
         }
       >
         <GlassModeToggle />
@@ -721,7 +834,17 @@ const PersonalDashboard: React.FC = () => {
         {/* Zone 1 — Greeting (small) */}
         <View style={styles.greetingRow}>
           <View style={styles.greetingLeft}>
-            <Avatar size={28} />
+            <Pressable
+              onPress={() => {
+                lightTap();
+                setProfileVisible(true);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t.settings.name}
+            >
+              <Avatar size={28} raised />
+            </Pressable>
             <Text style={styles.greeting}>{greeting}</Text>
           </View>
           <NeuIconButton
@@ -732,27 +855,37 @@ const PersonalDashboard: React.FC = () => {
                 setQrViewIndex(0);
                 setQrModalVisible(true);
               } else {
-                Alert.alert(
-                  t.dashboard.noQrTitle,
-                  t.dashboard.noQrMessage,
-                  [
-                    { text: t.common.later, style: 'cancel' },
-                    { text: t.dashboard.goToSettings, onPress: () => navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'qr' }) },
-                  ]
-                );
+                Alert.alert(t.dashboard.noQrTitle, t.dashboard.noQrMessage, [
+                  { text: t.common.later, style: 'cancel' },
+                  {
+                    text: t.dashboard.goToSettings,
+                    onPress: () =>
+                      navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'qr' }),
+                  },
+                ]);
               }
             }}
             accessibilityLabel={t.dashboard.showPaymentQr}
           >
-            <Feather name="maximize" size={22} color={paymentQrs.length > 0 ? C.accent : C.textMuted} />
+            <Feather
+              name="maximize"
+              size={22}
+              color={paymentQrs.length > 0 ? C.accent : C.textMuted}
+            />
           </NeuIconButton>
         </View>
 
         {/* Zone 2 — Balance (the hero) */}
         <RAnimated.View entering={FadeIn.duration(200)}>
-          <Text style={[styles.heroHeadline, { color: C.textSecondary }]}>{heroHeadline.headline}</Text>
+          <Text style={[styles.heroHeadline, { color: C.textSecondary }]}>
+            {heroHeadline.headline}
+          </Text>
           <Text style={styles.balanceAmount}>
-            {currency} {heroBalance.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {currency}{' '}
+            {heroBalance.toLocaleString('en-MY', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
           </Text>
           {heroHeadline.subLine ? (
             <Text style={styles.netMonth}>{heroHeadline.subLine}</Text>
@@ -770,7 +903,9 @@ const PersonalDashboard: React.FC = () => {
         {sampleDataLoaded ? (
           // TEMP: demo-data banner hidden for now — restore via the
           // SHOW_SAMPLE_DATA_BANNER flag at the top of this file.
-          SHOW_SAMPLE_DATA_BANNER ? <SampleDataBanner /> : null
+          SHOW_SAMPLE_DATA_BANNER ? (
+            <SampleDataBanner />
+          ) : null
         ) : (
           <>
             {showFreshStart && <FreshStart />}
@@ -781,185 +916,272 @@ const PersonalDashboard: React.FC = () => {
         {/* Zone 5 — Insight Strip. Hidden until real data exists — a row of
             zeros ("0 transactions", "0%") reads as a dead app, not a report. */}
         {transactions.length > 0 && (
-        <RAnimated.View entering={FadeInDown.delay(150).duration(200)} style={styles.insightStripWrap}>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.insightStripRow}
-          style={styles.insightStripScroll}
-          snapToInterval={176 + SPACING.sm}
-          decelerationRate="fast"
-        >
-          {/* Pulse — the strip's lead: real score + a living mini ECG.
+          <RAnimated.View
+            entering={FadeInDown.delay(150).duration(200)}
+            style={styles.insightStripWrap}
+          >
+            <ScrollView
+              horizontal
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.insightStripRow}
+              style={styles.insightStripScroll}
+              snapToInterval={176 + SPACING.sm}
+              decelerationRate="fast"
+            >
+              {/* Pulse — the strip's lead: real score + a living mini ECG.
               Same pulseScore() as the flagship screen. */}
-          {pulseSnap !== null && (
-            <TouchableOpacity
-              style={[styles.insightCard, neuF.raisedSoft]}
-              activeOpacity={0.7}
-              onPress={() => { lightTap(); navigation.getParent()?.navigate('FinancialPulse'); }}
-              accessibilityRole="button"
-              accessibilityLabel={`${t.dashboard.pulseCard}: ${pulseSnap.score}. ${pulseBandLabel[pulseSnap.band]}`}
-            >
-              <LinearGradient
-                colors={[withAlpha(pulseBandColor(pulseSnap.band), isDark ? 0.16 : 0.09), withAlpha(pulseBandColor(pulseSnap.band), 0)]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
-                pointerEvents="none"
-              />
-              <View style={[styles.insightSpine, { backgroundColor: pulseBandColor(pulseSnap.band) }]} />
-              <Text style={styles.insightCardLabel}>{t.dashboard.pulseCard}</Text>
-              <View style={styles.insightBody}>
-                <View style={styles.insightTextCol}>
-                  <Text style={[styles.insightValue, { color: pulseBandColor(pulseSnap.band) }]} numberOfLines={1}>
-                    {pulseSnap.score}
-                  </Text>
-                  <Text style={styles.insightContext} numberOfLines={1}>{pulseBandLabel[pulseSnap.band]}</Text>
-                </View>
-                <PulseWave
-                  width={62}
-                  height={34}
-                  color={pulseBandColor(pulseSnap.band)}
-                  trackColor={withAlpha(C.textPrimary, 0.1)}
-                  active={isFocused}
+              {pulseSnap !== null && (
+                <TouchableOpacity
+                  style={[styles.insightCard, neuF.raisedSoft]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    lightTap();
+                    navigation.getParent()?.navigate('FinancialPulse');
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${t.dashboard.pulseCard}: ${pulseSnap.score}. ${pulseBandLabel[pulseSnap.band]}`}
+                >
+                  <LinearGradient
+                    colors={[
+                      withAlpha(pulseBandColor(pulseSnap.band), isDark ? 0.16 : 0.09),
+                      withAlpha(pulseBandColor(pulseSnap.band), 0),
+                    ]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                    pointerEvents="none"
+                  />
+                  <View
+                    style={[
+                      styles.insightSpine,
+                      { backgroundColor: pulseBandColor(pulseSnap.band) },
+                    ]}
+                  />
+                  <Text style={styles.insightCardLabel}>{t.dashboard.pulseCard}</Text>
+                  <View style={styles.insightBody}>
+                    <View style={styles.insightTextCol}>
+                      <Text
+                        style={[styles.insightValue, { color: pulseBandColor(pulseSnap.band) }]}
+                        numberOfLines={1}
+                      >
+                        {pulseSnap.score}
+                      </Text>
+                      <Text style={styles.insightContext} numberOfLines={1}>
+                        {pulseBandLabel[pulseSnap.band]}
+                      </Text>
+                    </View>
+                    <PulseWave
+                      width={62}
+                      height={34}
+                      color={pulseBandColor(pulseSnap.band)}
+                      trackColor={withAlpha(C.textPrimary, 0.1)}
+                      active={isFocused}
+                    />
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {/* Transactions — mini dot-calendar of the month */}
+              <TouchableOpacity
+                style={[styles.insightCard, neuF.raisedSoft]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  lightTap();
+                  navigation.getParent()?.navigate('TransactionsList');
+                }}
+                accessibilityLabel={`${stats.transactionCount} transactions this month`}
+              >
+                <LinearGradient
+                  colors={[withAlpha(C.accent, isDark ? 0.14 : 0.08), withAlpha(C.accent, 0)]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                  pointerEvents="none"
                 />
-              </View>
-            </TouchableOpacity>
-          )}
-
-          {/* Transactions — mini dot-calendar of the month */}
-          <TouchableOpacity
-            style={[styles.insightCard, neuF.raisedSoft]}
-            activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.getParent()?.navigate('TransactionsList'); }}
-            accessibilityLabel={`${stats.transactionCount} transactions this month`}
-          >
-            <LinearGradient
-              colors={[withAlpha(C.accent, isDark ? 0.14 : 0.08), withAlpha(C.accent, 0)]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFillObject}
-              pointerEvents="none"
-            />
-            <View style={[styles.insightSpine, { backgroundColor: C.accent }]} />
-            <Text style={styles.insightCardLabel}>{t.dashboard.thisMonth.toLowerCase()}</Text>
-            <View style={styles.insightBody}>
-              <View style={styles.insightTextCol}>
-                <Text style={[styles.insightValue, { color: C.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                  {stats.transactionCount}
-                </Text>
-                <Text style={styles.insightContext}>{t.dashboard.transactions.toLowerCase()}</Text>
-              </View>
-              <DotCalendar
-                daysInMonth={insightStrip.daysInMonth}
-                dayOfMonth={insightStrip.dayOfMonth}
-                activeDays={insightStrip.activeDays}
-                color={C.accent}
-                C={C}
-              />
-            </View>
-          </TouchableOpacity>
-
-          {/* Kept — came-in vs went-out twin bars → Reports with the
-              "show me the math" sheet opened on the kept equation */}
-          <TouchableOpacity
-            style={[styles.insightCard, neuF.raisedSoft]}
-            activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.getParent()?.navigate('PersonalReports', { openMath: 'kept' }); }}
-            accessibilityLabel={`Kept ${currency} ${kept.keptThisMonth.toFixed(2)} this month`}
-          >
-            <LinearGradient
-              colors={[withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, isDark ? 0.14 : 0.08), withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, 0)]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFillObject}
-              pointerEvents="none"
-            />
-            <View style={[styles.insightSpine, { backgroundColor: kept.keptThisMonth >= 0 ? C.positive : C.neutral }]} />
-            <Text style={styles.insightCardLabel}>{t.dashboard.hero.kept}</Text>
-            <View style={styles.insightBody}>
-              <View style={styles.insightTextCol}>
-                <Text style={[styles.insightValue, { color: C.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                  {kept.keptThisMonth >= 0 ? '+' : ''}{currency} {kept.keptThisMonth.toFixed(0)}
-                </Text>
-                <Text style={styles.insightContext}>{t.dashboard.netThisMonth}</Text>
-              </View>
-              <TwinBars inAmt={stats.income} outAmt={stats.expenses} C={C} />
-            </View>
-          </TouchableOpacity>
-
-          {/* BNPL / Credit */}
-          {bnpl.walletCount > 0 && bnpl.totalUsed > 0 && (
-            <TouchableOpacity
-              style={[styles.insightCard, neuF.raisedSoft]}
-              activeOpacity={0.7}
-              onPress={() => { lightTap(); navigation.getParent()?.navigate('WalletManagement', { focusSection: 'credit' }); }}
-              accessibilityLabel={`Future you owes ${currency} ${bnpl.totalUsed.toFixed(2)}`}
-            >
-              <LinearGradient
-                colors={[withAlpha(C.bronze, isDark ? 0.14 : 0.08), withAlpha(C.bronze, 0)]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
-                pointerEvents="none"
-              />
-              <View style={[styles.insightSpine, { backgroundColor: C.bronze }]} />
-              <Text style={styles.insightCardLabel}>{t.dashboard.owedLater}</Text>
-              <View style={styles.insightBody}>
-                <View style={styles.insightTextCol}>
-                  <Text style={[styles.insightValue, { color: C.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                    {currency} {bnpl.totalUsed.toFixed(0)}
-                  </Text>
-                  <Text style={styles.insightContext}>{t.dashboard.buyNowPayLater}</Text>
+                <View style={[styles.insightSpine, { backgroundColor: C.accent }]} />
+                <Text style={styles.insightCardLabel}>{t.dashboard.thisMonth.toLowerCase()}</Text>
+                <View style={styles.insightBody}>
+                  <View style={styles.insightTextCol}>
+                    <Text
+                      style={[styles.insightValue, { color: C.textPrimary }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.6}
+                    >
+                      {stats.transactionCount}
+                    </Text>
+                    <Text style={styles.insightContext}>
+                      {t.dashboard.transactions.toLowerCase()}
+                    </Text>
+                  </View>
+                  <DotCalendar
+                    daysInMonth={insightStrip.daysInMonth}
+                    dayOfMonth={insightStrip.dayOfMonth}
+                    activeDays={insightStrip.activeDays}
+                    color={C.accent}
+                    C={C}
+                  />
                 </View>
-                <DuoIcon glyph="clock" color={C.bronze} size={30} fillAlpha={isDark ? 0.32 : 0.26} />
-              </View>
-            </TouchableOpacity>
-          )}
+              </TouchableOpacity>
 
-          {/* Upcoming Bills — 7-day tick ruler */}
-          <TouchableOpacity
-            style={[styles.insightCard, neuF.raisedSoft]}
-            activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.getParent()?.navigate('SubscriptionList', { initialStatus: 'upcoming' }); }}
-            accessibilityLabel={`${insightStrip.upcomingCount} bills due this week`}
-          >
+              {/* Kept — came-in vs went-out twin bars → Reports with the
+              "show me the math" sheet opened on the kept equation */}
+              <TouchableOpacity
+                style={[styles.insightCard, neuF.raisedSoft]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  lightTap();
+                  navigation.getParent()?.navigate('PersonalReports', { openMath: 'kept' });
+                }}
+                accessibilityLabel={`Kept ${currency} ${kept.keptThisMonth.toFixed(2)} this month`}
+              >
+                <LinearGradient
+                  colors={[
+                    withAlpha(
+                      kept.keptThisMonth >= 0 ? C.positive : C.neutral,
+                      isDark ? 0.14 : 0.08
+                    ),
+                    withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, 0),
+                  ]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                  pointerEvents="none"
+                />
+                <View
+                  style={[
+                    styles.insightSpine,
+                    { backgroundColor: kept.keptThisMonth >= 0 ? C.positive : C.neutral },
+                  ]}
+                />
+                <Text style={styles.insightCardLabel}>{t.dashboard.hero.kept}</Text>
+                <View style={styles.insightBody}>
+                  <View style={styles.insightTextCol}>
+                    <Text
+                      style={[styles.insightValue, { color: C.textPrimary }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.6}
+                    >
+                      {kept.keptThisMonth >= 0 ? '+' : ''}
+                      {currency} {kept.keptThisMonth.toFixed(0)}
+                    </Text>
+                    <Text style={styles.insightContext}>{t.dashboard.netThisMonth}</Text>
+                  </View>
+                  <TwinBars inAmt={stats.income} outAmt={stats.expenses} C={C} />
+                </View>
+              </TouchableOpacity>
+
+              {/* BNPL / Credit */}
+              {bnpl.walletCount > 0 && bnpl.totalUsed > 0 && (
+                <TouchableOpacity
+                  style={[styles.insightCard, neuF.raisedSoft]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    lightTap();
+                    navigation
+                      .getParent()
+                      ?.navigate('WalletManagement', { focusSection: 'credit' });
+                  }}
+                  accessibilityLabel={`Future you owes ${currency} ${bnpl.totalUsed.toFixed(2)}`}
+                >
+                  <LinearGradient
+                    colors={[withAlpha(C.bronze, isDark ? 0.14 : 0.08), withAlpha(C.bronze, 0)]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                    pointerEvents="none"
+                  />
+                  <View style={[styles.insightSpine, { backgroundColor: C.bronze }]} />
+                  <Text style={styles.insightCardLabel}>{t.dashboard.owedLater}</Text>
+                  <View style={styles.insightBody}>
+                    <View style={styles.insightTextCol}>
+                      <Text
+                        style={[styles.insightValue, { color: C.textPrimary }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.6}
+                      >
+                        {currency} {bnpl.totalUsed.toFixed(0)}
+                      </Text>
+                      <Text style={styles.insightContext}>{t.dashboard.buyNowPayLater}</Text>
+                    </View>
+                    <DuoIcon
+                      glyph="clock"
+                      color={C.bronze}
+                      size={30}
+                      fillAlpha={isDark ? 0.32 : 0.26}
+                    />
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {/* Upcoming Bills — 7-day tick ruler */}
+              <TouchableOpacity
+                style={[styles.insightCard, neuF.raisedSoft]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  lightTap();
+                  navigation
+                    .getParent()
+                    ?.navigate('SubscriptionList', { initialStatus: 'upcoming' });
+                }}
+                accessibilityLabel={`${insightStrip.upcomingCount} bills due this week`}
+              >
+                <LinearGradient
+                  colors={[withAlpha(C.gold, isDark ? 0.14 : 0.08), withAlpha(C.gold, 0)]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                  pointerEvents="none"
+                />
+                <View style={[styles.insightSpine, { backgroundColor: C.gold }]} />
+                <Text style={styles.insightCardLabel}>{t.dashboard.comingUp}</Text>
+                <View style={styles.insightBody}>
+                  <View style={styles.insightTextCol}>
+                    <Text
+                      style={[styles.insightValue, { color: C.textPrimary }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.6}
+                    >
+                      {insightStrip.upcomingCount}{' '}
+                      {insightStrip.upcomingCount === 1
+                        ? t.dashboard.billOne
+                        : t.dashboard.billMany}
+                    </Text>
+                    <Text style={styles.insightContext}>
+                      {currency} {insightStrip.upcomingTotal.toFixed(0)} {t.dashboard.thisWeekLower}
+                    </Text>
+                  </View>
+                  <WeekTicks flags={insightStrip.upcomingDayFlags} color={C.gold} C={C} />
+                </View>
+              </TouchableOpacity>
+            </ScrollView>
             <LinearGradient
-              colors={[withAlpha(C.gold, isDark ? 0.14 : 0.08), withAlpha(C.gold, 0)]}
+              colors={[withAlpha(C.background, 0), withAlpha(C.background, 1)]}
               start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFillObject}
+              end={{ x: 1, y: 0 }}
+              style={styles.insightStripFade}
               pointerEvents="none"
             />
-            <View style={[styles.insightSpine, { backgroundColor: C.gold }]} />
-            <Text style={styles.insightCardLabel}>{t.dashboard.comingUp}</Text>
-            <View style={styles.insightBody}>
-              <View style={styles.insightTextCol}>
-                <Text style={[styles.insightValue, { color: C.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                  {insightStrip.upcomingCount} {insightStrip.upcomingCount === 1 ? t.dashboard.billOne : t.dashboard.billMany}
-                </Text>
-                <Text style={styles.insightContext}>{currency} {insightStrip.upcomingTotal.toFixed(0)} {t.dashboard.thisWeekLower}</Text>
-              </View>
-              <WeekTicks flags={insightStrip.upcomingDayFlags} color={C.gold} C={C} />
-            </View>
-          </TouchableOpacity>
-        </ScrollView>
-        <LinearGradient
-          colors={[withAlpha(C.background, 0), withAlpha(C.background, 1)]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.insightStripFade}
-          pointerEvents="none"
-        />
-        </RAnimated.View>
+          </RAnimated.View>
         )}
 
         {/* Quick Actions — neumorphic tiles (components/common/QuickActions) */}
-        <QuickActions onAction={handleQuickAction} billsBadge={billsBadge} receiptsBadge={receiptsBadge} />
+        <QuickActions
+          onAction={handleQuickAction}
+          billsBadge={billsBadge}
+          receiptsBadge={receiptsBadge}
+        />
 
         {/* Details section */}
-        <CollapsibleSection title={t.dashboard.details} subtitle={t.dashboard.detailsSubtitle} defaultOpen={false}>
+        <CollapsibleSection
+          title={t.dashboard.details}
+          subtitle={t.dashboard.detailsSubtitle}
+          defaultOpen={false}
+        >
           {/* Upcoming-bills card removed (2026-07-16) — bills live in the 7-day
               tick ruler above + the Bills screen. */}
 
@@ -970,20 +1192,33 @@ const PersonalDashboard: React.FC = () => {
             <TouchableOpacity
               style={[styles.debtCard, neuF.raisedSoft]}
               activeOpacity={0.7}
-              onPress={() => { lightTap(); navigation.getParent()?.navigate('DebtTracking'); }}
+              onPress={() => {
+                lightTap();
+                navigation.getParent()?.navigate('DebtTracking');
+              }}
               accessibilityRole="button"
               accessibilityLabel={`${t.dashboard.youOwe} ${currency} ${stats.youOwe.toFixed(2)}. ${t.dashboard.owedToYou} ${currency} ${stats.owedToYou.toFixed(2)}`}
             >
               <View style={styles.debtCol}>
                 <Text style={styles.debtLabel}>{t.dashboard.youOwe}</Text>
-                <Text style={styles.debtValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                <Text
+                  style={styles.debtValue}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                >
                   {currency} {stats.youOwe.toFixed(0)}
                 </Text>
               </View>
               <View style={styles.debtDivider} />
               <View style={styles.debtCol}>
                 <Text style={styles.debtLabel}>{t.dashboard.owedToYou}</Text>
-                <Text style={[styles.debtValue, { color: C.positive }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                <Text
+                  style={[styles.debtValue, { color: C.positive }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                >
                   {currency} {stats.owedToYou.toFixed(0)}
                 </Text>
               </View>
@@ -1039,17 +1274,23 @@ const PersonalDashboard: React.FC = () => {
 
       {/* Transaction Edit Modal */}
       {editModalVisible && (
-      <Modal
-        visible
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={() => {
-          setEditModalVisible(false);
-          setEditingTransaction(null);
-        }}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => { setEditModalVisible(false); setEditingTransaction(null); }}>
+        <Modal
+          visible
+          animationType="fade"
+          transparent
+          statusBarTranslucent
+          onRequestClose={() => {
+            setEditModalVisible(false);
+            setEditingTransaction(null);
+          }}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => {
+              setEditModalVisible(false);
+              setEditingTransaction(null);
+            }}
+          >
             <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{t.transaction.editTransaction}</Text>
@@ -1066,13 +1307,21 @@ const PersonalDashboard: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
+              <KeyboardAwareScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+                contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
+              >
                 <Text style={styles.label}>{t.transaction.type}</Text>
                 <View style={styles.typeContainer}>
                   <TouchableOpacity
                     style={[
                       styles.typeButton,
-                      editType === 'expense' && [styles.typeButtonActive, { backgroundColor: C.accent }],
+                      editType === 'expense' && [
+                        styles.typeButtonActive,
+                        { backgroundColor: C.accent },
+                      ],
                       { borderColor: C.accent },
                     ]}
                     onPress={() => handleEditTypeChange('expense')}
@@ -1085,7 +1334,9 @@ const PersonalDashboard: React.FC = () => {
                       size={20}
                       color={editType === 'expense' ? C.surface : C.accent}
                     />
-                    <Text style={[styles.typeText, editType === 'expense' && styles.typeTextActive]}>
+                    <Text
+                      style={[styles.typeText, editType === 'expense' && styles.typeTextActive]}
+                    >
                       {t.transaction.expense}
                     </Text>
                   </TouchableOpacity>
@@ -1093,7 +1344,10 @@ const PersonalDashboard: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.typeButton,
-                      editType === 'income' && [styles.typeButtonActive, { backgroundColor: C.positive }],
+                      editType === 'income' && [
+                        styles.typeButtonActive,
+                        { backgroundColor: C.positive },
+                      ],
                       { borderColor: C.positive },
                     ]}
                     onPress={() => handleEditTypeChange('income')}
@@ -1185,412 +1439,418 @@ const PersonalDashboard: React.FC = () => {
                 </View>
               </KeyboardAwareScrollView>
             </View>
-        </Pressable>
-        <ModalToastHost />
-      </Modal>
+          </Pressable>
+          <ModalToastHost />
+        </Modal>
       )}
 
       {/* QR Fullscreen Modal */}
       {qrModalVisible && (
-      <Modal
-        visible
-        transparent
-        animationType="none"
-        onRequestClose={() => setQrModalVisible(false)}
-        statusBarTranslucent
-      >
-        <View style={styles.qrModalOverlay}>
-          <StatusBar barStyle="light-content" />
-          {/* Close button */}
-          <TouchableOpacity
-            style={styles.qrCloseBtn}
-            onPress={() => setQrModalVisible(false)}
-            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-            accessibilityRole="button"
-            accessibilityLabel={t.common.close}
-          >
-            <Feather name="x" size={28} color="#fff" />
-          </TouchableOpacity>
+        <Modal
+          visible
+          transparent
+          animationType="none"
+          onRequestClose={() => setQrModalVisible(false)}
+          statusBarTranslucent
+        >
+          <View style={styles.qrModalOverlay}>
+            <StatusBar barStyle="light-content" />
+            {/* Close button */}
+            <TouchableOpacity
+              style={styles.qrCloseBtn}
+              onPress={() => setQrModalVisible(false)}
+              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.common.close}
+            >
+              <Feather name="x" size={28} color="#fff" />
+            </TouchableOpacity>
 
-          {/* QR label */}
-          {paymentQrs[qrViewIndex] && (
-            <Text style={styles.qrLabel}>{paymentQrs[qrViewIndex].label}</Text>
-          )}
+            {/* QR label */}
+            {paymentQrs[qrViewIndex] && (
+              <Text style={styles.qrLabel}>{paymentQrs[qrViewIndex].label}</Text>
+            )}
 
-          {/* QR Image */}
-          {paymentQrs[qrViewIndex] && (
-            <Image
-              source={{ uri: paymentQrs[qrViewIndex].uri }}
-              style={styles.qrFullImage}
-              resizeMode="contain"
-            />
-          )}
+            {/* QR Image */}
+            {paymentQrs[qrViewIndex] && (
+              <Image
+                source={{ uri: paymentQrs[qrViewIndex].uri }}
+                style={styles.qrFullImage}
+                resizeMode="contain"
+              />
+            )}
 
-          {/* Watermark below QR */}
-          <Text style={styles.qrWatermark}>potraces</Text>
+            {/* Watermark below QR */}
+            <Text style={styles.qrWatermark}>potraces</Text>
 
-          {/* QR tabs at bottom */}
-          {paymentQrs.length > 1 && (
-            <View style={styles.qrTabs}>
-              {paymentQrs.map((qr, i) => (
-                <TouchableOpacity
-                  key={i}
-                  style={[styles.qrTab, qrViewIndex === i && styles.qrTabActive]}
-                  onPress={() => { lightTap(); setQrViewIndex(i); }}
-                >
-                  <Text style={[styles.qrTabText, qrViewIndex === i && styles.qrTabTextActive]}>
-                    {qr.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-        <ModalToastHost />
-      </Modal>
+            {/* QR tabs at bottom */}
+            {paymentQrs.length > 1 && (
+              <View style={styles.qrTabs}>
+                {paymentQrs.map((qr, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={[styles.qrTab, qrViewIndex === i && styles.qrTabActive]}
+                    onPress={() => {
+                      lightTap();
+                      setQrViewIndex(i);
+                    }}
+                  >
+                    <Text style={[styles.qrTabText, qrViewIndex === i && styles.qrTabTextActive]}>
+                      {qr.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+          <ModalToastHost />
+        </Modal>
       )}
 
       <QuickAddExpense />
+
+      <ProfileCardModal visible={profileVisible} onClose={() => setProfileVisible(false)} />
     </View>
   );
 };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: C.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: SPACING['2xl'],
-    maxWidth: 680,
-    width: '100%',
-    alignSelf: 'center' as const,
-  },
+const makeStyles = (C: typeof CALM) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: C.background,
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollContent: {
+      padding: SPACING['2xl'],
+      maxWidth: 680,
+      width: '100%',
+      alignSelf: 'center' as const,
+    },
 
-  // Zone 1 — Greeting
-  greetingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.lg,
-  },
-  greetingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  greeting: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 1.5,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
+    // Zone 1 — Greeting
+    greetingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: SPACING.lg,
+    },
+    greetingLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+    },
+    greeting: {
+      fontSize: TYPOGRAPHY.size.xs,
+      color: C.textMuted,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 1.5,
+      fontWeight: TYPOGRAPHY.weight.medium,
+    },
 
-  // Zone 2 — Balance
-  heroHeadline: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    marginBottom: SPACING.xs,
-    letterSpacing: 0.3,
-  },
-  balanceAmount: {
-    fontSize: 40,
-    fontWeight: TYPOGRAPHY.weight.light,
-    letterSpacing: -1,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
-    marginBottom: SPACING.xs,
-  },
-  netMonth: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    fontVariant: ['tabular-nums'] as any,
-    marginBottom: SPACING.lg,
-  },
+    // Zone 2 — Balance
+    heroHeadline: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.medium,
+      marginBottom: SPACING.xs,
+      letterSpacing: 0.3,
+    },
+    balanceAmount: {
+      fontSize: 40,
+      fontWeight: TYPOGRAPHY.weight.light,
+      letterSpacing: -1,
+      color: C.textPrimary,
+      fontVariant: ['tabular-nums'] as any,
+      marginBottom: SPACING.xs,
+    },
+    netMonth: {
+      fontSize: TYPOGRAPHY.size.sm,
+      color: C.textSecondary,
+      fontVariant: ['tabular-nums'] as any,
+      marginBottom: SPACING.lg,
+    },
 
-  // Zone 5 — Insight Strip
-  insightStripWrap: {
-    position: 'relative',
-    marginBottom: SPACING.lg,
-  },
-  insightStripScroll: {
-    marginHorizontal: -SPACING['2xl'],
-    // Bleed so the neu boxShadow isn't clipped by the scroll viewport
-    // (owner rule: "neu onyx vertical error") — the row padding gives it back.
-    marginVertical: -SPACING.md,
-  },
-  insightStripFade: {
-    position: 'absolute',
-    right: -SPACING['2xl'],
-    top: 0,
-    bottom: 0,
-    width: 40,
-  },
-  insightStripRow: {
-    paddingHorizontal: SPACING['2xl'],
-    paddingVertical: SPACING.md,
-    gap: SPACING.sm,
-  },
-  // Onyx: borderless C.background face + neuF.raisedSoft at the use site;
-  // each card carries its own color as a corner gradient wash + spine.
-  insightCard: {
-    width: 176,
-    minHeight: 92,
-    padding: SPACING.md,
-    paddingLeft: SPACING.md + 6,
-    borderRadius: RADIUS.xl,
-    backgroundColor: C.background,
-    gap: 2,
-    overflow: 'hidden',
-  },
-  insightSpine: {
-    position: 'absolute',
-    left: 0,
-    top: 14,
-    bottom: 14,
-    width: 3,
-    borderTopRightRadius: 2,
-    borderBottomRightRadius: 2,
-  },
-  insightBody: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: SPACING.sm,
-    marginTop: 6,
-  },
-  insightTextCol: {
-    flexShrink: 1,
-  },
-  insightCardLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-  },
-  insightValue: {
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.light,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  insightContext: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    marginTop: 2,
-  },
+    // Zone 5 — Insight Strip
+    insightStripWrap: {
+      position: 'relative',
+      marginBottom: SPACING.lg,
+    },
+    insightStripScroll: {
+      marginHorizontal: -SPACING['2xl'],
+      // Bleed so the neu boxShadow isn't clipped by the scroll viewport
+      // (owner rule: "neu onyx vertical error") — the row padding gives it back.
+      marginVertical: -SPACING.md,
+    },
+    insightStripFade: {
+      position: 'absolute',
+      right: -SPACING['2xl'],
+      top: 0,
+      bottom: 0,
+      width: 40,
+    },
+    insightStripRow: {
+      paddingHorizontal: SPACING['2xl'],
+      paddingVertical: SPACING.md,
+      gap: SPACING.sm,
+    },
+    // Onyx: borderless C.background face + neuF.raisedSoft at the use site;
+    // each card carries its own color as a corner gradient wash + spine.
+    insightCard: {
+      width: 176,
+      minHeight: 92,
+      padding: SPACING.md,
+      paddingLeft: SPACING.md + 6,
+      borderRadius: RADIUS.xl,
+      backgroundColor: C.background,
+      gap: 2,
+      overflow: 'hidden',
+    },
+    insightSpine: {
+      position: 'absolute',
+      left: 0,
+      top: 14,
+      bottom: 14,
+      width: 3,
+      borderTopRightRadius: 2,
+      borderBottomRightRadius: 2,
+    },
+    insightBody: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      gap: SPACING.sm,
+      marginTop: 6,
+    },
+    insightTextCol: {
+      flexShrink: 1,
+    },
+    insightCardLabel: {
+      fontSize: TYPOGRAPHY.size.xs,
+      fontWeight: TYPOGRAPHY.weight.medium,
+      color: C.textMuted,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 0.5,
+    },
+    insightValue: {
+      fontSize: TYPOGRAPHY.size['2xl'],
+      fontWeight: TYPOGRAPHY.weight.light,
+      fontVariant: ['tabular-nums'] as any,
+    },
+    insightContext: {
+      fontSize: TYPOGRAPHY.size.xs,
+      color: C.textSecondary,
+      marginTop: 2,
+    },
 
-  // Detail sections
-  detailSectionTitle: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
+    // Detail sections
+    detailSectionTitle: {
+      fontSize: TYPOGRAPHY.size.base,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textPrimary,
+    },
 
-  // You owe / owed to you — Onyx neu card (no border; raise from neuF.raisedSoft
-  // at the call site), two columns in the insight-strip type language.
-  debtCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.background,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
-    gap: SPACING.lg,
-  },
-  debtCol: {
-    flex: 1,
-    gap: 4,
-  },
-  debtLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-  },
-  debtValue: {
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.light,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  debtDivider: {
-    width: 1,
-    alignSelf: 'stretch',
-    backgroundColor: withAlpha(C.textPrimary, 0.08),
-  },
+    // You owe / owed to you — Onyx neu card (no border; raise from neuF.raisedSoft
+    // at the call site), two columns in the insight-strip type language.
+    debtCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: C.background,
+      borderRadius: RADIUS.lg,
+      padding: SPACING.lg,
+      marginBottom: SPACING.md,
+      gap: SPACING.lg,
+    },
+    debtCol: {
+      flex: 1,
+      gap: 4,
+    },
+    debtLabel: {
+      fontSize: TYPOGRAPHY.size.xs,
+      fontWeight: TYPOGRAPHY.weight.medium,
+      color: C.textMuted,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 0.5,
+    },
+    debtValue: {
+      fontSize: TYPOGRAPHY.size['2xl'],
+      fontWeight: TYPOGRAPHY.weight.light,
+      color: C.textPrimary,
+      fontVariant: ['tabular-nums'] as any,
+    },
+    debtDivider: {
+      width: 1,
+      alignSelf: 'stretch',
+      backgroundColor: withAlpha(C.textPrimary, 0.08),
+    },
 
-  // Section
-  section: {
-    marginTop: SPACING.sm,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  seeAll: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
+    // Section
+    section: {
+      marginTop: SPACING.sm,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: SPACING.md,
+    },
+    seeAll: {
+      fontSize: TYPOGRAPHY.size.sm,
+      color: C.accent,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+    },
 
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: C.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
-    padding: SPACING['2xl'],
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING['2xl'],
-  },
-  modalTitle: {
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  label: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    marginBottom: SPACING.sm,
-    marginTop: SPACING.lg,
-  },
-  input: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  typeContainer: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  typeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.md,
-    borderWidth: 2,
-    backgroundColor: C.background,
-    gap: SPACING.sm,
-  },
-  typeButtonActive: {},
-  typeText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  typeTextActive: {
-    color: C.onAccent,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING['2xl'],
-  },
-  deleteButton: {
-    flex: 1,
-    borderColor: C.neutral,
-  },
+    // Modal
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      justifyContent: 'flex-end',
+    },
+    modalContent: {
+      backgroundColor: C.surface,
+      borderTopLeftRadius: RADIUS['2xl'],
+      borderTopRightRadius: RADIUS['2xl'],
+      padding: SPACING['2xl'],
+      maxHeight: '90%',
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: SPACING['2xl'],
+    },
+    modalTitle: {
+      fontSize: TYPOGRAPHY.size['2xl'],
+      fontWeight: TYPOGRAPHY.weight.bold,
+      color: C.textPrimary,
+      letterSpacing: C === CALM_DARK ? 0.2 : 0,
+    },
+    label: {
+      fontSize: TYPOGRAPHY.size.base,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textPrimary,
+      marginBottom: SPACING.sm,
+      marginTop: SPACING.lg,
+    },
+    input: {
+      backgroundColor: C.background,
+      borderRadius: RADIUS.md,
+      paddingHorizontal: SPACING.lg,
+      paddingVertical: SPACING.md,
+      fontSize: TYPOGRAPHY.size.base,
+      color: C.textPrimary,
+      borderWidth: 1,
+      borderColor: C.border,
+    },
+    typeContainer: {
+      flexDirection: 'row',
+      gap: SPACING.md,
+    },
+    typeButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.lg,
+      borderRadius: RADIUS.md,
+      borderWidth: 2,
+      backgroundColor: C.background,
+      gap: SPACING.sm,
+    },
+    typeButtonActive: {},
+    typeText: {
+      fontSize: TYPOGRAPHY.size.base,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textPrimary,
+    },
+    typeTextActive: {
+      color: C.onAccent,
+    },
+    modalActions: {
+      flexDirection: 'row',
+      gap: SPACING.md,
+      marginTop: SPACING['2xl'],
+    },
+    deleteButton: {
+      flex: 1,
+      borderColor: C.neutral,
+    },
 
-  // QR Fullscreen Modal
-  qrModalOverlay: {
-    flex: 1,
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrCloseBtn: {
-    position: 'absolute',
-    top: 72,
-    right: SPACING.xl,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 20,
-  },
-  qrLabel: {
-    position: 'absolute',
-    top: 80,
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
-    zIndex: 10,
-  },
-  qrTabs: {
-    position: 'absolute',
-    bottom: 60,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    zIndex: 10,
-  },
-  qrTab: {
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  qrTabActive: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-  qrTabText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: 'rgba(255,255,255,0.5)',
-  },
-  qrTabTextActive: {
-    color: '#fff',
-  },
-  qrFullImage: {
-    width: SCREEN_WIDTH - SPACING['2xl'] * 2,
-    height: SCREEN_WIDTH - SPACING['2xl'] * 2,
-    borderRadius: RADIUS.lg,
-    backgroundColor: '#fff',
-  },
-  qrWatermark: {
-    marginTop: SPACING.lg,
-    fontSize: 16,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: 'rgba(255, 255, 255, 0.5)',
-    letterSpacing: 8,
-    textTransform: 'lowercase',
-  },
-});
+    // QR Fullscreen Modal
+    qrModalOverlay: {
+      flex: 1,
+      backgroundColor: '#000',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    qrCloseBtn: {
+      position: 'absolute',
+      top: 72,
+      right: SPACING.xl,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 20,
+    },
+    qrLabel: {
+      position: 'absolute',
+      top: 80,
+      left: 0,
+      right: 0,
+      textAlign: 'center',
+      fontSize: TYPOGRAPHY.size['2xl'],
+      fontWeight: TYPOGRAPHY.weight.bold,
+      color: '#fff',
+      zIndex: 10,
+    },
+    qrTabs: {
+      position: 'absolute',
+      bottom: 60,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: SPACING.sm,
+      zIndex: 10,
+    },
+    qrTab: {
+      paddingHorizontal: SPACING.xl,
+      paddingVertical: SPACING.md,
+      borderRadius: RADIUS.full,
+      backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    qrTabActive: {
+      backgroundColor: 'rgba(255,255,255,0.25)',
+    },
+    qrTabText: {
+      fontSize: TYPOGRAPHY.size.base,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: 'rgba(255,255,255,0.5)',
+    },
+    qrTabTextActive: {
+      color: '#fff',
+    },
+    qrFullImage: {
+      width: SCREEN_WIDTH - SPACING['2xl'] * 2,
+      height: SCREEN_WIDTH - SPACING['2xl'] * 2,
+      borderRadius: RADIUS.lg,
+      backgroundColor: '#fff',
+    },
+    qrWatermark: {
+      marginTop: SPACING.lg,
+      fontSize: 16,
+      fontWeight: TYPOGRAPHY.weight.medium,
+      color: 'rgba(255, 255, 255, 0.5)',
+      letterSpacing: 8,
+      textTransform: 'lowercase',
+    },
+  });
 
 export default PersonalDashboard;

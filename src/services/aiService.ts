@@ -1,11 +1,9 @@
-import { AIMessage, Transaction, IncomeType, BusinessTransaction, RiderCost, Client, SellerProduct, FreelancerClient, PartTimeJobDetails, OnTheRoadDetails, MixedModeDetails } from '../types';
+import { AIMessage, BusinessTransaction, SellerProduct, FreelancerClient, PartTimeJobDetails, OnTheRoadDetails, MixedModeDetails } from '../types';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants';
 import { readAsStringAsync, deleteAsync, EncodingType } from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { aiProxyFetch, isAiProxyConfigured } from './aiProxy';
 import { streamGeminiText, callGeminiAPI, isGeminiAvailable, GeminiContent } from './geminiClient';
-import { chatModelForTier } from './chatModel';
-import { usePremiumStore } from '../store/premiumStore';
 
 /** Shape of a raw parsed product from AI JSON before validation. */
 interface RawParsedProduct {
@@ -40,17 +38,11 @@ interface GeminiVisionResponse {
   candidates?: GeminiVisionCandidate[];
 }
 
-// All AI runs on Gemini (the Anthropic key was retired). Default = cheap flash-lite;
-// tier-aware model comes from chatModelForTier() (Gemini smart vs lite), powering the
-// "smarter AI" upsell. The ai-proxy remaps any old model names server-side too.
+// All AI runs on Gemini (the Anthropic key was retired). Default = cheap flash-lite.
+// (Echo's tier-aware smart/lite model choice lives in moneyChat via chatModelForTier;
+// the parsing/transcription calls here always use the cheap model.) The ai-proxy
+// remaps any old model names server-side too.
 const MODEL = 'gemini-3.1-flash-lite';
-
-// Regulatory guard (SC/CMSA + FSA): AI answers are general information only, never
-// licensed financial/investment advice. Appended to every money-answering prompt.
-const ADVICE_GUARD =
-  "You give general information only — NOT financial, investment, tax, or legal advice. " +
-  "Never recommend specific financial products or promise/guarantee returns. If asked for that, " +
-  "say you can't give advice and suggest speaking to a licensed adviser.";
 
 const categoryNames = [
   ...EXPENSE_CATEGORIES.map((c) => c.name),
@@ -69,8 +61,8 @@ export interface ParsedTransaction {
  * Core text-completion helper — routes through the shared Gemini client (model
  * fallback + rate-limit handling live in geminiClient). Converts the callers'
  * Anthropic-style (system, role/content messages) shape into Gemini's
- * contents + system_instruction. `model` is honored as a preference (the tier
- * "smarter AI" upsell) then falls back to the standard chain.
+ * contents + system_instruction. `model` is honored as a preference, then
+ * falls back to the standard chain.
  *
  * Structured output: pass `json:true` (or a '{'/'[' prefill) to switch Gemini into
  * JSON mode and return the complete JSON as-is — Gemini can't be "seeded" like
@@ -194,119 +186,6 @@ export async function parseReceiptText(
       type: 'expense',
       confidence: json.confidence === 'high' ? 'high' : 'low',
     };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Ask a question about money/spending with conversation history.
- * Never throws — returns null on failure.
- */
-export async function askMoneyQuestion(
-  question: string,
-  history: AIMessage[],
-  transactions: Transaction[]
-): Promise<string | null> {
-  try {
-    // Build a brief transaction summary
-    const recentTxns = transactions.slice(0, 50);
-    const totalExpenses = recentTxns
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const totalIncome = recentTxns
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const categoryTotals: Record<string, number> = {};
-    for (const t of recentTxns.filter((t) => t.type === 'expense')) {
-      categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
-    }
-
-    const summary = `User's recent data: ${recentTxns.length} transactions, total expenses RM ${totalExpenses.toFixed(2)}, total income RM ${totalIncome.toFixed(2)}. Top categories: ${Object.entries(categoryTotals)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([cat, amt]) => `${cat} RM ${amt.toFixed(2)}`)
-      .join(', ')}.`;
-
-    // Detect language to pick right prefill and examples
-    const isMalay = /\b(aku|kau|dia|saya|kita|boleh|tak|lah|sia|banyak|duit|macam|berapa|kenapa|camne|gaji|belanja|simpan|hutang|kaya|miskin|pokai|weh|wei|bro|kan|je|je lah|memang|mana|tau|tahu)\b/i.test(question);
-
-    // Few-shot examples — include both EN and BM to show style in both languages
-    const echoExamples: { role: 'user' | 'assistant'; content: string }[] = [
-      { role: 'user', content: 'am i rich chat?' },
-      { role: 'assistant', content: 'not rich-rich lah — but RM 6k net after debts with RM 8k cash? not pokai either. boleh tahan.' },
-      { role: 'user', content: 'banyak sia duit aku' },
-      { role: 'assistant', content: 'banyak ke? RM 6k net je sebenarnya. tapi takde la pokai, oklah tu.' },
-      { role: 'user', content: 'kenapa aku selalu pokai' },
-      { role: 'assistant', content: 'makan je dah habis 40% duit kau setiap bulan. tu la pasal.' },
-      { role: 'user', content: 'how much did i spend this month' },
-      { role: 'assistant', content: 'RM 1,840 out, RM 4,500 in. kept 59% — better than last month.' },
-    ];
-
-    const messages: { role: 'user' | 'assistant'; content: string }[] = [
-      ...echoExamples,
-      ...history.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user' as const, content: question },
-    ];
-
-    return await callAI(
-      `You are Echo — a financial companion for a young Malaysian. Always reply in the SAME language the user writes in. Malay message = Malay reply. English = English. Manglish = Manglish. Short, direct, casual. Use RM. Max 2 sentences. ${ADVICE_GUARD}
-
-${summary}`,
-      messages,
-      150,
-      chatModelForTier(usePremiumStore.getState().tier),
-      isMalay ? 'eh,' : 'tbh,' // prefill forces casual opener, no filler
-    );
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Ask a business-context question with conversation history.
- * Never throws — returns null on failure.
- */
-export async function askBusinessQuestion(
-  question: string,
-  context: {
-    incomeType: IncomeType;
-    transactions: BusinessTransaction[];
-    riderCosts?: RiderCost[];
-    clients?: Client[];
-    monthlyAverage: number;
-  },
-  history: AIMessage[]
-): Promise<string | null> {
-  try {
-    const { incomeType, transactions, riderCosts, clients, monthlyAverage } = context;
-    const recentTxns = transactions.slice(0, 50);
-    const totalIncome = recentTxns
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const totalCosts = recentTxns
-      .filter((t) => t.type === 'cost')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const riderCostTotal = (riderCosts || []).reduce((sum, r) => sum + r.amount, 0);
-
-    let contextSummary = `Income type: ${incomeType}. Recent: ${recentTxns.length} transactions, total income RM ${totalIncome.toFixed(2)}, costs RM ${(totalCosts + riderCostTotal).toFixed(2)}, kept RM ${(totalIncome - totalCosts - riderCostTotal).toFixed(2)}. 6-month average monthly: RM ${monthlyAverage.toFixed(2)}.`;
-
-    if (clients && clients.length > 0) {
-      contextSummary += ` ${clients.length} clients, total received RM ${clients.reduce((s, c) => s + c.totalPaid, 0).toFixed(2)}.`;
-    }
-
-    const messages: { role: 'user' | 'assistant'; content: string }[] = [
-      ...history.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user' as const, content: question },
-    ];
-
-    return await callAI(
-      `You are a calm, honest money companion for a Malaysian gig worker or small earner.\nYou understand that income is irregular and unpredictable.\nNever compare the user to a standard or ideal.\nNever use words like "should", "must", "discipline", or "goal".\nWhen asked about slow months, normalize them — they are part of this kind of work.\nWhen asked about affordability, calculate from realistic average income, not current month.\nIf the user earns from multiple sources, treat that as a strength, not complexity.\nKeep responses under 4 sentences.\nSpeak plainly. No jargon.\n${ADVICE_GUARD}\n\n${contextSummary}`,
-      messages,
-      150,
-      chatModelForTier(usePremiumStore.getState().tier)
-    );
   } catch {
     return null;
   }

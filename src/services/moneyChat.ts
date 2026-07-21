@@ -8,6 +8,8 @@
 
 import { format, startOfMonth, endOfMonth, subMonths, isWithinInterval, getDaysInMonth } from 'date-fns';
 import { callGeminiAPI, streamGeminiText, isGeminiAvailable, getCooldownSecondsLeft, isDailyQuotaExhausted, resetDailyQuota, GeminiPart, GeminiContent } from './geminiClient';
+import { chatModelForTier } from './chatModel';
+import { TIER_LIMITS } from '../constants/tiers';
 import { isAiProxyConfigured } from './aiProxy';
 import { parseActions } from './chatActions';
 import { scrubPii } from '../utils/pii';
@@ -496,19 +498,43 @@ function buildFinancialContext(userMessage?: string): string {
     .map(([cat, amt]) => `  ${_catName(cat)}: ${currency} ${amt.toFixed(2)}`)
     .join('\n');
 
-  // Recent 10 transactions
-  const recentTxns = thisMonthTxns
+  // Recent transactions in DETAIL — tiered (owner-locked 2026-07-22): paying
+  // users get a visibly richer Echo. Free 30 · Basic 100 · Pro/Premium "full"
+  // (500 safety ceiling). Anything older collapses into the per-month
+  // aggregate below, so Echo still sees the longer tail cheaply.
+  const RECENT_TXN_DETAIL = TIER_LIMITS[usePremiumStore.getState().tier].chatTxnDetail;
+  const allSpendTxns = transactions
+    .filter((t) => !isTransfer(t) && !isGoalMove(t))
     .sort((a, b) => {
       const da = a.date instanceof Date ? a.date : new Date(a.date);
       const db = b.date instanceof Date ? b.date : new Date(b.date);
       return db.getTime() - da.getTime();
-    })
-    .slice(0, 20)
+    });
+  const recentTxns = allSpendTxns
+    .slice(0, RECENT_TXN_DETAIL)
     .map((t) => {
       const d = t.date instanceof Date ? t.date : new Date(t.date);
       return `  ${format(d, 'dd MMM')} | ${t.type === 'income' ? '+' : '-'}${currency} ${t.amount.toFixed(2)} | ${_catName(t.category)} | ${t.description}`;
     })
     .join('\n');
+
+  // Older-than-detail transactions → one compact count + total per month for the
+  // last 3 months. (Older still is already summarized by the category/kept lines.)
+  const aggStart = startOfMonth(subMonths(now, 3));
+  const olderByMonth: Record<string, { count: number; out: number; in: number }> = {};
+  for (const t of allSpendTxns.slice(RECENT_TXN_DETAIL)) {
+    const d = t.date instanceof Date ? t.date : new Date(t.date);
+    if (isNaN(d.getTime()) || d < aggStart) continue;
+    const key = format(d, 'MMM yyyy');
+    if (!olderByMonth[key]) olderByMonth[key] = { count: 0, out: 0, in: 0 };
+    olderByMonth[key].count++;
+    if (t.type === 'expense') olderByMonth[key].out += t.amount;
+    else if (t.type === 'income') olderByMonth[key].in += t.amount;
+  }
+  // Full words, no shortform (owner call) — the model mirrors the register it reads.
+  const olderAggLine = Object.entries(olderByMonth)
+    .map(([m, v]) => `${m}: ${v.count} transactions, ${currency} ${v.out.toFixed(0)} spent / ${currency} ${v.in.toFixed(0)} received`)
+    .join('; ');
 
   // Wallets
   const walletLines = wallets
@@ -674,6 +700,7 @@ Net position: ${currency} ${netWorth.toFixed(2)} (wallets ${currency} ${totalWal
 
   if (scope.recentTxns) {
     ctx += `\n\nRecent transactions:\n${recentTxns || '  (none yet)'}`;
+    if (olderAggLine) ctx += `\nOlder (per month): ${olderAggLine}`;
   }
 
   if (scope.debtDetail) {
@@ -926,14 +953,26 @@ function _buildChatBody(message: string, history: AIMessage[], imageBase64?: str
     : '';
   const fullSystem = `${buildSystemPrompt(currency)}\n\n${ACTION_PROMPT}${learnedHints}${knowledgeHints}${pendingBlock}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
 
-  // Build conversation history — last 10 messages to keep token usage low.
+  // Build conversation history — Echo's MEMORY window, tiered (owner-locked
+  // 2026-07-22): Free 15 · Basic 30 · Pro 45 · Premium 90 recent bubbles.
+  // Every bubble here is paid tokens on EVERY reply — this is the cost dial.
   // Scrub PII (card / IC numbers) from any user-authored text before it leaves
   // the device; assistant turns are model-generated and already clean.
-  const recentHistory = history.slice(-10);
+  const memoryWindow = TIER_LIMITS[usePremiumStore.getState().tier].chatMemoryBubbles;
+  const recentHistory = history.slice(-memoryWindow);
   const contents: GeminiContent[] = recentHistory.map((msg) => ({
     role: msg.role === 'assistant' ? ('model' as const) : ('user' as const),
     parts: [{ text: msg.role === 'assistant' ? msg.content : scrubPii(msg.content) }],
   }));
+  // Longer chats: older turns are plainly dropped (no extra AI call to summarize
+  // them) — one static note keeps the model from treating the window start as
+  // the start of the conversation.
+  if (history.length > recentHistory.length) {
+    contents.unshift({
+      role: 'user' as const,
+      parts: [{ text: `(Earlier in this chat: ${history.length - recentHistory.length} older messages omitted to save space — rely on the recent turns below and the financial data for context.)` }],
+    });
+  }
 
   // Add current message (with optional image). OCR-extracted text is already
   // scrubbed in ocrService; this covers free-typed chat text.
@@ -971,7 +1010,7 @@ async function _doSendChatMessage(
       _buildChatBody(message, history, imageBase64),
       hasImage ? 45_000 : 30_000,
       hasImage, // noFallback for image — both models share quota
-      undefined,
+      chatModelForTier(premium.tier), // paying tiers get the smarter model first; 429 chain still falls back
       'echo-chat',
     );
 
@@ -1045,7 +1084,7 @@ export async function sendChatMessageStream(
     let yieldedAny = false;
     try {
       const body = _buildChatBody(message, history, imageBase64);
-      for await (const textSoFar of streamGeminiText(body, hasImage ? 45_000 : 30_000, 'echo-chat')) {
+      for await (const textSoFar of streamGeminiText(body, hasImage ? 45_000 : 30_000, 'echo-chat', chatModelForTier(premium.tier))) {
         lastRaw = textSoFar;
         yieldedAny = true;
         onToken(_displayTextFromPartial(textSoFar));

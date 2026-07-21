@@ -43,6 +43,10 @@ import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
 import NeuPressable from '../../components/common/NeuPressable';
+import QuickAddExpense, { type QuickAddExpenseHandle } from '../../components/common/QuickAddExpense';
+import PaywallModal from '../../components/common/PaywallModal';
+import { usePremiumStore } from '../../store/premiumStore';
+import { TIER_LIMITS } from '../../constants/tiers';
 import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
@@ -76,6 +80,7 @@ import { isSttTokenConfigured } from '../../services/sttToken';
 import { normalizeSpokenAmount } from '../../utils/spokenAmount';
 import { getMalayVoiceState, type MalayVoiceState } from '../../services/voiceModel';
 import { transcribeAudio } from '../../services/aiService';
+import { generateCheckinMessage } from '../../services/checkinMessage';
 
 // Static MY money/merchant lexicon — merged with the user's real merchants/wallets/categories to
 // bias the speech recognizer toward what Malaysians actually say. Best-effort (≤100 total, capped below).
@@ -987,6 +992,25 @@ const MoneyChat: React.FC = () => {
   const setLastSave = useAIInsightsStore((s) => s.setLastSave);
   const clearLastSave = useAIInsightsStore((s) => s.clearLastSave);
   const echoDailyCheckin = useSettingsStore((s) => s.echoDailyCheckin);
+  const quickLogConfigured = useSettingsStore((s) => s.quickLogConfigured);
+  // Daily check-in nudge: chips shown while the check-in is the newest bubble.
+  const [checkinStamp, setCheckinStamp] = useState<string | null>(null);
+  const quickAddRef = useRef<QuickAddExpenseHandle>(null);
+  // Saved-history tier cap (chatSavedBubbles): beyond it, the OLDEST archived
+  // conversations LOCK (never delete) — upgrading unlocks them instantly.
+  const premiumTier = usePremiumStore((s) => s.tier);
+  const [historyPaywallVisible, setHistoryPaywallVisible] = useState(false);
+  const lockedConversationIds = useMemo(() => {
+    const cap = TIER_LIMITS[premiumTier].chatSavedBubbles;
+    const locked = new Set<string>();
+    // Current (unarchived) chat spends the budget first, then archives newest→oldest.
+    let used = chatMessages.length;
+    for (const convo of conversations) {
+      used += convo.messages.length;
+      if (used > cap) locked.add(convo.id);
+    }
+    return locked;
+  }, [premiumTier, chatMessages.length, conversations]);
   const { showToast } = useToast();
 
   const [input, setInput] = useState('');
@@ -1233,8 +1257,30 @@ const MoneyChat: React.FC = () => {
     while (days.has(dayKey(cursor))) { streak += 1; cursor.setDate(cursor.getDate() - 1); }
     if (streak >= 3) msg += ' ' + t.moneyChat.rhythmNote.replace('{n}', String(streak));
 
-    const id = setTimeout(() => addChatMessage({ role: 'assistant', content: msg, timestamp: new Date().toISOString() }), 500);
-    return () => clearTimeout(id);
+    // Let Echo WRITE the check-in in its own words (background AI, doesn't spend
+    // the chat quota); the template `msg` above stays the offline/over-quota/slow
+    // fallback. Kick the AI call off now, race it against 4s at post time so the
+    // greeting never lags the open.
+    const aiPromise = generateCheckinMessage({
+      count, total, streak, currency,
+      language: useSettingsStore.getState().language,
+      autoLogSetup: useSettingsStore.getState().quickLogConfigured,
+    }).catch(() => null);
+    let cancelled = false;
+    const id = setTimeout(async () => {
+      const aiMsg = await Promise.race([
+        aiPromise,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+      ]);
+      if (!cancelled) {
+        const stamp = new Date().toISOString();
+        addChatMessage({ role: 'assistant', content: aiMsg || msg, timestamp: stamp });
+        // Action chips (Log manual / Set up auto log) render under this message
+        // while it stays the latest bubble.
+        setCheckinStamp(stamp);
+      }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2080,6 +2126,30 @@ const MoneyChat: React.FC = () => {
                 ? <StreamingBubble text={streamingText} />
                 : isLoading
                 ? <TypingDots />
+                : checkinStamp && chatMessages.length > 0 && chatMessages[chatMessages.length - 1]?.timestamp === checkinStamp
+                ? (
+                  // Daily check-in nudge — action chips under Echo's greeting.
+                  // "Log manual" opens the free quick-add form (no AI credit);
+                  // "Set up auto log" only when Back Tap isn't configured yet.
+                  <View style={styles.checkinChipRow}>
+                    <TouchableOpacity
+                      style={styles.suggestionChip}
+                      onPress={() => { lightTap(); quickAddRef.current?.open(); }}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.suggestionText}>✍️ {t.settings.checkinLogManual}</Text>
+                    </TouchableOpacity>
+                    {Platform.OS === 'ios' && !Platform.isPad && !quickLogConfigured && (
+                      <TouchableOpacity
+                        style={styles.suggestionChip}
+                        onPress={() => { lightTap(); (navigation as any).navigate('QuickLogSetup'); }}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.suggestionText}>⚡ {t.settings.checkinSetupAutolog}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )
                 : null
             }
           />
@@ -2527,10 +2597,15 @@ const MoneyChat: React.FC = () => {
                 maxToRenderPerBatch={10}
                 windowSize={5}
                 initialNumToRender={10}
-                renderItem={({ item: convo }) => (
+                renderItem={({ item: convo }) => {
+                  // Tier saved-history cap: locked convos open the paywall, not
+                  // the chat. Nothing is deleted — upgrading unlocks in place.
+                  const locked = lockedConversationIds.has(convo.id);
+                  return (
                   <TouchableOpacity
-                    style={styles.historyItem}
+                    style={[styles.historyItem, locked && { opacity: 0.55 }]}
                     onPress={() => {
+                      if (locked) { lightTap(); setHistoryPaywallVisible(true); return; }
                       loadConversation(convo.id);
                       setShowHistory(false);
                     }}
@@ -2539,7 +2614,7 @@ const MoneyChat: React.FC = () => {
                     <View style={styles.historyItemContent}>
                       <Text style={styles.historyItemTitle} numberOfLines={1}>{convo.title}</Text>
                       <Text style={styles.historyItemMeta}>
-                        {convo.messages.length} messages · {(() => {
+                        {locked ? t.settings.chatLockedTitle : `${convo.messages.length} messages`} · {(() => {
                           try {
                             const d = new Date(convo.lastMessageAt);
                             return isNaN(d.getTime()) ? '' : format(d, 'MMM d, HH:mm');
@@ -2547,6 +2622,9 @@ const MoneyChat: React.FC = () => {
                         })()}
                       </Text>
                     </View>
+                    {/* Lock gates READING only — deleting your own data always works
+                        (privacy: sensitive amounts/debts must be removable unpaid). */}
+                    {locked && <Feather name="lock" size={14} color={C.textMuted} style={{ padding: 4 }} />}
                     <TouchableOpacity
                       onPress={() => deleteConversation(convo.id)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2555,11 +2633,28 @@ const MoneyChat: React.FC = () => {
                       <Feather name="trash-2" size={14} color={C.textMuted} />
                     </TouchableOpacity>
                   </TouchableOpacity>
-                )}
+                  );
+                }}
               />
             )}
           </View>
         </TouchableOpacity>
+        {/* asOverlay: this history view is an RN <Modal> — iOS can't present a
+            second Modal over it, so the paywall renders inside this window.
+            absoluteFill host: the paywall's asOverlay root is flex:1 and would
+            otherwise SPLIT the window 50/50 with the history card (the
+            documented CategoryManager case). */}
+        {historyPaywallVisible && (
+          <View style={StyleSheet.absoluteFill}>
+            <PaywallModal
+              visible
+              asOverlay
+              feature="ai"
+              reason={t.settings.chatLockedHint}
+              onClose={() => setHistoryPaywallVisible(false)}
+            />
+          </View>
+        )}
         <ModalToastHost />
       </Modal>
 
@@ -2626,6 +2721,10 @@ const MoneyChat: React.FC = () => {
           { kind: 'payoff', title: t.guide.chatPayoffTitle, body: t.guide.chatPayoffBody, icon: 'check-circle' },
         ]}
       />
+
+      {/* Locally-hosted quick-add sheet for the check-in "Log manual" chip —
+          free logging path (no AI credit), same recipe as Calculator's host. */}
+      <QuickAddExpense ref={quickAddRef} showFab={false} registerGlobalOpener={false} />
     </View>
   );
 };
@@ -2679,6 +2778,14 @@ const makeStyles = (
   suggestionText: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
+  },
+  // Daily check-in nudge chips (under the greeting bubble)
+  checkinChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
   },
 
   // Messages

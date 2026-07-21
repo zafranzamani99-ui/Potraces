@@ -264,20 +264,25 @@ interface GeminiStreamChunk {
  * @param body       Gemini request body
  * @param timeoutMs  Overall request timeout (default 30s) — aborts the reader.
  * @param source Feature tag logged by the proxy for usage attribution (e.g. 'receipt-scan').
+ * @param preferModel Try this model when it's available (tier routing — mirrors
+ *                    callGeminiAPI). Streaming has no fallback loop, so this is
+ *                    simply which single model gets the attempt.
  * @throws Error if AI is unavailable, busy, unreachable, or returns no text.
  */
 export async function* streamGeminiText(
   body: GeminiRequestBody,
   timeoutMs = 30_000,
-  source?: string
+  source?: string,
+  preferModel?: string
 ): AsyncGenerator<string, void, unknown> {
   if (!isGeminiAvailable()) {
     throw new Error('AI is not available right now.');
   }
 
   // Vision shares one quota — pick first available model, no fallback loop.
+  // A preferred (tier-routed) model wins when it isn't rate-limited.
   const available = getAvailableModels();
-  const model = available[0];
+  const model = preferModel && available.includes(preferModel) ? preferModel : available[0];
   if (!model) {
     throw new Error('AI is busy — try again shortly.');
   }

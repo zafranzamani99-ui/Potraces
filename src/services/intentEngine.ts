@@ -12,6 +12,7 @@ import {
   INCOME_CATEGORIES,
 } from '../constants';
 import { usePremiumStore } from '../store/premiumStore';
+import { tierAtLeast } from '../constants/tiers';
 import { useLearningStore } from '../store/learningStore';
 import { callGeminiAPI, isGeminiAvailable } from './geminiClient';
 
@@ -65,12 +66,16 @@ function makeId(): string {
 /**
  * Build the Gemini system prompt for intent classification.
  */
-function buildPrompt(walletNames: string[]): string {
+function buildPrompt(
+  walletNames: string[],
+  opts?: { knownPeople?: string[]; retry?: boolean },
+): string {
+  const knownPeople = (opts?.knownPeople ?? []).filter(Boolean);
   return `You are a financial intent classifier for a Malaysian app called Potraces.
 Users write in Manglish (mixed Malay + English). Extract structured financial data.
 
 AVAILABLE CATEGORIES: ${categoryList}
-AVAILABLE WALLETS: ${walletNames.join(', ') || 'none set up'}
+AVAILABLE WALLETS: ${walletNames.join(', ') || 'none set up'}${knownPeople.length ? `\nKNOWN PEOPLE (this user's saved contacts / debtors — when one of these names appears, treat IT as the person and other tokens on the line as the description): ${knownPeople.slice(0, 40).join(', ')}` : ''}
 
 INTENT TYPES:
 - expense: user spent money
@@ -122,6 +127,15 @@ Users often write quick structured notes. Understand these patterns:
    A header applies to EVERY line under it until the next header. Lines can be "amount-person", "person-amount", or "person amount" ("Ali- 7", "Rahman -8", "7-ali"). Extract each as a separate debt item with the person name.
    Example: "mereka hutang\\n100-faris\\n50-ali" → 2 debt items (faris RM100 type:income, ali RM50 type:income)
    Example: "aku hutang\\nAli- 7\\n\\norang hutang\\nRahman -8" → Ali RM7 (type:expense, I owe Ali), Rahman RM8 (type:income, Rahman owes me)
+
+1b. NAMED-PERSON DEBT HEADER (one specific person is the debtor for the WHOLE block):
+   When the header names a SPECIFIC person + hutang/owe, EVERY line under it belongs to THAT ONE named person — each line's text is the ITEM the debt is for (the description), NOT a new person, even when it looks like "word- amount".
+   - "<name> hutang aku" / "<name> hutang" / "<name> owes [me]" = the named person owes the USER (type: "income")
+   - "aku hutang <name>" / "hutang <name>" / "i owe <name>" = the USER owes the named person (type: "expense")
+   Do NOT treat the leading word of a line as a person here — only the header names the person.
+   Example: "nabil hutang aku\\nawe- 28.5\\nnasi pataya lps badminton 14.5\\nserambi johor - 8.50"
+   → 3 debt items, ALL person: "nabil", type: "income" (nabil owes me): {description "awe", 28.50}, {description "nasi pataya lps badminton", 14.50}, {description "serambi johor", 8.50}.
+   (Contrast rule 1: GENERIC headers with NO name — "mereka hutang", "orang hutang", "aku hutang" — name a DIFFERENT person per line.)
 
 2. PERSON-SCOPED BLOCKS:
    A line with JUST a name (no amount) followed by item lines = all items below belong to that person.
@@ -182,7 +196,9 @@ RULES:
 - For debt: set type based on direction (user owes = expense, owed to user = income). Set person to the name.
 - For queries: set items to empty array, just return the intent
 - For plain text with no financial content: intent = "plain", items = []
-- Respond with ONLY the JSON object, no markdown fences, no explanation${useLearningStore.getState().getPromptHints()}`;
+- Respond with ONLY the JSON object, no markdown fences, no explanation${opts?.retry ? `
+
+RETRY — your PREVIOUS extraction was marked WRONG by the user. Do NOT repeat it. Re-read the note line by line and reconsider from scratch. First add a top-level "reasoning" string: for EACH line decide — is it a section header? does a specific NAMED person scope the block (rule 1b)? which token is the PERSON vs the DESCRIPTION? how many DISTINCT items are there? what is the correct intent/type? Then output the corrected "items". Prefer splitting over merging, and get the person-scoping right this time.` : ''}${useLearningStore.getState().getPromptHints()}`;
 }
 
 /**
@@ -191,22 +207,32 @@ RULES:
  */
 async function callGemini(
   text: string,
-  walletNames: string[]
+  walletNames: string[],
+  opts?: { knownPeople?: string[]; retry?: boolean; previous?: string }
 ): Promise<string | null> {
+  const retry = !!opts?.retry;
+  // "Think harder" (the stronger model on retry) is a PAID perk — free users still get
+  // a retry, but on the normal model. Paid (basic+) get gemini-3.5-flash.
+  const strong = retry && tierAtLeast(usePremiumStore.getState().tier, 'basic');
+  // On retry, feed the rejected answer back so the model actively avoids repeating it,
+  // and give it more room + the stronger model so it can genuinely reconsider.
+  const userText = retry && opts?.previous
+    ? `${text}\n\n[RETRY] Your previous extraction below was WRONG per the user — return a corrected, DIFFERENT result.\nPREVIOUS: ${opts.previous}`
+    : text;
   const data = await callGeminiAPI({
-    system_instruction: { parts: [{ text: buildPrompt(walletNames) }] },
+    system_instruction: { parts: [{ text: buildPrompt(walletNames, { knownPeople: opts?.knownPeople, retry }) }] },
     contents: [
       {
         role: 'user',
-        parts: [{ text }],
+        parts: [{ text: userText }],
       },
     ],
     generationConfig: {
-      temperature: 0.1,
-      maxOutputTokens: 1024,
+      temperature: retry ? 0.5 : 0.1,
+      maxOutputTokens: retry ? 2048 : 1024,
       responseMimeType: 'application/json',
     },
-  }, undefined, undefined, undefined, 'intent');
+  }, retry ? 20_000 : 15_000, false, strong ? 'gemini-3.5-flash' : undefined, 'intent');
 
   if (!data) return null;
   const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -244,7 +270,11 @@ function parseGeminiResponse(raw: string): IntentResult | null {
         extractedData: {
           amount: parsedAmount,
           description: item.description || '',
-          category: normalized.category || item.category || null,
+          // Debts don't use an expense category — leave it null so the card reads as a
+          // debt (person only), not "other · <person>".
+          category: normalized.type === 'debt' || normalized.type === 'debt_update'
+            ? null
+            : normalized.category || item.category || null,
           transactionType: item.type || 'expense',
           wallet: item.wallet || null,
           person: item.person || null,
@@ -376,7 +406,7 @@ function buildLocalResult(
         extractedData: {
           amount: line.amount,
           description: line.note || `${line.direction === 'they_owe' ? `${preferredName} owes` : `owe ${preferredName}`}`,
-          category: line.category || matchCategory(person) || 'other',
+          category: line.category || null,
           transactionType: line.direction === 'they_owe' ? 'income' : 'expense',
           wallet: null,
           person: preferredName,
@@ -420,65 +450,12 @@ function buildLocalResult(
   };
 }
 
-/**
- * Merge same-person debt extractions into a single extraction.
- * e.g. mohsin: air(3) + petrol(7.5) + tol(5.8) → one debt RM 16.30
- */
-function mergeByPerson(result: IntentResult): IntentResult {
-  if (result.extractions.length <= 1) return result;
-
-  const personGroups: Map<string, AIExtraction[]> = new Map();
-  const ungrouped: AIExtraction[] = [];
-
-  for (const ext of result.extractions) {
-    const person = ext.extractedData.person;
-    if (person && (ext.type === 'debt' || ext.type === 'debt_update')) {
-      const key = `${person.toLowerCase()}_${ext.type}_${ext.extractedData.transactionType}`;
-      if (!personGroups.has(key)) personGroups.set(key, []);
-      personGroups.get(key)!.push(ext);
-    } else {
-      ungrouped.push(ext);
-    }
-  }
-
-  const merged: AIExtraction[] = [];
-
-  for (const [, group] of personGroups) {
-    if (group.length === 1) {
-      merged.push(group[0]);
-      continue;
-    }
-    // Combine into one extraction
-    const totalAmount = group.reduce((sum, e) => sum + e.extractedData.amount, 0);
-    const desc = group
-      .map((e) => {
-        const name = e.extractedData.description || 'item';
-        return `${name}(${e.extractedData.amount % 1 === 0 ? e.extractedData.amount : e.extractedData.amount.toFixed(2)})`;
-      })
-      .join(', ');
-
-    const first = group[0];
-    merged.push({
-      id: first.id,
-      type: first.type,
-      rawText: desc,
-      extractedData: {
-        amount: totalAmount,
-        description: desc,
-        category: first.extractedData.category,
-        transactionType: first.extractedData.transactionType,
-        wallet: first.extractedData.wallet,
-        person: first.extractedData.person,
-      },
-      status: 'pending' as const,
-    });
-  }
-
-  return {
-    ...result,
-    extractions: [...merged, ...ungrouped],
-  };
-}
+// NOTE: `mergeByPerson` (summing all same-person debts into one entry) was removed
+// 2026-07-21. It collapsed distinct itemised lines (e.g. "awe 28.5 / nasi 14.5 /
+// serambi 8.5") into a single summed blob with a concatenated description, folded
+// each line's amount into the header person's total, and broke per-line auto-strike
+// (the summed amount matched no line, so the striker fell back to the header). Each
+// extracted line now stays its own item — the user can skip/edit individually.
 
 /**
  * Main entry point: classify a note's text into financial intents.
@@ -490,7 +467,8 @@ function mergeByPerson(result: IntentResult): IntentResult {
 export async function classifyIntent(
   text: string,
   walletNames: string[] = [],
-  onStep?: (step: 'scanning' | 'ai' | 'local') => void
+  onStep?: (step: 'scanning' | 'ai' | 'local') => void,
+  opts?: { knownPeople?: string[]; retryPrevious?: string }
 ): Promise<IntentResult | null> {
   if (!text.trim()) return null;
 
@@ -510,7 +488,7 @@ export async function classifyIntent(
     // Over quota or rate-limited — fallback to local only
     onStep?.('local');
     if (pf.amounts.length > 0 && pf.hintIntent) {
-      const r = mergeByPerson(buildLocalResult(text, pf.amounts, pf.hintIntent));
+      const r = buildLocalResult(text, pf.amounts, pf.hintIntent);
       return { ...r, source: 'local' };
     }
     return { intent: 'plain', extractions: [], confidence: 'low', source: 'local' };
@@ -518,16 +496,23 @@ export async function classifyIntent(
 
   // Step 3: Try Gemini for structured extraction
   onStep?.('ai');
-  const geminiRaw = await callGemini(text, walletNames);
+  const geminiRaw = await callGemini(text, walletNames, {
+    knownPeople: opts?.knownPeople,
+    retry: !!opts?.retryPrevious,
+    previous: opts?.retryPrevious,
+  });
   if (geminiRaw) {
-    // Natural-language logging parse — utility AI, does NOT spend the user's Echo quota.
+    // Reading a note with the cloud AI spends ONE credit (the offline reader is the
+    // no-credit fallback once the monthly bucket is empty). Retry is a second read → also 1.
+    usePremiumStore.getState().incrementAiCalls();
     const result = parseGeminiResponse(geminiRaw);
     if (result && result.extractions.length > 0) {
       // Enrich with local + learned patterns
       const learning = useLearningStore.getState();
       for (const ext of result.extractions) {
         const data = ext.extractedData;
-        if (!data.category) {
+        // Don't tag debts with an expense category (would show as "other · <person>").
+        if (!data.category && ext.type !== 'debt' && ext.type !== 'debt_update') {
           data.category = matchCategory(ext.rawText || text);
         }
         if (!data.wallet && walletNames.length > 0) {
@@ -539,8 +524,7 @@ export async function classifyIntent(
           if (preferred) data.person = preferred;
         }
       }
-      const merged = mergeByPerson(result);
-      return { ...merged, source: 'ai' };
+      return { ...result, source: 'ai' };
     }
     // Gemini returned but with empty items — trust it
     if (result) return { ...result, source: 'ai' };
@@ -549,7 +533,7 @@ export async function classifyIntent(
   // Step 4: Fallback to local-only extraction
   onStep?.('local');
   if (pf.amounts.length > 0 && pf.hintIntent) {
-    const r = mergeByPerson(buildLocalResult(text, pf.amounts, pf.hintIntent));
+    const r = buildLocalResult(text, pf.amounts, pf.hintIntent);
     return { ...r, source: 'local' };
   }
 

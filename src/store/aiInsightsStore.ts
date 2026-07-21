@@ -132,7 +132,7 @@ export const useAIInsightsStore = create<AIInsightsState>()(
 
       addChatMessage: (msg) =>
         set((state) => ({
-          chatMessages: [...state.chatMessages.slice(-48), msg], // keep last 50
+          chatMessages: [...state.chatMessages.slice(-119), msg], // keep last 120 — must exceed the largest chatMemoryBubbles tier window (Premium 90)
         })),
 
       clearChat: () => set({ chatMessages: [] }),
@@ -156,7 +156,10 @@ export const useAIInsightsStore = create<AIInsightsState>()(
           };
           return {
             chatMessages: [],
-            conversations: [conversation, ...state.conversations].slice(0, 20), // keep last 20
+            // Storage sanity cap only — TIER caps (chatSavedBubbles) do the real
+            // gating by LOCKING old conversations in the UI, never deleting
+            // (owner call 2026-07-22: upgrade un-hides, nothing is lost).
+            conversations: [conversation, ...state.conversations].slice(0, 100),
           };
         }),
 
@@ -174,7 +177,7 @@ export const useAIInsightsStore = create<AIInsightsState>()(
             const title = firstUserMsg
               ? firstUserMsg.content.slice(0, 50) + (firstUserMsg.content.length > 50 ? '...' : '')
               : 'Chat';
-            convos = [{ id: Date.now().toString(), title, messages: state.chatMessages, createdAt: firstMsg.timestamp, lastMessageAt: lastMsg.timestamp }, ...convos].slice(0, 20);
+            convos = [{ id: Date.now().toString(), title, messages: state.chatMessages, createdAt: firstMsg.timestamp, lastMessageAt: lastMsg.timestamp }, ...convos].slice(0, 100) /* match archiveChat — tier LOCKS gate old convos, never silent deletion */;
           }
           return {
             chatMessages: convo.messages,
@@ -343,7 +346,7 @@ export const useAIInsightsStore = create<AIInsightsState>()(
                 lastMessageAt: msgs[msgs.length - 1].timestamp,
               },
               ...(state.conversations || []),
-            ].slice(0, 20);
+            ].slice(0, 100) /* match archiveChat — tier LOCKS gate old convos, never silent deletion */;
           }
           state.chatMessages = [];
         }

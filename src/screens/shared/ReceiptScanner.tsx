@@ -30,7 +30,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { format, getYear, parse, isValid } from 'date-fns';
-import { scanReceipt } from '../../services/receiptScanner';
+import { scanReceipt, isLocalScanResult, isLocalOcrAvailable } from '../../services/receiptScanner';
 import { enqueueReceipt } from '../../services/receiptQueue';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { toRelativeReceiptPath, resolveReceiptImageUri } from '../../utils/receiptImage';
@@ -341,7 +341,10 @@ const ReceiptScanner: React.FC = () => {
       if (!extracted || !(extracted.total > 0) || !Array.isArray(extracted.items)) {
         throw new Error(t.receipts.noUsableData);
       }
-      incrementScanCount();
+      // On-device OCR fallback (offline) — free: never burns the monthly AI
+      // scan quota, and the user is told to double-check what it read.
+      const wasLocalScan = isLocalScanResult(extracted);
+      if (!wasLocalScan) incrementScanCount();
       setReceipt(extracted);
       setEditVendor(extracted.vendor || '');
       setEditTitle(extracted.vendor || '');
@@ -351,18 +354,26 @@ const ReceiptScanner: React.FC = () => {
       setEditCategory(extracted.suggestedExpenseCategory || 'other');
       setEditMyTaxCategory(extracted.suggestedTaxCategory || 'none');
       setEditLocation(extracted.location || '');
-      showToast(t.receipts.receiptExtracted, 'success');
+      showToast(wasLocalScan ? t.settings.scanOfflineUsed : t.receipts.receiptExtracted, wasLocalScan ? 'info' : 'success');
     } catch (error: any) {
       // If offline, queue the image for retry instead of just failing.
       try {
         const net = await NetInfo.fetch();
         const offline = !net.isConnected || net.isInternetReachable === false;
         if (offline && imageUri) {
+          // Still queue for a proper AI scan when back online (existing safety
+          // net) — but if this build HAS on-device OCR, it already had its shot
+          // inside the service and couldn't read this receipt, so tell the
+          // user manual entry is the way to get it recorded now.
           await enqueueReceipt(imageUri);
-          Alert.alert(
-            t.receipts.savedForLater,
-            t.receipts.offlineQueuedMsg,
-          );
+          if (isLocalOcrAvailable()) {
+            showToast(t.settings.scanOfflineFailed, 'error');
+          } else {
+            Alert.alert(
+              t.receipts.savedForLater,
+              t.receipts.offlineQueuedMsg,
+            );
+          }
           return;
         }
       } catch {

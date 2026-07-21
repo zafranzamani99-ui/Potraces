@@ -6,6 +6,7 @@
  */
 import * as Crypto from 'expo-crypto';
 import { supabasePersonal as supabase } from './supabase'; // personal client (quick-log keys)
+import { useSettingsStore } from '../store/settingsStore';
 import { encodeQuickLogKey } from '../utils/quickLogKeyFormat';
 
 /** 24-char Crockford base32 body with a QLOG- prefix, from expo-crypto randomness. */
@@ -39,15 +40,20 @@ export async function registerQuickLogKey(): Promise<string> {
   const { error } = await supabase.from('quick_log_keys')
     .insert({ user_id: userId, key_hash });
   if (error) throw error;
+  useSettingsStore.getState().setQuickLogConfigured(true);
   return key;
 }
 
 export async function getQuickLogKeyStatus(): Promise<{ hasActiveKey: boolean }> {
   const userId = await currentUserId();
   if (!userId) return { hasActiveKey: false };
-  const { count } = await supabase.from('quick_log_keys')
+  const { count, error } = await supabase.from('quick_log_keys')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId).eq('revoked', false);
+  // supabase-js resolves (never rejects) on network failures — without this
+  // throw, an offline check reads as "no key" and poisons the cached
+  // quickLogConfigured flag for a user whose Back Tap works fine.
+  if (error) throw error;
   return { hasActiveKey: (count ?? 0) > 0 };
 }
 
@@ -57,4 +63,19 @@ export async function revokeQuickLogKey(): Promise<void> {
   const { error } = await supabase.from('quick_log_keys').update({ revoked: true })
     .eq('user_id', userId).eq('revoked', false);
   if (error) throw error;
+  useSettingsStore.getState().setQuickLogConfigured(false);
+}
+
+/**
+ * Refresh the cached "auto-log set up" flag from the server (best-effort).
+ * Called at app start and after sign-in so Echo & screens know without a
+ * round-trip. Signed-out → flag cleared (the key belongs to an account).
+ */
+export async function refreshQuickLogConfigured(): Promise<void> {
+  try {
+    const { hasActiveKey } = await getQuickLogKeyStatus();
+    useSettingsStore.getState().setQuickLogConfigured(hasActiveKey);
+  } catch {
+    // offline — keep the last cached value
+  }
 }

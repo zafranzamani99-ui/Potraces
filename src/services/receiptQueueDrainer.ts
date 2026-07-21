@@ -66,7 +66,10 @@ async function persistReceiptImage(sourceUri: string): Promise<string> {
  * without burning an attempt.
  */
 async function processOne(entry: PendingReceipt): Promise<void> {
-  const extracted = await scanReceipt(entry.imageUri);
+  // No local-OCR fallback here: the drainer auto-ingests results with no user
+  // review, so only the full AI parse is trustworthy enough. Heuristic local
+  // parses stay an interactive-screen affordance.
+  const extracted = await scanReceipt(entry.imageUri, { allowLocalFallback: false });
   if (!extracted || !Array.isArray(extracted.items) || typeof extracted.total !== 'number') {
     throw new Error('extraction returned empty');
   }

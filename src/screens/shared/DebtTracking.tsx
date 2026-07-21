@@ -50,7 +50,7 @@ const getDocumentScanner = (): typeof import('react-native-document-scanner-plug
 import * as Contacts from 'expo-contacts';
 import * as Sharing from 'expo-sharing';
 import * as Clipboard from 'expo-clipboard';
-import { scanReceipt, scanReceiptStream } from '../../services/receiptScanner';
+import { scanReceipt, scanReceiptStream, isLocalScanResult } from '../../services/receiptScanner';
 import { commitSplit } from '../../services/splitCommit';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useDebtStore } from '../../store/debtStore';
@@ -432,6 +432,9 @@ const DebtTracking: React.FC = () => {
   const returnToDetailRef = useRef<string | null>(null);
   const returnToGroupRef = useRef<string | null>(null);
   const [detailGroupId, setDetailGroupId] = useState<string | null>(null);
+  // "Map to contact" — remap every debt in a person-group to one saved contact.
+  const [remapGroupId, setRemapGroupId] = useState<string | null>(null);
+  const [remapContacts, setRemapContacts] = useState<Contact[]>([]);
   const mainScrollRef = useRef<any>(null);
   const highlightScrollTarget = useRef<string | null>(null);
 
@@ -1167,6 +1170,27 @@ const DebtTracking: React.FC = () => {
     }
     setDebtModalVisible(true);
   }, [showToast]);
+
+  // "Map to contact" — move every debt in a person-group onto one saved contact, keeping
+  // them grouped. Amounts/descriptions are untouched (notes-captured amounts stay locked).
+  const handleRemapGroupContact = useCallback((target: Contact) => {
+    const gId = remapGroupId;
+    if (!gId) return;
+    const group = groupedDebts.find((g) => g.contactId === gId);
+    if (!group || group.debts.length === 0) { setRemapGroupId(null); setRemapContacts([]); return; }
+    const targetKey = target.id || target.name;
+    const groupDebtIds = new Set(group.debts.map((d) => d.id));
+    // Reuse an existing open group under the target contact, else start a fresh one.
+    const existing = debts.find((d) => !groupDebtIds.has(d.id) && d.status !== 'settled' && !d.isArchived
+      && (d.contact.id || d.contact.name) === targetKey && d.groupId);
+    const targetGroupId = existing?.groupId || newId();
+    group.debts.forEach((d) => updateDebt(d.id, { contact: target, groupId: targetGroupId }));
+    lightTap();
+    showToast(t.debts.mappedToContact.replace('{count}', String(group.debts.length)).replace('{name}', target.name), 'success');
+    setRemapGroupId(null);
+    setRemapContacts([]);
+    setDetailGroupId(null);
+  }, [remapGroupId, groupedDebts, debts, updateDebt, showToast, t]);
 
   const handleSaveDebt = useCallback(() => {
     if (debtSavingRef.current) return;
@@ -2653,7 +2677,8 @@ const DebtTracking: React.FC = () => {
     setScanningReceipt(true);
     try {
       const receipt = await scanReceipt(imageUri);
-      premium.incrementScanCount();
+      // Offline on-device OCR results are quota-free (owner: generous).
+      if (!isLocalScanResult(receipt)) premium.incrementScanCount();
       if (receipt.items.length > 0) {
         setSplitItems((prev) => [
           ...prev,
@@ -2734,7 +2759,8 @@ const DebtTracking: React.FC = () => {
           );
         },
       });
-      premium.incrementScanCount();
+      // Offline on-device OCR results are quota-free (owner: generous).
+      if (!isLocalScanResult(receipt)) premium.incrementScanCount();
       if (receipt.items.length === 0 && receipt.total === 0) {
         if (opened) setWizardVisible(false);
         showToast(t.debts.couldNotReadReceipt, 'error');
@@ -3724,6 +3750,38 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       )}
 
       {/* ── Add/Edit Debt Modal — full bottom-sheet (drag-to-dismiss, animated backdrop, anchored save) ─── */}
+      {/* Map a person-group's debts to a saved contact (amounts stay locked). */}
+      {remapGroupId && (
+        <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => { setRemapGroupId(null); setRemapContacts([]); }}>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <View style={styles.remapOverlay}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => { setRemapGroupId(null); setRemapContacts([]); }} />
+              <View style={[styles.remapCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
+                <Text style={styles.remapTitle}>{t.debts.mapToContactTitle}</Text>
+                <Text style={styles.remapHint}>{t.debts.mapToContactHint}</Text>
+                <ContactPicker
+                  selectedContacts={remapContacts}
+                  onSelect={setRemapContacts}
+                  mode="single"
+                  variant="input"
+                  label={t.debts.whoRequired}
+                />
+                <NeuButton
+                  icon="user-check"
+                  label={t.debts.mapToContactCta}
+                  onPress={() => { if (remapContacts[0]) handleRemapGroupContact(remapContacts[0]); }}
+                  style={{ marginTop: SPACING.md, opacity: remapContacts.length ? 1 : 0.5 }}
+                />
+                <Pressable onPress={() => { setRemapGroupId(null); setRemapContacts([]); }} style={styles.remapCancelBtn} hitSlop={8}>
+                  <Text style={styles.remapCancel}>{t.common.close.toLowerCase()}</Text>
+                </Pressable>
+              </View>
+            </View>
+            <ModalToastHost />
+          </GestureHandlerRootView>
+        </Modal>
+      )}
+
       {debtModalVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={dDebtCloseSheet} onDismiss={doDebtReopen}>
         <GestureHandlerRootView style={{ flex: 1 }}>
         {/* Animated backdrop — opacity tied to sheet position */}
@@ -3770,6 +3828,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 const activeTypeColor = debtType === 'i_owe' ? iOweColor : theyOweColor;
                 const editDebt = editingDebtId ? debts.find((d) => d.id === editingDebtId) : null;
                 const isSettled = editDebt ? editDebt.paidAmount >= editDebt.totalAmount : false;
+                // Notes-captured debts lock the amount — you can still remap the contact.
+                const fromNotes = editDebt?.source === 'notes';
+                const amountLocked = isSettled || fromNotes;
                 // Comma display formatting (mirrors EditHeroAmountCard logic)
                 const dotIdx = debtAmount.indexOf('.');
                 const intRaw = dotIdx === -1 ? debtAmount : debtAmount.slice(0, dotIdx);
@@ -3789,7 +3850,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         {currency}
                       </Text>
                       <TextInput
-                        style={[styles.dDebtFieldHeroAmountInput, { color: activeTypeColor, opacity: isSettled ? 0.4 : 1 }]}
+                        style={[styles.dDebtFieldHeroAmountInput, { color: activeTypeColor, opacity: amountLocked ? 0.4 : 1 }]}
                         value={displayAmount}
                         onChangeText={handleAmountChange}
                         placeholder="0.00"
@@ -3797,8 +3858,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         keyboardType="decimal-pad"
                         returnKeyType="done"
                         onSubmitEditing={Keyboard.dismiss}
-                        selectTextOnFocus={!isSettled}
-                        editable={!isSettled}
+                        selectTextOnFocus={!amountLocked}
+                        editable={!amountLocked}
                         accessibilityLabel={t.debts.amount}
                         inputAccessoryViewID={Platform.OS === 'ios' ? 'dDebtModalAcc' : undefined}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -3806,9 +3867,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       />
                     </View>
 
-                    {isSettled && (
+                    {amountLocked && (
                       <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, textAlign: 'center', marginTop: SPACING.xs }}>
-                        {t.debts.amountLockedSettled}
+                        {isSettled ? t.debts.amountLockedSettled : t.debts.amountLockedNotes}
                       </Text>
                     )}
 
@@ -5187,6 +5248,20 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             </TouchableOpacity>
                           );
                         })()}
+                        {/* Map to contact — remap all these debts onto a saved contact */}
+                        <TouchableOpacity
+                          style={[styles.debtIconChip, neu.raised]}
+                          onPress={() => {
+                            const gId = group.contactId;
+                            setDetailGroupId(null);
+                            setTimeout(() => { setRemapGroupId(gId); setRemapContacts([]); }, 50);
+                          }}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={t.debts.mapToContact}
+                        >
+                          <Feather name="user-plus" size={16} color={C.accent} />
+                        </TouchableOpacity>
                         {/* View history — only if payments exist */}
                         {group.debts.some((d) => d.payments.length > 0) && (
                           <TouchableOpacity
@@ -7944,6 +8019,40 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.08 : 0.04),
+  },
+  // "Map to contact" dialog (Onyx centered card).
+  remapOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  remapCard: {
+    backgroundColor: C.background,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+  },
+  remapTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    marginBottom: SPACING.xs,
+  },
+  remapHint: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    lineHeight: 19,
+    marginBottom: SPACING.md,
+  },
+  remapCancelBtn: {
+    alignSelf: 'center',
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  remapCancel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
 
   // Split Cards

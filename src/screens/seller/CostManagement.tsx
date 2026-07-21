@@ -35,7 +35,7 @@ import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import { IngredientCost, RecurringFrequency } from '../../types';
 import { createTransfer } from '../../utils/transferBridge';
-import { scanSellerReceipt } from '../../services/receiptScanner';
+import { scanSellerReceipt, isLocalScanResult } from '../../services/receiptScanner';
 import { uploadReceiptImage, deleteReceiptImage } from '../../services/sellerSync';
 import CostCategoryPicker from '../../components/seller/CostCategoryPicker';
 import ReceiptViewer from '../../components/seller/ReceiptViewer';
@@ -329,7 +329,8 @@ const CostManagement: React.FC = () => {
     setScanning(true);
     try {
       const parsed = await scanSellerReceipt(uri);
-      incrementScanCount();
+      // Offline on-device OCR results are quota-free (owner: generous).
+      if (!isLocalScanResult(parsed)) incrementScanCount();
       if (parsed.total > 0) setCostAmount(parsed.total.toFixed(2));
       const desc = parsed.vendor || parsed.items[0]?.name;
       if (desc) setCostDescription(desc);

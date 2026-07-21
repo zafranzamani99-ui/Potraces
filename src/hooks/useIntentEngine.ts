@@ -88,7 +88,7 @@ export function useIntentEngine({
   }, []);
 
   const runClassification = useCallback(
-    async (text: string) => {
+    async (text: string, retryPrevious?: string) => {
       if (!text.trim() || !enabled) return;
       abortRef.current = false;
       setIsClassifying(true);
@@ -99,9 +99,16 @@ export function useIntentEngine({
       const aiWasAvailable = isGeminiAvailable();
 
       try {
+        // Feed the user's saved people (contacts + debtors) so Echo recognizes names
+        // as people — DB-driven intelligence that sharpens person-vs-description calls.
+        const knownPeople = Array.from(new Set(
+          [...contacts.map((c) => c.name), ...debts.map((d) => d.contact?.name)]
+            .filter((n): n is string => !!n && n.trim().length > 0)
+            .map((n) => n.trim())
+        ));
         const intentResult = await classifyIntent(text, walletNames, (step) => {
           if (!abortRef.current) setClassifyStep(step);
-        });
+        }, { knownPeople, retryPrevious });
         if (abortRef.current) return;
 
         setExtractionSource(intentResult?.source || null);
@@ -161,7 +168,7 @@ export function useIntentEngine({
         }
       }
     },
-    [pageId, enabled, walletNames, page?.extractions, addExtraction, showStatus, t]
+    [pageId, enabled, walletNames, page?.extractions, contacts, debts, addExtraction, showStatus, t]
   );
 
   // Cleanup on unmount
@@ -268,6 +275,7 @@ export function useIntentEngine({
           totalAmount: amount,
           description: description || `debt — ${person}`,
           mode,
+          source: 'notes',
         });
         updateExtractionStatus(pageId, extractionId, 'confirmed', debtId);
         return;
@@ -479,10 +487,23 @@ export function useIntentEngine({
     }
   }, [page?.content, runClassification]);
 
+  // "not right?" → don't just re-run the same prompt. Capture the rejected result,
+  // clear it, then re-classify in RETRY mode (stronger model, more reasoning, the
+  // previous answer fed back as "this was wrong") so Echo actually reconsiders.
   const retry = useCallback(() => {
+    const pending = (page?.extractions || []).filter((e) => e.status === 'pending');
+    const previous = pending.length
+      ? JSON.stringify(pending.map((e) => ({
+          type: e.type,
+          amount: e.extractedData.amount,
+          description: e.extractedData.description,
+          person: e.extractedData.person,
+        })))
+      : undefined;
     clearPendingExtractions(pageId);
-    classify();
-  }, [clearPendingExtractions, pageId, classify]);
+    const content = page?.content;
+    if (content) runClassification(content, previous);
+  }, [page?.extractions, page?.content, clearPendingExtractions, pageId, runClassification]);
 
   return {
     isClassifying,

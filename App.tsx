@@ -23,6 +23,7 @@ import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
+import { refreshQuickLogConfigured } from './src/services/quickLogKey';
 import './src/services/quickLogCategories'; // side-effect: keeps the Shortcut's live category list fresh
 import './src/services/profileSync'; // side-effect: keeps the shared avatar profile fresh
 import { parseAmountLoose } from './src/utils/parseAmountLoose';
@@ -417,6 +418,9 @@ function App() {
     // sent to the personal account; the seller path registers business only).
     // Silent: never prompts — QuickLogSetup owns the contextual prompt.
     registerPersonalDeviceToken().catch(() => {});
+    // Cache "auto-log set up" from the server so Echo & screens know without
+    // a round-trip (survives reinstall/sign-in — the key is account-scoped).
+    refreshQuickLogConfigured();
     let graceTimer: ReturnType<typeof setTimeout> | null = null;
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') {
@@ -572,6 +576,17 @@ function App() {
       handledId = id;
       const data = response.notification.request.content.data as
         { type?: string; orderId?: string; sessionId?: string } | undefined;
+      if (data?.type === 'echo_checkin') {
+        // Daily check-in reminder → Echo chat, where the check-in greeting
+        // (today's tally + rhythm note) fires on open.
+        useAppStore.getState().setMode('personal');
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            (navigationRef as any).navigate('MoneyChat');
+          }
+        }, delay);
+        return;
+      }
       if (data?.type === 'quick_log') {
         // Switch to personal mode (RootNavigator re-renders to PersonalNavigator)
         // and open the full transactions list, where the new entry is visible.

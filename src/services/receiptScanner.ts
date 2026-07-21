@@ -2,7 +2,12 @@ import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { callGeminiAPI, streamGeminiText, isGeminiAvailable, getCooldownSecondsLeft } from './geminiClient';
 import { extractCompleteItems } from '../utils/streamingJson';
+import { isLocalOcrAvailable, scanReceiptLocal, scanSellerReceiptLocal } from './localReceiptOcr';
 import { ExtractedReceipt, SellerReceiptResult } from '../types';
+
+// Screens detect an on-device-OCR result (and whether the fallback exists in
+// this build) through the service's public surface — see localReceiptOcr.ts.
+export { isLocalOcrAvailable, isLocalScanResult } from './localReceiptOcr';
 
 /**
  * Thrown by the scan entry points when a scan is already running (re-entry
@@ -130,20 +135,64 @@ const MAX_RECEIPT_AMOUNT = 1_000_000;
 let _scanningReceipt = false;
 let _scanningSellerReceipt = false;
 
-export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
+/**
+ * On-device OCR fallback for the personal scan paths. Returns null when the
+ * fallback can't help (module absent, OCR threw, or it read no usable total)
+ * so callers fall through to the existing Gemini error — behavior in builds
+ * without the native module is unchanged. Local scans are marked via
+ * isLocalScanResult() and must never count against the scan quota.
+ */
+async function tryLocalReceiptScan(imageUri: string): Promise<ExtractedReceipt | null> {
+  if (!isLocalOcrAvailable()) return null;
+  try {
+    const local = await scanReceiptLocal(imageUri);
+    // total <= 0 means the heuristics read nothing usable — treat as a failed
+    // fallback rather than handing junk to review screens / the queue drainer.
+    return local.total > 0 ? local : null;
+  } catch (err) {
+    if (__DEV__) console.warn('[receiptScanner] local OCR fallback failed:', err);
+    return null;
+  }
+}
+
+/** Seller-path twin of tryLocalReceiptScan. */
+async function tryLocalSellerScan(imageUri: string): Promise<SellerReceiptResult | null> {
+  if (!isLocalOcrAvailable()) return null;
+  try {
+    const local = await scanSellerReceiptLocal(imageUri);
+    return local.total > 0 ? local : null;
+  } catch (err) {
+    if (__DEV__) console.warn('[receiptScanner] local seller OCR fallback failed:', err);
+    return null;
+  }
+}
+
+export async function scanReceipt(
+  imageUri: string,
+  opts?: {
+    /** Default true. The background queue drainer passes false: a heuristic
+     *  local parse must never be auto-ingested unreviewed — interactive
+     *  screens show the result for the user to check, the drainer doesn't. */
+    allowLocalFallback?: boolean;
+  },
+): Promise<ExtractedReceipt> {
   if (_scanningReceipt) {
     throw new ScanBusyError();
   }
   _scanningReceipt = true;
   try {
-    return await _doScanReceipt(imageUri);
+    return await _doScanReceipt(imageUri, undefined, opts?.allowLocalFallback ?? true);
   } finally {
     _scanningReceipt = false;
   }
 }
 
-async function _doScanReceipt(imageUri: string, preparedBase64?: string): Promise<ExtractedReceipt> {
+async function _doScanReceipt(imageUri: string, preparedBase64?: string, allowLocalFallback = true): Promise<ExtractedReceipt> {
   if (!isGeminiAvailable()) {
+    // Offline / proxy down / cooldown — read the receipt on-device instead of
+    // failing outright. Falls through to the original errors when it can't.
+    const local = allowLocalFallback ? await tryLocalReceiptScan(imageUri) : null;
+    if (local) return local;
     const secs = getCooldownSecondsLeft();
     if (secs > 0) {
       throw new Error(`AI is cooling down — try again in ${secs}s`);
@@ -155,6 +204,8 @@ async function _doScanReceipt(imageUri: string, preparedBase64?: string): Promis
   // so we don't pay the resize/compress cost twice.
   const base64 = preparedBase64 ?? await prepareImage(imageUri);
 
+  // callGeminiAPI never throws — every failure mode (fetch error, timeout,
+  // all models exhausted) resolves to null, handled below.
   const data = await callGeminiAPI(
     {
       contents: [
@@ -188,6 +239,10 @@ async function _doScanReceipt(imageUri: string, preparedBase64?: string): Promis
   );
 
   if (!data) {
+    // Mid-flight failure (network dropped, timeout, models exhausted) — same
+    // on-device fallback as the availability pre-check.
+    const local = allowLocalFallback ? await tryLocalReceiptScan(imageUri) : null;
+    if (local) return local;
     const secs = getCooldownSecondsLeft();
     if (secs > 0) {
       throw new Error(`AI is busy — try again in ${secs}s`);
@@ -286,6 +341,16 @@ async function _doScanReceiptStream(
   handlers: ReceiptStreamHandlers,
 ): Promise<ExtractedReceipt> {
   if (!isGeminiAvailable()) {
+    // Offline / proxy down / cooldown — read on-device instead of failing.
+    // No progressive items, but honor the handler contract with one emit.
+    const local = await tryLocalReceiptScan(imageUri);
+    if (local) {
+      if (local.items.length > 0) {
+        handlers.onFirstItem?.();
+        handlers.onItems?.(local.items);
+      }
+      return local;
+    }
     const secs = getCooldownSecondsLeft();
     if (secs > 0) throw new Error(`AI is cooling down — try again in ${secs}s`);
     throw new Error('AI is not available. Check your API key.');
@@ -392,6 +457,9 @@ export async function scanSellerReceipt(imageUri: string): Promise<SellerReceipt
 
 async function _doScanSellerReceipt(imageUri: string): Promise<SellerReceiptResult> {
   if (!isGeminiAvailable()) {
+    // Offline / proxy down / cooldown — read on-device instead of failing.
+    const local = await tryLocalSellerScan(imageUri);
+    if (local) return local;
     const secs = getCooldownSecondsLeft();
     if (secs > 0) throw new Error(`AI is cooling down — try again in ${secs}s`);
     throw new Error('AI is not available. Check your API key.');
@@ -427,6 +495,10 @@ async function _doScanSellerReceipt(imageUri: string): Promise<SellerReceiptResu
   );
 
   if (!data) {
+    // Mid-flight failure (network dropped, timeout, models exhausted) — same
+    // on-device fallback as the availability pre-check.
+    const local = await tryLocalSellerScan(imageUri);
+    if (local) return local;
     const secs = getCooldownSecondsLeft();
     if (secs > 0) throw new Error(`AI is busy — try again in ${secs}s`);
     throw new Error('Could not reach AI. Please try again.');
