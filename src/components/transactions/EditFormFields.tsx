@@ -12,8 +12,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import Reanimated, { FadeIn } from 'react-native-reanimated';
 import { format, isToday, isYesterday, isValid } from 'date-fns';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
 import CategoryPicker from '../common/CategoryPicker';
 import WalletPicker from '../common/WalletPicker';
@@ -69,6 +70,7 @@ const EditFormFields: React.FC<EditFormFieldsProps> = ({
 }) => {
   const t = useT();
   const isDark = useIsDark();
+  const neu = useNeu(undefined, { faintDark: true });
   const styles = useMemo(() => makeStyles(C), [C]);
   const [dateModalVisible, setDateModalVisible] = useState(false);
 
@@ -99,7 +101,7 @@ const EditFormFields: React.FC<EditFormFieldsProps> = ({
   return (
     <>
       {/* Description card — vertical stack, label above input */}
-      <View style={styles.editFieldCardBordered}>
+      <View style={[styles.editFieldCardBordered, neu.raisedSoft]}>
         <Text style={styles.editFieldCardLabel}>{t.transaction.description.toLowerCase()}</Text>
         <TextInput
           ref={descriptionInputRef}
@@ -129,6 +131,7 @@ const EditFormFields: React.FC<EditFormFieldsProps> = ({
         disabled={isLinkedDebt}
         style={({ pressed }) => [
           styles.editFieldCardBordered,
+          neu.raisedSoft,
           styles.dateRow,
           pressed && !isLinkedDebt && styles.dateRowPressed,
           isLinkedDebt && styles.lockedField,
@@ -144,7 +147,7 @@ const EditFormFields: React.FC<EditFormFieldsProps> = ({
       </Pressable>
 
       {/* #17 — Wrap pickers in field-card chrome for visual consistency */}
-      <View style={[styles.pickerFieldCard, isLinkedDebt && styles.lockedField]} pointerEvents={isLinkedDebt ? 'none' : 'auto'}>
+      <View style={[styles.pickerFieldCard, neu.raisedSoft, isLinkedDebt && styles.lockedField]} pointerEvents={isLinkedDebt ? 'none' : 'auto'}>
         <CategoryPicker
           categories={editCategories}
           selectedId={editCategory}
@@ -153,7 +156,7 @@ const EditFormFields: React.FC<EditFormFieldsProps> = ({
           layout="dropdown"
         />
       </View>
-      <View style={[styles.pickerFieldCard, isLinkedDebt && styles.lockedField]} pointerEvents={isLinkedDebt ? 'none' : 'auto'}>
+      <View style={[styles.pickerFieldCard, neu.raisedSoft, isLinkedDebt && styles.lockedField]} pointerEvents={isLinkedDebt ? 'none' : 'auto'}>
         <WalletPicker
           wallets={wallets}
           selectedId={editWalletId}
@@ -163,7 +166,7 @@ const EditFormFields: React.FC<EditFormFieldsProps> = ({
       </View>
 
       {/* Tags card */}
-      <View style={styles.editFieldCardBordered}>
+      <View style={[styles.editFieldCardBordered, neu.raisedSoft]}>
         <Text style={styles.editFieldCardLabel}>{t.transaction.tagsOptional.toLowerCase()}</Text>
         <TextInput
           style={[styles.editFieldCardInput, styles.editFieldMultiline]}
@@ -205,7 +208,7 @@ const EditFormFields: React.FC<EditFormFieldsProps> = ({
           onPress={() => setDateModalVisible(false)}
         >
           <Pressable
-            style={styles.dateModalCard}
+            style={[styles.dateModalCard, neu.raisedModal]}
             onPress={(e) => e.stopPropagation()}
             onStartShouldSetResponder={() => true}
           >
@@ -248,10 +251,9 @@ const EditFormFields: React.FC<EditFormFieldsProps> = ({
 const makeStyles = (C: typeof CALM) =>
   StyleSheet.create({
     editFieldCardBordered: {
-      backgroundColor: C.surface,
+      // Neu Card: borderless C.background + neu.raisedSoft (spread at call site)
+      backgroundColor: C.background,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.textPrimary, 0.08),
       paddingHorizontal: SPACING.md + 2,
       paddingVertical: SPACING.sm + 4,
       marginBottom: SPACING.sm + 2,
@@ -296,10 +298,9 @@ const makeStyles = (C: typeof CALM) =>
     },
     // #17 — picker field-card chrome
     pickerFieldCard: {
-      backgroundColor: C.surface,
+      // Neu Card: borderless C.background + neu.raisedSoft (spread at call site)
+      backgroundColor: C.background,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.textPrimary, 0.08),
       paddingHorizontal: SPACING.sm,
       paddingVertical: SPACING.sm,
       marginBottom: SPACING.sm + 2,
@@ -339,14 +340,12 @@ const makeStyles = (C: typeof CALM) =>
       paddingHorizontal: SPACING.lg,
     },
     dateModalCard: {
+      // Onyx centered dialog: borderless C.background + neu.raisedModal (spread at call site)
       width: '100%',
       maxWidth: 380,
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       borderRadius: RADIUS.xl,
-      borderWidth: 1,
-      borderColor: withAlpha(C.textPrimary, 0.08),
       paddingVertical: SPACING.md,
-      ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
     },
     dateModalHeader: {
       flexDirection: 'row',

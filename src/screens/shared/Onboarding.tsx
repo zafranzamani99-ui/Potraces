@@ -9,14 +9,9 @@ import {
   Pressable,
   Animated,
   Easing,
-  LayoutChangeEvent,
   useWindowDimensions,
   ScrollView,
-  Platform,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
-import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import RAnimated, {
   useSharedValue,
   useAnimatedScrollHandler,
@@ -48,11 +43,6 @@ import AvatarPicker from '../../components/common/AvatarPicker';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Liquid-glass gating (same rules as GlassModeToggle / the nav bar): iOS 26 →
-// Apple's genuine system segmented control (real Liquid Glass, text-only);
-// Android / iOS < 26 → an expo-blur glass capsule with a non-glass selection pill.
-const GLASS = isLiquidGlassAvailable();
-const NATIVE_SEGMENTED = Platform.OS === 'ios' && GLASS;
 
 // The wau's flight area on the welcome page. The sky itself is the whole
 // screen (SkyBackdrop); this just bounds where the kite can roam.
@@ -535,36 +525,19 @@ const WelcomePage = React.memo<{
   pagerGesture: ReturnType<typeof Gesture.Native>;
 }>(({ listW, sky, skyDark, styles, t, pagerGesture }) => {
   const setUserName = useSettingsStore((s) => s.setUserName);
-  const setLanguage = useSettingsStore((s) => s.setLanguage);
-  // Name/language live here (not in the pager parent) so typing re-renders
-  // only this page. Both persist on change (FIRSTRUN-H6), so swiping or
-  // skipping past welcome cannot lose them.
+  // Name lives here (not in the pager parent) so typing re-renders only this
+  // page; it persists on change (FIRSTRUN-H6), so swiping or skipping past
+  // welcome cannot lose it. LANGUAGE moved to the header (parent) — as a third
+  // form section it sat below the fold.
   const [name, setName] = useState(() => useSettingsStore.getState().userName);
   const [nameFocused, setNameFocused] = useState(false);
   const [avatarPickerVisible, setAvatarPickerVisible] = useState(false);
-  const [selectedLang, setSelectedLang] = useState<'en' | 'ms'>(() =>
-    useSettingsStore.getState().language === 'ms' ? 'ms' : 'en',
-  );
-
-  // Language segmented control — sliding thumb.
-  const [segW, setSegW] = useState(0);
-  const segAnim = useRef(new Animated.Value(selectedLang === 'ms' ? 1 : 0)).current;
-  useEffect(() => {
-    Animated.spring(segAnim, { toValue: selectedLang === 'ms' ? 1 : 0, friction: 8, tension: 90, useNativeDriver: true }).start();
-  }, [selectedLang, segAnim]);
-  const onSegLayout = useCallback((e: LayoutChangeEvent) => setSegW(e.nativeEvent.layout.width), []);
 
   const handleNameChange = useCallback((next: string) => {
     setName(next);
     // setUserName accepts string; clear via empty string is fine here.
     setUserName(next.trim());
   }, [setUserName]);
-
-  const handleLangChange = useCallback((lang: 'en' | 'ms') => {
-    lightTap();
-    setSelectedLang(lang);
-    setLanguage(lang);
-  }, [setLanguage]);
 
   // Warm, personal greeting — updates live as they type their name.
   const firstName = name.trim().split(/\s+/)[0];
@@ -639,79 +612,9 @@ const WelcomePage = React.memo<{
               <Feather name="chevron-right" size={16} color={sky.sub} />
             </Pressable>
 
-            {/* Language — liquid-glass segmented control. iOS 26 → the genuine
-                system control (real Liquid Glass, text-only); Android / iOS<26 →
-                a glass capsule with a non-glass sliding selection pill. */}
-            <View style={[styles.sectionLabelRow, { marginTop: SPACING.xl }]}>
-              <Feather name="globe" size={13} color={sky.sub} />
-              <Text style={styles.welcomeLabel}>{t.onboarding.language}</Text>
-            </View>
-            {NATIVE_SEGMENTED ? (
-              <SegmentedControl
-                style={styles.langNative}
-                values={['English', 'Bahasa Melayu']}
-                selectedIndex={selectedLang === 'ms' ? 1 : 0}
-                onChange={(e) => handleLangChange(e.nativeEvent.selectedSegmentIndex === 1 ? 'ms' : 'en')}
-                appearance={skyDark ? 'dark' : 'light'}
-                fontStyle={{ color: sky.sub, fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold as any }}
-                activeFontStyle={{ color: sky.accent, fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold as any }}
-              />
-            ) : (
-              <View style={[styles.langCapsule, !GLASS && styles.langCapsuleClip]}>
-                {/* ── The single glass surface ── */}
-                {GLASS ? (
-                  <GlassView
-                    style={[StyleSheet.absoluteFill, styles.langCapsuleShape]}
-                    glassEffectStyle="regular"
-                  />
-                ) : (
-                  <>
-                    <BlurView
-                      style={[StyleSheet.absoluteFill, styles.langCapsuleShape]}
-                      intensity={skyDark ? 30 : 40}
-                      tint={skyDark ? 'dark' : 'light'}
-                      experimentalBlurMethod="dimezisBlurView"
-                    />
-                    <View style={[StyleSheet.absoluteFill, styles.langCapsuleShape, styles.langFallbackTint]} />
-                  </>
-                )}
-                <View style={styles.langTrack} onLayout={onSegLayout}>
-                  {/* Non-glass sliding selection pill (glass-on-glass is Apple's anti-pattern) */}
-                  {segW > 0 && (
-                    <Animated.View
-                      style={[
-                        styles.langPill,
-                        {
-                          width: (segW - 6) / 2,
-                          transform: [
-                            { translateX: segAnim.interpolate({ inputRange: [0, 1], outputRange: [3, 3 + (segW - 6) / 2] }) },
-                          ],
-                        },
-                      ]}
-                    />
-                  )}
-                  <Pressable
-                    style={styles.segItem}
-                    onPress={() => handleLangChange('en')}
-                    accessibilityRole="button"
-                    accessibilityLabel="English"
-                    accessibilityState={{ selected: selectedLang === 'en' }}
-                  >
-                    <Text style={[styles.segText, selectedLang === 'en' && styles.segTextActive]}>English</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.segItem}
-                    onPress={() => handleLangChange('ms')}
-                    accessibilityRole="button"
-                    accessibilityLabel="Bahasa Melayu"
-                    accessibilityState={{ selected: selectedLang === 'ms' }}
-                  >
-                    <Text style={[styles.segText, selectedLang === 'ms' && styles.segTextActive]}>Bahasa Melayu</Text>
-                  </Pressable>
-                </View>
-              </View>
-            )}
-
+            {/* Language used to sit here as a third section — below the fold, so
+                it needed a scroll before the user could read the screen in their
+                own language. It now lives in the header (always visible). */}
           </View>
         </View>
       </KeyboardAwareScrollView>
@@ -881,6 +784,18 @@ const Onboarding: React.FC = () => {
   const setMode = useAppStore((s) => s.setMode);
   const themePreference = useSettingsStore((s) => s.themePreference);
   const setThemePreference = useSettingsStore((s) => s.setThemePreference);
+  // Language lives in the HEADER (next to the day/night switch), not in the
+  // welcome form: as the third form section it sat below the fold, so a user
+  // had to scroll before they could even read the screen in their language.
+  // Chrome-level + always visible = zero scrolling, and it stays reachable on
+  // every page of the tour.
+  const language = useSettingsStore((s) => s.language);
+  const setLanguage = useSettingsStore((s) => s.setLanguage);
+  const handleHeaderLang = useCallback((lang: 'en' | 'ms') => {
+    if (useSettingsStore.getState().language === lang) return;
+    lightTap();
+    setLanguage(lang);
+  }, [setLanguage]);
 
   // Highlight/animate against what's on screen now. If the saved preference is
   // 'system', resolve to the actual light/dark so every control has a state.
@@ -1012,6 +927,28 @@ const Onboarding: React.FC = () => {
           trackH={34}
           thumb={26}
         />
+        {/* Language — compact EN/BM pill, always on screen (see note above). */}
+        <View style={styles.langHeaderPill} accessibilityRole="radiogroup">
+          {(['en', 'ms'] as const).map((lang) => {
+            const on = language === lang;
+            return (
+              <Pressable
+                key={lang}
+                onPress={() => handleHeaderLang(lang)}
+                style={[styles.langHeaderSeg, on && styles.langHeaderSegOn]}
+                hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={lang === 'en' ? 'English' : 'Bahasa Melayu'}
+              >
+                <Text style={[styles.langHeaderText, on && styles.langHeaderTextOn]}>
+                  {lang === 'en' ? 'EN' : 'BM'}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
         {canSkip ? (
           <TouchableOpacity
             onPress={handleSkip}
@@ -1136,6 +1073,29 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
   },
+  // Compact EN/BM pill in the header — small enough to sit between the
+  // day/night switch and skip, tinted from the sky palette so it reads on both
+  // the day and night backdrops.
+  langHeaderPill: {
+    flexDirection: 'row',
+    borderRadius: RADIUS.full,
+    backgroundColor: sky.segTrack,   // same groove as the old segmented control
+    padding: 3,
+    gap: 2,
+  },
+  langHeaderSeg: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+  },
+  langHeaderSegOn: { backgroundColor: sky.accent },
+  langHeaderText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: sky.sub,
+    letterSpacing: 0.4,
+  },
+  langHeaderTextOn: { color: sky.ctaInk },   // contrast-checked on the accent
   skipButton: {
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
@@ -1287,59 +1247,11 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     color: sky.ink,
   },
   // Liquid-glass language toggle. iOS 26 → the genuine system segmented control.
-  langNative: {
-    width: '100%',
-    height: 40,
-    marginTop: 2,
-  },
   // Fallback capsule (Android / iOS<26): a single glass surface (GlassView or
   // BlurView) with a non-glass sliding selection pill on top.
-  langCapsule: {
-    height: 52,
-    borderRadius: 14,
-    position: 'relative',
-    justifyContent: 'center',
-  },
   // Fallback-only: BlurView needs clipping; native GlassView must NOT be masked.
-  langCapsuleClip: { overflow: 'hidden' },
-  langCapsuleShape: { borderRadius: 14 },
-  langFallbackTint: {
-    backgroundColor: withAlpha(sky.cardBg, 0.4),
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha('#FFFFFF', skyDark ? 0.14 : 0.5),
-  },
-  langTrack: {
-    flexDirection: 'row',
-    height: '100%',
-    alignItems: 'center',
-  },
   // Non-glass selection pill — a neutral bubble on the glass (like the system
   // tab bar's selection); the accent lives in the bold active label.
-  langPill: {
-    position: 'absolute',
-    top: 3,
-    left: 0,
-    height: 46,
-    borderRadius: 11,
-    backgroundColor: withAlpha('#FFFFFF', skyDark ? 0.14 : 0.7),
-    borderWidth: 1,
-    borderColor: withAlpha('#FFFFFF', skyDark ? 0.2 : 0.85),
-  },
-  segItem: {
-    flex: 1,
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: sky.sub,
-  },
-  segTextActive: {
-    color: sky.ink,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
 
   // ── Start-choice page ──
   choiceList: {

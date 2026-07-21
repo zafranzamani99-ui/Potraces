@@ -106,6 +106,9 @@ const GlassCard: React.FC<GlassCardProps> = ({
       <BlurView
         intensity={blurIntensity}
         tint={tint}
+        // Android needs the Dimezis method or BlurView renders as a flat translucent
+        // rectangle (no blur) — same prop the other glass surfaces already pass.
+        experimentalBlurMethod="dimezisBlurView"
         style={[
           styles.blurContainer,
           {

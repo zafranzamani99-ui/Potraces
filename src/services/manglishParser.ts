@@ -388,6 +388,31 @@ const I_OWE_HEADER = /^(aku|saya|i|sy)\s*(hutang|owe|owes|owing)/i;
 // Bare debt-section header on its own line: "hutang", "utang", "owe", "debt", "iou"
 const DEBT_SECTION_HEADER = /^(hutang|utang|owe|owes|owing|debt|iou)\s*[:.\-–]?\s*$/i;
 
+// A SPECIFIC named person heads the whole block that follows (every item line below
+// belongs to THIS person — each line's text is the description, not a new person):
+//   "nabil hutang aku" / "nabil hutang" / "nabil owes [me]" → nabil owes ME (they_owe)
+//   "aku hutang nabil" / "hutang nabil" / "i owe nabil"     → I owe nabil (i_owe)
+// Generic subjects (mereka/aku/orang…) are rejected here so they fall through to the
+// generic headers above, where each line names a DIFFERENT person.
+const GENERIC_DEBT_SUBJECTS = new Set([
+  'mereka', 'diorang', 'orang', 'org', 'semua', 'they', 'kawan', 'dia',
+  'customer', 'pelanggan', 'aku', 'saya', 'saye', 'sy', 'i', 'me',
+]);
+const NAMED_THEY_OWE_HEADER = /^([a-z][a-z]{1,20})\s+(?:hutang|utang|owe|owes|owing)(?:\s+(?:aku|saya|sy|saye|me|i))?\s*$/i;
+const NAMED_I_OWE_HEADER = /^(?:aku|saya|sy|saye|i)?\s*(?:hutang|utang|owe|owes|owing)\s+([a-z][a-z]{1,20})\s*$/i;
+
+function matchNamedDebtHeader(line: string): { person: string; direction: 'they_owe' | 'i_owe' } | null {
+  let m = NAMED_THEY_OWE_HEADER.exec(line);
+  if (m && !GENERIC_DEBT_SUBJECTS.has(m[1].trim().toLowerCase())) {
+    return { person: m[1].trim(), direction: 'they_owe' };
+  }
+  m = NAMED_I_OWE_HEADER.exec(line);
+  if (m && !GENERIC_DEBT_SUBJECTS.has(m[1].trim().toLowerCase())) {
+    return { person: m[1].trim(), direction: 'i_owe' };
+  }
+  return null;
+}
+
 // Amount-first line item: "100-faris", "100- zarep", "300-mak(duit raya)"
 const AMOUNT_FIRST = /^\s*(\d+(?:\.\d{1,2})?)\s*[-–]\s*(.+)$/;
 
@@ -539,6 +564,17 @@ export function parseStructuredLines(text: string): StructuredLine[] | null {
     // Skip checkmarked lines (already confirmed) and pure math/balance lines
     if (CHECKMARK.test(line)) continue;
     if (MATH_LINE.test(line)) continue;
+
+    // A SPECIFIC named person heads the whole block ("nabil hutang aku") — scope every
+    // item line below to that ONE person. Checked before the generic headers so a real
+    // name wins; generic subjects (mereka/aku/orang…) fall through to them.
+    const namedHeader = matchNamedDebtHeader(line);
+    if (namedHeader && !allKeywords.includes(namedHeader.person.toLowerCase())) {
+      currentPerson = namedHeader.person;
+      currentDirection = namedHeader.direction;
+      inDebtSection = true; categoryHint = null; sectionLabel = null;
+      continue;
+    }
 
     // Header lines switch the debt context
     if (THEY_OWE_HEADER.test(line)) {

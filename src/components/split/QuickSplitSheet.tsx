@@ -105,6 +105,10 @@ const QuickSplitSheet: React.FC<Props> = ({ visible, total, onClose, onCreated }
           <Text style={styles.subtitle}>{t.debts.subtitle}</Text>
         </View>
       }
+      // Required for any sheet with TextInputs (BottomSheet docs): without it the
+      // keyboard covers the amount/description fields — and on Android there is no
+      // fallback at all, since edge-to-edge makes adjustResize inert.
+      keyboardAvoiding
     >
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {/* Hero total */}

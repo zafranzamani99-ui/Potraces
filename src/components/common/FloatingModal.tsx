@@ -5,9 +5,8 @@ import {
   Pressable,
   StyleSheet,
   useWindowDimensions,
-  Platform,
-  KeyboardAvoidingView,
 } from 'react-native';
+import { KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue,
@@ -176,19 +175,15 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
         style={[styles.sheetContainer, sheetAnimatedStyle]}
         pointerEvents="box-none"
       >
-        {Platform.OS === 'ios' ? (
-          <KeyboardAvoidingView
-            behavior="padding"
-            style={styles.centerWrap}
-            pointerEvents="box-none"
-          >
-            {card}
-          </KeyboardAvoidingView>
-        ) : (
-          <View style={styles.centerWrap} pointerEvents="box-none">
-            {card}
-          </View>
-        )}
+        {/* KAView from react-native-keyboard-controller on BOTH platforms — RN's
+            built-in KeyboardAvoidingView does NOT work inside an Android transparent
+            Modal (docs/BUILDING_CHECKLIST.md), and this build is edge-to-edge, so the
+            activity's adjustResize never resizes that window either. The old
+            iOS-only branch left Android cards centred under the keyboard. Same
+            recipe as BottomSheet. */}
+        <KAView behavior="padding" style={styles.centerWrap} pointerEvents="box-none">
+          {card}
+        </KAView>
       </Reanimated.View>
       <ModalToastHost />
       </GestureHandlerRootView>

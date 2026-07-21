@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """
-Builds "Potraces Auto Log" — the HELPER shortcut called by a user's Apple Pay
-(Wallet) Transaction automation. The automation reads the transaction's
-Amount / Merchant / Card (via the double-tap "Shortcut Input -> property" step),
-joins them with "|" in a Text action, and runs this shortcut with that text.
+Builds "Potraces Auto Log" — run by a user's Apple Pay (Wallet) Transaction
+automation. DUAL-MODE input (2026-07-22 redesign, competitor-parity):
 
-Why a helper (not all-in-automation): the live Transaction object does NOT
-survive being passed into a called shortcut (documented "$0 amount" bug), but
-plain TEXT passes reliably. So the automation extracts the three fields to text;
-this shortcut (which accepts WFStringContentItem input) does the rest — split,
-clean the currency amount, read the saved key, POST to the same quick-log
-endpoint. Runs HEADLESS (an automation can't show interactive prompts), so it
-has none — category is defaulted to 'other'; the user re-categorises in-app.
+  1. TRANSACTION path (the easy setup): the automation's "Do" runs THIS
+     shortcut DIRECTLY (picked under "My Shortcuts" — one tap). When an
+     automation runs a shortcut as its own action, the live transaction IS the
+     shortcut input — the "$0 amount" bug only applies to the nested
+     `Run Shortcut` ACTION hand-off, not to direct-run. The shortcut extracts
+     Amount / Merchant / "Card or Pass" itself via input property
+     aggrandizements, so the user builds NOTHING by hand.
+  2. TEXT path (legacy fallback): old setups pass "amount|merchant|card" built
+     by a Text action + Run Shortcut. Detected by the Amount property having no
+     value (a plain string has no Amount) → split on "|" as before.
 
-Requires the key file `potraces-key.txt` to already exist — i.e. the user set up
-Back Tap first (that flow saves the key). Documented in the setup guide.
+Both paths converge: regex-clean the amount, read the saved key file, POST to
+the quick-log endpoint. HEADLESS (no prompts) — category defaults to 'other';
+the user re-categorises from the confirmation push.
+
+Requires `potraces-key.txt` to exist — the Back Tap first log saves it.
 
 Pipeline (same as the Back Tap builder):
     python3 scripts/build-autolog-shortcut.py
@@ -48,6 +52,12 @@ U_KEY = new_uuid()
 U_RESP = new_uuid()
 U_OK = new_uuid()
 G_RESULT = new_uuid()
+G_MODE = new_uuid()   # transaction-vs-text input discriminator If/Otherwise
+
+# The two paths converge into these variables before the POST.
+VAR_RAWAMT = "PotracesRawAmount"
+VAR_MERCHANT = "PotracesMerchant"
+VAR_CARD = "PotracesCard"
 
 
 def action(identifier, params):
@@ -65,6 +75,29 @@ def token_attachment(value):
 def shortcut_input():
     """Reference to the shortcut's own input (the text the automation passed)."""
     return {"Type": "ExtensionInput"}
+
+
+def input_prop(name):
+    """Shortcut Input → <property> (e.g. the transaction's Amount) — the same
+    thing the old guide had users build by double-tapping "Shortcut Input" in a
+    Text action, serialized directly so the shortcut does it itself."""
+    return {
+        "Type": "ExtensionInput",
+        "Aggrandizements": [
+            {"Type": "WFPropertyVariableAggrandizement", "PropertyName": name},
+        ],
+    }
+
+
+def var_ref(name):
+    return {"Type": "Variable", "VariableName": name}
+
+
+def set_var(name, value):
+    return action("is.workflow.actions.setvariable", {
+        "WFVariableName": name,
+        "WFInput": token_attachment(value),
+    })
 
 
 def token_string(parts):
@@ -99,30 +132,48 @@ def get_item(list_uuid, index):
 
 
 actions = [
-    # The automation passes "amount|merchant|card" as the shortcut input.
+    # ── Input discriminator: does the input have an Amount property? ─────────
+    # A live Wallet transaction does; the legacy "amount|merchant|card" TEXT
+    # does not (a string has no Amount) — so this cleanly splits the two paths.
+    action("is.workflow.actions.conditional", {
+        "GroupingIdentifier": G_MODE,
+        "WFControlFlowMode": 0,
+        "WFCondition": 100,  # "has any value"
+        "WFInput": {"Type": "Variable", "Variable": token_attachment(input_prop("Amount"))},
+    }),
+    #   TRANSACTION path — extract the fields ourselves (user builds nothing).
+    set_var(VAR_RAWAMT, input_prop("Amount")),
+    set_var(VAR_MERCHANT, input_prop("Merchant")),
+    set_var(VAR_CARD, input_prop("Card or Pass")),
+    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_MODE, "WFControlFlowMode": 1}),
+    #   TEXT path (legacy) — the automation passed "amount|merchant|card".
     action("is.workflow.actions.text.split", {
         "UUID": U_SPLIT,
         "WFInput": token_attachment(shortcut_input()),
         "WFTextSeparator": "Custom",
         "WFTextCustomSeparator": "|",
     }),
-    # amount (raw currency string, e.g. "$12.34" / "-RM12,34")
     {**get_item(U_SPLIT, 1), "WFWorkflowActionParameters":
         {**get_item(U_SPLIT, 1)["WFWorkflowActionParameters"], "UUID": U_AMT_RAW}},
-    # Strip everything but digits and separators (drops currency symbol AND the
-    # +/- sign, so the server's amount parser — which rejects negatives — is
-    # always handed a clean positive number).
+    set_var(VAR_RAWAMT, out_ref(U_AMT_RAW, "Item from List")),
+    {**get_item(U_SPLIT, 2), "WFWorkflowActionParameters":
+        {**get_item(U_SPLIT, 2)["WFWorkflowActionParameters"], "UUID": U_MERCH}},
+    set_var(VAR_MERCHANT, out_ref(U_MERCH, "Item from List")),
+    {**get_item(U_SPLIT, 3), "WFWorkflowActionParameters":
+        {**get_item(U_SPLIT, 3)["WFWorkflowActionParameters"], "UUID": U_CARD}},
+    set_var(VAR_CARD, out_ref(U_CARD, "Item from List")),
+    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_MODE, "WFControlFlowMode": 2}),
+
+    # ── Converged: clean the amount ("RM12.34" / "-$12,34" → "12.34") ────────
+    # Strips currency symbol AND the +/- sign, so the server's amount parser —
+    # which rejects negatives — is always handed a clean positive number.
     action("is.workflow.actions.text.replace", {
         "UUID": U_AMT,
-        "WFInput": token_attachment(out_ref(U_AMT_RAW, "Item from List")),
+        "WFInput": token_attachment(var_ref(VAR_RAWAMT)),
         "WFReplaceTextFind": "[^0-9.,]",
         "WFReplaceTextReplace": "",
         "WFReplaceTextRegularExpression": True,
     }),
-    {**get_item(U_SPLIT, 2), "WFWorkflowActionParameters":
-        {**get_item(U_SPLIT, 2)["WFWorkflowActionParameters"], "UUID": U_MERCH}},
-    {**get_item(U_SPLIT, 3), "WFWorkflowActionParameters":
-        {**get_item(U_SPLIT, 3)["WFWorkflowActionParameters"], "UUID": U_CARD}},
     # Key from the file the Back Tap flow saved (no picker, no error if missing).
     action("is.workflow.actions.documentpicker.open", {
         "UUID": U_KEY,
@@ -144,8 +195,8 @@ actions = [
                     dict_item("key", [out_ref(U_KEY, "File")]),
                     dict_item("amount", [out_ref(U_AMT, "Updated Text")]),
                     dict_item("category", ["other"]),
-                    dict_item("wallet", [out_ref(U_CARD, "Item from List")]),
-                    dict_item("note", [out_ref(U_MERCH, "Item from List")]),
+                    dict_item("wallet", [var_ref(VAR_CARD)]),
+                    dict_item("note", [var_ref(VAR_MERCHANT)]),
                 ],
             },
         },

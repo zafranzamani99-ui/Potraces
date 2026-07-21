@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
 import Reanimated, {
   useAnimatedStyle,
   useSharedValue,
@@ -43,6 +44,13 @@ interface BottomSheetProps {
    * root, so a centered dialog covers the whole screen.
    */
   overlay?: React.ReactNode;
+  /**
+   * Sheets containing TextInputs MUST set this — wraps the sheet in
+   * react-native-keyboard-controller's KAView (behavior="padding") so the
+   * keyboard lifts the sheet instead of covering it (RN's built-in KAV does
+   * NOT work inside Android transparent modals — docs/BUILDING_CHECKLIST.md).
+   */
+  keyboardAvoiding?: boolean;
 }
 
 /**
@@ -69,6 +77,7 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
   maxHeightPct = 0.92,
   closeLabel = 'close',
   overlay,
+  keyboardAvoiding = false,
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -137,6 +146,55 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
 
   if (!visible) return null;
 
+  const sheetBody = (
+    <Reanimated.View
+      style={[
+        // keyboardAvoiding mode: the sheet is an IN-FLOW, bottom-justified child
+        // of the KAView (padding can't move an absolutely-positioned view — the
+        // reason the first attempt didn't lift). Default mode keeps the
+        // bottom-anchored absolute container.
+        keyboardAvoiding ? styles.sheetContainerFlow : styles.sheetContainer,
+        styles.gfSheet,
+        { maxHeight: `${Math.round(maxHeightPct * 100)}%`, paddingBottom: Math.max(insets.bottom, SPACING.xl) },
+        sheetAnimStyle,
+      ]}
+    >
+      {/* Drag zone: handle + header — drag-to-dismiss from anywhere up top,
+          not just the handle. Only the scrolling children below are excluded
+          so their own gestures stay intact (matches Goals' detail sheet). */}
+      <GestureDetector gesture={sheetGesture}>
+        <View collapsable={false}>
+          <View style={styles.topRow}>
+            <View style={styles.handle} />
+          </View>
+          {header}
+        </View>
+      </GestureDetector>
+
+      {/* Children manage their own scroll (e.g. a FlatList). flexShrink lets the
+          content area shrink within maxHeight while inner lists scroll. */}
+      <View style={styles.content}>{children}</View>
+
+      {/* Pinned bottom close link — the canonical Goals close button. */}
+      <View style={styles.closeZone}>
+        <Pressable
+          style={styles.closeLink}
+          onPress={close}
+          hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
+          accessibilityRole="button"
+          accessibilityLabel={closeLabel}
+        >
+          {({ pressed }: { pressed: boolean }) => (
+            <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
+              <Feather name="x" size={12} color={C.textMuted} />
+              <Text style={styles.closeLinkText}>{closeLabel}</Text>
+            </View>
+          )}
+        </Pressable>
+      </View>
+    </Reanimated.View>
+  );
+
   return (
     <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={close}>
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -149,48 +207,18 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
             accessibilityLabel="close"
           />
         </Reanimated.View>
-        <Reanimated.View
-          style={[
-            styles.sheetContainer,
-            styles.gfSheet,
-            { maxHeight: `${Math.round(maxHeightPct * 100)}%`, paddingBottom: Math.max(insets.bottom, SPACING.xl) },
-            sheetAnimStyle,
-          ]}
-        >
-          {/* Drag zone: handle + header — drag-to-dismiss from anywhere up top,
-              not just the handle. Only the scrolling children below are excluded
-              so their own gestures stay intact (matches Goals' detail sheet). */}
-          <GestureDetector gesture={sheetGesture}>
-            <View collapsable={false}>
-              <View style={styles.topRow}>
-                <View style={styles.handle} />
-              </View>
-              {header}
+        {keyboardAvoiding ? (
+          // react-native-keyboard-controller's KAView — RN's built-in KAV does
+          // NOT work inside Android transparent modals (docs/BUILDING_CHECKLIST).
+          // box-none so backdrop taps above the sheet still dismiss.
+          <KAView behavior="padding" style={{ flex: 1 }} pointerEvents="box-none">
+            <View style={styles.sheetLiftWrap} pointerEvents="box-none">
+              {sheetBody}
             </View>
-          </GestureDetector>
-
-          {/* Children manage their own scroll (e.g. a FlatList). flexShrink lets the
-              content area shrink within maxHeight while inner lists scroll. */}
-          <View style={styles.content}>{children}</View>
-
-          {/* Pinned bottom close link — the canonical Goals close button. */}
-          <View style={styles.closeZone}>
-            <Pressable
-              style={styles.closeLink}
-              onPress={close}
-              hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
-              accessibilityRole="button"
-              accessibilityLabel={closeLabel}
-            >
-              {({ pressed }: { pressed: boolean }) => (
-                <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
-                  <Feather name="x" size={12} color={C.textMuted} />
-                  <Text style={styles.closeLinkText}>{closeLabel}</Text>
-                </View>
-              )}
-            </Pressable>
-          </View>
-        </Reanimated.View>
+          </KAView>
+        ) : (
+          sheetBody
+        )}
         {/* Overlay (e.g. confirm dialog) — rendered LAST so it sits above the sheet,
             and inside THIS Modal window (a sibling <Modal> would present behind on iOS). */}
         {overlay}
@@ -219,6 +247,17 @@ const makeStyles = (C: typeof CALM) =>
     // Flat sheet — no border, no shadow — matching Goals' real gfSheet.
     // bg + top radii live in sheetContainer above.
     gfSheet: {},
+    // keyboardAvoiding mode: in-flow variant of sheetContainer (same look, no
+    // absolute anchor) + the wrap that bottom-justifies it inside the KAView.
+    sheetContainerFlow: {
+      backgroundColor: C.background,
+      borderTopLeftRadius: RADIUS['2xl'],
+      borderTopRightRadius: RADIUS['2xl'],
+    },
+    sheetLiftWrap: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
     topRow: {
       flexDirection: 'row',
       alignItems: 'center',

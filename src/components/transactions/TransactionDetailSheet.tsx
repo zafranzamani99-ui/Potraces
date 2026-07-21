@@ -21,12 +21,13 @@ import Reanimated, {
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
 import CategoryIcon from '../common/CategoryIcon';
 import WalletLogo from '../common/WalletLogo';
 import ModalToastHost from '../common/ModalToastHost';
+import { useNeu } from '../common/neu';
 import { Transaction, CategoryOption, Wallet } from '../../types';
 
 const SPRING_CFG = { damping: 22, stiffness: 220, mass: 0.5 };
@@ -48,9 +49,10 @@ const TransactionDetailSheet: React.FC<TransactionDetailSheetProps> = ({
   visible, onClose, transaction, category, wallet, currency, onEdit,
 }) => {
   const C = useCalm();
-  const isDark = useIsDark();
   const t = useT();
-  const styles = useMemo(() => makeStyles(C, isDark), [C, isDark]);
+  const neu = useNeu(undefined, { faintDark: true });
+  const neuFull = useNeu(); // full neu for the standalone header icon (Neu Key rule)
+  const styles = useMemo(() => makeStyles(C), [C]);
   const closingRef = useRef(false);
   const pendingEditRef = useRef<Transaction | null>(null);
   const { height: SCREEN_H } = useWindowDimensions();
@@ -142,7 +144,7 @@ const TransactionDetailSheet: React.FC<TransactionDetailSheetProps> = ({
               </View>
               {/* Header */}
               <View style={styles.headerZone}>
-                <View style={[styles.headerIconWrap, { backgroundColor: withAlpha(tintColor, 0.12) }]}>
+                <View style={[styles.headerIconWrap, neuFull.raised, { backgroundColor: withAlpha(tintColor, 0.12) }]}>
                   <CategoryIcon
                     icon={category?.icon || (isExpense ? 'arrow-up-right' : 'arrow-down-left')}
                     size={24}
@@ -164,7 +166,7 @@ const TransactionDetailSheet: React.FC<TransactionDetailSheetProps> = ({
             contentContainerStyle={styles.scrollContent}
           >
             {/* Detail rows — each led by its own icon (bank logo / category / calendar / type) */}
-            <View style={styles.infoCard}>
+            <View style={[styles.infoCard, neu.raisedSoft]}>
               <View style={styles.detailRow}>
                 <View style={styles.rowIcon}>
                   <CategoryIcon
@@ -224,7 +226,7 @@ const TransactionDetailSheet: React.FC<TransactionDetailSheetProps> = ({
             )}
 
             {/* Edit action — delete lives inside the edit sheet, not here */}
-            <TouchableOpacity style={styles.editBtn} onPress={handleEdit} activeOpacity={0.7}>
+            <TouchableOpacity style={[styles.editBtn, neu.raised]} onPress={handleEdit} activeOpacity={0.85}>
               <Feather name="edit-2" size={16} color={C.textSecondary} />
               <Text style={styles.editBtnText}>{t.common.edit.toLowerCase()}</Text>
             </TouchableOpacity>
@@ -254,7 +256,7 @@ const TransactionDetailSheet: React.FC<TransactionDetailSheetProps> = ({
   );
 };
 
-const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -264,7 +266,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '88%',
@@ -316,10 +318,9 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     paddingBottom: SPACING.lg,
   },
   infoCard: {
-    backgroundColor: withAlpha(C.textPrimary, isDark ? 0.06 : 0.03),
+    // Neu Card: borderless C.background + neu.raisedSoft (spread at call site). No outline.
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md,
     marginBottom: SPACING.md,
   },
@@ -369,15 +370,14 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     color: C.bronze,
   },
   editBtn: {
+    // Onyx rule 3 / Neu Pills: faintDark neu pill (secondary action). No outline.
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.sm + 4,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
-    backgroundColor: withAlpha(C.textPrimary, isDark ? 0.06 : 0.03),
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
   },
   editBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -388,9 +388,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
   closeZone: {
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(C.textPrimary, 0.06),
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   closeLink: {
     alignSelf: 'center',

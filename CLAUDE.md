@@ -1,5 +1,7 @@
 # Potraces — project guide for Claude
 
+> **Neu by default (LOCKED — 2026-07-21).** Every screen we build from now on ships in the neu design system, not the old flat/bordered style. That means: **Onyx** dark surfaces + the **Neu family** — **Neu Card** (raised card/row surfaces), **Neu Key** (icon buttons), **Neu Select** (primary CTAs), **Neu Pills** (selectors) — and the **Neu Card seam rule** (a neu shadow and `overflow:'hidden'` NEVER share a view; split them). New screens start from these recipes; don't hand-roll a flat card, a bordered container, or a raw shadow.
+
 ## "Onyx" — dark-mode surface standard (LOCKED)
 
 **Onyx** is the app's dark-mode surface look. When the user says **"apply Onyx to `<screen>`"**, run this checklist in dark mode. It's the Goals/Debt style (all sheets/modals + shared pickers already follow it; Wallet, Bills, Debt done 2026-07-15).
@@ -21,7 +23,7 @@
 
 **Neu kit:** `src/components/common/neu.tsx` — `useNeu(baseColor?, { faintDark? })`. Palette: `src/constants/index.ts` (`CALM`, `CALM_DARK`). Never hand-roll shadows; always go through the kit.
 
-**Done:** Goals, Bills (SubscriptionList/CommitmentForm), full Debt cluster, all Wallet modals + WalletManagement, shared pickers (Contact/Category/Wallet/Calendar/QuickAdd), `BottomSheet`/`FloatingModal`, Reports (full redesign 2026-07-18).
+**Done:** Goals, Bills (SubscriptionList/CommitmentForm), full Debt cluster, all Wallet modals + WalletManagement, shared pickers (Contact/Category/Wallet/Calendar/QuickAdd), `BottomSheet`/`FloatingModal`, Reports (full redesign 2026-07-18), full Collectz cluster (Home/Detail/Create/Join + MapPreviewCard, 2026-07-20).
 **Not yet Onyx'd (apply on request):** BudgetPlanning, SavingsTracker/SavingsSheets, AccountOverview, FinancialPulse, MoneyChat, Import screens, Receipt modals, seller/* screens.
 
 ## "Neu Key" — neumorphic icon button (LOCKED)
@@ -42,6 +44,8 @@
 **Reference:** personal QR button (`greetingRow` in `src/screens/personal/Dashboard.tsx`); seller QR + shop-link buttons in `src/screens/seller/Dashboard.tsx`.
 
 Note: Neu Key uses FULL neu for standalone icon buttons — a deliberate exception to Onyx rule 3 (which uses `faintDark` for pills/chips), so the button stays visible and tactile in dark.
+
+**Standalone / focal icons LIFT, never sink (LOCKED).** A hero/header icon — e.g. the big category icon at the top of a detail sheet — uses **full-neu `neuFull.raised`** (`const neuFull = useNeu()`) so it lifts off the surface, keeping its tint via a trailing `{ backgroundColor: withAlpha(tint, 0.12) }`. **Do NOT put `neu.well` (inset) on a focal icon** — it reads as *sunken*, which the owner rejected (2026-07-21, `TransactionDetailSheet`). `neu.well` is ONLY for a small recessed icon **slot inside a row/card** (the debossed category well in `TransactionItem` — a deliberate recess, not a focal element).
 
 ## "Neu Select" — primary CTA button (LOCKED)
 
@@ -82,6 +86,29 @@ const neu = useNeu(undefined, { faintDark: true });
 
 Neu family recap: **Neu Key** = icon button, presses IN. **Neu Select** = primary olive CTA, shadow stays + scales down. **Neu Pills** = faintDark selector pills, raised idle / olive-filled when selected.
 
+## "Neu Card" — raised card / row surface (LOCKED)
+
+**Neu Card** is the app's raised soft-UI container — every list row, hero/section card, and dialog/picker card that holds content sits on one. It's the surface half of "Neu by default": new screens build their cards/rows this way instead of a flat or bordered box.
+
+**Recipe:**
+```tsx
+const neu = useNeu(undefined, { faintDark: true });   // faintDark per Onyx rule 3
+<View style={[styles.card, neu.raisedSoft]}>…</View>
+// card: { borderRadius: RADIUS.lg, backgroundColor: C.background, padding: SPACING.md }
+```
+- **Surface = `C.background` base + `neu.raisedSoft`** (large cards/rows) or `neu.raised` (small tiles). Separation comes from the neu shadow — **no border outline** (Onyx rule 2). Never hand-roll a shadow; always go through the kit.
+
+**THE seam rule (LOCKED — this is the whole reason the standard has a name):** a neu shadow and **`overflow:'hidden'` must NEVER live on the same view.** On device, a clip on the shadowed view shears the `boxShadow` into a hard vertical line down both sides — the owner calls this the **"neu onyx vertical error."** If a card needs a rounded clip (full-bleed image, edge-to-edge divider rows, a map), **SPLIT it:**
+```tsx
+<View style={[styles.card, neu.raisedSoft]}>   // OUTER: borderRadius + shadow, NO overflow
+  <View style={styles.clip}>…</View>            // INNER: borderRadius + overflow:'hidden' + content
+</View>
+// card: { borderRadius: RADIUS.lg }    clip: { borderRadius: RADIUS.lg, overflow: 'hidden' }
+```
+If the shadowed card clips nothing, no wrapper is needed — the shadow renders fine on its own. **Never** "fix" a seam with a flat grey fill (rejected as "not onyx") or by swapping shadow variants — always split. The sim usually hides the seam; the device makes it obvious, so audit any card that has both a neu shadow and `overflow:'hidden'`.
+
+**References (copy these):** `TransactionItem` (`rowShadow` outer + `card` inner — the canonical row, the owner's "TransactionList has it correct"), `MapPreviewCard` (`card` + `clip`), `CollectzJoin` roster (`listCard` + `listClip`, 2026-07-21).
+
 ## "Note Fields" — multi-line note/description inputs (LOCKED)
 
 Any **note / description** input is **multi-line** and carries the **gold keyboard-done FAB**. When the user says a note/description field is wrong, this is the rule to apply.
@@ -95,3 +122,33 @@ Any **note / description** input is **multi-line** and carries the **gold keyboa
 **The FAB:** a `C.gold` 46×46 circle with a white `check` icon that floats just above the keyboard and dismisses it on tap. It only appears while a multiline field is focused (numeric keypads have their own native Done key). Extracted 2026-07-15 from the inline versions in `CommitmentForm` + `DebtTracking` into the shared `KeyboardDoneFab` — new note fields use the component, and those two can adopt it later.
 
 **Reference:** `CommitmentForm.tsx` (note field wiring) and `TransferModal.tsx` (uses the shared `KeyboardDoneFab`).
+
+## "Scroll screens" — page scroller = gesture-handler ScrollView (2026-07-21)
+
+**`DebtTracking.tsx` is the reference for a page that scrolls reliably.** Its page scroller is **`ScrollView` imported from `react-native-gesture-handler`** — NOT from `react-native`. The app is wrapped in `GestureHandlerRootView` (`App.tsx`), and RNGH's `ScrollView` registers as a native gesture handler so it arbitrates properly. A plain RN `ScrollView` — and `KeyboardAwareScrollView`, which is built on one — can **intermittently lose the pan**: the "mostly can't scroll, sometimes can" bug.
+
+**Recipe (copy Debt):**
+```tsx
+import { ScrollView } from 'react-native-gesture-handler';
+import { KeyboardToolbar } from 'react-native-keyboard-controller';
+
+<View style={styles.container /* flex:1 */}>
+  <ScrollView
+    style={styles.scrollView /* flex:1 */}
+    contentContainerStyle={styles.scrollContent /* padding + paddingBottom ~80 */}
+    showsVerticalScrollIndicator={false}
+    keyboardShouldPersistTaps="handled"
+  >
+    …
+  </ScrollView>
+  <KeyboardToolbar />   {/* screen-level "Done" bar for single-line inputs */}
+</View>
+```
+
+**Which scroller when:**
+- **Page scroller** → RNGH `ScrollView` + `KeyboardToolbar` (Debt; `CollectzJoin` 2026-07-21).
+- **Modals / bottom-sheets, and input-heavy forms** → `KeyboardAwareScrollView` (`react-native-keyboard-controller`) — it follows the caret so a tapped input never hides behind the keyboard. Debt uses it in all 6 of its sheets; `CollectzCreate` uses it as a form page. See [[form-input-keyboard-aware-scroll]].
+- **Inside a `<Modal>`** a plain `ScrollView` with `flexGrow:0, flexShrink:1` is fine (CollectzDetail's proof/request scrollers).
+- Multi-line note inputs still add the `KeyboardDoneFab` (see **Note Fields**).
+
+**If a page won't scroll reliably, switch its scroller to the RNGH one first** — that's the fix that stuck.

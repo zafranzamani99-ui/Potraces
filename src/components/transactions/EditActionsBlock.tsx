@@ -11,6 +11,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { lightTap } from '../../services/haptics';
+import { useNeu } from '../common/neu';
 import type { Translations } from '../../i18n/en';
 
 interface EditActionsBlockProps {
@@ -96,6 +97,7 @@ const SaveButton: React.FC<SaveButtonProps> = ({
   onInvalidSave,
 }) => {
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(); // Neu Select — full neu.raisedSoft sits under the olive fill
 
   // Press scale (#7) — 1.0 → 0.97 on press-in, spring back on press-out.
   const scale = useSharedValue(1);
@@ -129,6 +131,7 @@ const SaveButton: React.FC<SaveButtonProps> = ({
     <Reanimated.View style={animatedStyle}>
       <Pressable
         style={[
+          neu.raisedSoft,
           styles.editSheetSaveBtn,
           (!canSave || isSaving) && styles.editSheetSaveBtnDisabled,
         ]}
@@ -144,7 +147,7 @@ const SaveButton: React.FC<SaveButtonProps> = ({
         accessibilityState={{ disabled: !canSave || isSaving, busy: isSaving }}
       >
         {isSaving ? (
-          <ActivityIndicator size="small" color={C.surface} />
+          <ActivityIndicator size="small" color={C.onAccent} />
         ) : (
           <Text
             style={[
@@ -189,7 +192,7 @@ const makeStyles = (C: typeof CALM) =>
     editSheetSaveBtnText: {
       fontSize: TYPOGRAPHY.size.base,
       fontWeight: TYPOGRAPHY.weight.semibold,
-      color: C.surface,
+      color: C.onAccent, // Neu Select — white label on olive
       letterSpacing: 0.3,
     },
     editSheetSaveBtnTextDisabled: {

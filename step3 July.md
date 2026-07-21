@@ -1,6 +1,6 @@
 # Potraces — Step 3 (July 2026): Monetization → Beta
 
-_Follows `step2 July.md` Track D. The 4-tier monetization layer (Phases 1–6) is **built**; billing is **dormant** (local unlock until RevenueCat keys/products exist). Everything is **uncommitted** in a mixed WIP tree. This doc = the two flagged items (both resolved) + what's genuinely left before beta. Last updated 2026-07-18._
+_Follows `step2 July.md` Track D. The 4-tier monetization layer (Phases 1–6) is **built**; billing is **dormant** (local unlock until RevenueCat keys/products exist). Everything is **uncommitted** in a mixed WIP tree. This doc = the two flagged items (both resolved) + what's genuinely left before beta. Last updated 2026-07-22 (parked-items section added)._
 
 ---
 
@@ -52,6 +52,11 @@ These are now in effect as of the Phase 1–3 work (intended, and safe):
 ---
 
 ## 🔴 Multi-device / auto-sync / cloud-backup-toggle audit (2026-07-18)
+
+> **STATUS UPDATE 2026-07-22 — most items FIXED (5-agent fix wave, migration `20260722100000` APPLIED to live DB):**
+> T1/T2 ✅ (verified earlier) · **M1 ✅** cloud soft-delete on all 12 tables + anti-resurrection merge · **M2 ✅** `personal_budget_profile` synced (LWW) · **A2 ✅** transient probe errors no longer poison the schema cache · wallets now field-merge (`mergeWallet`) · sync merge engine now has a 75-assertion test suite (`scripts/test-sync-merge.ts`, in `npm test`).
+> Still open: A1 (client-clock LWW — architectural, needs server time), A3 (poison-row quarantine, low), and the test agent's note that same-id conflicts within the 2s skew window keep each device's local copy (deterministic per device, converges on next edit).
+
 
 _Full-codebase audit — 7 parallel auditors, **every finding adversarially re-verified** against the actual code (false positives dropped). Personal cloud sync currently ships **gated OFF** (`personalSyncEnabled` default `false`), so none of these is a live incident today — but this is the **go/no-go review for turning multi-device sync + paid cloud backup ON**. Severities are the verifier's corrected values. Each item is grounded in `file:line`._
 _This section **extends/corrects** §2 above ("Cloud sync is now paid"): the manual toggle **is** gated, but the sign-in path that nearly every user takes is **not** — see **T1**._
@@ -116,3 +121,21 @@ _These are money-logic-connectivity + Echo-coverage findings from the same audit
 - **Goal contributions counted as spending (🔴 HIGH):** `insights.ts:135` — goal contributions are booked as `category:'savings'` expenses and aren't excluded from cash-flow/spend, so Reports + Pulse treat saving as spending, contradicting the Goals screen.
 - **Note-driven debt over-payment (🟠 MED):** `useIntentEngine.ts:287` caps the recorded payment but deducts the wallet by the full amount.
 - **Echo coverage (🟠 MED):** Goals' Echo is **not** tier-gated (monetization bypass, `Goals.tsx:2465`); Debt + TransactionsList have no per-screen Echo.
+
+---
+
+## 🅿️ 2026-07-22 — parked from monetization audit
+
+_Deliberately deferred items from the 2026-07-22 monetization audit. None blocks beta; each is a scoped follow-up with its tier decision already made where noted._
+
+- **Business AI gates (unbuilt):** business-report **Q&A**, **LogIncome parse**, and **product bulk-add via TEXT** gate at **Basic RM7.99**; **WhatsApp order parse** and **product bulk-add via PHOTO** gate at **Pro RM14**. Decided, not yet wired.
+- **Spending Mirror display card (Dashboard):** the card was never built, so the daily `generateSpendingMirror()` call in `src/screens/personal/Dashboard.tsx` was **paused 2026-07-22** (commented out — it burned tokens on text nobody saw). When the card ships, **re-enable that call together with it**.
+- **Silent voice-minutes metering:** meter STT usage at **free 30 / basic 120 / pro 300 / premium 600 min/month**, **cloud path only**, completely **invisible to users** (no UI, no error copy changes — a server-side fair-use ceiling).
+- **Playbook v1.2:** plan words + chat are **already quota-counted**; remaining piece is the **active-plan cap of 2, universal across tiers**.
+- **Google Docs sync:** advertised on the wall, **unbuilt** — build or pull the copy before billing goes live.
+- **Statement/CSV import tier caps:** free cap **5→4 DONE server-side** (`supabase/functions/parse-statement/index.ts` `MONTHLY_LIMIT`, 2026-07-22); the paid ladder **25 / 100 / 300** (Basic/Pro/Premium) is **unbuilt** — the edge function knows only the flat free cap.
+- **Seller perks:** badge removal, templates, analytics — currently **paywall copy only**, nothing gated/built behind them.
+- **Cancel subscription → Apple manage-subscriptions:** the in-app Cancel must **deep-link to Apple's manage-subscriptions page** before billing goes live (App Store subscriptions can't be cancelled by a local flag; pairs with TODO #3 / T2).
+- **Group-4 Echo upgrades:** Budget **Echo plan**, Bills **quick-fill**, Goals **tips**, Savings **coaching** — ship as-is now, upgrade to **real AI later**.
+- **Echo tool-calling (architecture upgrade):** today Echo only knows what we stuff into each request (context-stuffing); the future upgrade is Gemini function-calling so Echo can QUERY data on demand ("give me March's transactions") instead of receiving everything up front — fewer wasted tokens, but each data request becomes an extra round-trip and needs careful guardrails. Revisit when chat volume makes context cost the top line item.
+- **Raise the ai-proxy monthly token ceiling per-tier at billing go-live:** `supabase/functions/ai-proxy/index.ts` caps EVERY identity at a flat 1.5M tokens/month. With the tiered chat context shipped 2026-07-22 (memory window 15/30/45/90 bubbles + txn detail 30/100/500), a heavy RM25 chatter can hit 1.5M before their 1500-call quota. Make the ceiling tier-aware (e.g. 1.5M/3M/6M/10M) when billing is live — the proxy will need to learn the caller's tier.

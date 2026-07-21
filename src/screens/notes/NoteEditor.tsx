@@ -460,10 +460,32 @@ const NoteEditor: React.FC = () => {
   const handleExtract = useCallback(() => {
     lightTap();
     const settings = useSettingsStore.getState();
-    // First extraction that will actually reach the cloud AI → one-time consent
-    // before any note text leaves the device (mirrors the voice-cloud consent).
-    const willUseCloud = isGeminiAvailable() && usePremiumStore.getState().canUseAI();
-    if (willUseCloud && !settings.notesAiNoticeSeen) {
+    const premium = usePremiumStore.getState();
+    const geminiUp = isGeminiAvailable();
+    const hasCredits = premium.canUseAI();
+    const willUseCloud = geminiUp && hasCredits;
+
+    if (!willUseCloud) {
+      // No cloud read — out of monthly AI credits, or offline. Tell the user Echo will
+      // use the (less accurate) offline reader and let them confirm once, then remember.
+      if (!settings.notesOfflineNoticeSeen) {
+        Alert.alert(
+          t.notes.offlineReaderTitle,
+          hasCredits ? t.notes.offlineReaderBodyNoNet : t.notes.offlineReaderBody,
+          [
+            { text: t.common.cancel, style: 'cancel' },
+            { text: t.notes.offlineReaderCta, onPress: () => { settings.setNotesOfflineNoticeSeen(true); runExtract(); } },
+          ],
+        );
+        return;
+      }
+      runExtract();
+      return;
+    }
+
+    // Cloud read (spends one AI credit) → one-time consent before any note text leaves
+    // the device (mirrors the voice-cloud consent).
+    if (!settings.notesAiNoticeSeen) {
       Alert.alert(t.notes.aiConsentTitle, t.notes.aiConsentBody, [
         { text: t.common.cancel, style: 'cancel' },
         { text: t.notes.aiConsentCta, onPress: () => { settings.setNotesAiNoticeSeen(true); runExtract(); } },
@@ -475,9 +497,12 @@ const NoteEditor: React.FC = () => {
 
   const handleClearExtractions = useCallback(() => {
     lightTap();
-    useNotesStore.getState().clearPendingExtractions(pageId);
-    setShowExtractModal(false);
-  }, [pageId]);
+    // "not right?" → smart re-extract, not just a clear. retry() feeds the rejected
+    // answer back and re-runs Echo in RETRY mode (stronger model + more reasoning) so
+    // it reconsiders. The modal closes, the extract loader shows, and it auto-reopens
+    // with the reconsidered result.
+    retry();
+  }, [retry]);
 
   const handleEdit = useCallback((id: string) => {
     const ext = pendingExtractions.find((e) => e.id === id);

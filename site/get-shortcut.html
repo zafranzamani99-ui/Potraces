@@ -19,30 +19,30 @@
 <meta name="theme-color" content="#FEFDFB">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co">
 
-<title>Add Potraces Quick Log</title>
-<meta name="description" content="Download the Potraces Quick Log Shortcut and set it up on your iPhone — double-tap the back of your phone to log an expense in seconds.">
+<title>Add Potraces Quick Log by hand</title>
+<meta name="description" content="The manual way to add the Potraces Quick Log shortcut to your iPhone. Double tap the back of your phone to log an expense in seconds.">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://jejakbaki.my/shortcut">
 
 <!-- Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Potraces">
-<meta property="og:title" content="Add Potraces Quick Log">
-<meta property="og:description" content="Download the Potraces Quick Log Shortcut and set it up on your iPhone — double-tap the back of your phone to log an expense in seconds.">
+<meta property="og:title" content="Add Potraces Quick Log by hand">
+<meta property="og:description" content="The manual way to add the Potraces Quick Log shortcut to your iPhone. Double tap the back of your phone to log an expense in seconds.">
 <meta property="og:url" content="https://jejakbaki.my/shortcut">
 <meta property="og:image" content="https://jejakbaki.my/assets/og-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+<meta property="og:image:alt" content="Potraces, calm money tracking for irregular earners in Malaysia">
 <meta property="og:locale" content="en_MY">
 <meta property="og:locale:alternate" content="ms_MY">
 
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Add Potraces Quick Log">
-<meta name="twitter:description" content="Download the Potraces Quick Log Shortcut and set it up on your iPhone in under a minute.">
+<meta name="twitter:title" content="Add Potraces Quick Log by hand">
+<meta name="twitter:description" content="Add the Potraces Quick Log shortcut to your iPhone by hand, step by step.">
 <meta name="twitter:image" content="https://jejakbaki.my/assets/og-card.png">
-<meta name="twitter:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+<meta name="twitter:image:alt" content="Potraces, calm money tracking for irregular earners in Malaysia">
 
 <!-- Favicons -->
 <link rel="icon" href="/assets/icon.png" type="image/png">
@@ -80,12 +80,18 @@
 .gs-num{flex-shrink:0;width:38px;height:38px;border-radius:var(--radius-pill);background:var(--sage-pale);color:var(--sage-text);
   font-family:var(--font-mono);font-size:var(--text-sm);font-weight:var(--fw-medium);
   display:flex;align-items:center;justify-content:center}
+.gs-step-body{min-width:0;flex:1}
 .gs-step h3{font-size:var(--text-md);margin-bottom:6px}
-.gs-step p{color:var(--ink-65);font-size:.95rem;line-height:var(--leading-relaxed)}
+.gs-step p{color:var(--ink-65);font-size:.95rem;line-height:var(--leading-relaxed);max-width:min(58ch,100%)}
 
 /* ── TROUBLESHOOTING — hairline accordion (kit .faq-2col) ── */
 .gs-q{display:flex;align-items:baseline;gap:12px;min-width:0}
 .gs-q .mono-caps{color:var(--sage-text);flex-shrink:0}
+/* ── STEP SCREENSHOT — real capture under each instruction ── */
+.gs-shot{display:block;width:172px;max-width:100%;margin-top:14px;border:1px solid var(--ink-12);border-radius:14px;overflow:hidden;line-height:0}
+.gs-shot img{display:block;width:100%;height:auto}
+.gs-shot:hover{border-color:var(--ink-45)}
+@media (min-width:720px){.gs-shot{width:190px}}
 .gs-foot{font-size:.82rem;color:var(--ink-45);line-height:1.5;margin-top:var(--space-2xl)}
 </style>
 </head>
@@ -148,7 +154,7 @@
       <span class="accent-word" data-en="Shortcut" data-bm="Shortcut">Shortcut</span>
     </h1>
     <p class="lead">
-      <span data-en="Tap the button below — Safari downloads it, then you add it to your iPhone." data-bm="Tap butang bawah ni — Safari akan download, lepas tu kau tambah ke iPhone kau." class="block">Tap the button below — Safari downloads it, then you add it to your iPhone.</span>
+      <span data-en="This is the manual way. The easy way is the one tap button inside the Potraces app. If that did not work, add it by hand here." data-bm="Ni cara manual. Cara senang ialah butang satu tap dalam app Potraces. Kalau tu tak jadi, tambah sendiri kat sini." class="block">This is the manual way. The easy way is the one tap button inside the Potraces app. If that did not work, add it by hand here.</span>
     </p>
     <a class="btn btn-pill--ink btn-lg" href="/dl/quick-log" data-en="Add the Shortcut" data-bm="Tambah Shortcut">Add the Shortcut</a>
     <p class="gs-meta" data-en="24 KB · works on iPhone with iOS 16 or newer" data-bm="24 KB · boleh guna kat iPhone dengan iOS 16 ke atas">24 KB · works on iPhone with iOS 16 or newer</p>
@@ -161,42 +167,53 @@
     <p class="gs-seclbl mono-caps reveal">
       <span data-en="Sect. 01" data-bm="Bhg. 01">Sect. 01</span>
       <span aria-hidden="true">·</span>
-      <span data-en="Set it up" data-bm="Setup ia">Set it up</span>
+      <span data-en="Set it up by hand" data-bm="Setup sendiri">Set it up by hand</span>
     </p>
     <div class="section-head reveal">
       <h2>
-        <span data-en="Four steps, once." data-bm="Empat langkah, sekali je." class="block">Four steps, once.</span>
+        <span data-en="Five steps, once." data-bm="Lima langkah, sekali je." class="block">Five steps, once.</span>
       </h2>
     </div>
     <div class="panel panel--sage reveal">
-      <p class="gs-prep"><span class="block" data-en="First, in the Potraces app: Settings → Money Setup → Quick Log → tap Generate my key, then Copy key. Then come back here." data-bm="Mula-mula, dalam app Potraces: Settings → Tetapan Wang → Quick Log → tap Generate my key, lepas tu Copy key. Lepas tu balik sini.">First, in the Potraces app: Settings → Money Setup → Quick Log → tap Generate my key, then Copy key. Then come back here.</span></p>
+      <p class="gs-prep"><span class="block" data-en="Open the Potraces app first: Settings → Money Setup → Quick Log → tap 'Set up in one tap'. That is what makes your secure key. A share sheet opens, so tap 'Shortcuts', then 'Add Shortcut'. If the download did not open by itself, come back here and do the five steps below. A free account is all you need, and there is nothing to copy." data-bm="Buka app Potraces dulu: Tetapan → Tetapan Wang → Log Pantas → tap 'Sedia dalam satu ketukan'. Itu yang buat key selamat kau. Helaian kongsi akan terbuka, jadi tap 'Shortcuts', lepas tu 'Add Shortcut'. Kalau download tak terbuka sendiri, balik sini dan buat lima langkah bawah ni. Akaun percuma dah cukup, dan tak ada apa nak copy.">Open the Potraces app first: Settings → Money Setup → Quick Log → tap 'Set up in one tap'. That is what makes your secure key. A share sheet opens, so tap 'Shortcuts', then 'Add Shortcut'. If the download did not open by itself, come back here and do the five steps below. A free account is all you need, and there is nothing to copy.</span></p>
       <div class="gs-steps">
         <article class="card gs-step reveal" style="--d:0ms">
           <span class="gs-num" aria-hidden="true">1</span>
           <div class="gs-step-body">
-            <h3 data-en="Tap 'Add the Shortcut'" data-bm="Tap 'Tambah Shortcut'">Tap 'Add the Shortcut'</h3>
-            <p data-en="Safari downloads Potraces Quick Log to your iPhone." data-bm="Safari akan download Potraces Quick Log ke iPhone kau.">Safari downloads Potraces Quick Log to your iPhone.</p>
+            <h3 data-en="Add the Shortcut" data-bm="Tambah Shortcut tu">Add the Shortcut</h3>
+            <p data-en="Tap the button above. Safari downloads it. Tap the download button at the top right of Safari, tap the file, then tap 'Add Shortcut'." data-bm="Tap butang atas tu. Safari akan download. Tap butang download kat atas kanan Safari, tap file tu, lepas tu tap 'Add Shortcut'.">Tap the button above. Safari downloads it. Tap the download button at the top right of Safari, tap the file, then tap 'Add Shortcut'.</p>
+            <a class="gs-shot" href="/assets/setup/bt1-add.jpg" target="_blank" rel="noopener" data-aria-en="The Add Shortcut screen for Potraces Quick Log" data-aria-bm="Skrin Add Shortcut untuk Potraces Quick Log"><img src="/assets/setup/bt1-add.jpg" width="590" height="1280" loading="lazy" decoding="async" alt="The Add Shortcut screen for Potraces Quick Log"></a>
           </div>
         </article>
         <article class="card gs-step reveal" style="--d:70ms">
           <span class="gs-num" aria-hidden="true">2</span>
           <div class="gs-step-body">
-            <h3 data-en="Open the download" data-bm="Buka download tu">Open the download</h3>
-            <p data-en="Tap the ↓ at the top-right of Safari, tap the file, then tap 'Add Shortcut'." data-bm="Tap ikon ↓ kat atas-kanan Safari, tap file tu, lepas tu tap 'Add Shortcut'.">Tap the ↓ at the top-right of Safari, tap the file, then tap 'Add Shortcut'.</p>
+            <h3 data-en="Open Settings, then Touch" data-bm="Buka Settings, lepas tu Touch">Open Settings, then Touch</h3>
+            <p data-en="In iPhone Settings tap 'Accessibility', scroll down to Physical and Motor, then tap 'Touch'." data-bm="Dalam Settings iPhone tap 'Accessibility', skrol ke Physical and Motor, lepas tu tap 'Touch'.">In iPhone Settings tap 'Accessibility', scroll down to Physical and Motor, then tap 'Touch'.</p>
+            <a class="gs-shot" href="/assets/setup/bt2-touch.jpg" target="_blank" rel="noopener" data-aria-en="The Touch row inside iPhone Accessibility settings" data-aria-bm="Baris Touch dalam tetapan Accessibility iPhone"><img src="/assets/setup/bt2-touch.jpg" width="590" height="1280" loading="lazy" decoding="async" alt="The Touch row inside iPhone Accessibility settings"></a>
           </div>
         </article>
         <article class="card gs-step reveal" style="--d:140ms">
           <span class="gs-num" aria-hidden="true">3</span>
           <div class="gs-step-body">
-            <h3 data-en="Run it once" data-bm="Run sekali">Run it once</h3>
-            <p data-en="Open the Shortcuts app and tap the Potraces Quick Log card. The key you copied in the app is already filled in — tap Done. The first time, iOS asks to let it connect to the internet — tap Always Allow. Then log a test expense." data-bm="Buka app Shortcuts dan tap card Potraces Quick Log. Key yang kau copy dalam app dah terisi — tap Done. Kali pertama, iOS akan tanya nak benarkan connect ke internet — tap Always Allow. Lepas tu log satu belanja test.">Open the Shortcuts app and tap the Potraces Quick Log card. The key you copied in the app is already filled in — tap Done. The first time, iOS asks to let it connect to the internet — tap Always Allow. Then log a test expense.</p>
+            <h3 data-en="Tap Back Tap" data-bm="Tap Back Tap">Tap Back Tap</h3>
+            <p data-en="Scroll to the bottom of the Touch screen and tap 'Back Tap'." data-bm="Skrol sampai bawah skrin Touch dan tap 'Back Tap'.">Scroll to the bottom of the Touch screen and tap 'Back Tap'.</p>
+            <a class="gs-shot" href="/assets/setup/bt3-backtap.jpg" target="_blank" rel="noopener" data-aria-en="The Back Tap row at the bottom of the Touch screen" data-aria-bm="Baris Back Tap kat bawah skrin Touch"><img src="/assets/setup/bt3-backtap.jpg" width="590" height="1280" loading="lazy" decoding="async" alt="The Back Tap row at the bottom of the Touch screen"></a>
           </div>
         </article>
         <article class="card gs-step reveal" style="--d:210ms">
           <span class="gs-num" aria-hidden="true">4</span>
           <div class="gs-step-body">
-            <h3 data-en="Assign it to Back Tap" data-bm="Assign kat Back Tap">Assign it to Back Tap</h3>
-            <p data-en="iPhone Settings → Accessibility → Touch → Back Tap → Double Tap → choose Potraces Quick Log. Now a double-tap on the back of your phone logs an expense." data-bm="Settings iPhone → Accessibility → Touch → Back Tap → Double Tap → pilih Potraces Quick Log. Lepas ni, double-tap belakang phone kau terus log belanja.">iPhone Settings → Accessibility → Touch → Back Tap → Double Tap → choose Potraces Quick Log. Now a double-tap on the back of your phone logs an expense.</p>
+            <h3 data-en="Choose Potraces Quick Log" data-bm="Pilih Potraces Quick Log">Choose Potraces Quick Log</h3>
+            <p data-en="Tap 'Double Tap', scroll down to the Shortcuts list, then pick 'Potraces Quick Log' so it gets a tick." data-bm="Tap 'Double Tap', skrol turun ke senarai Shortcuts, lepas tu pilih 'Potraces Quick Log' sampai ia bertanda.">Tap 'Double Tap', scroll down to the Shortcuts list, then pick 'Potraces Quick Log' so it gets a tick.</p>
+            <a class="gs-shot" href="/assets/setup/bt4-select.jpg" target="_blank" rel="noopener" data-aria-en="Potraces Quick Log ticked in the Double Tap list" data-aria-bm="Potraces Quick Log bertanda dalam senarai Double Tap"><img src="/assets/setup/bt4-select.jpg" width="590" height="1280" loading="lazy" decoding="async" alt="Potraces Quick Log ticked in the Double Tap list"></a>
+          </div>
+        </article>
+        <article class="card gs-step reveal" style="--d:280ms">
+          <span class="gs-num" aria-hidden="true">5</span>
+          <div class="gs-step-body">
+            <h3 data-en="Double tap to log" data-bm="Double tap untuk log">Double tap to log</h3>
+            <p data-en="Double tap the back of your phone. The shortcut picks up your key by itself. If your iPhone asks, tap 'Allow Paste', then 'Always Allow'. It only asks once, and that first double tap is already your first log." data-bm="Double tap belakang phone kau. Shortcut akan ambil key kau sendiri. Kalau iPhone tanya, tap 'Allow Paste', lepas tu 'Always Allow'. Ia tanya sekali je, dan double tap pertama tu dah jadi log pertama kau.">Double tap the back of your phone. The shortcut picks up your key by itself. If your iPhone asks, tap 'Allow Paste', then 'Always Allow'. It only asks once, and that first double tap is already your first log.</p>
           </div>
         </article>
       </div>
@@ -219,11 +236,11 @@
           <summary>
             <span class="gs-q">
               <span class="mono-caps" aria-hidden="true">Q1</span>
-              <span data-en="Nothing downloaded?" data-bm="Tak download apa-apa?">Nothing downloaded?</span>
+              <span data-en="Nothing downloaded?" data-bm="Tak download apa pun?">Nothing downloaded?</span>
             </span>
             <span class="q-ic" aria-hidden="true"></span>
           </summary>
-          <p class="faq-answer" data-en="Tap 'Add the Shortcut' again — Safari sometimes needs a second tap." data-bm="Tap 'Tambah Shortcut' sekali lagi — Safari kadang-kadang perlukan tap kedua.">Tap 'Add the Shortcut' again — Safari sometimes needs a second tap.</p>
+          <p class="faq-answer" data-en="Tap 'Add the Shortcut' again. Safari sometimes needs a second tap." data-bm="Tap 'Tambah Shortcut' sekali lagi. Safari kadangkala perlukan tap kedua.">Tap 'Add the Shortcut' again. Safari sometimes needs a second tap.</p>
         </details>
         <details class="faq-item reveal" style="--d:60ms">
           <summary>
@@ -239,26 +256,26 @@
           <summary>
             <span class="gs-q">
               <span class="mono-caps" aria-hidden="true">Q3</span>
-              <span data-en="Shortcut shows an error instead of logging?" data-bm="Shortcut tunjuk error instead of log?">Shortcut shows an error instead of logging?</span>
+              <span data-en="Shortcut shows an error instead of logging?" data-bm="Shortcut keluar error, tak log pun?">Shortcut shows an error instead of logging?</span>
             </span>
             <span class="q-ic" aria-hidden="true"></span>
           </summary>
-          <p class="faq-answer" data-en="Your Quick Log key was revoked — that happens if you turned off Quick Log, turned off Cloud Backup, or signed out. In Potraces open Settings → Money Setup → Quick Log, tap Regenerate key, then Copy key. The shortcut asks for the new key on its next run — it's already pasted, just tap Done." data-bm="Key Quick Log kau kena revoke — ni jadi kalau kau matikan Quick Log, matikan Cloud Backup, atau sign out. Dalam Potraces buka Settings → Tetapan Wang → Quick Log, tap Regenerate key, lepas tu Copy key. Shortcut akan tanya key baru masa run seterusnya — dah auto-paste, tap Done je.">Your Quick Log key was revoked — that happens if you turned off Quick Log, turned off Cloud Backup, or signed out. In Potraces open Settings → Money Setup → Quick Log, tap Regenerate key, then Copy key. The shortcut asks for the new key on its next run — it's already pasted, just tap Done.</p>
+          <p class="faq-answer" data-en="Your Quick Log key stopped working. That happens if you turned off Quick Log or signed out. In Potraces open Settings → Money Setup → Quick Log and tap 'Set up again'. The shortcut picks up the new key by itself, so you copy nothing." data-bm="Key Log Pantas kau dah tak jalan. Ni jadi kalau kau matikan Log Pantas atau sign out. Dalam Potraces buka Tetapan → Tetapan Wang → Log Pantas dan tap 'Sedia semula'. Shortcut akan ambil key baru tu sendiri, jadi kau tak perlu copy langsung.">Your Quick Log key stopped working. That happens if you turned off Quick Log or signed out. In Potraces open Settings → Money Setup → Quick Log and tap 'Set up again'. The shortcut picks up the new key by itself, so you copy nothing.</p>
         </details>
         <details class="faq-item reveal" style="--d:180ms">
           <summary>
             <span class="gs-q">
               <span class="mono-caps" aria-hidden="true">Q4</span>
-              <span data-en="Haven't set up Quick Log in the app yet?" data-bm="Belum setup Quick Log dalam app lagi?">Haven't set up Quick Log in the app yet?</span>
+              <span data-en="Haven't set up Quick Log in the app yet?" data-bm="Belum setup Log Pantas dalam app lagi?">Haven't set up Quick Log in the app yet?</span>
             </span>
             <span class="q-ic" aria-hidden="true"></span>
           </summary>
-          <p class="faq-answer" data-en="Do that first — the Potraces app is where you get the key this shortcut needs. Settings → Money Setup → Quick Log." data-bm="Buat itu dulu — app Potraces tempat kau dapat key yang shortcut ni perlukan. Settings → Tetapan Wang → Quick Log.">Do that first — the Potraces app is where you get the key this shortcut needs. Settings → Money Setup → Quick Log.</p>
+          <p class="faq-answer" data-en="Do that first. The app is where your key is made: Settings → Money Setup → Quick Log. A free account signed in is enough. You do not need a paid plan and you do not need Cloud Backup." data-bm="Buat tu dulu. Kat app la key kau dibuat: Tetapan → Tetapan Wang → Log Pantas. Akaun percuma yang dah sign in pun cukup. Kau tak perlu plan berbayar dan tak perlu Cloud Backup.">Do that first. The app is where your key is made: Settings → Money Setup → Quick Log. A free account signed in is enough. You do not need a paid plan and you do not need Cloud Backup.</p>
         </details>
       </div>
     </div>
     <p class="gs-foot reveal">
-      <span data-en="Set up inside the Potraces app: Settings → Money Setup → Quick Log." data-bm="Setup dalam app Potraces: Settings → Tetapan Wang → Quick Log." class="block">Set up inside the Potraces app: Settings → Money Setup → Quick Log.</span>
+      <span data-en="The easy way is inside the Potraces app: Settings → Money Setup → Quick Log → tap 'Set up in one tap'. It creates your key and fetches the shortcut. A share sheet opens, so tap 'Shortcuts', then 'Add Shortcut'." data-bm="Cara senang ialah dalam app Potraces: Tetapan → Tetapan Wang → Log Pantas → tap 'Sedia dalam satu ketukan'. Ia buat key kau dan ambil shortcut. Helaian kongsi akan terbuka, jadi tap 'Shortcuts', lepas tu 'Add Shortcut'." class="block">The easy way is inside the Potraces app: Settings → Money Setup → Quick Log → tap 'Set up in one tap'. It creates your key and fetches the shortcut. A share sheet opens, so tap 'Shortcuts', then 'Add Shortcut'.</span>
     </p>
   </div>
 </section>

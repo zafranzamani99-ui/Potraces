@@ -161,5 +161,27 @@ console.log('\n7) Pure math / checkmark lines are skipped');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+console.log('\n8) NAMED-person debt header scopes the whole block ("nabil hutang aku")');
+{
+  // The reported bug: "awe- 28.5" under a "<name> hutang aku" header was parsed as
+  // person=awe instead of nabil. Every line here belongs to nabil (they owe me).
+  const note = 'nabil hutang aku\nawe- 28.5\nnasi pataya lps badminton 14.5\nserambi johor - 8.50';
+  const rows = parseStructuredLines(note) || [];
+  check('3 debt items', rows.length === 3 && rows.every((r) => r.kind === 'debt'), JSON.stringify(rows.map((r) => `${r.label}:${r.amount}`)));
+  check('ALL person = nabil (awe is a description, not a person)', rows.every((r) => r.person?.toLowerCase() === 'nabil'), JSON.stringify(rows.map((r) => r.person)));
+  check('all they_owe (nabil owes me)', rows.every((r) => r.direction === 'they_owe'), JSON.stringify(rows.map((r) => r.direction)));
+  check('amounts 28.5 / 14.5 / 8.5', rows.map((r) => r.amount).join(',') === '28.5,14.5,8.5', JSON.stringify(rows.map((r) => r.amount)));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n8b) NAMED "aku hutang <name>" → i_owe that person; generics still per-line');
+{
+  const named = parseStructuredLines('aku hutang nabil\nkopi 5\nnasi 8') || [];
+  check('named i_owe → both under nabil', named.length === 2 && named.every((r) => r.person?.toLowerCase() === 'nabil' && r.direction === 'i_owe'), JSON.stringify(named.map((r) => `${r.person}:${r.direction}`)));
+  const generic = parseStructuredLines('mereka hutang\n100-faris\n50-ali') || [];
+  check('generic header still names a person PER LINE', generic.length === 2 && byLabel(generic, 'faris')?.person?.toLowerCase() === 'faris' && byLabel(generic, 'ali')?.person?.toLowerCase() === 'ali', JSON.stringify(generic.map((r) => r.person)));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 console.log(`\n${failed === 0 ? '✅ PASS' : '❌ FAIL'} — ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

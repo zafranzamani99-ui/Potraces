@@ -568,10 +568,10 @@ const makeStyles = (C: typeof CALM) =>
     },
     editSheetBackdropAnim: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: withAlpha(C.dimBg, 0.50), // pure dim (BlurView removed for performance)
+      backgroundColor: withAlpha(C.dimBg, 0.40), // Onyx rule 4 — pure dim (BlurView removed for performance)
     },
     editSheet: {
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       borderTopLeftRadius: RADIUS['2xl'] ?? 24,
       borderTopRightRadius: RADIUS['2xl'] ?? 24,
       paddingTop: SPACING.sm,
@@ -666,8 +666,6 @@ const makeStyles = (C: typeof CALM) =>
     editSheetSaveZone: {
       paddingHorizontal: SPACING.xl,
       paddingTop: SPACING.md,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: withAlpha(C.textPrimary, 0.06),
     },
     doneFab: {
       position: 'absolute',

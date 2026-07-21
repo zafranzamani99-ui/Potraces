@@ -19,6 +19,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
 import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
 import { signInWithApple } from '../../services/appleAuth';
 import { signOut, getAuthSession, signInWithPhone, signUpWithPhone, deleteAccountRemote, clearPersonalDataRemote, supabasePersonal } from '../../services/supabase';
@@ -65,6 +66,7 @@ const GoogleGLogo = ({ size = 18 }: { size?: number }) => (
 export default function AccountScreen() {
   const C = useCalm();
   const isDark = useIsDark();
+  const neu = useNeu(undefined, { faintDark: true });
   const tr = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -593,7 +595,7 @@ export default function AccountScreen() {
               <Text style={styles.pageTitle}>{tr.auth.acctTitle}</Text>
 
               {/* Profile */}
-              <View style={styles.card}>
+              <View style={[styles.card, neu.raisedSoft]}>
                 <View style={styles.profileRow}>
                   <View style={styles.avatar}>
                     <Text style={styles.avatarText}>{avatarInitial}</Text>
@@ -608,7 +610,7 @@ export default function AccountScreen() {
               </View>
 
               {/* Cloud backup */}
-              <View style={styles.card}>
+              <View style={[styles.card, neu.raisedSoft]}>
                 <View style={styles.settingRow}>
                   <View style={styles.settingLabelWrap}>
                     <View style={styles.settingLabelRow}>
@@ -994,14 +996,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: SPACING.lg,
     marginBottom: SPACING.lg,
   },
+  // Neu Card — surface + lift from neu.raisedSoft (spread at the call site), not a
+  // fill/border (Onyx rule 2). Content self-pads horizontally.
   card: {
-    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.md + 2,
     marginBottom: SPACING.md,
-    ...(C === CALM_DARK ? {} : SHADOWS.sm),
   },
   profileRow: {
     flexDirection: 'row',
@@ -1058,7 +1058,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: C.border,
+    backgroundColor: withAlpha(C.textPrimary, 0.08),
   },
   syncNowBtn: {
     paddingHorizontal: SPACING.md,

@@ -370,7 +370,11 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
 
   return (
     <>
-    <BottomSheet visible={visible} onClose={handleClose} header={header} maxHeightPct={0.92} overlay={confirmDialog || paywallOverlay}>
+    {/* keyboardAvoiding is REQUIRED here (BottomSheet docs): the income / per-category
+        / add-commitment inputs autoFocus a number pad that otherwise covers the very row
+        being edited — and each commits onBlur, so the user saves a figure they never saw.
+        Android has no fallback (edge-to-edge makes adjustResize inert). */}
+    <BottomSheet visible={visible} onClose={handleClose} header={header} maxHeightPct={0.92} keyboardAvoiding overlay={confirmDialog || paywallOverlay}>
       <View style={styles.bounds}>
         <ScrollView
           nestedScrollEnabled

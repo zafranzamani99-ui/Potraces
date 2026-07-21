@@ -1,8 +1,9 @@
 import React, { useMemo, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Keyboard } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useIsDark } from '../../hooks/useCalm';
+import { useNeu } from '../common/neu';
 import { useT } from '../../i18n';
 
 interface EditHeroAmountCardProps {
@@ -37,6 +38,7 @@ const EditHeroAmountCard: React.FC<EditHeroAmountCardProps> = ({
 }) => {
   const t = useT();
   const isDark = useIsDark();
+  const neu = useNeu(undefined, { faintDark: true });
   const styles = useMemo(() => makeStyles(C), [C]);
 
   // #18 multi-currency defensive fallback. Empty / undefined => RM.
@@ -92,7 +94,7 @@ const EditHeroAmountCard: React.FC<EditHeroAmountCardProps> = ({
   }, [onSubmitAmount]);
 
   return (
-    <View style={styles.editFieldHeroCard}>
+    <View style={[styles.editFieldHeroCard, neu.raisedSoft]}>
       <View style={styles.editFieldHeroLabelRow}>
         <Text style={styles.editFieldCardLabel}>{t.transaction.amount.toLowerCase()}</Text>
         {/* Inline mini type-toggle — tap to flip direction (#16: repeat icon as affordance) */}
@@ -100,7 +102,7 @@ const EditHeroAmountCard: React.FC<EditHeroAmountCardProps> = ({
           onPress={() => onTypeChange(type === 'expense' ? 'income' : 'expense')}
           disabled={isLocked}
           activeOpacity={isLocked ? 1 : 0.7}
-          style={styles.editFieldTypeToggle}
+          style={[styles.editFieldTypeToggle, neu.raised]}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
           accessibilityState={{ disabled: isLocked }}
@@ -173,10 +175,9 @@ const makeStyles = (C: typeof CALM) =>
       letterSpacing: 0.2,
     },
     editFieldHeroCard: {
-      backgroundColor: C.surface,
+      // Neu Card: borderless C.background + neu.raisedSoft (spread at call site)
+      backgroundColor: C.background,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.textPrimary, 0.08),
       paddingHorizontal: SPACING.lg,
       paddingTop: SPACING.md,
       paddingBottom: SPACING.lg,
@@ -189,13 +190,14 @@ const makeStyles = (C: typeof CALM) =>
       marginBottom: SPACING.xs,
     },
     editFieldTypeToggle: {
+      // Neu Pill (Onyx rule 3) — faintDark neu.raised spread at call site
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
       paddingHorizontal: SPACING.sm + 2,
       paddingVertical: SPACING.xs / 2 + 2,
       borderRadius: RADIUS.full,
-      backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.08 : 0.04),
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
     },
     editFieldTypeToggleText: {
       fontSize: TYPOGRAPHY.size.xs,

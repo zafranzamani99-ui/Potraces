@@ -31,9 +31,12 @@ Shortcut behaviour (all native Shortcuts actions, no third-party deps):
      Offline: this aborts the shortcut (visible iOS error) — no silent loss,
      no duplicate risk. Offline retry is deferred (needs server idempotency).
   4. If the response has no "ok": warn + self-heal a revoked key (delete the
-     saved key file so the next run re-asks). Otherwise show a confirmation
-     card (amount · category · wallet) and save the now-validated key; the
-     Potraces push is the secondary "it's in your app" confirmation.
+     saved key file so the next run re-asks). On success the key file is
+     saved ONLY when this run started without one (first run / post-heal) —
+     re-saving every run made iOS show its "save 1 text item to a file?"
+     privacy prompt after EVERY log. Success is otherwise silent: the
+     Potraces push is the confirmation (a modal "Logged ✓" alert used to
+     add a mandatory OK tap to every log — removed).
 
 Category labels may carry emoji; the app's resolveCategory() strips
 non-alphanumerics, so "🍔 Food & Dining" still matches the food category.
@@ -74,8 +77,10 @@ U_NOTE = new_uuid()
 U_RESP = new_uuid()
 U_OK = new_uuid()
 G_FIRSTRUN = new_uuid()  # GroupingIdentifier: first-run key bootstrap If/Otherwise
+G_CLIPKEY = new_uuid()   # GroupingIdentifier: silent clipboard-key capture If/Otherwise
 G_RESULT = new_uuid()    # GroupingIdentifier: success/failure If/Otherwise
 G_HEAL = new_uuid()      # GroupingIdentifier: guarded stale-key delete (file may not exist)
+G_SAVEKEY = new_uuid()   # GroupingIdentifier: save key file only when run started without one
 
 VAR_KEY = "PotracesKey"
 
@@ -158,14 +163,31 @@ actions = [
             "Variable": token_attachment(out_ref(U_GETFILE, "File")),
         },
     }),
-    #    Get Clipboard (the user just tapped "Copy key" in Potraces)…
+    #    Get Clipboard (Potraces put the key there during one-tap setup)…
     action("is.workflow.actions.getclipboard", {"UUID": U_CLIP}),
-    #    …ask for the key with the clipboard pre-filled — user just taps Done.
-    #    NOT saved yet: only a key the server has ACCEPTED gets persisted (the
-    #    success branch below), so clipboard garbage can never wedge itself in.
+    #    SILENT capture: if the clipboard already holds a Potraces key
+    #    ("QLOG-…"), use it with NO prompt — the user's first Back Tap
+    #    double-tap becomes the first log, zero questions asked. NOT saved
+    #    yet: only a key the server has ACCEPTED gets persisted (success
+    #    branch below), so clipboard garbage can never wedge itself in.
+    conditional(G_CLIPKEY, 0, {
+        "WFCondition": 8,  # "begins with"
+        "WFConditionalActionString": token_string(["QLOG-"]),
+        "WFInput": {
+            "Type": "Variable",
+            "Variable": token_attachment(out_ref(U_CLIP, "Clipboard")),
+        },
+    }),
+    action("is.workflow.actions.setvariable", {
+        "WFVariableName": VAR_KEY,
+        "WFInput": token_attachment(out_ref(U_CLIP, "Clipboard")),
+    }),
+    # Otherwise → clipboard was overwritten since setup: fall back to the
+    # pre-filled Ask (the pre-one-tap behavior, kept as the safety net).
+    conditional(G_CLIPKEY, 1),
     action("is.workflow.actions.ask", {
         "UUID": U_ASKKEY,
-        "WFAskActionPrompt": "Your Potraces Quick Log key (tap Copy key in Potraces → Settings → Quick Log first)",
+        "WFAskActionPrompt": "Your Potraces Quick Log key (open Potraces → Settings → Quick Log → tap Set up again to re-copy it)",
         "WFInputType": "Text",
         "WFAskActionDefaultAnswer": token_string([out_ref(U_CLIP, "Clipboard")]),
     }),
@@ -173,6 +195,7 @@ actions = [
         "WFVariableName": VAR_KEY,
         "WFInput": token_attachment(out_ref(U_ASKKEY, "Provided Input")),
     }),
+    conditional(G_CLIPKEY, 2),
     # Otherwise → returning run: key comes from the saved file.
     conditional(G_FIRSTRUN, 1),
     action("is.workflow.actions.setvariable", {
@@ -316,9 +339,21 @@ actions = [
         "WFDeleteFileConfirmDeletion": False,
     }),
     conditional(G_HEAL, 2),
-    # Otherwise → SUCCESS: persist the now-VALIDATED key. Saving here (not at
-    # ask-time) means clipboard garbage can never wedge itself in as the key.
+    # Otherwise → SUCCESS: persist the now-VALIDATED key — but ONLY when this
+    # run started without a key file (first run / post-heal bootstrap). The
+    # save used to fire on every successful log, and each save re-triggered
+    # the iOS "save 1 text item to a file?" privacy prompt unless the user
+    # had once tapped "Always Allow". Gated this way the prompt appears at
+    # most once, on the first successful log. Saving after server acceptance
+    # (not at ask-time) still holds: clipboard garbage never gets persisted.
     conditional(G_RESULT, 1),
+    conditional(G_SAVEKEY, 0, {
+        "WFCondition": 101,  # run-start Get File had no value → no key file yet
+        "WFInput": {
+            "Type": "Variable",
+            "Variable": token_attachment(out_ref(U_GETFILE, "File")),
+        },
+    }),
     action("is.workflow.actions.documentpicker.save", {
         "WFInput": {
             "WFSerializationType": "WFTextTokenAttachment",
@@ -328,17 +363,10 @@ actions = [
         "WFFileDestinationPath": KEY_FILE,
         "WFSaveFileOverwrite": True,
     }),
-    # Confirmation card (Finny-style): what was logged — amount · category · the
-    # real wallet — with a single OK button. A modal Show-Alert, NOT a
-    # notification, so it respects "only Potraces sends notifications". The
-    # amount is the number the user typed; the wallet is the real one they picked.
-    action("is.workflow.actions.alert", {
-        "WFAlertActionTitle": token_string(["✅ Logged RM", out_ref(U_AMT, "Provided Input")]),
-        "WFAlertActionMessage": token_string([
-            out_ref(U_CAT, "Chosen Item"), "  ·  ", out_ref(U_WAL, "Chosen Item"),
-        ]),
-        "WFAlertActionCancelButtonShown": False,
-    }),
+    conditional(G_SAVEKEY, 2),
+    # No modal "Logged ✓" alert on success — it added a mandatory OK tap to
+    # EVERY log. Silent success + the Potraces push (tappable → transactions)
+    # is the confirmation, matching the promise: log without opening the app.
     conditional(G_RESULT, 2),
 ]
 

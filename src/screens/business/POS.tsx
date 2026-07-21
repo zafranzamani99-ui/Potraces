@@ -647,7 +647,7 @@ const POS: React.FC = () => {
           setCustomerSearchQuery('');
         }}
       >
-        <BlurView intensity={80} style={styles.modalOverlay}>
+        <BlurView intensity={80} experimentalBlurMethod="dimezisBlurView" style={styles.modalOverlay}>
           <View style={styles.modalKeyboardView}>
             <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <Text style={styles.modalTitle}>Checkout</Text>

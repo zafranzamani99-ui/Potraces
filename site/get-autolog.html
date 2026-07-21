@@ -17,7 +17,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co">
 
 <title>Add Potraces Auto Log</title>
-<meta name="description" content="Download the Potraces Auto Log Shortcut and set it up on your iPhone — automatically logs your Apple Pay taps.">
+<meta name="description" content="Add the Potraces Auto Log shortcut to your iPhone. Pay with Apple Pay and it logs by itself. Six steps, nothing to build.">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://jejakbaki.my/autolog">
 
@@ -25,21 +25,21 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Potraces">
 <meta property="og:title" content="Add Potraces Auto Log">
-<meta property="og:description" content="Download the Potraces Auto Log Shortcut and set it up on your iPhone — automatically logs your Apple Pay taps.">
+<meta property="og:description" content="Add the Potraces Auto Log shortcut to your iPhone. Pay with Apple Pay and it logs by itself. Six steps, nothing to build.">
 <meta property="og:url" content="https://jejakbaki.my/autolog">
 <meta property="og:image" content="https://jejakbaki.my/assets/og-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+<meta property="og:image:alt" content="Potraces. Calm money tracking for irregular earners in Malaysia">
 <meta property="og:locale" content="en_MY">
 <meta property="og:locale:alternate" content="ms_MY">
 
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Add Potraces Auto Log">
-<meta name="twitter:description" content="Pay with Apple Pay and Potraces logs it automatically. Set up in a few steps.">
+<meta name="twitter:description" content="Pay with Apple Pay and Potraces logs it by itself. Six steps in Shortcuts, nothing to build.">
 <meta name="twitter:image" content="https://jejakbaki.my/assets/og-card.png">
-<meta name="twitter:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+<meta name="twitter:image:alt" content="Potraces. Calm money tracking for irregular earners in Malaysia">
 
 <!-- Favicons -->
 <link rel="icon" href="/assets/icon.png" type="image/png">
@@ -75,9 +75,15 @@
 /* ── STEPS — hairline numbered rows, sage number chips ── */
 .al-steps{list-style:none;max-width:var(--maxw-prose);margin:0 auto;border-top:1px solid var(--ink-12)}
 .al-step{display:flex;gap:18px;align-items:flex-start;padding:24px 4px;border-bottom:1px solid var(--ink-12)}
+.al-step>div{min-width:0;flex:1}
 .al-num{font-family:var(--font-mono);font-size:var(--text-sm);font-weight:var(--fw-medium);color:var(--sage-text);background:var(--sage-pale);border-radius:var(--radius-pill);width:34px;height:34px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center}
+/* ── STEP SCREENSHOT — real capture under each instruction ── */
+.al-shot{display:block;width:172px;max-width:100%;margin-top:14px;border:1px solid var(--ink-12);border-radius:14px;overflow:hidden;line-height:0}
+.al-shot img{display:block;width:100%;height:auto}
+.al-shot:hover{border-color:var(--ink-45)}
+@media (min-width:720px){.al-shot{width:190px}}
 .al-step h3{font-size:var(--text-md);font-weight:var(--fw-medium);margin-bottom:5px}
-.al-step p{color:var(--ink-65);line-height:var(--leading-relaxed);max-width:58ch}
+.al-step p{color:var(--ink-65);line-height:var(--leading-relaxed);max-width:min(58ch,100%)}
 
 /* ── FOOTNOTE — the honest small print, quiet ink-45, never alarmed ── */
 .al-footnote{max-width:var(--maxw-wide);margin:var(--space-2xl) auto 0;font-size:var(--text-sm);color:var(--ink-45);line-height:var(--leading-relaxed)}
@@ -133,18 +139,18 @@
         <span class="ic" id="herowau" aria-hidden="true"></span>
         <span data-en="Advanced · Apple Pay" data-bm="Advanced · Apple Pay">Advanced · Apple Pay</span>
       </span>
-      <span class="badge badge--sage" data-en="Percuma · Free" data-bm="Percuma">Percuma · Free</span>
+      <span class="badge badge--sage" data-en="Free" data-bm="Percuma">Free</span>
       <h1>
         <span data-en="Add " data-bm="Tambah ">Add </span><span class="accent-word" data-en="Auto" data-bm="Auto">Auto</span><span data-en=" Log" data-bm=" Log"> Log</span>
       </h1>
       <p class="lead">
-        <span data-en="Logs your Apple Pay taps automatically. Set up Quick Log (Back Tap) first — this reuses the same key." data-bm="Log tapping Apple Pay kau secara automatik. Setup Quick Log (Back Tap) dulu — ni guna key yang sama." class="block">Logs your Apple Pay taps automatically. Set up Quick Log (Back Tap) first — this reuses the same key.</span>
+        <span data-en="Pay with Apple Pay and Potraces logs it by itself. No double tap. Set up Quick Log with Back Tap first, because Auto Log runs on the same key." data-bm="Bayar guna Apple Pay dan Potraces log sendiri. Tak payah double tap. Setup Quick Log dengan Back Tap dulu sebab Auto Log guna key yang sama." class="block">Pay with Apple Pay and Potraces logs it by itself. No double tap. Set up Quick Log with Back Tap first, because Auto Log runs on the same key.</span>
       </p>
       <div class="hero-actions">
         <a class="btn btn-pill--sage btn-lg" href="/dl/auto-log" data-en="Add the Shortcut" data-bm="Tambah Shortcut">Add the Shortcut</a>
       </div>
-      <p class="al-hand" data-en="reuses your Quick Log key" data-bm="guna key Quick Log yang sama">reuses your Quick Log key</p>
-      <p class="al-meta" data-en="For iPhone users who pay with Apple Pay. Optional." data-bm="Untuk pengguna iPhone yang bayar guna Apple Pay. Optional je.">For iPhone users who pay with Apple Pay. Optional.</p>
+      <p class="al-hand" data-en="uses the same Quick Log key" data-bm="guna key Quick Log yang sama">uses the same Quick Log key</p>
+      <p class="al-meta" data-en="For iPhone users who pay with Apple Pay. You need a free Potraces account, signed in. No paid plan." data-bm="Untuk pengguna iPhone yang bayar guna Apple Pay. Kau kena ada akaun Potraces percuma dan dah sign in. Tak payah plan berbayar.">For iPhone users who pay with Apple Pay. You need a free Potraces account, signed in. No paid plan.</p>
     </div>
   </div>
 </section>
@@ -155,7 +161,7 @@
     <div class="section-head reveal">
       <span class="mono-caps al-kicker"><span data-en="§ 1" data-bm="§ 1">§ 1</span> · <span data-en="Set it up" data-bm="Setup ia">Set it up</span></span>
       <h2>
-        <span data-en="A bit more " data-bm="Sikit lagi ">A bit more </span><span class="accent-word" data-en="wiring," data-bm="wiring,">wiring,</span><span data-en=" once." data-bm=" sekali je."> once.</span>
+        <span data-en="Six steps. Way " data-bm="Enam step. Jauh lebih ">Six steps. Way </span><span class="accent-word" data-en="simpler" data-bm="senang">simpler</span><span data-en=" now." data-bm=" sekarang."> now.</span>
       </h2>
     </div>
     <ol class="al-steps">
@@ -163,28 +169,47 @@
         <span class="al-num" aria-hidden="true">1</span>
         <div>
           <h3 data-en="Add the shortcut" data-bm="Tambah shortcut">Add the shortcut</h3>
-          <p data-en="Tap the button above, then in Safari tap the download → the file → 'Add Shortcut'." data-bm="Tap butang atas tu, lepas tu dalam Safari tap download → file tu → 'Add Shortcut'.">Tap the button above, then in Safari tap the download → the file → 'Add Shortcut'.</p>
+          <p data-en="Tap the button above. Safari downloads the file. Tap the download button at the top right of Safari, tap the file, then tap 'Add Shortcut'." data-bm="Tap butang atas tu. Safari akan download file tu. Tap butang download kat atas kanan Safari, tap file tu, lepas tu tap 'Add Shortcut'.">Tap the button above. Safari downloads the file. Tap the download button at the top right of Safari, tap the file, then tap 'Add Shortcut'.</p>
+          <a class="al-shot" href="/assets/setup/ap1-add.jpg" target="_blank" rel="noopener" data-aria-en="The Add Shortcut screen for Potraces Auto Log" data-aria-bm="Skrin Add Shortcut untuk Potraces Auto Log"><img src="/assets/setup/ap1-add.jpg" width="590" height="1280" loading="lazy" decoding="async" alt="The Add Shortcut screen for Potraces Auto Log"></a>
         </div>
       </li>
       <li class="al-step reveal" style="--d:70ms">
         <span class="al-num" aria-hidden="true">2</span>
         <div>
-          <h3 data-en="Create the automation" data-bm="Buat automation">Create the automation</h3>
-          <p data-en="Open Shortcuts → Automation → New → Transaction (or Wallet on iOS 26). Set 'Run Immediately' and turn notifications off." data-bm="Buka Shortcuts → Automation → New → Transaction (atau Wallet kat iOS 26). Set 'Run Immediately' dan matikan notifications.">Open Shortcuts → Automation → New → Transaction (or Wallet on iOS 26). Set 'Run Immediately' and turn notifications off.</p>
+          <h3 data-en="Start a new automation" data-bm="Mula automation baru">Start a new automation</h3>
+          <p data-en="Stay in Shortcuts. Tap 'Automation' at the bottom, then tap 'New Automation'." data-bm="Duduk dalam Shortcuts lagi. Tap 'Automation' kat bawah, lepas tu tap 'New Automation'.">Stay in Shortcuts. Tap 'Automation' at the bottom, then tap 'New Automation'.</p>
+          <a class="al-shot" href="/assets/setup/ap2-automation.jpg" target="_blank" rel="noopener" data-aria-en="The Automation tab with the New Automation button" data-aria-bm="Tab Automation dengan butang New Automation"><img src="/assets/setup/ap2-automation.jpg" width="590" height="1280" loading="lazy" decoding="async" alt="The Automation tab with the New Automation button"></a>
         </div>
       </li>
       <li class="al-step reveal" style="--d:140ms">
         <span class="al-num" aria-hidden="true">3</span>
         <div>
-          <h3 data-en="Feed it the payment" data-bm="Bagi dia info bayaran">Feed it the payment</h3>
-          <p data-en="Add a Text action that reads Amount, Merchant and Card (double-tap each to pick the field), joined with | like Amount|Merchant|Card. Then add 'Run Shortcut → Potraces Auto Log' with that text." data-bm="Tambah Text action yang baca Amount, Merchant dan Card (double-tap setiap satu untuk pilih field tu), gabung dengan | macam Amount|Merchant|Card. Lepas tu tambah 'Run Shortcut → Potraces Auto Log' dengan text tu.">Add a Text action that reads Amount, Merchant and Card (double-tap each to pick the field), joined with | like Amount|Merchant|Card. Then add 'Run Shortcut → Potraces Auto Log' with that text.</p>
+          <h3 data-en="Pick Wallet" data-bm="Pilih Wallet">Pick Wallet</h3>
+          <p data-en="Type wallet in the search box and tap 'Wallet'. Everything is already ticked, so leave it. Tap 'Next' at the top right." data-bm="Taip wallet dalam kotak carian, lepas tu tap 'Wallet'. Semua dah tertanda, jadi biar je. Tap 'Next' kat atas kanan.">Type wallet in the search box and tap 'Wallet'. Everything is already ticked, so leave it. Tap 'Next' at the top right.</p>
+          <a class="al-shot" href="/assets/setup/ap3-wallet.jpg" target="_blank" rel="noopener" data-aria-en="Wallet in the automation search results" data-aria-bm="Wallet dalam hasil carian automation"><img src="/assets/setup/ap3-wallet.jpg" width="590" height="1280" loading="lazy" decoding="async" alt="Wallet in the automation search results"></a>
         </div>
       </li>
       <li class="al-step reveal" style="--d:210ms">
         <span class="al-num" aria-hidden="true">4</span>
         <div>
+          <h3 data-en="Choose the shortcut" data-bm="Pilih shortcut tu">Choose the shortcut</h3>
+          <p data-en="Tap 'Potraces Auto Log'. That is the whole step. It reads the amount and the shop by itself, so there is nothing to build." data-bm="Tap 'Potraces Auto Log'. Setakat tu je. Dia baca amount dan nama kedai sendiri, jadi takde apa nak bina.">Tap 'Potraces Auto Log'. That is the whole step. It reads the amount and the shop by itself, so there is nothing to build.</p>
+          <a class="al-shot" href="/assets/setup/ap4-choose.jpg" target="_blank" rel="noopener" data-aria-en="Potraces Auto Log in the shortcut list" data-aria-bm="Potraces Auto Log dalam senarai shortcut"><img src="/assets/setup/ap4-choose.jpg" width="590" height="1280" loading="lazy" decoding="async" alt="Potraces Auto Log in the shortcut list"></a>
+        </div>
+      </li>
+      <li class="al-step reveal" style="--d:280ms">
+        <span class="al-num" aria-hidden="true">5</span>
+        <div>
+          <h3 data-en="Let it run quietly" data-bm="Biar dia jalan senyap">Let it run quietly</h3>
+          <p data-en="Tap 'Automation' at the top. Choose 'Run Immediately', turn off 'Notify When Run', then tap 'Done'." data-bm="Tap 'Automation' kat atas. Pilih 'Run Immediately', matikan 'Notify When Run', lepas tu tap 'Done'.">Tap 'Automation' at the top. Choose 'Run Immediately', turn off 'Notify When Run', then tap 'Done'.</p>
+          <a class="al-shot" href="/assets/setup/ap5-run.jpg" target="_blank" rel="noopener" data-aria-en="Run Immediately selected with Notify When Run turned off" data-aria-bm="Run Immediately dipilih dengan Notify When Run dimatikan"><img src="/assets/setup/ap5-run.jpg" width="590" height="1280" loading="lazy" decoding="async" alt="Run Immediately selected with Notify When Run turned off"></a>
+        </div>
+      </li>
+      <li class="al-step reveal" style="--d:350ms">
+        <span class="al-num" aria-hidden="true">6</span>
+        <div>
           <h3 data-en="Pay with Apple Pay" data-bm="Bayar guna Apple Pay">Pay with Apple Pay</h3>
-          <p data-en="Potraces logs it automatically as category 'Other' — just set the real category later in the app." data-bm="Potraces log automatik sebagai kategori 'Other' — kau set kategori sebenar lepas tu dalam app.">Potraces logs it automatically as category 'Other' — just set the real category later in the app.</p>
+          <p data-en="Pay once to test it. Potraces logs it as category 'Other'. Tap the notification to set the real category." data-bm="Bayar sekali untuk test. Potraces log dia sebagai kategori 'Other'. Tap notification tu untuk set kategori sebenar.">Pay once to test it. Potraces logs it as category 'Other'. Tap the notification to set the real category.</p>
         </div>
       </li>
     </ol>
@@ -201,21 +226,21 @@
       </div>
       <div class="faq-list reveal">
         <details class="faq-item">
-          <summary><span data-en="Nothing logged after paying?" data-bm="Tak ada apa-apa log lepas bayar?">Nothing logged after paying?</span><span class="q-ic" aria-hidden="true"></span></summary>
-          <p class="faq-answer" data-en="Apple's transaction trigger can be slow or miss a tap — it's an iOS limitation. Try another payment." data-bm="Transaction trigger Apple boleh lambat atau miss satu tap — ni limitation iOS. Cuba bayar sekali lagi.">Apple's transaction trigger can be slow or miss a tap — it's an iOS limitation. Try another payment.</p>
+          <summary><span data-en="Nothing logged after paying?" data-bm="Tak ada log lepas kau bayar?">Nothing logged after paying?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <p class="faq-answer" data-en="Apple's trigger can be slow, and now and then it misses a tap. That is an iOS limit, not Potraces. Try another payment." data-bm="Trigger Apple boleh lambat, dan kadang dia terlepas satu tap. Tu limitation iOS, bukan Potraces. Cuba bayar sekali lagi.">Apple's trigger can be slow, and now and then it misses a tap. That is an iOS limit, not Potraces. Try another payment.</p>
         </details>
         <details class="faq-item">
-          <summary><span data-en="Amount is 0 or wrong?" data-bm="Amount 0 atau salah?">Amount is 0 or wrong?</span><span class="q-ic" aria-hidden="true"></span></summary>
-          <p class="faq-answer" data-en="Rebuild the Text action — each field must be picked with the double-tap gesture, not typed." data-bm="Rebuild Text action tu — setiap field kena pilih guna double-tap gesture, bukan taip sendiri.">Rebuild the Text action — each field must be picked with the double-tap gesture, not typed.</p>
+          <summary><span data-en="The shortcut shows an error?" data-bm="Shortcut keluar error?">The shortcut shows an error?</span><span class="q-ic" aria-hidden="true"></span></summary>
+          <p class="faq-answer" data-en="In Potraces open Settings, then Money Setup, then Quick Log, and tap 'Set up again'. The shortcut picks up the new key by itself. You do not copy or paste anything." data-bm="Dalam Potraces buka Settings, pastu Money Setup, pastu Quick Log, dan tap 'Set up again'. Shortcut akan ambil key baru sendiri. Kau tak payah copy atau paste.">In Potraces open Settings, then Money Setup, then Quick Log, and tap 'Set up again'. The shortcut picks up the new key by itself. You do not copy or paste anything.</p>
         </details>
         <details class="faq-item">
           <summary><span data-en="No key error?" data-bm="Error 'no key'?">No key error?</span><span class="q-ic" aria-hidden="true"></span></summary>
-          <p class="faq-answer" data-en="Set up Quick Log (Back Tap) first — that's what saves the key Auto Log reuses." data-bm="Setup Quick Log (Back Tap) dulu — itu yang simpan key yang Auto Log guna semula.">Set up Quick Log (Back Tap) first — that's what saves the key Auto Log reuses.</p>
+          <p class="faq-answer" data-en="Set up Quick Log with Back Tap first and do one Back Tap log. That is what creates the key Auto Log runs on." data-bm="Setup Quick Log dengan Back Tap dulu dan buat satu log Back Tap. Itu yang buat key yang Auto Log guna.">Set up Quick Log with Back Tap first and do one Back Tap log. That is what creates the key Auto Log runs on.</p>
         </details>
       </div>
     </div>
     <p class="al-footnote reveal">
-      <span data-en="Works only with Apple Pay contactless taps — not DuitNow QR, TnG or cash. Few Malaysian banks support Apple Pay." data-bm="Hanya berfungsi dengan Apple Pay contactless tap — bukan DuitNow QR, TnG atau tunai. Sikit je bank Malaysia sokong Apple Pay.">Works only with Apple Pay contactless taps — not DuitNow QR, TnG or cash. Few Malaysian banks support Apple Pay.</span>
+      <span data-en="This only works on Apple Pay contactless taps. Not DuitNow QR, not Touch n Go, not cash. Only a few Malaysian banks support Apple Pay. iOS 16 or newer, iPhone only." data-bm="Ni jalan dengan tap contactless Apple Pay je. Bukan DuitNow QR, bukan Touch n Go, bukan tunai. Sikit je bank Malaysia yang sokong Apple Pay. iOS 16 ke atas, iPhone je.">This only works on Apple Pay contactless taps. Not DuitNow QR, not Touch n Go, not cash. Only a few Malaysian banks support Apple Pay. iOS 16 or newer, iPhone only.</span>
     </p>
   </div>
 </section>
