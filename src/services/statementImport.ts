@@ -9,12 +9,18 @@ export interface ParsedTransaction {
   description: string;
   raw?: string;
   suggested_category?: string;
+  /** True when the AI flagged this row as a transfer between the user's OWN
+   *  accounts. Optional — older parse-statement deploys never set it. */
+  is_transfer?: boolean;
 }
 
 export interface StatementParseResult {
   currency: string;
   transactions: ParsedTransaction[];
   remaining: number;
+  /** Own-account transfer rows dropped by parseStatement() below. Optional —
+   *  present (possibly 0) on any result that went through the client filter. */
+  transfersSkipped?: number;
 }
 
 export interface StatementParseError {
@@ -102,6 +108,16 @@ export async function parseStatement(
   }
   if (data && !isParseError(data as any) && Array.isArray((data as StatementParseResult).transactions)) {
     const result = data as StatementParseResult;
+    // Drop own-account transfer legs BEFORE the validity filter. Booked as real
+    // income/expense they double-count the moment the user imports both accounts'
+    // statements (each leg lands once as expense, once as income). An imported
+    // txn can never satisfy isTransfer() — that convention is the `transfer-` id
+    // prefix (src/utils/insights.ts) and addTransaction always mints its own id —
+    // so skipping the rows here is the only representation report math already
+    // excludes. The count is surfaced on the result for callers to show.
+    const beforeTransferFilter = result.transactions.length;
+    result.transactions = result.transactions.filter((t) => t.is_transfer !== true);
+    result.transfersSkipped = beforeTransferFilter - result.transactions.length;
     result.transactions = result.transactions.filter((t) => {
       if (!t.amount || !isFinite(t.amount) || t.amount <= 0 || t.amount > 1_000_000) return false;
       if (t.date && isNaN(new Date(t.date).getTime())) return false;

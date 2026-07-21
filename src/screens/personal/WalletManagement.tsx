@@ -44,7 +44,7 @@ import { lightTap } from '../../services/haptics';
 import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
 import EchoInlineChat from '../../components/common/EchoInlineChat';
 import { useT } from '../../i18n';
-import { computeWalletReconcile, type ReconcileResult } from '../../utils/walletReconcile';
+import { computeWalletReconcile, reconcileFixUpdates, type ReconcileResult } from '../../utils/walletReconcile';
 import { HITSLOP_10 } from '../../utils/hitSlop';
 import AddEditWalletModal from '../../components/wallet/AddEditWalletModal';
 import TransferModal from '../../components/wallet/TransferModal';
@@ -224,7 +224,6 @@ const WalletManagement: React.FC = () => {
   const updateWallet = useWalletStore((s) => s.updateWallet);
   const deleteWallet = useWalletStore((s) => s.deleteWallet);
   const setDefaultWallet = useWalletStore((s) => s.setDefaultWallet);
-  const setWalletBalance = useWalletStore((s) => s.setWalletBalance);
   const transferBetweenWallets = useWalletStore((s) => s.transferBetweenWallets);
   const deleteTransfer = useWalletStore((s) => s.deleteTransfer);
   const repayCredit = useWalletStore((s) => s.repayCredit);
@@ -1722,7 +1721,16 @@ const WalletManagement: React.FC = () => {
           if (fixBalanceData) navigation.navigate('TransactionsList', { filterWallet: fixBalanceData.walletId });
         }}
         onSetBalance={(computed) => {
-          if (fixBalanceData) setWalletBalance(fixBalanceData.walletId, computed);
+          if (!fixBalanceData) return;
+          const fixWallet = wallets.find((w) => w.id === fixBalanceData.walletId);
+          if (!fixWallet) return; // deleted on another device while sheet was open
+          // Same correction the AUTO path applies (autoReconcileWallets): for a
+          // credit wallet, usedCredit must follow the balance (invariant
+          // balance = creditLimit − usedCredit) or the usage bar and available-
+          // credit readouts disagree after a manual fix. updateWallet bumps
+          // updatedAt — intended here: an explicit user fix should win LWW
+          // (setWalletBalance did the same before).
+          updateWallet(fixBalanceData.walletId, reconcileFixUpdates(fixWallet, computed));
         }}
       />
 

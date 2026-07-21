@@ -426,8 +426,8 @@ const SavingsTracker: React.FC = () => {
         )}
       </ScrollView>
 
-      {showBar && !atAccountCap && <FAB icon="plus" onPress={openAdd} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
-      {showBar && atAccountCap && <FAB icon="lock" onPress={showAccountPaywall} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
+      {showBar && !atAccountCap && <FAB icon="plus" onPress={openAdd} accessibilityLabel={t.savings.addAccount} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
+      {showBar && atAccountCap && <FAB icon="lock" onPress={showAccountPaywall} accessibilityLabel={t.savings.unlockUnlimited} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
 
       {/* Sheets */}
       <AddEditAccountSheet

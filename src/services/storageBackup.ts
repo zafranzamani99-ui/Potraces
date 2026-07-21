@@ -41,6 +41,35 @@ export const PROTECTED_KEYS = [
 const KEEP_DAYS = 5;
 const PREFIX = 'bak:';
 
+// Per-day identity manifest. Deliberately NOT under `bak:` so the snapshot-key
+// parsing in listBackups/purgeBackups (which splits `bak:<store>:<stamp>`) can
+// never mistake a manifest for a store snapshot. One tiny JSON blob per backup
+// day: `bakmeta:<YYYY-MM-DD>` → { v, userId, createdAt }.
+const META_PREFIX = 'bakmeta:';
+const metaKey = (stamp: string) => `${META_PREFIX}${stamp}`;
+
+export interface BackupMeta {
+  v: 1;
+  /** Personal account the snapshots belong to — auth userId, or 'local' when signed out. */
+  userId: string;
+  createdAt: string; // ISO timestamp of the day's first capture
+}
+
+// The stores whose divergence makes a partial restore actively dangerous
+// (balances/transactions/debts drift out of step with each other). Used to
+// decide when a day-restore needs an explicit "restore anyway" confirmation.
+export const CORE_MONEY_KEYS = [
+  'debt-storage',
+  'personal-storage',
+  'wallet-storage',
+  'savings-storage',
+  'budget-profile-storage',
+  'business-storage',
+  'seller-storage',
+  'stall-storage',
+  'crm-storage',
+];
+
 // The personal-data subset of PROTECTED_KEYS (excludes business/seller + shared
 // category storage) — used so a personal-only account deletion purges the right
 // backups without nuking business backups.
@@ -75,6 +104,61 @@ function looksHealthy(raw: string | null): boolean {
   }
 }
 
+/**
+ * The identity backups are stamped with: the signed-in PERSONAL account's userId,
+ * or 'local' when signed out. Read straight from the persisted `auth-storage`
+ * blob (zustand persist shape `{ state: { personal: { userId } } }`) rather than
+ * importing the store — keeps this module dependency-light and works at launch
+ * before Zustand hydration.
+ */
+export async function currentIdentity(): Promise<string> {
+  try {
+    const raw = await AsyncStorage.getItem('auth-storage');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const id = parsed?.state?.personal?.userId;
+      if (typeof id === 'string' && id) return id;
+    }
+  } catch {
+    /* fall through to 'local' */
+  }
+  return 'local';
+}
+
+/** Identity manifest for a backup day, or null for legacy (pre-stamp) days. */
+export async function getDayMeta(stamp: string): Promise<BackupMeta | null> {
+  try {
+    const raw = await AsyncStorage.getItem(metaKey(stamp));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && typeof parsed.userId === 'string') {
+      return parsed as BackupMeta;
+    }
+  } catch {
+    /* treat unreadable meta as legacy */
+  }
+  return null;
+}
+
+// Drop identity manifests whose day no longer has any snapshot (pruned/purged).
+async function cleanupOrphanMeta(): Promise<void> {
+  try {
+    const all = await AsyncStorage.getAllKeys();
+    const liveDays = new Set<string>();
+    for (const k of all) {
+      if (!k.startsWith(PREFIX)) continue;
+      const stamp = k.slice(k.lastIndexOf(':') + 1);
+      if (!stamp.startsWith('prerestore')) liveDays.add(stamp);
+    }
+    const orphans = all.filter(
+      (k) => k.startsWith(META_PREFIX) && !liveDays.has(k.slice(META_PREFIX.length)),
+    );
+    if (orphans.length) await AsyncStorage.multiRemove(orphans);
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Snapshot each protected store once per day (keeps the earliest healthy capture). */
 export async function snapshotAll(): Promise<void> {
   const stamp = dayStamp();
@@ -89,6 +173,23 @@ export async function snapshotAll(): Promise<void> {
     } catch {
       /* best-effort — must never block startup */
     }
+  }
+  // Stamp today's snapshots with who they belong to (kept once, like the
+  // snapshots themselves), and drop manifests for days that were pruned away.
+  try {
+    const all = await AsyncStorage.getAllKeys();
+    const hasToday = all.some((k) => k.startsWith(PREFIX) && k.endsWith(`:${stamp}`));
+    if (hasToday && !(await AsyncStorage.getItem(metaKey(stamp)))) {
+      const meta: BackupMeta = {
+        v: 1,
+        userId: await currentIdentity(),
+        createdAt: new Date().toISOString(),
+      };
+      await AsyncStorage.setItem(metaKey(stamp), JSON.stringify(meta));
+    }
+    await cleanupOrphanMeta();
+  } catch {
+    /* best-effort — must never block startup */
   }
 }
 
@@ -121,6 +222,9 @@ export async function purgeBackups(keys: string[] = PROTECTED_KEYS): Promise<voi
       (k) => k.startsWith(PREFIX) && keys.some((key) => k.startsWith(`${PREFIX}${key}:`)),
     );
     if (toRemove.length) await AsyncStorage.multiRemove(toRemove);
+    // Identity manifests for days that just lost their last snapshot go too —
+    // they name the account, so a full deletion must not leave them behind.
+    await cleanupOrphanMeta();
   } catch {
     /* best-effort */
   }
@@ -167,11 +271,72 @@ export async function listBackupDays(): Promise<{ stamp: string; storeCount: num
 }
 
 /**
- * Restore EVERY store that has a snapshot for the given day. Each restore snapshots
- * the current state first (reversible). Returns how many stores were restored. The
- * app must be RELOADED afterward for Zustand to re-hydrate.
+ * What restoring a given day would actually do — computed BEFORE the confirm
+ * dialog so the user consents to the real outcome, not an assumed one.
+ *
+ * - `missing`: stores that hold live data today but have NO snapshot for this
+ *   day — a day-restore leaves them at CURRENT state, so restored stores and
+ *   kept stores can disagree (e.g. day-old transactions against today's
+ *   wallets). `missingCore` is the money subset that makes this dangerous.
+ * - `meta` / `identityMismatch`: whose backup this is. A mismatch means the
+ *   snapshots belong to a different personal account (or were made signed
+ *   out) — restoring them over the current account would corrupt its data.
  */
-export async function restoreDay(stamp: string): Promise<number> {
+export interface DayRestorePlan {
+  stamp: string;
+  /** Protected stores that have a snapshot for this day (will be restored). */
+  included: string[];
+  /** Stores with healthy live data but no snapshot this day (will KEEP current state). */
+  missing: string[];
+  /** The subset of `missing` that is core money data. */
+  missingCore: string[];
+  /** Identity manifest, or null for legacy days captured before stamping existed. */
+  meta: BackupMeta | null;
+  /** True when `meta` exists and names a different identity than the current one. */
+  identityMismatch: boolean;
+}
+
+export async function planRestoreDay(stamp: string): Promise<DayRestorePlan> {
+  const map = await listBackups();
+  const included = PROTECTED_KEYS.filter((k) => (map[k] ?? []).includes(stamp));
+  const missing: string[] = [];
+  for (const key of PROTECTED_KEYS) {
+    if (included.includes(key)) continue;
+    try {
+      const live = await AsyncStorage.getItem(key);
+      if (looksHealthy(live)) missing.push(key);
+    } catch {
+      /* unreadable live store — nothing to diverge from */
+    }
+  }
+  const missingCore = missing.filter((k) => CORE_MONEY_KEYS.includes(k));
+  const meta = await getDayMeta(stamp);
+  const me = await currentIdentity();
+  return {
+    stamp,
+    included,
+    missing,
+    missingCore,
+    meta,
+    identityMismatch: !!meta && meta.userId !== me,
+  };
+}
+
+/**
+ * Restore EVERY store that has a snapshot for the given day. Each restore snapshots
+ * the current state first (reversible). The app must be RELOADED afterward for
+ * Zustand to re-hydrate.
+ *
+ * HARD GUARD: a day stamped with a different identity than the current one is
+ * never restored (`blocked: true`) — restoring another account's snapshots over
+ * live data is corruption, not recovery. Legacy unstamped days pass (callers
+ * surface a caution in their confirm dialog instead).
+ */
+export async function restoreDay(stamp: string): Promise<{ restored: number; blocked: boolean }> {
+  const meta = await getDayMeta(stamp);
+  if (meta && meta.userId !== (await currentIdentity())) {
+    return { restored: 0, blocked: true };
+  }
   const map = await listBackups();
   let restored = 0;
   for (const key of Object.keys(map)) {
@@ -180,7 +345,7 @@ export async function restoreDay(stamp: string): Promise<number> {
       if (ok) restored++;
     }
   }
-  return restored;
+  return { restored, blocked: false };
 }
 
 /**

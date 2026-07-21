@@ -19,7 +19,7 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../con
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap, successNotification, warningNotification } from '../../services/haptics';
-import { listBackupDays, restoreDay } from '../../services/storageBackup';
+import { listBackupDays, planRestoreDay, restoreDay } from '../../services/storageBackup';
 
 function labelFor(stamp: string): string {
   const d = new Date(`${stamp}T00:00:00`);
@@ -69,38 +69,70 @@ export default function BackupRestore() {
     setRefreshing(false);
   }, [load]);
 
+  const storeLabel = useCallback(
+    (key: string) => (t.backups.stores as Record<string, string>)[key] ?? key,
+    [t],
+  );
+
   const handleRestore = useCallback(
-    (stamp: string) => {
+    async (stamp: string) => {
       lightTap();
       const label = labelFor(stamp);
-      Alert.alert(
-        t.backups.confirmTitle.replace('{date}', label),
-        `${t.backups.confirmBody.replace('{date}', label)}\n\n${t.backups.safeNote}`,
-        [
-          { text: t.backups.cancel, style: 'cancel' },
-          {
-            text: t.backups.restore,
-            onPress: async () => {
-              setRestoring(stamp);
-              const n = await restoreDay(stamp);
-              setRestoring(null);
-              if (n > 0) {
-                await successNotification();
-                Alert.alert(
-                  t.backups.restoredTitle,
-                  t.backups.restoredBody.replace('{count}', String(n)),
-                  [{ text: t.backups.reloadNow, onPress: () => reloadApp() }],
-                );
-              } else {
-                await warningNotification();
-                Alert.alert(t.backups.failedTitle, t.backups.failedBody);
-              }
-            },
+      // What would this restore actually do? Which stores are missing from the
+      // day (and would keep CURRENT data), and whose backup is it?
+      const plan = await planRestoreDay(stamp);
+
+      // Wrong-account snapshots are BLOCKED, not warned — restoring another
+      // account's data over this one is corruption.
+      if (plan.identityMismatch) {
+        await warningNotification();
+        Alert.alert(t.backups.wrongAccountTitle, t.backups.wrongAccountBody, [
+          { text: t.common.ok },
+        ]);
+        return;
+      }
+
+      const lines = [t.backups.confirmBody.replace('{date}', label)];
+      if (plan.missing.length > 0) {
+        lines.push(
+          t.backups.partialWarn.replace('{stores}', plan.missing.map(storeLabel).join(', ')),
+        );
+      }
+      if (!plan.meta) lines.push(t.backups.legacyNote); // pre-stamp backup — can't verify owner
+      lines.push(t.backups.safeNote); // current data is copied first — restore is undoable
+
+      const partialCore = plan.missingCore.length > 0;
+      Alert.alert(t.backups.confirmTitle.replace('{date}', label), lines.join('\n\n'), [
+        { text: t.backups.cancel, style: 'cancel' },
+        {
+          text: partialCore ? t.backups.restoreAnyway : t.backups.restore,
+          style: partialCore ? 'destructive' : 'default',
+          onPress: async () => {
+            setRestoring(stamp);
+            const res = await restoreDay(stamp);
+            setRestoring(null);
+            if (res.blocked) {
+              // Identity changed between the check and the restore (e.g. sign-out mid-flow).
+              await warningNotification();
+              Alert.alert(t.backups.wrongAccountTitle, t.backups.wrongAccountBody, [
+                { text: t.common.ok },
+              ]);
+            } else if (res.restored > 0) {
+              await successNotification();
+              Alert.alert(
+                t.backups.restoredTitle,
+                t.backups.restoredBody.replace('{count}', String(res.restored)),
+                [{ text: t.backups.reloadNow, onPress: () => reloadApp() }],
+              );
+            } else {
+              await warningNotification();
+              Alert.alert(t.backups.failedTitle, t.backups.failedBody);
+            }
           },
-        ],
-      );
+        },
+      ]);
     },
-    [t],
+    [t, storeLabel],
   );
 
   return (

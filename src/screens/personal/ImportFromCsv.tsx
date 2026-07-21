@@ -31,6 +31,7 @@ import {
 import { usePersonalStore } from '../../store/personalStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useCategoryStore } from '../../store/categoryStore';
 
 type ColumnRole = 'ignore' | 'date' | 'description' | 'amount' | 'debit' | 'credit' | 'type' | 'category';
 
@@ -72,6 +73,8 @@ const ImportFromCsv: React.FC = () => {
   const wallets = useWalletStore((s) => s.wallets);
   const defaultWallet = wallets.find((w) => w.isDefault) ?? wallets[0];
   const addTransaction = usePersonalStore((s) => s.addTransaction);
+  const expenseCategories = useCategoryStore((s) => s.getExpenseCategories?.() ?? []);
+  const incomeCategories = useCategoryStore((s) => s.getIncomeCategories?.() ?? []);
 
   const [step, setStep] = useState<'start' | 'map' | 'importing'>('start');
   const [csv, setCsv] = useState<CsvParseResult | null>(null);
@@ -113,7 +116,17 @@ const ImportFromCsv: React.FC = () => {
     return csv.rows.map((row, rowIndex) => {
       const date = dateIdx >= 0 ? parseDateCell(row[dateIdx] ?? '') : null;
       const description = descIdx >= 0 ? (row[descIdx] ?? '').trim() : '';
-      const category = categoryIdx >= 0 ? (row[categoryIdx] ?? '').trim() : '';
+      // Store a category ID (what budgets/Echo match on), never the raw CSV
+      // NAME — the cell may carry either, so resolve it. Unknown → 'other' (a
+      // valid id), so an imported txn can never carry an unmatchable name.
+      // Mirrors ImportFromStatement's resolver. No category cell → '' (import
+      // falls back to 'other' there, and the preview meta stays blank).
+      const rawCategory = categoryIdx >= 0 ? (row[categoryIdx] ?? '').trim().toLowerCase() : '';
+      const category = rawCategory
+        ? ([...expenseCategories, ...incomeCategories].find(
+            (c: any) => String(c.id).toLowerCase() === rawCategory || String(c.name).toLowerCase() === rawCategory,
+          )?.id ?? 'other')
+        : '';
 
       let amount: number | null = null;
       let type: 'income' | 'expense' = 'expense';
@@ -142,7 +155,7 @@ const ImportFromCsv: React.FC = () => {
       const valid = !!date && amount != null && amount > 0;
       return { rowIndex, date, description, amount, type, category, valid };
     });
-  }, [csv, mapping]);
+  }, [csv, mapping, expenseCategories, incomeCategories]);
 
   const importableCount = useMemo(
     () => preview.filter((p) => p.valid && !skipRows.has(p.rowIndex)).length,

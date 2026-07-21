@@ -1,9 +1,9 @@
 // @ts-nocheck
 // Parse a bank statement PDF using Gemini multimodal.
 // Input:  { pdfBase64: string, filename?: string }
-// Output: { transactions: Array<{ date, amount, type, description, category? }> }
+// Output: { transactions: Array<{ date, amount, type, description, category?, is_transfer? }> }
 //
-// Rate limit: 5 calls per user per UTC month.
+// Rate limit: 4 calls per user per UTC month.
 // Auth: requires authenticated Supabase user (either anon or phone).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -19,7 +19,7 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, content-type',
 };
 
-const MONTHLY_LIMIT = 5;
+const MONTHLY_LIMIT = 4;
 
 const EXTRACTION_PROMPT = `You are a Malaysian bank statement parser. Extract every transaction from this PDF statement.
 
@@ -33,7 +33,8 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no prose:
       "type": "income" | "expense",
       "description": "<merchant or transfer counterparty, cleaned>",
       "raw": "<original statement line, trimmed>",
-      "suggested_category": "<one of: food, transport, groceries, bills, shopping, entertainment, health, transfer, salary, other>"
+      "suggested_category": "<one of: food, transport, groceries, bills, shopping, entertainment, health, transfer, salary, other>",
+      "is_transfer": <true ONLY when the row is a transfer between the user's OWN accounts; otherwise omit the field or use false>
     }
   ]
 }
@@ -41,7 +42,8 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no prose:
 Rules:
 - Skip balance lines, opening/closing balance rows, and running-total rows. Only real transactions.
 - amount is always POSITIVE. Use "type": "expense" for debits/withdrawals; "income" for credits/deposits.
-- For transfers between own accounts, type is "expense" or "income" depending on which side the statement shows.
+- For transfers between own accounts, type is still "expense" or "income" depending on which side the statement shows — but ALSO set "is_transfer": true so the app can avoid double-counting when both accounts' statements are imported. Treat a row as an own-account transfer ONLY when it is clearly the holder moving their own money: the beneficiary/sender name matches this statement's account holder, the line says "TRANSFER TO/FROM OWN ACCOUNT" (or the bank's own-account transfer wording), or an instant-transfer reference (IBG/DuitNow/GIRO/FPX) whose counterparty is the holder's own name or own account number.
+- Payments to OTHER people or to merchants — even via DuitNow/IBG/instant transfer — are NOT own-account transfers: leave "is_transfer" out (or false). When unsure, use false.
 - description: clean up merchant names — strip POS IDs, transaction refs, dates embedded in the string.
 - If you cannot parse a date, skip that row.
 - Common MY banks: Maybank, CIMB, Public Bank, RHB, HL Bank, AmBank, Bank Islam, Bank Rakyat.
@@ -133,7 +135,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Call Gemini 3.5 Flash with inline PDF data — premium model is fine here:
-    // statement parsing is quality-critical and capped at 5 calls/user/month.
+    // statement parsing is quality-critical and capped at 4 calls/user/month.
     // NOTE: gemini-2.0-flash was retired 2026-06-01 — that caused the prod 502s.
     // gemini-2.5-flash then went "no longer available to new users" 2026-07-17
     // (prepay billing move), which 404'd this function — hence 3.5-flash now.
@@ -176,6 +178,15 @@ Deno.serve(async (req: Request) => {
     }
 
     const transactions = Array.isArray(parsed?.transactions) ? parsed.transactions : [];
+
+    // Normalize is_transfer to a strict boolean (model may emit "true"/omit it).
+    // Optional field — old clients ignore it, new clients skip flagged rows so
+    // importing both sides of an own-account transfer can't double-book.
+    for (const t of transactions) {
+      if (t && typeof t === 'object') {
+        t.is_transfer = t.is_transfer === true || t.is_transfer === 'true';
+      }
+    }
 
     // Log usage (non-blocking if table missing)
     try {

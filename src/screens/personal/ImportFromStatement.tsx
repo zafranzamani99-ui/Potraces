@@ -10,9 +10,8 @@ import {
   Modal,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
@@ -85,6 +84,14 @@ const ImportFromStatement: React.FC = () => {
     }
     setNotice(null);
     setRemaining(res.remaining);
+    // Own-account transfers were dropped server-side (double-count guard) —
+    // tell the user so the "missing" rows aren't a mystery.
+    if (res.transfersSkipped) {
+      Alert.alert(
+        t.importStatement.transfersSkippedTitle,
+        t.importStatement.transfersSkippedMsg.replace('{n}', String(res.transfersSkipped)),
+      );
+    }
     setRows(
       res.transactions.map((tx, i) => ({
         ...tx,
@@ -347,13 +354,15 @@ const ImportFromStatement: React.FC = () => {
         <Modal
           visible={!!passwordPrompt}
           transparent
+          statusBarTranslucent
           animationType="fade"
           onRequestClose={() => { if (!unlocking) { setPasswordPrompt(null); setPasswordValue(''); } }}
         >
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
+          {/* KAView from react-native-keyboard-controller, behavior="padding" on BOTH
+              platforms. RN's built-in KAV with behavior=undefined is inert, and inside an
+              Android transparent Modal it wouldn't work anyway (docs/BUILDING_CHECKLIST.md)
+              — this build is edge-to-edge so adjustResize never fires either. */}
+          <KAView style={{ flex: 1 }} behavior="padding">
             <Pressable
               style={styles.modalBackdrop}
               onPress={() => { if (!unlocking) { setPasswordPrompt(null); setPasswordValue(''); } }}
@@ -391,7 +400,7 @@ const ImportFromStatement: React.FC = () => {
                 />
               </Pressable>
             </Pressable>
-          </KeyboardAvoidingView>
+          </KAView>
           <ModalToastHost />
         </Modal>
       </View>

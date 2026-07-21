@@ -60,9 +60,51 @@ export const useSavingsStore = create<SavingsState>()(
           if (typeof u.initialInvestment === 'number') u.initialInvestment = roundMoney(u.initialInvestment);
           if (typeof u.target === 'number') u.target = roundMoney(u.target);
           return {
-            accounts: state.accounts.map((a) =>
-              a.id === id ? { ...a, ...u, updatedAt: new Date() } : a
-            ),
+            accounts: state.accounts.map((a) => {
+              if (a.id !== id) return a;
+              // An "invested" (cost basis) edit MUST go through the same capitalDelta
+              // ledger as deposit/withdrawal snapshots. The multi-device merge
+              // re-derives the basis as seed + Σ(stored capitalDelta) — where
+              // seed = initialInvestment − replayCapitalMoves(history) — see
+              // personalSync.mergeSavings + savingsMath.replayCapitalMoves. A direct
+              // initialInvestment write with no ledger entry shifts THIS device's
+              // reconstructed seed, so devices stop agreeing and the merge falls back
+              // to LWW-seed guessing. Recording the edit as a value-neutral
+              // adjustment snapshot (value unchanged, capitalDelta = new − old)
+              // keeps the seed invariant: initialInvestment and Σdeltas move by the
+              // same amount, so every device replays the merged history to the SAME
+              // new basis. snapshotType stays 'manual' (the closed SnapshotType
+              // union has no 'adjustment' member) — harmless, because the replay
+              // sums the STORED capitalDelta and never re-derives it from the type.
+              let history = a.history;
+              if (typeof u.initialInvestment === 'number' && u.initialInvestment !== a.initialInvestment) {
+                const delta = roundMoney(u.initialInvestment - a.initialInvestment);
+                if (delta !== 0) {
+                  history = [
+                    ...history,
+                    {
+                      id: newId(),
+                      // Carry the (possibly just-patched) current value so the entry
+                      // is a pure basis adjustment — sparkline and merge-derived
+                      // currentValue see no value change.
+                      value: typeof u.currentValue === 'number' ? u.currentValue : a.currentValue,
+                      note: 'Adjusted invested amount',
+                      // 1ms behind now: the edit sheet saves an invested edit and a
+                      // current-value snapshot in the same JS tick, and the merge
+                      // takes the STRICTLY latest-dated entry as currentValue — on a
+                      // same-millisecond tie this adjustment's carried (old) value
+                      // could shadow the new value snapshot. Backdating keeps the
+                      // real snapshot strictly latest. (Replay itself is
+                      // order-independent, so the 1ms never affects the basis.)
+                      date: new Date(Date.now() - 1),
+                      snapshotType: 'manual' as const,
+                      capitalDelta: delta,
+                    },
+                  ];
+                }
+              }
+              return { ...a, ...u, history, updatedAt: new Date() };
+            }),
           };
         }),
 

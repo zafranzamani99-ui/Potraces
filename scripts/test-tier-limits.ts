@@ -68,8 +68,8 @@ check('PREMIUM_TIER === TIER_LIMITS.premium', PREMIUM_TIER === TIER_LIMITS.premi
 
 // ── Collectz weekly create cap (joining is always free — only organizing) ──
 check('collectz: free 2/week', FREE_TIER.maxCollectzSessionsPerWeek === 2);
-check('collectz: basic/pro/premium unlimited',
-  TIER_LIMITS.basic.maxCollectzSessionsPerWeek === Infinity &&
+check('collectz: basic 4/week (owner 2026-07-22), pro/premium unlimited',
+  TIER_LIMITS.basic.maxCollectzSessionsPerWeek === 4 &&
   TIER_LIMITS.pro.maxCollectzSessionsPerWeek === Infinity &&
   PREMIUM_TIER.maxCollectzSessionsPerWeek === Infinity);
 check('collectz boundary (free): 1 ok, 2 blocked',

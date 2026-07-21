@@ -15,6 +15,7 @@ import { usePlaybookStore } from '../store/playbookStore';
 import { useCategoryStore } from '../store/categoryStore';
 import { usePremiumStore } from '../store/premiumStore';
 import { FREE_TIER } from '../constants/premium';
+import { TIER_LIMITS } from '../constants/tiers';
 import { syncLinkAmount } from '../utils/playbookAttribution';
 import { AppMode, Transaction, Subscription, Budget, Debt } from '../types';
 import { useLearningStore } from '../store/learningStore';
@@ -924,19 +925,36 @@ export function executeAction(action: ChatAction): ExecuteResult {
           return { success: false, message: `${creditWallet.name} has nothing to repay.`, action };
         }
         const fromId = findWalletId(action.fromWallet);
-        if (fromId) {
-          const src = useWalletStore.getState().wallets.find((w) => w.id === fromId);
-          if (src && src.type !== 'credit' && src.balance < capped) {
-            return { success: false, message: `${src.name} only has RM ${src.balance.toFixed(2)} — not enough to repay RM ${capped.toFixed(2)}.`, action };
+        if (!fromId) {
+          // A source was named but doesn't exist → say so (mirrors transfer).
+          if (action.fromWallet) {
+            return { success: false, message: `Wallet "${action.fromWallet}" not found.`, action };
           }
-          useWalletStore.getState().deductFromWallet(fromId, capped);
+          // No source named → ASK; mutate NOTHING. Every repay must leave the
+          // 'repayment' transfer record (logActivity) or money moves with no paper
+          // trail — reconcileWalletBalances can't see it and the next auto-reconcile
+          // silently reverts the repayment. That record needs a REAL source wallet:
+          // the manual flow can't submit without one (WalletManagement.handleRepay
+          // requires repaySourceId; RepayModal only offers non-credit wallets), and
+          // a self-sourced record (credit wallet paying itself) nets to zero in the
+          // reconcile transfer replay, so the +repay on the credit balance would be
+          // computed away. Same disambiguation pattern as edit_budget's
+          // multiple-match: ask, list the candidates, act on the follow-up.
+          const repaySources = useWalletStore.getState().wallets.filter((w) => w.type !== 'credit');
+          if (repaySources.length === 0) {
+            return { success: false, message: `You need a bank or cash wallet to pay from — add one first, then repay ${creditWallet.name}.`, action };
+          }
+          return { success: false, message: `Which wallet did you pay from? You have: ${repaySources.map((w) => w.name).join(', ')}`, action };
         }
+        const src = useWalletStore.getState().wallets.find((w) => w.id === fromId);
+        if (src && src.type !== 'credit' && src.balance < capped) {
+          return { success: false, message: `${src.name} only has RM ${src.balance.toFixed(2)} — not enough to repay RM ${capped.toFixed(2)}.`, action };
+        }
+        useWalletStore.getState().deductFromWallet(fromId, capped);
         useWalletStore.getState().repayCredit(creditId, capped);
         // Record the source→credit movement so reconcileWalletBalances accounts
         // for the source deduction (mirrors WalletManagement.handleRepay).
-        if (fromId) {
-          useWalletStore.getState().logActivity(fromId, creditId, capped, 'repayment');
-        }
+        useWalletStore.getState().logActivity(fromId, creditId, capped, 'repayment');
         const newUsed = owed - capped;
         return {
           success: true,
@@ -978,7 +996,10 @@ export function executeAction(action: ChatAction): ExecuteResult {
       case 'add_savings_account': {
         const savingsStore = useSavingsStore.getState();
         if (!usePremiumStore.getState().canCreateSavingsAccount(savingsStore.accounts.length)) {
-          return { success: false, message: `Free plan caps you at ${FREE_TIER.maxSavingsAccounts} savings accounts. Remove one, or upgrade to Premium to add more.`, action };
+          // Cap message must reflect the CALLER'S tier — a Basic user hitting their
+          // 6-account cap must not be told the free limit (stale hardcode).
+          const saTier = usePremiumStore.getState().tier;
+          return { success: false, message: `Your ${saTier} plan caps you at ${TIER_LIMITS[saTier].maxSavingsAccounts} savings accounts. Remove one, or upgrade to add more.`, action };
         }
         // action.amount is already finite & > 0 (global guard). But the resolved cost
         // basis is NOT covered by that guard — a negative/non-finite initialInvestment
@@ -1202,9 +1223,11 @@ export function executeAction(action: ChatAction): ExecuteResult {
             action,
           };
         }
-        // (4) Free-tier cap — don't let chat bypass the paywall the UI enforces.
+        // (4) Tier cap — don't let chat bypass the paywall the UI enforces.
+        // Reads the caller's REAL tier cap (a Basic user must not be told the free limit).
         if (!usePremiumStore.getState().canCreateBudget(store.budgets.length)) {
-          return { success: false, message: `Free plan caps you at ${FREE_TIER.maxBudgets} budgets. Upgrade to Premium to add more.`, action };
+          const tier = usePremiumStore.getState().tier;
+          return { success: false, message: `Your ${tier} plan caps you at ${TIER_LIMITS[tier].maxBudgets} budgets. Upgrade to add more.`, action };
         }
         const now = new Date();
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -1494,7 +1517,7 @@ AVAILABLE ACTIONS:
 
 13. repay_credit — Pay off credit/BNPL balance
    {"type":"repay_credit","amount":NUMBER,"description":"TEXT","creditWallet":"CREDIT_WALLET_NAME","fromWallet":"BANK_WALLET_NAME"}
-   Repays credit wallet balance. fromWallet is optional — if specified, deducts from that bank wallet.
+   Repays credit wallet balance from the named bank wallet. If the user names no source, omit fromWallet — the app will ask them which wallet paid. NEVER guess a source.
 
 14. update_savings — Update the current value of a savings/investment account
    {"type":"update_savings","amount":NUMBER,"description":"ACCOUNT_NAME","accountName":"ACCOUNT_NAME"}
@@ -1588,7 +1611,7 @@ RULES:
 - After recording an expense, note the budget impact if relevant (the system will append this automatically).
 - For update_subscription: only include fields that are changing (newAmount and/or billingCycle).
 - For add_bnpl: the creditWallet must be a credit-type wallet (SPayLater, credit card). Records both the expense and credit usage.
-- For repay_credit: fromWallet is the bank/ewallet paying off the credit. If user doesn't mention source, omit fromWallet.
+- For repay_credit: fromWallet is the bank/ewallet paying off the credit. If user doesn't mention source, omit fromWallet — the app asks which wallet paid; when the user answers, re-emit the action WITH fromWallet.
 - For delete_transaction: match using description + amount + matchType. If user wants to fix a wrong amount, prefer edit_transaction over deleting + re-adding. If there are duplicates, use deleteAll:true.
 - For edit_transaction: match the OLD values (amount, description), then provide the NEW values (newAmount, newDescription, newCategory, newDate). NEVER add correction entries — just edit directly.
 - ALWAYS prefer edit_transaction over "delete + re-add" or "add correction entry". Users want simple, direct fixes.

@@ -9,9 +9,8 @@ import { useSavingsStore } from '../store/savingsStore';
 import { useNotesStore } from '../store/notesStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTombstoneStore } from '../store/tombstoneStore';
+import { useBudgetProfileStore } from '../store/budgetProfileStore';
 import { autoReconcileWallets } from '../utils/walletReconcile';
-import { roundMoney } from '../utils/money';
-import { replayCapitalMoves } from '../screens/personal/savings/savingsMath';
 import * as FileSystem from 'expo-file-system/legacy';
 import { resolveReceiptImageUri } from '../utils/receiptImage';
 import { uploadReceiptImage, ensureLocalReceiptImage } from './receiptImageSync';
@@ -23,7 +22,13 @@ import {
   noteToRemote, noteFromRemote,
   mergeSubscription,
 } from './personalSyncMappers';
-import type { Debt, Goal, SavingsAccount, SavedReceipt } from '../types';
+// Pure conflict/merge rules — extracted to personalSyncMerge (tsx-testable, zero
+// RN/store/supabase imports). Behavior identical to the old inline versions;
+// mergeById now takes the tombstone set explicitly instead of a closure.
+import {
+  mergeById, mergeDebt, mergeGoal, mergeReceipt, mergeSavings, mergeWallet,
+  dedupeBudgetsByCategory,
+} from './personalSyncMerge';
 
 // ─── Session helper ───────────────────────────────────────────────────────────
 let _sessionExpired = false;
@@ -76,8 +81,8 @@ async function getSession() {
 type PullResult<TLocal> = {
   remote: TLocal[];
   remoteLocalIds: Set<string>;
-  // local_ids of rows the CLOUD reports soft-deleted (deleted_at set). Only
-  // populated for soft-delete-aware tables (receipts, transactions).
+  // local_ids of rows the CLOUD reports soft-deleted (deleted_at set) — the
+  // authoritative cloud tombstones. M1: populated for EVERY synced table.
   remoteDeletedIds: Set<string>;
 } | null;
 
@@ -88,7 +93,6 @@ async function pullTable<TLocal>(
   userId: string,
   fromRemote: (r: any) => TLocal,
   tombstoneIds?: Set<string>,
-  opts?: { softDelete?: boolean },
 ): Promise<PullResult<TLocal>> {
   const allData: any[] = [];
   let from = 0;
@@ -107,21 +111,17 @@ async function pullTable<TLocal>(
     if (!data || data.length < PULL_PAGE) break;
     from += PULL_PAGE;
   }
-  // Cloud soft-delete partition (receipts + transactions only): a row with
-  // deleted_at set is an authoritative CLOUD TOMBSTONE — exclude it from the
-  // merge set and surface its local_id so pullAll can delete + durably tombstone
-  // the local copy.
+  // Cloud soft-delete partition (M1: ALL synced tables): a row with deleted_at
+  // set is an authoritative CLOUD TOMBSTONE — exclude it from the merge set and
+  // surface its local_id so pullAll can delete + durably tombstone the local copy.
   const remoteDeletedIds = new Set<string>();
-  let live = allData;
-  if (opts?.softDelete) {
-    live = allData.filter((r: any) => {
-      if (r.deleted_at) {
-        if (r.local_id) remoteDeletedIds.add(r.local_id);
-        return false;
-      }
-      return true;
-    });
-  }
+  const live = allData.filter((r: any) => {
+    if (r.deleted_at) {
+      if (r.local_id) remoteDeletedIds.add(r.local_id);
+      return false;
+    }
+    return true;
+  });
   const filtered = live.filter(
     (r: any) => !r.local_id || !tombstoneIds?.has(r.local_id),
   );
@@ -130,32 +130,18 @@ async function pullTable<TLocal>(
   return { remote, remoteLocalIds: ids, remoteDeletedIds };
 }
 
-async function deleteTombstones(
-  table: string,
-  userId: string,
-  ids: string[] | undefined,
-): Promise<boolean> {
-  if (!ids || ids.length === 0) return true;
-  const { error } = await supabase
-    .from(table)
-    .delete()
-    .eq('user_id', userId)
-    .in('local_id', ids);
-  if (error) {
-    if (__DEV__) console.warn(`[personalSync] tombstone delete ${table} failed:`, error.message);
-    return false;
-  }
-  return true;
-}
-
-// B3: SOFT delete (set deleted_at) instead of a hard DELETE — receipts and
-// transactions only. A hard DELETE leaves NO cloud record, so a device that still
-// holds the row (and hasn't pulled) would re-upsert and resurrect it once the
-// local tombstone TTL expires. A deleted_at tombstone is durable in the cloud:
-// every other device learns of the deletion on its next pull. This closes the
-// "authoritative cloud tombstone (audit doc 05, later phase)" gap for these two
-// tables. (A re-upsert from a stale device omits deleted_at from its payload, so
-// PostgREST's ON CONFLICT DO UPDATE never clears the tombstone.)
+// M1: SOFT delete (set deleted_at) instead of a hard DELETE — for EVERY synced
+// personal table (extended 2026-07-22 from the receipts+transactions pilot, B3).
+// A hard DELETE leaves NO cloud record, so a device that still holds the row
+// (and hasn't pulled) would re-upsert and resurrect it once the local tombstone
+// TTL expires — and for wallet-linked rows autoReconcileWallets then re-applies
+// the zombie's wallet effect (audit M1's permanent split-brain). A deleted_at
+// tombstone is durable in the cloud: every other device learns of the deletion
+// on its next pull. (A re-upsert from a stale device omits deleted_at from its
+// payload, so PostgREST's ON CONFLICT DO UPDATE never clears the tombstone.)
+// The old hard-DELETE path (deleteTombstones) was removed with M1 — cloud rows
+// are now only hard-deleted by purge_personal_tombstones' retention sweep or by
+// disablePersonalSync(wipeRemote).
 async function softDeleteTombstones(
   table: string,
   userId: string,
@@ -174,14 +160,16 @@ async function softDeleteTombstones(
   return true;
 }
 
-async function upsertBatch(table: string, rows: any[]): Promise<boolean> {
+// onConflict defaults to the (user_id, local_id) unique index every personal_*
+// table upserts on; personal_budget_profile overrides it (single row, PK user_id).
+async function upsertBatch(table: string, rows: any[], onConflict = 'user_id,local_id'): Promise<boolean> {
   if (rows.length === 0) return true;
   // Chunk to stay under PostgREST request-body limits for heavy users.
   const CHUNK = 500;
   let allOk = true;
   for (let i = 0; i < rows.length; i += CHUNK) {
     const slice = rows.slice(i, i + CHUNK);
-    const { error } = await supabase.from(table).upsert(slice, { onConflict: 'user_id,local_id' });
+    const { error } = await supabase.from(table).upsert(slice, { onConflict });
     if (error) {
       // Capture in production too — a swallowed push failure silently diverges devices.
       console.warn(`[personalSync] upsert ${table} chunk ${i / CHUNK} failed:`, error.message);
@@ -212,10 +200,11 @@ async function upsertBatch(table: string, rows: any[]): Promise<boolean> {
 
 // NOTE: the old `deleteMissing` set-difference delete was REMOVED. It could
 // permanently delete another device's just-created cloud rows it simply hadn't
-// pulled yet (the #1 critical data-loss bug). Remote deletes are now driven
-// EXCLUSIVELY by explicit tombstones (deleteTombstones). Propagating a delete to
-// a device that still holds the row locally will be restored via an authoritative
-// cloud tombstone table (audit doc 05, later phase).
+// pulled yet (the #1 critical data-loss bug). Remote deletes are driven
+// EXCLUSIVELY by explicit tombstones (softDeleteTombstones). The "authoritative
+// cloud tombstone" that propagates a delete to a device still holding the row
+// locally is the deleted_at column — since M1 (2026-07-22) on EVERY synced
+// table, closing the audit's "later phase" gap.
 
 // ─── Pull all + merge into stores ─────────────────────────────────────────────
 async function pullAll(userId: string): Promise<boolean> {
@@ -269,8 +258,9 @@ async function pullAll(userId: string): Promise<boolean> {
       receipts,
       notes,
     ] = await Promise.all([
-      // transactions + receipts are soft-delete-aware (deleted_at cloud tombstones)
-      pullTable('personal_transactions', userId, txFromRemote, tsTx, { softDelete: true }),
+      // M1: EVERY table is soft-delete-aware — pullTable partitions deleted_at
+      // rows into remoteDeletedIds (authoritative cloud tombstones).
+      pullTable('personal_transactions', userId, txFromRemote, tsTx),
       pullTable('personal_wallets', userId, walletFromRemote, tsWallet),
       pullTable('personal_wallet_transfers', userId, transferFromRemote, tsTransfer),
       pullTable('personal_subscriptions', userId, subFromRemote, tsSub),
@@ -280,7 +270,7 @@ async function pullAll(userId: string): Promise<boolean> {
       pullTable('personal_splits', userId, splitFromRemote, tsSplit),
       pullTable('personal_contacts', userId, contactFromRemote, tsContact),
       pullTable('personal_savings_accounts', userId, savingsFromRemote, tsSavings),
-      pullTable('personal_receipts', userId, receiptFromRemote, tsReceipt, { softDelete: true }),
+      pullTable('personal_receipts', userId, receiptFromRemote, tsReceipt),
       pullTable('personal_notes', userId, noteFromRemote, tsNote),
     ]);
 
@@ -297,14 +287,24 @@ async function pullAll(userId: string): Promise<boolean> {
     const savingsState = useSavingsStore.getState();
     const notesState = useNotesStore.getState();
 
-    // B3: apply CLOUD soft-delete tombstones. A remote receipt/transaction row
-    // with deleted_at set means another device deleted it — record a DURABLE local
+    // M1: apply CLOUD soft-delete tombstones from EVERY table. A remote row with
+    // deleted_at set means another device deleted it — record a DURABLE local
     // tombstone (so it survives this device's tombstone TTL and can never resurrect)
     // and fold the ids into allDeletedIds so mergeById both refuses to re-add them
     // AND drops any local copy this device still holds.
     const cloudDeletedIds = new Set<string>([
       ...transactions.remoteDeletedIds,
+      ...wallets.remoteDeletedIds,
+      ...transfers.remoteDeletedIds,
+      ...subscriptions.remoteDeletedIds,
+      ...budgets.remoteDeletedIds,
+      ...goals.remoteDeletedIds,
+      ...debts.remoteDeletedIds,
+      ...splits.remoteDeletedIds,
+      ...contacts.remoteDeletedIds,
+      ...savings.remoteDeletedIds,
       ...receipts.remoteDeletedIds,
+      ...notes.remoteDeletedIds,
     ]);
     if (cloudDeletedIds.size > 0) {
       useTombstoneStore.getState().addTombstones([...cloudDeletedIds]);
@@ -314,172 +314,31 @@ async function pullAll(userId: string): Promise<boolean> {
     // by mergeById to prevent resurrecting (and to locally remove) deleted items.
     const allDeletedIds = new Set<string>([...durableTombstones, ...cloudDeletedIds]);
 
-    const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-    const newer = (a: any, b: any) =>
-      (b.updatedAt?.getTime?.() ?? 0) >= (a.updatedAt?.getTime?.() ?? 0) ? b : a;
-    // First value that's actually present. Unlike `??`, this treats '' as empty —
-    // so an empty remote field can NEVER blank a real local one (descriptions etc.).
-    const keep = (...vals: any[]) => vals.find((v) => v !== undefined && v !== null && v !== '');
+    // Conflict/merge rules are PURE and live in ./personalSyncMerge — see that
+    // file for each table's rationale (debt/goal child unions, receipt image
+    // guard, savings cost-basis re-derivation, wallet field-level merge).
+    // allDeletedIds is passed into every mergeById below, so a tombstoned row is
+    // REMOVED from the local copy and can never be re-added by the remote side.
+    const merge = { deletedIds: allDeletedIds };
 
-    // Union nested money arrays (payments / contributions / snapshots) by stable
-    // child id so a concurrent edit on another device can NEVER silently drop one
-    // (whole-row LWW would). On a genuine id conflict keep the copy with the
-    // longer editLog (more edits = newer).
-    const childUnion = <C extends { id: string; editLog?: any[] }>(a: C[] = [], b: C[] = []): C[] => {
-      const m = new Map<string, C>();
-      for (const x of a) m.set(x.id, x);
-      for (const x of b) {
-        const ex = m.get(x.id);
-        if (!ex || (x.editLog?.length ?? 0) > (ex.editLog?.length ?? 0)) m.set(x.id, x);
-      }
-      return Array.from(m.values());
-    };
-    // Append-only-safe merges: scalar fields by LWW, children UNIONED, derived
-    // totals recomputed from the merged children (matches the store formulas).
-    const mergeDebt = (l: Debt, r: Debt): Debt => {
-      const base = newer(l, r);
-      const payments = childUnion(l.payments ?? [], r.payments ?? []);
-      const paidAmount = round2(Math.min(base.totalAmount, payments.reduce((s: number, p: any) => s + (p.amount || 0), 0)));
-      const status = paidAmount >= base.totalAmount ? 'settled' : paidAmount > 0 ? 'partial' : 'pending';
-      // These fields aren't carried in the remote schema yet — keep the local value
-      // so a pull can't drop a debt's grouping/description and hide it from the list.
-      return {
-        ...base, payments, paidAmount, status,
-        groupId: keep(base.groupId, l.groupId, r.groupId),
-        description: keep(base.description, l.description, r.description) ?? '',
-        category: keep(base.category, l.category, r.category),
-        // walletId is carried through sync at runtime (debtFromRemote sets it) but
-        // isn't declared on the Debt interface — read it off-type, params stay typed.
-        walletId: keep((base as any).walletId, (l as any).walletId, (r as any).walletId),
-        mode: keep(base.mode, l.mode, r.mode) ?? 'personal',
-        isArchived: base.isArchived ?? l.isArchived,
-        archivedAt: base.archivedAt ?? l.archivedAt,
-        editLog: (base.editLog && base.editLog.length) ? base.editLog : (l.editLog ?? r.editLog),
-        contact: (base.contact && base.contact.name) ? base.contact : (l.contact ?? r.contact),
-      } as Debt;
-    };
-    const mergeGoal = (l: Goal, r: Goal): Goal => {
-      const base = newer(l, r);
-      const contributions = childUnion(l.contributions ?? [], r.contributions ?? []);
-      const currentAmount = round2(contributions.reduce((s: number, c: any) => s + (c.amount || 0), 0));
-      // icon/color/iconName/imageUri/category aren't round-tripped through Supabase
-      // yet — keep the local values so a pull can't blank a goal's look.
-      return {
-        ...base, contributions, currentAmount,
-        icon: keep(base.icon, l.icon, r.icon),
-        color: keep(base.color, l.color, r.color),
-        // iconName isn't on the Goal interface — read it off-type, params stay typed.
-        iconName: keep((base as any).iconName, (l as any).iconName, (r as any).iconName),
-        imageUri: keep(base.imageUri, l.imageUri, r.imageUri),
-        category: keep(base.category, l.category, r.category),
-      } as Goal;
-    };
-    // B2: LWW scalars, but NEVER clobber this device's local image reference.
-    // imageUri is a device-local file path (receiptFromRemote leaves it undefined),
-    // and remoteImagePath is the shared bucket path — keep whichever side has each
-    // so a cross-device pull can't blank a receipt's image on this device.
-    const mergeReceipt = (l: SavedReceipt, r: SavedReceipt): SavedReceipt => {
-      const base = newer(l, r);
-      return {
-        ...base,
-        imageUri: keep(base.imageUri, l.imageUri, r.imageUri),
-        remoteImagePath: keep(base.remoteImagePath, l.remoteImagePath, r.remoteImagePath),
-      } as SavedReceipt;
-    };
-    const mergeSavings = (l: SavingsAccount, r: SavingsAccount): SavingsAccount => {
-      const base = newer(l, r);
-      const dateMs = (d: any) => new Date(d).getTime(); // Date objects OR ISO strings
-      // Union snapshots by id (whole-row LWW would drop one recorded on the other
-      // device), then sort ASCENDING by date. childUnion returns them in insertion
-      // order (local first, remote-only appended), but every consumer reads
-      // history[history.length - 1] as the LATEST snapshot (stale-date detection,
-      // Echo's "last updated", month-start baselines for gain math) — so an unsorted
-      // array can surface an OLDER snapshot as "latest" after a multi-device merge.
-      const history = childUnion<any>(l.history ?? [], r.history ?? []);
-      history.sort((a: any, b: any) => dateMs(a.date) - dateMs(b.date));
-      let currentValue = base.currentValue;
-      if (history.length) {
-        const latest = history.reduce((a: any, b: any) =>
-          (dateMs(b.date) > dateMs(a.date) ? b : a));
-        currentValue = latest.value;
-      }
-      // Cost basis is a RUNNING field: basis = seed + Σ(capital moves in history).
-      // Both devices' deposit/withdrawal snapshots are already in the merged,
-      // date-sorted history, so RE-DERIVE the basis from it — plain LWW would keep
-      // only one device's basis and corrupt gain/return after concurrent capital
-      // moves. Reconstruct each side's seed (basis minus its own capital moves); if
-      // they agree use it, else fall back to the newer row's seed (a rare "put in"
-      // edit conflict — a per-field edit timestamp would be the full fix, deferred).
-      const sortAsc = (h: any[]) => [...(h ?? [])].sort((x: any, y: any) => dateMs(x.date) - dateMs(y.date));
-      const seedOf = (acc: SavingsAccount) => roundMoney(acc.initialInvestment - replayCapitalMoves(sortAsc(acc.history)));
-      const seedL = seedOf(l), seedR = seedOf(r);
-      const seed = seedL === seedR ? seedL : seedOf(base);
-      const initialInvestment = roundMoney(Math.max(0, seed + replayCapitalMoves(history)));
-      // target / annualRate are user preferences (not money-critical), so keep plain
-      // LWW from `base` until per-field edit timestamps ship.
-      return { ...base, history, currentValue, initialInvestment } as SavingsAccount;
-    };
     // Subscriptions carry paymentHistory (each entry ↔ a wallet debit + expense
     // transaction), so whole-row LWW would silently drop a payment recorded on
     // another device. mergeSubscription (pure, in personalSyncMappers) unions the
     // history and re-derives the schedule — see its comment for the full rationale.
 
-    // skew-tolerant LWW: near-ties (within the window) fall back to a stable
-    // deterministic tiebreak (higher id wins) so a slightly-fast device clock
-    // can't silently invert which edit wins.
-    const SKEW_MS = 2000;
-    const remoteWinsScalar = (existing: any, r: any) => {
-      const re = r.updatedAt?.getTime?.() ?? 0;
-      const ex = existing.updatedAt?.getTime?.() ?? 0;
-      if (Math.abs(re - ex) <= SKEW_MS) return String(r.id) > String(existing.id);
-      return re > ex;
-    };
-
-    const mergeById = <T extends { id: string; updatedAt?: Date }>(
-      local: T[],
-      remote: T[],
-      mergeFn?: (l: T, r: T) => T,
-    ): T[] => {
-      const map = new Map<string, T>();
-      // Skip locally-tombstoned rows too: a durable tombstone (or a cloud
-      // soft-delete folded into allDeletedIds) must REMOVE the local copy, not
-      // just block the remote from re-adding it.
-      for (const l of local) { if (allDeletedIds.has(l.id)) continue; map.set(l.id, l); }
-      for (const r of remote) {
-        if (allDeletedIds.has(r.id)) continue;
-        const existing = map.get(r.id);
-        if (!existing) { map.set(r.id, r); continue; }
-        if (mergeFn) {
-          map.set(r.id, mergeFn(existing, r));
-        } else if (remoteWinsScalar(existing, r)) {
-          map.set(r.id, r);
-        }
-      }
-      return Array.from(map.values());
-    };
-
     // Enforce the one-budget-per-category invariant that addBudget guarantees
     // locally but mergeById (keyed by id) can violate when two devices create the
-    // same category. Keep the most-recently-edited budget per category and tombstone
-    // the losers (delete remotely + block re-pull) — else the hero double-counts
-    // both allocation and spend, and duplicate rings render.
-    const mergedBudgets = mergeById(personalState.budgets, budgets.remote);
-    const budgetWinners = new Map<string, (typeof mergedBudgets)[number]>();
-    const budgetLoserIds: string[] = [];
-    for (const b of mergedBudgets) {
-      const key = (b.category ?? '').toLowerCase();
-      const cur = budgetWinners.get(key);
-      if (!cur) { budgetWinners.set(key, b); continue; }
-      const bWins = remoteWinsScalar(cur as any, b as any); // b newer than cur? (latest edit, id tie-break)
-      if (bWins) { budgetLoserIds.push(cur.id); budgetWinners.set(key, b); }
-      else { budgetLoserIds.push(b.id); }
-    }
+    // same category. dedupeBudgetsByCategory keeps the most-recently-edited budget
+    // per category; tombstone the losers (delete remotely + block re-pull) — else
+    // the hero double-counts both allocation and spend, and duplicate rings render.
+    const { winners: budgetWinners, loserIds: budgetLoserIds } =
+      dedupeBudgetsByCategory(mergeById(personalState.budgets, budgets.remote, merge));
 
     usePersonalStore.setState({
-      transactions: mergeById(personalState.transactions, transactions.remote),
-      subscriptions: mergeById(personalState.subscriptions, subscriptions.remote, mergeSubscription),
-      budgets: Array.from(budgetWinners.values()),
-      goals: mergeById(personalState.goals, goals.remote, mergeGoal),
+      transactions: mergeById(personalState.transactions, transactions.remote, merge),
+      subscriptions: mergeById(personalState.subscriptions, subscriptions.remote, { ...merge, mergeFn: mergeSubscription }),
+      budgets: budgetWinners,
+      goals: mergeById(personalState.goals, goals.remote, { ...merge, mergeFn: mergeGoal }),
       ...(budgetLoserIds.length
         ? { _deletedBudgetIds: [...(personalState._deletedBudgetIds ?? []), ...budgetLoserIds] }
         : {}),
@@ -487,30 +346,64 @@ async function pullAll(userId: string): Promise<boolean> {
     if (budgetLoserIds.length) useTombstoneStore.getState().addTombstones(budgetLoserIds);
 
     useWalletStore.setState({
-      wallets: mergeById(walletState.wallets, wallets.remote),
-      transfers: mergeById(walletState.transfers, transfers.remote),
+      // Wallets get a FIELD-LEVEL merge (money fields from the newer side,
+      // cosmetic fields per-field newer-wins) instead of the old whole-row LWW —
+      // see mergeWallet in personalSyncMerge for the exact rules.
+      wallets: mergeById(walletState.wallets, wallets.remote, { ...merge, mergeFn: mergeWallet }),
+      transfers: mergeById(walletState.transfers, transfers.remote, merge),
     });
 
     useDebtStore.setState({
-      debts: mergeById(debtState.debts, debts.remote, mergeDebt),
-      splits: mergeById(debtState.splits, splits.remote),
-      contacts: mergeById(debtState.contacts, contacts.remote),
+      debts: mergeById(debtState.debts, debts.remote, { ...merge, mergeFn: mergeDebt }),
+      splits: mergeById(debtState.splits, splits.remote, merge),
+      contacts: mergeById(debtState.contacts, contacts.remote, merge),
     });
 
     useReceiptStore.setState({
-      receipts: mergeById(receiptState.receipts, receipts.remote, mergeReceipt),
+      receipts: mergeById(receiptState.receipts, receipts.remote, { ...merge, mergeFn: mergeReceipt }),
     });
 
     useSavingsStore.setState({
-      accounts: mergeById(savingsState.accounts, savings.remote, mergeSavings),
+      accounts: mergeById(savingsState.accounts, savings.remote, { ...merge, mergeFn: mergeSavings }),
     });
 
     // Notes: whole-row LWW by updatedAt (client_edit_at). content + formatting +
     // extractions travel together, so a restored note keeps its rich text. Concurrent
     // multi-device edits are LWW for now — see docs/multi-device.md.
     useNotesStore.setState({
-      pages: mergeById(notesState.pages, notes.remote),
+      pages: mergeById(notesState.pages, notes.remote, merge),
     });
+
+    // ── M2: budget profile — ONE row per user, LWW blob on client_edit_at ─────
+    // Pull side: adopt the remote profile only when its client_edit_at is
+    // STRICTLY newer than this device's last local edit (updatedAt, epoch ms).
+    // applySyncedProfile carries the REMOTE edit time without bumping it, so a
+    // pulled profile is never mistaken for a fresh local edit (no re-push loop,
+    // and a later real local edit still outranks it). Push side: pushBudgetProfile.
+    {
+      const { data: bpRows, error: bpError } = await supabase
+        .from('personal_budget_profile')
+        .select('*')
+        .eq('user_id', userId)
+        .limit(1);
+      if (bpError) {
+        if (__DEV__) console.warn('[personalSync] budget-profile pull failed:', bpError.message);
+        return false;
+      }
+      const remoteBp = bpRows?.[0];
+      if (remoteBp) {
+        const bp = useBudgetProfileStore.getState();
+        const remoteAt = new Date(remoteBp.client_edit_at ?? remoteBp.updated_at ?? 0).getTime() || 0;
+        if (remoteAt > (bp.updatedAt ?? 0)) {
+          bp.applySyncedProfile({
+            takeHome: remoteBp.take_home != null ? Number(remoteBp.take_home) : null,
+            commitments: Array.isArray(remoteBp.commitments) ? remoteBp.commitments : [],
+            modelId: remoteBp.model_id ?? null,
+            updatedAt: remoteAt,
+          });
+        }
+      }
+    }
 
     // B1 (pull side): hydrate the local image file for receipts synced from
     // another device (they carry remoteImagePath but have no on-device photo yet).
@@ -553,6 +446,24 @@ async function pullAll(userId: string): Promise<boolean> {
 }
 
 // ─── Push each table ──────────────────────────────────────────────────────────
+// M2: budget profile — a single-row LWW blob keyed by user_id (the PK; there is
+// no local_id). Push ONLY when this device has ever recorded a user edit
+// (updatedAt set): a never-edited device must not claim the row with an empty
+// profile. After pullAll adopts a newer remote blob, local updatedAt EQUALS the
+// remote client_edit_at, so this re-upsert is a same-value no-op — the same
+// pull-then-push convention every other table follows.
+async function pushBudgetProfile(userId: string): Promise<boolean> {
+  const bp = useBudgetProfileStore.getState();
+  if (!bp.updatedAt) return true;
+  return upsertBatch('personal_budget_profile', [{
+    user_id: userId,
+    take_home: bp.takeHome != null && Number.isFinite(Number(bp.takeHome)) ? Number(bp.takeHome) : null,
+    commitments: bp.commitments ?? [],
+    model_id: bp.modelId ?? null,
+    client_edit_at: new Date(bp.updatedAt).toISOString(),
+  }], 'user_id');
+}
+
 async function pushAll(userId: string): Promise<boolean> {
   const p = usePersonalStore.getState();
   const w = useWalletStore.getState();
@@ -576,16 +487,13 @@ async function pushAll(userId: string): Promise<boolean> {
     ['personal_receipts', r._deletedReceiptIds],
     ['personal_notes', n._deletedNoteIds],
   ];
-  // Receipts + transactions SOFT-delete (deleted_at) so the deletion survives in
-  // the cloud and propagates to other devices; every other table keeps the hard
-  // DELETE (their zombie protection is the durable local tombstone store).
-  const SOFT_DELETE_TABLES = new Set(['personal_transactions', 'personal_receipts']);
+  // M1: EVERY synced table SOFT-deletes (deleted_at) so the deletion survives in
+  // the cloud and propagates to every other device on its next pull. The durable
+  // LOCAL tombstone store stays as belt-and-braces (it still guards this device
+  // during the pull→push window and against a retention purge racing a
+  // long-offline device). The old per-table hard-DELETE split is gone.
   const tombResults = await Promise.all(
-    tombstones.map(([table, ids]) =>
-      SOFT_DELETE_TABLES.has(table)
-        ? softDeleteTombstones(table, userId, ids)
-        : deleteTombstones(table, userId, ids),
-    ),
+    tombstones.map(([table, ids]) => softDeleteTombstones(table, userId, ids)),
   );
 
   // 1.5) B1: upload personal receipt images to Supabase Storage BEFORE upserting
@@ -618,6 +526,7 @@ async function pushAll(userId: string): Promise<boolean> {
     upsertBatch('personal_savings_accounts', s.accounts.map((x) => savingsToRemote(userId, x))),
     upsertBatch('personal_receipts', receiptsForPush.map((x) => receiptToRemote(userId, x))),
     upsertBatch('personal_notes', n.pages.map((x) => noteToRemote(userId, x))),
+    pushBudgetProfile(userId),
   ]);
   const allUpsertsSucceeded = upsertResults.every((ok) => ok);
 
@@ -656,7 +565,14 @@ const SCHEMA_PROBES: Array<[string, string]> = [
   // client_edit_at, that it's migrated too.
   ['personal_transactions', 'deleted_at'],
   ['personal_notes', 'client_edit_at'],
-  ['personal_wallets', 'client_edit_at'],
+  // personal_wallets probes deleted_at (added LAST, in 20260722100000 — M1+M2):
+  // its presence proves the soft-delete-everywhere + budget-profile migration ran.
+  // That single migration adds deleted_at to ALL remaining synced tables AND
+  // creates personal_budget_profile in one transaction, so neither the universal
+  // soft-delete write path nor the profile pull/push can hit a missing
+  // column/table — and, being newer than client_edit_at, it proves that column
+  // is migrated too. Until applied, sync stays DISABLED (safe).
+  ['personal_wallets', 'deleted_at'],
   ['personal_wallet_transfers', 'client_edit_at'],
   ['personal_subscriptions', 'client_edit_at'],
   ['personal_budgets', 'client_edit_at'],
@@ -666,22 +582,70 @@ const SCHEMA_PROBES: Array<[string, string]> = [
   ['personal_contacts', 'is_from_phone'],
 ];
 
+// A2: the schema verdict is cached ONLY when it's definitive. `false` used to be
+// cached on ANY probe error — including a transient network blip — which then
+// auto-disabled sync for the rest of the session ("Sync Now" resets backoff but
+// not this cache). Verdicts:
+//   'ok'        → cached; probes stop for the session.
+//   'missing'   → cached; the probe DEFINITIVELY reported a missing column/table
+//                 (migrations not applied — that can't fix itself mid-session,
+//                 and syncPersonal disables sync on it anyway).
+//   'transient' → NOT cached (_schemaVerified stays null): this cycle is skipped
+//                 WITHOUT disabling sync, and the next sync re-probes.
+type SchemaVerdict = 'ok' | 'missing' | 'transient';
 let _schemaVerified: boolean | null = null;
-/** Re-run the schema preflight on next sync (call after applying migrations). */
+
+/**
+ * Re-run the schema preflight on the next sync. A cached 'missing' verdict is
+ * deliberately session-sticky (a missing migration can't fix itself), so call
+ * this after applying migrations to a LIVE session to re-enable without an app
+ * restart. NOTE: since the A2 fix, transient network errors no longer poison the
+ * cache, so this is NOT needed for connectivity recovery anymore — it stays
+ * exported solely for the "migrations just applied, re-probe now" path (zero
+ * cost to keep, and the admin/dev tooling that applies migrations should use it).
+ */
 export function resetPersonalSchemaCheck(): void { _schemaVerified = null; }
 
-async function verifyPersonalSchema(): Promise<boolean> {
-  if (_schemaVerified !== null) return _schemaVerified;
+// Codes that DEFINITIVELY mean the probed column/table is absent:
+//   42703    undefined_column (Postgres, surfaced by PostgREST for a bad select)
+//   42P01    undefined_table  (Postgres)
+//   PGRST204 column missing from PostgREST's schema cache
+//   PGRST205 table  missing from PostgREST's schema cache
+// Anything else (fetch failures, 5xx, timeouts, gateway errors) is TRANSIENT:
+// fail THIS attempt only, never poison the cache. Deliberately conservative —
+// when in doubt, re-probe next cycle rather than freeze sync off.
+const MISSING_SCHEMA_CODES = new Set(['42703', '42P01', 'PGRST204', 'PGRST205']);
+function isDefinitelyMissingSchema(error: { code?: string; message?: string }): boolean {
+  if (error.code && MISSING_SCHEMA_CODES.has(error.code)) return true;
+  // Message fallback for layers that strip the code — ONLY the exact
+  // undefined-column/table phrasings, never generic error text.
+  const msg = error.message ?? '';
+  return /column .+ does not exist|relation .+ does not exist|could not find the .+ column|could not find the table/i.test(msg);
+}
+
+async function verifyPersonalSchema(): Promise<SchemaVerdict> {
+  if (_schemaVerified === true) return 'ok';
+  if (_schemaVerified === false) return 'missing';
   for (const [table, col] of SCHEMA_PROBES) {
-    const { error } = await supabase.from(table).select(col).limit(1);
+    let error: { code?: string; message?: string } | null;
+    try {
+      ({ error } = await supabase.from(table).select(col).limit(1));
+    } catch (e: any) {
+      // A thrown fetch (offline, DNS, aborted) is transient by definition.
+      error = { message: e?.message ?? 'network error' };
+    }
     if (error) {
-      console.warn(`[personalSync] schema preflight FAILED: ${table}.${col} missing — ${error.message}`);
-      _schemaVerified = false;
-      return false;
+      if (isDefinitelyMissingSchema(error)) {
+        console.warn(`[personalSync] schema preflight FAILED: ${table}.${col} missing — ${error.message}`);
+        _schemaVerified = false;
+        return 'missing';
+      }
+      console.warn(`[personalSync] schema preflight TRANSIENT error on ${table}.${col} — will re-probe next sync:`, error.message);
+      return 'transient'; // _schemaVerified stays null → re-probe next cycle
     }
   }
   _schemaVerified = true;
-  return true;
+  return 'ok';
 }
 
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
@@ -747,11 +711,19 @@ export function syncPersonal(): Promise<void> {
     _accountMismatch = false;
 
     // Schema preflight — never write a lossy round-trip against an incomplete DB.
-    const schemaOk = await verifyPersonalSchema();
-    if (!schemaOk) {
+    // A2: only a DEFINITIVE missing-column/table verdict disables sync; a
+    // transient probe failure just skips this cycle and re-probes on the next.
+    const schemaVerdict = await verifyPersonalSchema();
+    if (schemaVerdict === 'missing') {
       settings.setPersonalSyncEnabled(false);
       settings.setLastPersonalSyncError?.('schema');
       console.warn('[personalSync] DISABLED — remote schema incomplete. Apply the latest migrations, then re-enable.');
+      return;
+    }
+    if (schemaVerdict === 'transient') {
+      // Leave sync ENABLED and the last-error state untouched — the next sync
+      // trigger (foreground/mutation/Sync Now) re-probes with a clean slate.
+      console.warn('[personalSync] schema preflight unavailable (transient) — sync skipped this cycle, will retry.');
       return;
     }
 
@@ -819,6 +791,12 @@ export async function disablePersonalSync(wipeRemote = false): Promise<void> {
     'personal_contacts',
     'personal_savings_accounts',
     'personal_receipts',
+    // Added 2026-07-22: notes were missing from the wipe (oversight — the table
+    // shipped 20260719), and the budget profile row must go too (its delete
+    // matches on user_id alone, which is its PK; .in('local_id') would miss it,
+    // but the .eq('user_id') filter below covers every table shape).
+    'personal_notes',
+    'personal_budget_profile',
   ];
   await Promise.allSettled(
     tables.map((t) => supabase.from(t).delete().eq('user_id', userId)),

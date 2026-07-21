@@ -26,6 +26,9 @@ interface FABProps {
   icon?: keyof typeof Feather.glyphMap;
   color?: string;
   style?: ViewStyle;
+  /** Screen-meaningful label for screen readers (e.g. "Add Account").
+   *  Defaults to the generic string so existing call sites are unchanged. */
+  accessibilityLabel?: string;
 }
 
 // ─── Constants ─────────────────────────────────────────────
@@ -41,6 +44,7 @@ const FAB = forwardRef<View, FABProps>(({
   icon = 'plus',
   color: colorProp,
   style,
+  accessibilityLabel = 'Floating action button',
 }, ref) => {
   const C = useCalm();
   const color = colorProp ?? C.accent;
@@ -84,7 +88,7 @@ const FAB = forwardRef<View, FABProps>(({
       ]}
       accessible
       accessibilityRole="button"
-      accessibilityLabel="Floating action button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityHint="Activates the primary action for this screen"
     >
       <Pressable

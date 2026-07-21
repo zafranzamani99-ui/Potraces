@@ -233,6 +233,24 @@ export function computeWalletReconcile(walletId: string): ReconcileResult | null
 }
 
 /**
+ * The field updates a reconcile fix must apply when setting a wallet's balance
+ * to `computed`. For credit wallets the invariant balance = creditLimit −
+ * usedCredit must hold: if balance moves, usedCredit must follow or the two
+ * available-credit readouts (usage bar vs "Avail.") disagree. Shared by the
+ * AUTO path (autoReconcileWallets) and the MANUAL Fix-balance sheet
+ * (WalletManagement) so both apply the identical correction.
+ */
+export function reconcileFixUpdates(
+  wallet: Pick<Wallet, 'type' | 'creditLimit'>,
+  computed: number,
+): { balance: number; usedCredit?: number } {
+  if (wallet.type === 'credit' && wallet.creditLimit != null) {
+    return { balance: computed, usedCredit: roundMoney(wallet.creditLimit - computed) };
+  }
+  return { balance: computed };
+}
+
+/**
  * Run reconciliation and auto-correct any drifted wallet balances.
  * Returns the number of wallets corrected.
  */
@@ -247,13 +265,9 @@ export function autoReconcileWallets(): number {
     // Do NOT bump updatedAt: a reconcile-derived balance must not automatically
     // win the next last-write-wins against other devices (that would launder a
     // local glitch — e.g. a duplicated/dropped op — into global corruption).
-    // For credit wallets, keep the invariant balance = creditLimit - usedCredit:
-    // if we move balance, usedCredit must follow or the two available-credit
-    // readouts (usage bar vs "Avail.") disagree.
-    if (w.type === 'credit' && w.creditLimit != null) {
-      return { ...w, balance: fix.computed, usedCredit: roundMoney(w.creditLimit - fix.computed) };
-    }
-    return { ...w, balance: fix.computed };
+    // Credit-wallet usedCredit correction lives in reconcileFixUpdates (shared
+    // with the manual Fix-balance path).
+    return { ...w, ...reconcileFixUpdates(w, fix.computed) };
   });
 
   useWalletStore.setState({ wallets: corrected });
