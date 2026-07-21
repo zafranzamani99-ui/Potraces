@@ -36,3 +36,13 @@ export function fmtMoney(amount: number, currency: string): string {
 export function fill(template: string, vars: Record<string, string | number>): string {
   return Object.keys(vars).reduce((out, k) => out.split(`{${k}}`).join(String(vars[k])), template);
 }
+
+/**
+ * Display label for a 1-based team index: the custom name the organizer or a
+ * participant set, else the caller-supplied fallback (already localised, e.g.
+ * "Team 2"). Kept here so every screen labels teams identically.
+ */
+export function teamLabel(names: string[] | null | undefined, idx: number, fallback: string): string {
+  const custom = names?.[idx - 1];
+  return custom && custom.trim() ? custom.trim() : fallback;
+}

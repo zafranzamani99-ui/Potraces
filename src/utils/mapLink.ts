@@ -83,3 +83,18 @@ export function googleMapsUrl(c: MapCoords): string {
 export function wazeUrl(c: MapCoords): string {
   return `https://waze.com/ul?ll=${c.lat},${c.lon}&navigate=yes`;
 }
+
+/**
+ * Waze SEARCH deep-link, for when a pasted link has no parseable lat/lon — a
+ * short `maps.app.goo.gl` link hides its coords behind a redirect, and a
+ * place-name query has none at all. Without this the Waze button falls back to
+ * the original Google URL, which opens Google Maps instead of Waze.
+ */
+export function wazeSearchUrl(query: string): string {
+  return `https://waze.com/ul?q=${encodeURIComponent(query)}&navigate=yes`;
+}
+
+/** Google Maps SEARCH deep-link by place name — the no-coords counterpart. */
+export function googleSearchUrl(query: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}

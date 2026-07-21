@@ -45,6 +45,15 @@ export interface CollectzSession {
   image_path: string | null;
   /** Google Maps / Waze link for the venue (preview card parses it). */
   maps_url: string | null;
+  /** Organizer-only cost scratchpad (never shown to participants). */
+  calc_notes: string | null;
+  /** Capacity: max ACTIVE players (null = no limit; joining is blocked at max). */
+  max_participants: number | null;
+  /** "N teams × M per team" inputs when the cap was set by teams (else null). */
+  team_count: number | null;
+  team_size: number | null;
+  /** Editable team labels, index-aligned with team_count. Falls back to "Team N". */
+  team_names: string[] | null;
   /** 24h cooldown marker for collectz-remind. */
   last_reminded_at: string | null;
   share_code: string;
@@ -65,6 +74,8 @@ export interface CollectzParticipant {
   reject_note: string | null;
   marked_at: string | null;
   confirmed_at: string | null;
+  /** 1-based team the participant belongs to; null = unassigned. */
+  team_idx: number | null;
   /** Participant self-hide (their Home list only). */
   archived_at: string | null;
   created_at: string;
@@ -77,6 +88,8 @@ export interface CollectzRosterEntry {
   status: CollectzParticipantStatus;
   effective_share: number | null;
   claimed: boolean;
+  /** 1-based team; null = unassigned. */
+  team_idx: number | null;
 }
 
 /** Response of the collectz-join `view` action (public + authed projections). */
@@ -96,6 +109,10 @@ export interface CollectzJoinView {
     | 'status'
     | 'image_path'
     | 'maps_url'
+    | 'max_participants'
+    | 'team_count'
+    | 'team_size'
+    | 'team_names'
   >;
   participants: CollectzRosterEntry[];
   progress: {
@@ -132,6 +149,11 @@ export interface CollectzSessionInput {
   qr_image_path?: string | null;
   image_path?: string | null;
   maps_url?: string | null;
+  calc_notes?: string | null;
+  max_participants?: number | null;
+  team_count?: number | null;
+  team_size?: number | null;
+  team_names?: string[] | null;
 }
 
 const PROOFS_BUCKET = 'collectz-proofs';
@@ -210,6 +232,27 @@ export function buildWhatsappAnnouncement(
   return lines.join('\n');
 }
 
+/**
+ * Per-participant payment request — the organizer's "nudge one person" message
+ * (DebtTracking's request-payment equivalent). Personal, short, ends with the
+ * join link so they can pay & upload proof in one tap.
+ */
+export function buildRequestMessage(
+  session: Pick<CollectzSession, 'title' | 'currency' | 'pay_by' | 'share_code'>,
+  name: string,
+  share: number | null,
+): string {
+  const lines: string[] = [`Hi ${name}! 👋`, '', `Friendly reminder for *${session.title}*.`];
+  if (share != null) lines.push(`Your share: *${session.currency} ${share.toFixed(2)}*`);
+  if (session.pay_by) {
+    const pb = [fmtEventDate(session.pay_by), fmtEventTime(session.pay_by)].filter(Boolean).join(', ');
+    if (pb) lines.push(`⏰ Pay by ${pb}`);
+  }
+  lines.push('', `💸 Pay & upload your proof here:`, collectzUrl(session.share_code));
+  lines.push(`_Track & pay via Potraces_`);
+  return lines.join('\n');
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Marker for "no personal session" — screens use this to offer sign-in. */
@@ -227,13 +270,15 @@ async function requireUserId(): Promise<string> {
 }
 
 function generateShareCode(): string {
-  // Unambiguous alphabet (no 0/O, 1/I/L), 8 chars ≈ 41 bits — plenty against
-  // guessing for a link-capability code, short enough to read out loud.
-  const alphabet = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+  // 5-char join code: 3 letters + 2 digits (e.g. "BXK47"). Unambiguous
+  // alphabets (no 0/O, 1/I/L) so it reads cleanly out loud. ~780k codes
+  // (23³·8²); createSession / regenerateShareCode retry on the share_code
+  // UNIQUE violation, so collisions are handled, not merely improbable.
+  const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+  const digits = '23456789';
   let code = '';
-  for (let i = 0; i < 8; i++) {
-    code += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
+  for (let i = 0; i < 3; i++) code += letters[Math.floor(Math.random() * letters.length)];
+  for (let i = 0; i < 2; i++) code += digits[Math.floor(Math.random() * digits.length)];
   return code;
 }
 
@@ -356,7 +401,7 @@ export async function fetchRosterProfiles(userIds: string[]): Promise<Record<str
 export async function addParticipant(
   sessionId: string,
   name: string,
-  opts: { slot?: CollectzSlot; share_amount?: number | null } = {},
+  opts: { slot?: CollectzSlot; share_amount?: number | null; team_idx?: number | null } = {},
 ): Promise<CollectzParticipant> {
   const { data, error } = await supabase
     .from('collectz_participants')
@@ -365,6 +410,8 @@ export async function addParticipant(
       name: name.trim(),
       slot: opts.slot ?? 'active',
       share_amount: opts.share_amount ?? null,
+      // Reserves never hold a team slot.
+      team_idx: (opts.slot ?? 'active') === 'active' ? (opts.team_idx ?? null) : null,
     })
     .select()
     .single();
@@ -374,7 +421,7 @@ export async function addParticipant(
 
 export async function updateParticipant(
   id: string,
-  updates: Partial<Pick<CollectzParticipant, 'name' | 'slot' | 'share_amount'>>,
+  updates: Partial<Pick<CollectzParticipant, 'name' | 'slot' | 'share_amount' | 'team_idx'>>,
 ): Promise<void> {
   const { error } = await supabase.from('collectz_participants').update(updates).eq('id', id);
   throwIfError(error, 'Could not update the participant.');
@@ -445,18 +492,53 @@ export async function resetParticipantToUnpaid(id: string): Promise<void> {
 
 // ── Participant: join / pay flow ─────────────────────────────────────────────
 
+/**
+ * Server error code → user-facing message. `auth_required` deliberately falls
+ * through as the raw code so isCollectzAuthError() matches and the caller can
+ * prompt sign-in instead of showing a dead-end toast.
+ */
+export function joinErrorMessage(code: string): string {
+  switch (code) {
+    case 'not_found': return 'Session not found — check the link.';
+    case 'cancelled': return 'This session was cancelled.';
+    case 'already_joined': return 'You already joined this session.';
+    case 'already_claimed': return 'That name was already claimed.';
+    case 'session_closed': return 'This session is closed.';
+    case 'session_full': return 'This session is full.';
+    case 'team_full': return 'That team is already full.';
+    case 'team_invalid': return 'That team does not exist.';
+    case 'not_in_roster': return 'Join the session first.';
+    case 'team_failed': return 'Could not change the team — try again.';
+    case 'team_reserve': return 'Reserves join a team once they are playing.';
+    case 'name_invalid': return 'Enter a valid name.';
+    default: return code;
+  }
+}
+
 async function invokeJoin<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('collectz-join', { body });
-  if (error) throw new Error(error.message || 'Could not reach the server.');
+  if (error) {
+    // EVERY error collectz-join returns is a non-2xx (auth_required 401,
+    // already_joined 409, name_invalid 400, …), so supabase-js hands us a
+    // FunctionsHttpError whose message is only "non-2xx status code" and
+    // leaves `data` null. The real code is in the response body — read it,
+    // or auth_required never reaches promptSignIn and joining dead-ends.
+    let code: string | null = null;
+    const ctx = (error as { context?: { json?: () => Promise<unknown> } }).context;
+    if (ctx?.json) {
+      try {
+        const parsed = (await ctx.json()) as { error?: string } | null;
+        if (parsed && typeof parsed.error === 'string') code = parsed.error;
+      } catch {
+        // body not JSON / already consumed — fall back to the generic message
+      }
+    }
+    if (code) throw new Error(joinErrorMessage(code));
+    throw new Error(error.message || 'Could not reach the server.');
+  }
   const payload = data as T & { error?: string };
   if (payload && typeof payload === 'object' && payload.error) {
-    const code = payload.error;
-    if (code === 'not_found') throw new Error('Session not found — check the link.');
-    if (code === 'cancelled') throw new Error('This session was cancelled.');
-    if (code === 'already_joined') throw new Error('You already joined this session.');
-    if (code === 'already_claimed') throw new Error('That name was already claimed.');
-    if (code === 'session_closed') throw new Error('This session is closed.');
-    throw new Error(code);
+    throw new Error(joinErrorMessage(payload.error));
   }
   return payload as T;
 }
@@ -474,6 +556,40 @@ export async function claimParticipant(shareCode: string, participantId: string)
     participant_id: participantId,
   });
   return res.participant_id;
+}
+
+/**
+ * Move MYSELF into a team (null = leave / unassign). The edge function refuses a
+ * team that already holds team_size people, so this can throw 'That team is
+ * already full.' Teams never change what anyone pays.
+ */
+export async function joinTeam(shareCode: string, teamIdx: number | null): Promise<number | null> {
+  const res = await invokeJoin<{ ok: boolean; team_idx: number | null }>({
+    share_code: shareCode,
+    action: 'set_team',
+    team_idx: teamIdx,
+  });
+  return res.team_idx;
+}
+
+/** Rename a team (organizer OR any roster member). 1-based index. */
+export async function renameTeam(shareCode: string, teamIdx: number, name: string): Promise<string[]> {
+  const res = await invokeJoin<{ ok: boolean; team_names: string[] }>({
+    share_code: shareCode,
+    action: 'set_team_name',
+    team_idx: teamIdx,
+    name,
+  });
+  return res.team_names ?? [];
+}
+
+/** Organizer path: move ANY participant to a team (owner RLS covers the write). */
+export async function setParticipantTeam(participantId: string, teamIdx: number | null): Promise<void> {
+  const { error } = await supabase
+    .from('collectz_participants')
+    .update({ team_idx: teamIdx })
+    .eq('id', participantId);
+  throwIfError(error, 'Could not change the team.');
 }
 
 /** Add myself to the roster (my name wasn't pre-added by the organizer). */
@@ -576,13 +692,60 @@ export async function uploadClubImage(
   return path;
 }
 
+/** Public URL for a session's payment-QR photo (same bucket as club images). */
+export function qrImageUrl(imagePath: string): string {
+  const { data } = supabase.storage.from(IMAGES_BUCKET).getPublicUrl(imagePath);
+  return data.publicUrl;
+}
+
+/**
+ * Upload a photo-only payment QR (one saved from the gallery, with no decoded
+ * DuitNow payload) → its storage path. Participants get the picture to scan and
+ * type the amount themselves. Kept larger / less compressed than the club image
+ * so the QR modules stay crisp enough for a banking app to read.
+ */
+export async function uploadQrImage(
+  sessionId: string,
+  file: { uri: string; mimeType?: string },
+): Promise<string> {
+  const resized = await manipulateAsync(file.uri, [{ resize: { width: 900 } }], {
+    compress: 0.92,
+    format: SaveFormat.JPEG,
+  });
+  const path = `${sessionId}/qr.jpg`;
+  const formData = new FormData();
+  formData.append('', { uri: resized.uri, name: 'qr.jpg', type: 'image/jpeg' } as any);
+  const { error } = await supabase.storage
+    .from(IMAGES_BUCKET)
+    .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
+  throwIfError(error, 'Could not upload the QR image.');
+  return path;
+}
+
 // ── Organizer: reminders ─────────────────────────────────────────────────────
 
 export async function remindUnpaid(sessionId: string): Promise<number> {
   const { data, error } = await supabase.functions.invoke('collectz-remind', {
     body: { session_id: sessionId },
   });
-  if (error) throw new Error(error.message || 'Could not send reminders.');
+  if (error) {
+    // Same non-2xx trap as invokeJoin: the 24h rate limit answers 429 'cooldown',
+    // which supabase-js flattens to "non-2xx status code". Read the real code so
+    // the organizer is told they already reminded today.
+    const ctx = (error as { context?: { json?: () => Promise<unknown> } }).context;
+    let code: string | null = null;
+    if (ctx?.json) {
+      try {
+        const parsed = (await ctx.json()) as { error?: string } | null;
+        if (parsed && typeof parsed.error === 'string') code = parsed.error;
+      } catch {
+        // body not JSON / already consumed — fall back to the generic message
+      }
+    }
+    if (code === 'cooldown') throw new Error('Already reminded in the last 24 hours.');
+    if (code) throw new Error(code);
+    throw new Error(error.message || 'Could not send reminders.');
+  }
   return (data as { sent?: number })?.sent ?? 0;
 }
 
@@ -744,9 +907,19 @@ export async function notifySession(
  * the owner gets every roster change; a participant only gets their own row
  * (their screens refetch the join view on any change).
  */
+// Monotonic suffix so every subscription gets its OWN channel topic. With a
+// bare `collectz:<id>` topic, supabase.channel() returns the EXISTING instance
+// for a repeated topic, and calling .on('postgres_changes') on an
+// already-subscribed channel THROWS ("cannot add postgres_changes callbacks
+// after subscribe()"). Two live subscriptions to the same session are a real
+// flow — Join → sign-in → back remounts while the old channel is still
+// registered (removeChannel teardown is async) — so topics must never collide.
+// The topic is only an identifier; the postgres_changes filters do the routing.
+let collectzChannelSeq = 0;
+
 export function subscribeToSession(sessionId: string, onChange: () => void): () => void {
   const channel = supabase
-    .channel(`collectz:${sessionId}`)
+    .channel(`collectz:${sessionId}:${++collectzChannelSeq}`)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'collectz_participants', filter: `session_id=eq.${sessionId}` },

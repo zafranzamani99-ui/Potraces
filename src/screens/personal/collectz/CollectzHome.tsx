@@ -6,8 +6,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
-  ScrollView,
   RefreshControl,
   Pressable,
   TextInput,
@@ -17,13 +17,18 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import FAB from '../../../components/common/FAB';
+import PageScrollView from '../../../components/common/PageScrollView';
+import NeuButton from '../../../components/common/NeuButton';
 import PaywallModal from '../../../components/common/PaywallModal';
-import { lightTap, mediumTap } from '../../../services/haptics';
+import { useNeu } from '../../../components/common/neu';
+import { lightTap } from '../../../services/haptics';
 import { usePremiumStore } from '../../../store/premiumStore';
 import { canCreate } from '../../../constants/tiers';
 import {
@@ -37,14 +42,37 @@ import {
   archiveParticipant,
   unarchiveParticipant,
   listMyJoinedParticipantRows,
+  isCollectzAuthError,
+  clubImageUrl,
   type JoinedRow,
 } from '../../../services/collectzService';
+import { presetClubIcon } from '../../../constants/clubIcons';
 import { fmtDateTime, fmtMoney, fill } from './collectzFormat';
+
+// Pull a join code out of pasted text — either a bare code or a full share
+// link (collectzUrl → SITE_BASE/<code>). Strip to the code alphabet + upper.
+function extractShareCode(raw: string): string {
+  let s = (raw ?? '').trim();
+  if (!s) return '';
+  const url = s.match(/https?:\/\/\S+/i);
+  if (url) {
+    const seg = url[0].split(/[/?#]/).filter(Boolean).pop();
+    if (seg) s = seg;
+  }
+  try {
+    s = decodeURIComponent(s);
+  } catch {
+    // not valid percent-encoding — use the raw segment as-is
+  }
+  return s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
 
 const CollectzHome: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { showToast } = useToast();
 
@@ -97,8 +125,17 @@ const CollectzHome: React.FC = () => {
         }),
       );
       setJoinedProgress(Object.fromEntries(progEntries.filter((e): e is NonNullable<typeof e> => e !== null)));
-    } catch {
-      showToast(t.collectz.homeLoadError, 'error');
+    } catch (err) {
+      // Signed-out is NOT an error: there's simply no account data to list.
+      // The empty-state cards already explain the screen, and join-by-code
+      // still works anonymously — so settle quietly instead of toasting
+      // "couldn't load, pull to retry" at someone who just isn't signed in.
+      if (isCollectzAuthError(err)) {
+        setOrganizing([]);
+        setJoined([]);
+      } else {
+        showToast(t.collectz.homeLoadError, 'error');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -173,10 +210,21 @@ const CollectzHome: React.FC = () => {
     const code = joinCode.trim().toUpperCase();
     if (!code) return;
     Keyboard.dismiss();
-    mediumTap();
     setJoinCode('');
     navigation.navigate('CollectzJoin', { code });
   };
+
+  // Paste-to-fill: pull the code from the clipboard (bare code or share link)
+  // so the user never has to type it out.
+  const handlePaste = useCallback(async () => {
+    lightTap();
+    const code = extractShareCode(await Clipboard.getStringAsync());
+    if (!code) {
+      showToast(t.collectz.homePasteEmpty, 'info');
+      return;
+    }
+    setJoinCode(code);
+  }, [showToast, t]);
 
   const renderCard = (s: CollectzSession, mine: boolean) => {
     const progress = mine ? computeProgress(s, rosters[s.id] ?? []) : null;
@@ -197,13 +245,30 @@ const CollectzHome: React.FC = () => {
     return (
       <Pressable
         key={s.id}
-        style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
+        style={({ pressed }) => [styles.card, neu.raisedSoft, pressed && { opacity: 0.9 }]}
         onPress={() => openSession(s, mine)}
         onLongPress={mine ? undefined : () => toggleArchive(s)}
         accessibilityRole="button"
         accessibilityLabel={s.title}
       >
         <View style={styles.cardTopRow}>
+          {(() => {
+            // Show the club icon / photo the organizer picked at create time.
+            // Preset emoji PNGs are square artwork → contain in a square well;
+            // uploaded club photos → cover (mirrors CollectzDetail's header).
+            const preset = presetClubIcon(s.image_path);
+            const uri = !preset && s.image_path ? clubImageUrl(s.image_path) : null;
+            if (!preset && !uri) return null;
+            return (
+              <View style={styles.clubWell}>
+                {preset ? (
+                  <Text style={styles.clubEmoji}>{preset.emoji}</Text>
+                ) : (
+                  <Image source={{ uri: uri! }} style={styles.clubImagePhoto} resizeMode="cover" />
+                )}
+              </View>
+            );
+          })()}
           <Text style={styles.cardTitle} numberOfLines={1}>{s.title}</Text>
           {s.status !== 'open' && (
             <View style={styles.statusPill}>
@@ -263,20 +328,39 @@ const CollectzHome: React.FC = () => {
   const onCreatePress = useCallback(async () => {
     lightTap();
     const tier = usePremiumStore.getState().tier;
-    const used = await countSessionsCreatedThisWeek();
+    let used = 0;
+    try {
+      used = await countSessionsCreatedThisWeek();
+    } catch (err) {
+      // Signed-out: the count throws auth_required, and this rejection used to
+      // be swallowed — the + button silently did nothing. Creating genuinely
+      // needs an account (sessions live on the server under owner_id), so
+      // prompt sign-in and come straight back here, same flow as CollectzJoin.
+      if (isCollectzAuthError(err)) {
+        Alert.alert(t.collectz.signInCreateTitle, t.collectz.signInCreateBody, [
+          { text: t.common.cancel, style: 'cancel' },
+          {
+            text: t.collectz.signInCta,
+            onPress: () => navigation.navigate('Account', { returnTo: 'CollectzHome' }),
+          },
+        ]);
+        return;
+      }
+      // Any other failure keeps the documented fail-open: let them create.
+    }
     if (!canCreate(tier, 'maxCollectzSessionsPerWeek', used)) {
       setWeeklyUsed(used);
       setPaywallVisible(true);
       return;
     }
     navigation.navigate('CollectzCreate');
-  }, [navigation]);
+  }, [navigation, t]);
 
   return (
     <View style={styles.screen}>
-      <ScrollView
+      <PageScrollView
+        style={styles.scroll}
         contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={C.accent} />
         }
@@ -288,7 +372,7 @@ const CollectzHome: React.FC = () => {
             {/* ── I organize ── */}
             <Text style={styles.sectionTitle}>{t.collectz.homeOrganize}</Text>
             {organizing.length === 0 ? (
-              <View style={styles.emptyCard}>
+              <View style={[styles.emptyCard, neu.raisedSoft]}>
                 <Feather name="users" size={22} color={C.textMuted} />
                 <Text style={styles.emptyTitle}>{t.collectz.homeEmptyOrganizeTitle}</Text>
                 <Text style={styles.emptyBody}>{t.collectz.homeEmptyOrganizeBody}</Text>
@@ -300,7 +384,7 @@ const CollectzHome: React.FC = () => {
             {/* ── I joined ── */}
             <Text style={[styles.sectionTitle, styles.sectionGap]}>{t.collectz.homeJoined}</Text>
             {joined.length === 0 ? (
-              <View style={styles.emptyCard}>
+              <View style={[styles.emptyCard, neu.raisedSoft]}>
                 <Feather name="inbox" size={22} color={C.textMuted} />
                 <Text style={styles.emptyBody}>{t.collectz.homeEmptyJoinedBody}</Text>
               </View>
@@ -332,31 +416,56 @@ const CollectzHome: React.FC = () => {
             {/* ── Join with a code ── */}
             <Text style={[styles.sectionTitle, styles.sectionGap]}>{t.collectz.homeJoinTitle}</Text>
             <View style={styles.joinRow}>
-              <TextInput
-                style={styles.joinInput}
-                value={joinCode}
-                onChangeText={setJoinCode}
-                placeholder={t.collectz.homeJoinPlaceholder}
-                placeholderTextColor={C.textMuted}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                returnKeyType="go"
-                onSubmitEditing={submitJoinCode}
-              />
-              <Pressable
-                style={({ pressed }) => [styles.joinBtn, pressed && { opacity: 0.85 }]}
+              <View style={styles.joinInputWrap}>
+                <TextInput
+                  style={styles.joinInput}
+                  value={joinCode}
+                  onChangeText={setJoinCode}
+                  placeholder={t.collectz.homeJoinPlaceholder}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  returnKeyType="go"
+                  onSubmitEditing={submitJoinCode}
+                />
+                {joinCode.length > 0 ? (
+                  <Pressable
+                    onPress={() => { lightTap(); setJoinCode(''); }}
+                    style={styles.joinAffordance}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.common.clear}
+                  >
+                    <Feather name="x" size={18} color={C.textMuted} />
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    onPress={handlePaste}
+                    style={styles.joinAffordance}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.collectz.homePaste}
+                  >
+                    <Feather name="clipboard" size={17} color={C.textSecondary} />
+                  </Pressable>
+                )}
+              </View>
+              <NeuButton
+                icon="log-in"
+                label={t.collectz.homeJoin}
                 onPress={submitJoinCode}
-                accessibilityRole="button"
-                accessibilityLabel={t.collectz.homeJoin}
-              >
-                <Text style={styles.joinBtnText}>{t.collectz.homeJoin}</Text>
-              </Pressable>
+                style={styles.joinBtn}
+              />
             </View>
           </>
         )}
-      </ScrollView>
+      </PageScrollView>
 
-      <FAB onPress={onCreatePress} icon="plus" />
+      <FAB
+        onPress={onCreatePress}
+        icon="plus"
+        style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md) }}
+      />
       <PaywallModal
         visible={paywallVisible}
         onClose={() => setPaywallVisible(false)}
@@ -370,6 +479,7 @@ const CollectzHome: React.FC = () => {
 const makeStyles = (C: typeof CALM) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.background },
+    scroll: { flex: 1 },
     content: { padding: SPACING.xl, paddingBottom: 120 },
     loader: { marginTop: SPACING['4xl'] },
     sectionTitle: {
@@ -396,15 +506,24 @@ const makeStyles = (C: typeof CALM) =>
       letterSpacing: 1,
     },
     card: {
-      backgroundColor: C.surface,
+      // surface + elevation from neu.raisedSoft (base C.background)
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.border, 0.6),
       padding: SPACING.md,
       marginBottom: SPACING.sm,
       gap: 6,
     },
     cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+    clubWell: {
+      width: 40,
+      height: 40,
+      borderRadius: RADIUS.md,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    clubEmoji: { fontSize: 26 },
+    clubImagePhoto: { width: 40, height: 40 },
     cardTitle: {
       flex: 1,
       fontSize: TYPOGRAPHY.size.base,
@@ -434,11 +553,8 @@ const makeStyles = (C: typeof CALM) =>
     progressFill: { height: 6, borderRadius: RADIUS.full, backgroundColor: C.accent },
     progressText: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
     emptyCard: {
-      backgroundColor: C.surface,
+      // surface + elevation from neu.raisedSoft (base C.background)
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.border, 0.6),
-      borderStyle: 'dashed',
       padding: SPACING.xl,
       alignItems: 'center',
       gap: SPACING.sm,
@@ -455,30 +571,36 @@ const makeStyles = (C: typeof CALM) =>
       lineHeight: 19,
     },
     joinRow: { flexDirection: 'row', gap: SPACING.sm },
-    joinInput: {
+    joinInputWrap: {
       flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
       minHeight: 48,
       borderRadius: RADIUS.lg,
       borderWidth: 1,
       borderColor: C.inputBorder,
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
+    },
+    joinInput: {
+      flex: 1,
+      alignSelf: 'stretch',
       paddingHorizontal: SPACING.md,
       fontSize: TYPOGRAPHY.size.base,
       color: C.textPrimary,
       letterSpacing: 1,
     },
-    joinBtn: {
-      minHeight: 48,
-      paddingHorizontal: SPACING.lg,
-      borderRadius: RADIUS.lg,
-      backgroundColor: C.accent,
-      alignItems: 'center',
+    joinAffordance: {
+      paddingHorizontal: SPACING.md,
+      alignSelf: 'stretch',
       justifyContent: 'center',
     },
-    joinBtnText: {
-      fontSize: TYPOGRAPHY.size.base,
-      fontWeight: TYPOGRAPHY.weight.bold,
-      color: C.onAccent,
+    joinBtn: {
+      // inline NeuButton beside the input: undo the default 100% width and
+      // match the input's 48 height
+      width: undefined,
+      minHeight: 48,
+      paddingVertical: SPACING.sm,
+      paddingHorizontal: SPACING.lg,
     },
   });
 

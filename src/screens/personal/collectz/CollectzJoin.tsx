@@ -7,7 +7,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   Pressable,
   TextInput,
   ActivityIndicator,
@@ -15,6 +14,11 @@ import {
   Image,
   useWindowDimensions,
 } from 'react-native';
+// Page scroller = gesture-handler's ScrollView (the DebtTracking recipe). The
+// app is wrapped in GestureHandlerRootView, and RNGH's ScrollView arbitrates
+// with it so drags aren't lost — a plain RN ScrollView (and KeyboardAwareScrollView,
+// which is built on one) can intermittently lose the pan ("mostly can't scroll,
+// sometimes can"). KeyboardAwareScrollView stays for modals/sheets.
 import { Feather } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,6 +29,10 @@ import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, mediumTap, successNotification, errorNotification } from '../../../services/haptics';
+import { useNeu } from '../../../components/common/neu';
+import FloatingModal from '../../../components/common/FloatingModal';
+import PageScrollView from '../../../components/common/PageScrollView';
+import NeuButton from '../../../components/common/NeuButton';
 import { supabasePersonal } from '../../../services/supabase';
 import { embedAmount } from '../../../services/emvQr';
 import {
@@ -38,15 +46,19 @@ import {
   subscribeToSession,
   isCollectzAuthError,
   clubImageUrl,
+  qrImageUrl,
+  joinTeam,
+  renameTeam,
 } from '../../../services/collectzService';
 import { presetClubIcon } from '../../../constants/clubIcons';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
-import { fmtDateTime, fmtMoney, fill } from './collectzFormat';
+import { fmtDateTime, fmtMoney, fill, teamLabel } from './collectzFormat';
 
 const CollectzJoin: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { showToast } = useToast();
@@ -61,6 +73,9 @@ const CollectzJoin: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Team rename: which team is being renamed, plus the draft label.
+  const [renameTeamIdx, setRenameTeamIdx] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
   const [selfName, setSelfName] = useState('');
   const [myRejectNote, setMyRejectNote] = useState<string | null>(null);
 
@@ -161,6 +176,36 @@ const CollectzJoin: React.FC = () => {
   const reserves = useMemo(() => (view?.participants ?? []).filter((p) => p.slot === 'reserve'), [view]);
   const claimable = useMemo(() => (view?.participants ?? []).filter((p) => !p.claimed), [view]);
 
+  // Capacity: adding yourself creates a NEW active player, so it's blocked once the
+  // roster is full (the edge function enforces it too). Claiming an existing name
+  // still works — that slot is already counted.
+  const maxParticipants = session?.max_participants ?? null;
+  const activeCount = view?.progress?.active_count ?? actives.length;
+  const isFull = maxParticipants != null && activeCount >= maxParticipants;
+
+  // Teams — only when the organizer set capacity BY TEAMS. Reserves hold no team
+  // slot, so only active players are grouped. Teams never change what anyone pays.
+  const teamCount = session?.team_count ?? 0;
+  const teamsOn = teamCount > 0;
+  const teamSize = session?.team_size ?? null;
+  const teamNames = session?.team_names ?? null;
+  const myTeam = useMemo(
+    () => (my ? (view?.participants ?? []).find((p) => p.id === my.id)?.team_idx ?? null : null),
+    [my, view],
+  );
+  const teamGroups = useMemo(() => {
+    if (!teamsOn) return [];
+    const groups = Array.from({ length: teamCount }, (_, i) => ({ idx: i + 1, members: [] as typeof actives }));
+    for (const p of actives) {
+      if (p.team_idx != null && p.team_idx >= 1 && p.team_idx <= teamCount) groups[p.team_idx - 1].members.push(p);
+    }
+    return groups;
+  }, [teamsOn, teamCount, actives]);
+  const unassigned = useMemo(
+    () => (teamsOn ? actives.filter((p) => p.team_idx == null || p.team_idx > teamCount) : actives),
+    [teamsOn, teamCount, actives],
+  );
+
   const myShare = my?.effective_share ?? null;
 
   // Exact-amount DuitNow QR — same visual pattern as QrPaySheet (white card so
@@ -175,6 +220,31 @@ const CollectzJoin: React.FC = () => {
     }
   }, [view?.qr_payload, myShare]);
   const qrSize = Math.min(Math.round(width * 0.62), 260);
+  // Fallback for a photo-only QR (organizer saved a picture, not a scanned payload).
+  const qrPhotoUrl = useMemo(
+    () => (!view?.qr_payload && view?.qr_image_path ? qrImageUrl(view.qr_image_path) : null),
+    [view?.qr_payload, view?.qr_image_path],
+  );
+
+  // One roster line — shared by the flat list and every team block.
+  const renderMember = (p: CollectzJoinView['participants'][number]) => (
+    <View key={p.id} style={styles.row}>
+      <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
+      {!!p.claimed && (
+        <View style={styles.claimedTag}>
+          <Feather name="user-check" size={11} color={C.accent} />
+        </View>
+      )}
+      <View style={styles.rowRight}>
+        {p.effective_share != null && (
+          <Text style={styles.rowShare}>{fmtMoney(p.effective_share, currency)}</Text>
+        )}
+        <View style={[styles.statusChip, { backgroundColor: withAlpha(statusColor(p.status), 0.18) }]}>
+          <Text style={[styles.statusChipText, { color: statusColor(p.status) }]}>{statusLabel(p.status)}</Text>
+        </View>
+      </View>
+    </View>
+  );
 
   const statusLabel = (status: CollectzParticipantStatus): string => {
     switch (status) {
@@ -238,7 +308,54 @@ const CollectzJoin: React.FC = () => {
         promptSignIn();
       } else {
         errorNotification();
-        showToast(t.collectz.addSelfError, 'error');
+        // Surface the server's reason (e.g. "This session is full.") — the cap is a
+        // real, explainable outcome, not a generic failure.
+        showToast(err instanceof Error && err.message ? err.message : t.collectz.addSelfError, 'error');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Move MYSELF into a team (or out with null). The edge function re-checks that
+  // the target still has room, so a race with someone else just gets refused.
+  const pickTeam = async (idx: number | null) => {
+    if (!code || busy || idx === myTeam) return;
+    mediumTap();
+    setBusy(true);
+    try {
+      await joinTeam(code, idx);
+      successNotification();
+      await load();
+    } catch (err) {
+      if (isCollectzAuthError(err)) {
+        promptSignIn();
+      } else {
+        errorNotification();
+        showToast(err instanceof Error && err.message ? err.message : t.collectz.actionError, 'error');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Anyone on the roster may rename a team — it's a group label, not a permission.
+  const saveTeamName = async () => {
+    if (!code || renameTeamIdx == null || busy) return;
+    const idx = renameTeamIdx;
+    const name = renameDraft.trim().slice(0, 40);
+    setRenameTeamIdx(null);
+    setBusy(true);
+    try {
+      await renameTeam(code, idx, name);
+      successNotification();
+      await load();
+    } catch (err) {
+      if (isCollectzAuthError(err)) {
+        promptSignIn();
+      } else {
+        errorNotification();
+        showToast(err instanceof Error && err.message ? err.message : t.collectz.actionError, 'error');
       }
     } finally {
       setBusy(false);
@@ -266,7 +383,6 @@ const CollectzJoin: React.FC = () => {
   };
 
   const pickImage = async () => {
-    lightTap();
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
     if (res.canceled || !res.assets[0]) return;
     const a = res.assets[0];
@@ -320,15 +436,13 @@ const CollectzJoin: React.FC = () => {
             value={codeInput}
             onChangeText={setCodeInput}
             placeholder={t.collectz.joinCodePlaceholder}
-            placeholderTextColor={C.textMuted}
+            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
             autoCapitalize="characters"
             autoCorrect={false}
             returnKeyType="go"
             onSubmitEditing={submitCode}
           />
-          <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={submitCode}>
-            <Text style={styles.primaryBtnText}>{t.collectz.joinOpen}</Text>
-          </Pressable>
+          <NeuButton label={t.collectz.joinOpen} onPress={submitCode} />
         </View>
       </View>
     );
@@ -340,9 +454,7 @@ const CollectzJoin: React.FC = () => {
         <Feather name="alert-circle" size={32} color={C.textMuted} />
         <Text style={styles.loaderText}>{t.collectz.joinOpenError}</Text>
         {!!code && (
-          <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={() => { setLoading(true); load(); }}>
-            <Text style={styles.primaryBtnText}>{t.common.retry}</Text>
-          </Pressable>
+          <NeuButton label={t.common.retry} onPress={() => { setLoading(true); load(); }} style={styles.retryBtn} />
         )}
       </View>
     );
@@ -359,16 +471,30 @@ const CollectzJoin: React.FC = () => {
         : 0;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <View style={styles.screen}>
+      <PageScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+      >
       {/* Event header */}
-      <View style={styles.headerCard}>
+      <View style={[styles.headerCard, neu.raisedSoft]}>
         <View style={styles.titleRow}>
           {(() => {
             const preset = presetClubIcon(session.image_path);
             const uri = !preset && session.image_path ? clubImageUrl(session.image_path) : null;
-            return preset || uri ? (
-              <Image source={preset ? preset.source : { uri: uri! }} style={styles.clubImage} />
-            ) : null;
+            if (!preset && !uri) return null;
+            // Preset emoji PNGs are square artwork — a circular crop clips the
+            // corners. Square well + contain for presets; full-bleed cover for
+            // uploaded club photos.
+            return (
+              <View style={styles.clubWell}>
+                {preset ? (
+                  <Text style={styles.clubEmoji}>{preset.emoji}</Text>
+                ) : (
+                  <Image source={{ uri: uri! }} style={styles.clubImagePhoto} resizeMode="cover" />
+                )}
+              </View>
+            );
           })()}
           <Text style={[styles.title, { flex: 1 }]}>{session.title}</Text>
         </View>
@@ -401,7 +527,7 @@ const CollectzJoin: React.FC = () => {
       </View>
 
       {/* Progress */}
-      <View style={styles.progressCard}>
+      <View style={[styles.progressCard, neu.raisedSoft]}>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${Math.round(pct * 100)}%` }]} />
         </View>
@@ -417,13 +543,13 @@ const CollectzJoin: React.FC = () => {
 
       {/* Details / rules */}
       {!!session.details_text && (
-        <View style={styles.textCard}>
+        <View style={[styles.textCard, neu.raisedSoft]}>
           <Text style={styles.textCardTitle}>{t.collectz.eventDetails}</Text>
           <Text style={styles.textCardBody}>{session.details_text}</Text>
         </View>
       )}
       {!!session.rules_text && (
-        <View style={styles.textCard}>
+        <View style={[styles.textCard, neu.raisedSoft]}>
           <Text style={styles.textCardTitle}>{t.collectz.rulesSection}</Text>
           <Text style={styles.textCardBody}>{session.rules_text}</Text>
         </View>
@@ -431,7 +557,7 @@ const CollectzJoin: React.FC = () => {
 
       {/* ── My area: claim / pay / status ── */}
       {!my && isOpen && (
-        <View style={styles.myCard}>
+        <View style={[styles.myCard, neu.raisedSoft]}>
           <Text style={styles.myTitle}>{t.collectz.claimTitle}</Text>
           {claimable.length > 0 ? (
             <>
@@ -440,7 +566,7 @@ const CollectzJoin: React.FC = () => {
                 {claimable.map((p) => (
                   <Pressable
                     key={p.id}
-                    style={({ pressed }) => [styles.claimChip, pressed && { opacity: 0.85 }]}
+                    style={({ pressed }) => [styles.claimChip, neu.raised, pressed && { opacity: 0.85 }]}
                     onPress={() => claim(p.id)}
                     disabled={busy}
                   >
@@ -453,29 +579,37 @@ const CollectzJoin: React.FC = () => {
           ) : (
             <Text style={styles.myHint}>{t.collectz.allClaimed}</Text>
           )}
-          <View style={styles.addSelfRow}>
-            <TextInput
-              style={styles.addSelfInput}
-              value={selfName}
-              onChangeText={setSelfName}
-              placeholder={t.collectz.addSelfPlaceholder}
-              placeholderTextColor={C.textMuted}
-              returnKeyType="done"
-              onSubmitEditing={addMyself}
-            />
-            <Pressable
-              style={({ pressed }) => [styles.addSelfBtn, (pressed || busy) && { opacity: 0.85 }]}
-              onPress={addMyself}
-              disabled={busy}
-            >
-              <Text style={styles.addSelfBtnText}>{t.collectz.addSelf}</Text>
-            </Pressable>
-          </View>
+          {maxParticipants != null && (
+            <Text style={styles.myHint}>
+              {fill(t.collectz.capacityCount, { n: activeCount, max: maxParticipants })}
+            </Text>
+          )}
+          {isFull ? (
+            <Text style={styles.fullHint}>{t.collectz.sessionFull}</Text>
+          ) : (
+            <View style={styles.addSelfRow}>
+              <TextInput
+                style={styles.addSelfInput}
+                value={selfName}
+                onChangeText={setSelfName}
+                placeholder={t.collectz.addSelfPlaceholder}
+                placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+                returnKeyType="done"
+                onSubmitEditing={addMyself}
+              />
+              <NeuButton
+                label={t.collectz.addSelf}
+                onPress={addMyself}
+                disabled={busy}
+                style={styles.addSelfBtn}
+              />
+            </View>
+          )}
         </View>
       )}
 
       {my && (
-        <View style={styles.myCard}>
+        <View style={[styles.myCard, neu.raisedSoft]}>
           <View style={styles.joinedRow}>
             <Feather name="user-check" size={14} color={C.accent} />
             <Text style={styles.joinedText}>{fill(t.collectz.joinedAs, { name: my.name })}</Text>
@@ -507,6 +641,19 @@ const CollectzJoin: React.FC = () => {
                       </View>
                       <Text style={styles.qrNote}>{t.collectz.qrAutoFillNote}</Text>
                     </>
+                  ) : qrPhotoUrl ? (
+                    // Photo-only QR: show the organizer's picture. No amount can be
+                    // embedded in an image, so the payer types it in their bank app.
+                    <>
+                      <View style={[styles.qrCard, { width: qrSize + SPACING.xl, height: qrSize + SPACING.xl }]}>
+                        <Image
+                          source={{ uri: qrPhotoUrl }}
+                          style={{ width: qrSize, height: qrSize }}
+                          resizeMode="contain"
+                        />
+                      </View>
+                      <Text style={styles.qrNote}>{t.collectz.qrPhotoNote}</Text>
+                    </>
                   ) : (
                     <Text style={styles.myHint}>{t.collectz.noQrNote}</Text>
                   )}
@@ -519,10 +666,7 @@ const CollectzJoin: React.FC = () => {
                     </View>
                   ) : (
                     <View style={styles.uploadRow}>
-                      <Pressable style={({ pressed }) => [styles.primaryBtn, styles.uploadBtn, pressed && { opacity: 0.85 }]} onPress={pickImage}>
-                        <Feather name="image" size={15} color={C.onAccent} />
-                        <Text style={styles.primaryBtnText}>{t.collectz.uploadImage}</Text>
-                      </Pressable>
+                      <NeuButton icon="image" label={t.collectz.uploadImage} onPress={pickImage} style={[styles.uploadBtn, styles.uploadBtnNeu]} />
                       <Pressable style={({ pressed }) => [styles.secondaryBtn, styles.uploadBtn, pressed && { opacity: 0.85 }]} onPress={pickPdf}>
                         <Feather name="file-text" size={15} color={C.accent} />
                         <Text style={styles.secondaryBtnText}>{t.collectz.uploadPdf}</Text>
@@ -563,31 +707,96 @@ const CollectzJoin: React.FC = () => {
 
       {/* Roster */}
       <Text style={styles.sectionTitle}>{t.collectz.roster}</Text>
-      <View style={styles.listCard}>
-        {actives.map((p) => (
-          <View key={p.id} style={styles.row}>
-            <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
-            {!!p.claimed && (
-              <View style={styles.claimedTag}>
-                <Feather name="user-check" size={11} color={C.accent} />
+      {teamsOn ? (
+        <>
+          {teamGroups.map((g) => {
+            const full = teamSize != null && g.members.length >= teamSize;
+            const here = myTeam === g.idx;
+            return (
+              <View key={g.idx} style={styles.teamBlock}>
+                <View style={styles.teamHeader}>
+                  <Text style={styles.teamHeaderName} numberOfLines={1}>
+                    {teamLabel(teamNames, g.idx, fill(t.collectz.teamN, { n: g.idx }))}
+                  </Text>
+                  <Text style={styles.teamHeaderCount}>
+                    {teamSize != null ? `${g.members.length}/${teamSize}` : String(g.members.length)}
+                  </Text>
+                  {/* Any roster member may rename the team — it's just a label. */}
+                  {!!my && (
+                    <Pressable
+                      onPress={() => { lightTap(); setRenameDraft(teamNames?.[g.idx - 1] ?? ''); setRenameTeamIdx(g.idx); }}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.collectz.teamRename}
+                    >
+                      <Feather name="edit-2" size={13} color={C.textMuted} />
+                    </Pressable>
+                  )}
+                  {/* Move myself — only into a team that still has room, and only
+                      if I'm actually playing (reserves hold no team slot). */}
+                  {!!my && my.slot === 'active' && isOpen && !here && (
+                    <Pressable
+                      disabled={full || busy}
+                      style={[styles.teamJoinChip, neu.raised, (full || busy) && { opacity: 0.4 }]}
+                      onPress={() => pickTeam(g.idx)}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.teamJoinChipText}>
+                        {full ? t.collectz.teamFullShort : t.collectz.teamJoinCta}
+                      </Text>
+                    </Pressable>
+                  )}
+                  {here && (
+                    <View style={styles.teamMineChip}>
+                      <Text style={styles.teamMineChipText}>{t.collectz.teamMine}</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={[styles.listCard, neu.raisedSoft]}>
+                  <View style={styles.listClip}>
+                    {g.members.length === 0 ? (
+                      <Text style={styles.teamEmpty}>{t.collectz.teamEmpty}</Text>
+                    ) : (
+                      g.members.map(renderMember)
+                    )}
+                  </View>
+                </View>
               </View>
-            )}
-            <View style={styles.rowRight}>
-              {p.effective_share != null && (
-                <Text style={styles.rowShare}>{fmtMoney(p.effective_share, currency)}</Text>
-              )}
-              <View style={[styles.statusChip, { backgroundColor: withAlpha(statusColor(p.status), 0.18) }]}>
-                <Text style={[styles.statusChipText, { color: statusColor(p.status) }]}>{statusLabel(p.status)}</Text>
+            );
+          })}
+          {unassigned.length > 0 && (
+            <View style={styles.teamBlock}>
+              <View style={styles.teamHeader}>
+                <Text style={styles.teamHeaderName}>{t.collectz.teamNoneLabel}</Text>
+                <Text style={styles.teamHeaderCount}>{String(unassigned.length)}</Text>
+                {!!my && my.slot === 'active' && isOpen && myTeam != null && (
+                  <Pressable
+                    disabled={busy}
+                    style={[styles.teamJoinChip, neu.raised, busy && { opacity: 0.4 }]}
+                    onPress={() => pickTeam(null)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.teamJoinChipText}>{t.collectz.teamLeaveCta}</Text>
+                  </Pressable>
+                )}
+              </View>
+              <View style={[styles.listCard, neu.raisedSoft]}>
+                <View style={styles.listClip}>{unassigned.map(renderMember)}</View>
               </View>
             </View>
-          </View>
-        ))}
-      </View>
+          )}
+        </>
+      ) : (
+        <View style={[styles.listCard, neu.raisedSoft]}>
+          <View style={styles.listClip}>{actives.map(renderMember)}</View>
+        </View>
+      )}
 
       {reserves.length > 0 && (
         <>
           <Text style={[styles.sectionTitle, styles.sectionGap]}>{t.collectz.waitingList}</Text>
-          <View style={styles.listCard}>
+          <View style={[styles.listCard, neu.raisedSoft]}>
+            <View style={styles.listClip}>
             {reserves.map((p) => (
               <View key={p.id} style={styles.row}>
                 <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
@@ -598,16 +807,39 @@ const CollectzJoin: React.FC = () => {
                 )}
               </View>
             ))}
+            </View>
           </View>
         </>
       )}
-    </ScrollView>
+      </PageScrollView>
+
+      {/* Team rename — any roster member can retitle a team ("Reds", not "Team 1"). */}
+      <FloatingModal visible={renameTeamIdx != null} onClose={() => setRenameTeamIdx(null)} entrance="fade">
+        <View style={styles.renameWrap}>
+          <Text style={styles.renameTitle}>{t.collectz.teamRename}</Text>
+          <TextInput
+            style={styles.renameInput}
+            value={renameDraft}
+            onChangeText={setRenameDraft}
+            placeholder={renameTeamIdx != null ? fill(t.collectz.teamN, { n: renameTeamIdx }) : ''}
+            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+            maxLength={40}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={saveTeamName}
+          />
+          <NeuButton icon="check" label={t.common.save} onPress={saveTeamName} disabled={busy} />
+        </View>
+      </FloatingModal>
+      {/* Screen-level "Done" bar for the add-your-name input (Debt does the same). */}
+    </View>
   );
 };
 
 const makeStyles = (C: typeof CALM) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.background },
+    scroll: { flex: 1 },
     content: { padding: SPACING.xl, paddingBottom: SPACING['5xl'] },
     loaderWrap: {
       flex: 1,
@@ -624,24 +856,31 @@ const makeStyles = (C: typeof CALM) =>
       borderRadius: RADIUS.lg,
       borderWidth: 1,
       borderColor: C.inputBorder,
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       paddingHorizontal: SPACING.md,
       fontSize: TYPOGRAPHY.size.base,
       color: C.textPrimary,
       letterSpacing: 1,
     },
     headerCard: {
-      backgroundColor: C.surface,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.border, 0.6),
       padding: SPACING.md,
       gap: 6,
       marginBottom: SPACING.md,
     },
     title: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary },
     titleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-    clubImage: { width: 44, height: 44, borderRadius: 22 },
+    clubWell: {
+      width: 52,
+      height: 52,
+      borderRadius: RADIUS.lg,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    clubEmoji: { fontSize: 32 },
+    clubImagePhoto: { width: 52, height: 52 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     meta: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
     closedBanner: {
@@ -653,10 +892,7 @@ const makeStyles = (C: typeof CALM) =>
     },
     closedBannerText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textSecondary },
     progressCard: {
-      backgroundColor: C.surface,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.border, 0.6),
       padding: SPACING.md,
       gap: SPACING.sm,
       marginBottom: SPACING.md,
@@ -665,10 +901,7 @@ const makeStyles = (C: typeof CALM) =>
     progressFill: { height: 8, borderRadius: RADIUS.full, backgroundColor: C.accent },
     progressText: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
     textCard: {
-      backgroundColor: C.surface,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.border, 0.6),
       padding: SPACING.md,
       gap: 4,
       marginBottom: SPACING.md,
@@ -676,10 +909,7 @@ const makeStyles = (C: typeof CALM) =>
     textCardTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
     textCardBody: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, lineHeight: 20 },
     myCard: {
-      backgroundColor: C.surface,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.accent, 0.5),
       padding: SPACING.md,
       gap: SPACING.sm,
       marginBottom: SPACING.lg,
@@ -692,11 +922,17 @@ const makeStyles = (C: typeof CALM) =>
       borderRadius: RADIUS.full,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
-      backgroundColor: C.pillBg,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
       alignItems: 'center',
     },
     claimChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
     claimChipSub: { fontSize: 10, color: C.bronze },
+    fullHint: {
+      fontSize: TYPOGRAPHY.size.sm,
+      color: C.bronze,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      marginTop: SPACING.xs,
+    },
     addSelfRow: { flexDirection: 'row', gap: SPACING.sm, alignSelf: 'stretch', marginTop: SPACING.xs },
     addSelfInput: {
       flex: 1,
@@ -710,14 +946,12 @@ const makeStyles = (C: typeof CALM) =>
       color: C.textPrimary,
     },
     addSelfBtn: {
+      width: 'auto',
       minHeight: 44,
+      paddingVertical: 0,
       paddingHorizontal: SPACING.md,
       borderRadius: RADIUS.lg,
-      backgroundColor: C.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
-    addSelfBtnText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.onAccent },
     joinedRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, alignSelf: 'stretch' },
     joinedText: { flex: 1, fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
     rejectedNote: { fontSize: TYPOGRAPHY.size.sm, color: C.overdue, lineHeight: 19, alignSelf: 'stretch' },
@@ -735,16 +969,10 @@ const makeStyles = (C: typeof CALM) =>
     qrNote: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, textAlign: 'center' },
     uploadTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary, marginTop: SPACING.sm },
     uploadRow: { flexDirection: 'row', gap: SPACING.sm, alignSelf: 'stretch' },
-    uploadBtn: { flex: 1, flexDirection: 'row', gap: 6 },
+    uploadBtn: { flex: 1, width: 'auto', flexDirection: 'row', gap: 6 },
+    uploadBtnNeu: { minHeight: 48, paddingVertical: SPACING.sm },
     uploadingRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, minHeight: 50 },
-    primaryBtn: {
-      minHeight: 48,
-      borderRadius: RADIUS.lg,
-      backgroundColor: C.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    primaryBtnText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.onAccent },
+    retryBtn: { width: 'auto', paddingHorizontal: SPACING.xl },
     secondaryBtn: {
       minHeight: 48,
       borderRadius: RADIUS.lg,
@@ -758,11 +986,51 @@ const makeStyles = (C: typeof CALM) =>
     stateTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, textAlign: 'center' },
     sectionTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary, marginBottom: SPACING.sm },
     sectionGap: { marginTop: SPACING.lg },
-    listCard: {
-      backgroundColor: C.surface,
-      borderRadius: RADIUS.lg,
+    teamBlock: { marginBottom: SPACING.md },
+    teamHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.xs,
+      paddingHorizontal: SPACING.xs,
+      paddingBottom: SPACING.xs,
+    },
+    teamHeaderName: { flex: 1, fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary },
+    teamHeaderCount: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, fontWeight: TYPOGRAPHY.weight.semibold },
+    teamEmpty: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, padding: SPACING.md },
+    teamJoinChip: {
+      borderRadius: RADIUS.full,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 5,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+    },
+    teamJoinChipText: { fontSize: TYPOGRAPHY.size.xs, color: C.accent, fontWeight: TYPOGRAPHY.weight.bold },
+    teamMineChip: {
+      borderRadius: RADIUS.full,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 5,
+      backgroundColor: withAlpha(C.accent, 0.18),
+    },
+    teamMineChipText: { fontSize: TYPOGRAPHY.size.xs, color: C.accent, fontWeight: TYPOGRAPHY.weight.bold },
+    renameWrap: { gap: SPACING.md },
+    renameTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, textAlign: 'center' },
+    renameInput: {
+      minHeight: 46,
+      borderRadius: RADIUS.md,
       borderWidth: 1,
-      borderColor: withAlpha(C.border, 0.6),
+      borderColor: C.inputBorder,
+      paddingHorizontal: SPACING.md,
+      color: C.textPrimary,
+      fontSize: TYPOGRAPHY.size.sm,
+    },
+    listCard: {
+      borderRadius: RADIUS.lg,
+      // Onyx seam fix: neu.raisedSoft (spread at the call site) lives on THIS
+      // unclipped card. overflow:'hidden' on the shadowed view cuts the boxShadow
+      // into a hard vertical seam — the row divider clip moves to listClip below.
+      // (Same pattern as TransactionItem's rowShadow + MapPreviewCard's clip.)
+    },
+    listClip: {
+      borderRadius: RADIUS.lg,
       overflow: 'hidden',
     },
     row: {

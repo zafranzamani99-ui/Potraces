@@ -5,6 +5,7 @@
 // prefills the CollectzCreate form. Zero proxy changes: the prompt is built
 // client-side and sent through aiProxyFetch like every other AI call.
 import { aiProxyFetch } from './aiProxy';
+import { usePremiumStore } from '../store/premiumStore';
 
 export interface CollectzParsedDraft {
   title: string | null;
@@ -19,7 +20,9 @@ export interface CollectzParsedDraft {
   roster: Array<{ name: string; slot: 'active' | 'reserve' }>;
 }
 
-const MODEL = 'gemini-3.1-flash-lite';
+// Middle model (owner call 2026-07-22): announcement parsing is quality-sensitive
+// (dates, amounts, rosters) but the feature stays free — quota-metered below.
+const MODEL = 'gemini-3.5-flash';
 
 const PROMPT = `You parse Malaysian WhatsApp group announcements for paid group activities
 (futsal, badminton, makan, trips, gifts — anything) into structured JSON.
@@ -68,6 +71,13 @@ export async function parseCollectzAnnouncement(text: string): Promise<CollectzP
   const trimmed = text.trim();
   if (!trimmed) throw new Error('Paste an announcement first.');
 
+  // Quota gate — same convention as queryEngine.answerQuery: check before the
+  // call, increment only on success. The caller surfaces this like any parse
+  // failure (generic error toast in CollectzCreate.handleParse).
+  if (!usePremiumStore.getState().canUseAI()) {
+    throw new Error('Monthly AI limit reached — resets on the 1st.');
+  }
+
   const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
   const prompt = PROMPT.replace('%TODAY%', today);
 
@@ -75,6 +85,7 @@ export async function parseCollectzAnnouncement(text: string): Promise<CollectzP
     provider: 'gemini',
     mode: 'generate',
     model: MODEL,
+    source: 'smart-capture', // allowlisted in ai-proxy — usage_events attribution
     payload: {
       contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nMESSAGE:\n${trimmed}` }] }],
       generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
@@ -95,6 +106,9 @@ export async function parseCollectzAnnouncement(text: string): Promise<CollectzP
   } catch {
     throw new Error('AI parse failed — try again.');
   }
+
+  // Successful parse → count it against the monthly AI quota (queryEngine convention).
+  usePremiumStore.getState().incrementAiCalls();
 
   return {
     title: parsed.title ?? null,

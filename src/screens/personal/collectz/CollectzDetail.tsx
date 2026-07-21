@@ -1,27 +1,37 @@
 // CollectzDetail — organizer console for one session. Live roster via
 // realtime (subscribeToSession), progress rollup, share/remind/settle actions,
 // and the proof-review flow (view → confirm / reject with a note).
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   Pressable,
   TextInput,
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Share,
 } from 'react-native';
+// Scrollers come from gesture-handler (DebtTracking recipe) — RNGH's ScrollView
+// arbitrates with the app's GestureHandlerRootView so drags aren't lost. Debt
+// uses it for its page scroller AND inside its modals, so both do here too.
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import BottomSheet from '../../../components/common/BottomSheet';
+import PageScrollView from '../../../components/common/PageScrollView';
+import FloatingModal from '../../../components/common/FloatingModal';
+import ConfirmDialog from '../../../components/common/ConfirmDialog';
+import NeuButton from '../../../components/common/NeuButton';
+import KeyboardDoneFab from '../../../components/common/KeyboardDoneFab';
+import { useNeu } from '../../../components/common/neu';
+import { useKeyboardVisible } from '../../../hooks/useKeyboardVisible';
 import { lightTap, mediumTap, successNotification, errorNotification } from '../../../services/haptics';
 import {
   CollectzSession,
@@ -40,6 +50,7 @@ import {
   computeShares,
   computeProgress,
   buildWhatsappAnnouncement,
+  collectzUrl,
   fetchRosterProfiles,
   deleteSession,
   cancelSession,
@@ -47,17 +58,31 @@ import {
   duplicateSession,
   notifySession,
   clubImageUrl,
+  buildRequestMessage,
   type CollectzProfile,
 } from '../../../services/collectzService';
 import { AvatarView } from '../../../components/common/Avatar';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
+import CostNotesSheet from '../../../components/collectz/CostNotesSheet';
 import { presetClubIcon } from '../../../constants/clubIcons';
-import { fmtDateTime, fmtMoney, fill } from './collectzFormat';
+import { fmtDateTime, fmtMoney, fill, teamLabel } from './collectzFormat';
+
+/** Payload for the shared ConfirmDialog. `summary` adds the settle breakdown. */
+interface ConfirmState {
+  title: string;
+  message?: string;
+  confirmLabel: string;
+  destructive?: boolean;
+  summary?: boolean;
+  onConfirm: () => void;
+}
 
 const CollectzDetail: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // faintDark: the "soft neu dark" tier — cards + pills match Goals/Bills/Debt.
+  const neu = useNeu(undefined, { faintDark: true });
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { showToast } = useToast();
@@ -76,6 +101,41 @@ const CollectzDetail: React.FC = () => {
   const [proofLoading, setProofLoading] = useState(false);
   const [rejectMode, setRejectMode] = useState(false);
   const [rejectNote, setRejectNote] = useState('');
+  // Request-payment sheet (per roster member — DebtTracking's request flow)
+  const [reqFor, setReqFor] = useState<CollectzParticipant | null>(null);
+  const [reqMsg, setReqMsg] = useState('');
+  const [reqCopied, setReqCopied] = useState(false);
+  // Participant action modal (tap a roster row)
+  const [actionFor, setActionFor] = useState<CollectzParticipant | null>(null);
+  // Team rename: which team is being renamed, and the draft label.
+  const [renameTeamIdx, setRenameTeamIdx] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  // Screen-level confirm (duplicate / new link / cancel / delete / settle) and a
+  // separate participant-level one that renders INSIDE the action FloatingModal.
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const [pConfirm, setPConfirm] = useState<ConfirmState | null>(null);
+  // Cost notes scratchpad (organizer calculator)
+  const [costNotesVisible, setCostNotesVisible] = useState(false);
+  // Proof preview inside the action modal (participant already paid)
+  const [amProofUrl, setAmProofUrl] = useState<string | null>(null);
+  const [amProofLoading, setAmProofLoading] = useState(false);
+
+  // Load the proof image whenever the action modal opens on a paid participant.
+  useEffect(() => {
+    setAmProofUrl(null);
+    setAmProofLoading(false);
+    if (!actionFor?.proof_path) return;
+    let alive = true;
+    setAmProofLoading(true);
+    proofSignedUrl(actionFor.proof_path)
+      .then((url) => { if (alive && url) setAmProofUrl(url); })
+      .catch(() => {})
+      .finally(() => { if (alive) setAmProofLoading(false); });
+    return () => { alive = false; };
+  }, [actionFor]);
+  // Note Fields standard: gold done-FAB while the multiline reject note is focused.
+  const [multilineFocused, setMultilineFocused] = useState(false);
+  const { keyboardVisible, keyboardHeight } = useKeyboardVisible(() => setMultilineFocused(false));
 
   const load = useCallback(
     async (showSpinner = false) => {
@@ -97,11 +157,15 @@ const CollectzDetail: React.FC = () => {
     [sessionId, showToast, t],
   );
 
+  // Spinner ONLY on the first open. A re-focus (coming back from Edit, etc.)
+  // refetches silently — showing the spinner unmounts the whole ScrollView, so
+  // the screen would snap back to the top instead of restoring where you were.
+  const firstLoadRef = useRef(true);
   useFocusEffect(
     useCallback(() => {
-      load(true);
-    }, [load],
-    ),
+      load(firstLoadRef.current);
+      firstLoadRef.current = false;
+    }, [load]),
   );
 
   // Live roster: refetch on any participant/session change for this session.
@@ -118,6 +182,25 @@ const CollectzDetail: React.FC = () => {
 
   const actives = participants.filter((p) => p.slot === 'active');
   const reserves = participants.filter((p) => p.slot === 'reserve');
+  // Teams are on only when the organizer set capacity BY TEAMS. Reserves never
+  // hold a team slot, so grouping only ever covers the active roster.
+  const teamCount = session?.team_count ?? 0;
+  const teamsOn = teamCount > 0;
+  const teamSize = session?.team_size ?? null;
+  const teamGroups = useMemo(() => {
+    if (!teamsOn) return [];
+    const groups: Array<{ idx: number; members: CollectzParticipant[] }> = Array.from(
+      { length: teamCount },
+      (_, i) => ({ idx: i + 1, members: [] as CollectzParticipant[] }),
+    );
+    for (const p of actives) {
+      if (p.team_idx != null && p.team_idx >= 1 && p.team_idx <= teamCount) {
+        groups[p.team_idx - 1].members.push(p);
+      }
+    }
+    return groups;
+  }, [teamsOn, teamCount, actives]);
+  const unassigned = teamsOn ? actives.filter((p) => p.team_idx == null || p.team_idx > teamCount) : actives;
   const isOpen = session?.status === 'open';
 
   const statusColor = (status: CollectzParticipantStatus): string => {
@@ -166,24 +249,50 @@ const CollectzDetail: React.FC = () => {
     Share.share({ message: buildWhatsappAnnouncement(session, progress?.activeCount ?? 0) }).catch(() => {});
   };
 
-  const sendReminders = () =>
-    run(async () => {
+  // Tap copies the code, long-press copies the full join link. Distinct toasts
+  // so the user always knows WHICH of the two landed on their clipboard.
+  const copyShareCode = async (asLink: boolean) => {
+    if (!session) return;
+    lightTap();
+    await Clipboard.setStringAsync(asLink ? collectzUrl(session.share_code) : session.share_code);
+    showToast(asLink ? t.collectz.linkCopied : t.collectz.codeCopied, 'success');
+  };
+
+  // Not via run(): its catch shows a generic error, which would hide the real
+  // reason — most importantly the 24h "already reminded" cooldown.
+  const sendReminders = async () => {
+    if (busy) return;
+    lightTap();
+    setBusy(true);
+    try {
       const sent = await remindUnpaid(sessionId);
+      successNotification();
       showToast(fill(t.collectz.remindSent, { count: sent }), 'success');
-    });
+    } catch (e) {
+      errorNotification();
+      showToast(e instanceof Error && e.message ? e.message : t.collectz.actionError, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const settle = () => {
-    Alert.alert(t.collectz.settleTitle, t.collectz.settleBody, [
-      { text: t.common.cancel, style: 'cancel' },
-      {
-        text: t.collectz.actionSettle,
-        onPress: () =>
-          run(async () => {
-            await updateSession(sessionId, { status: 'settled' });
-            notifySession(sessionId, 'settled').catch(() => {}); // best-effort
-          }, t.collectz.settledToast),
+    lightTap();
+    setConfirm({
+      title: t.collectz.settleTitle,
+      message: t.collectz.settleBody,
+      confirmLabel: t.collectz.actionSettle,
+      // Settling is the irreversible "this is done" moment, so the dialog shows
+      // who has actually paid and who hasn't before the organizer commits.
+      summary: true,
+      onConfirm: () => {
+        setConfirm(null);
+        run(async () => {
+          await updateSession(sessionId, { status: 'settled' });
+          notifySession(sessionId, 'settled').catch(() => {}); // best-effort
+        }, t.collectz.settledToast);
       },
-    ]);
+    });
   };
 
   const reopen = () => run(() => updateSession(sessionId, { status: 'open' }), t.collectz.reopenedToast);
@@ -194,62 +303,78 @@ const CollectzDetail: React.FC = () => {
     navigation.navigate('CollectzCreate', { editSessionId: sessionId });
   };
 
-  const duplicate = () =>
-    run(async () => {
-      const created = await duplicateSession(sessionId);
-      navigation.replace('CollectzDetail', { sessionId: created.id });
-    }, t.collectz.duplicateDone);
+  const duplicate = () => {
+    lightTap();
+    setConfirm({
+      title: t.collectz.duplicateTitle,
+      message: t.collectz.duplicateBody,
+      confirmLabel: t.collectz.actionDuplicate,
+      onConfirm: () => {
+        setConfirm(null);
+        run(async () => {
+          const created = await duplicateSession(sessionId);
+          navigation.replace('CollectzDetail', { sessionId: created.id });
+        }, t.collectz.duplicateDone);
+      },
+    });
+  };
 
   const regenLink = () => {
-    Alert.alert(t.collectz.regenTitle, t.collectz.regenBody, [
-      { text: t.common.cancel, style: 'cancel' },
-      {
-        text: t.collectz.actionRegenLink,
-        onPress: () => run(async () => { await regenerateShareCode(sessionId); }, t.collectz.regenDone),
+    lightTap();
+    setConfirm({
+      title: t.collectz.regenTitle,
+      message: t.collectz.regenBody,
+      confirmLabel: t.collectz.actionRegenLink,
+      onConfirm: () => {
+        setConfirm(null);
+        run(async () => { await regenerateShareCode(sessionId); }, t.collectz.regenDone);
       },
-    ]);
+    });
   };
 
   const cancelSess = () => {
-    Alert.alert(t.collectz.cancelTitle, t.collectz.cancelBody, [
-      { text: t.common.cancel, style: 'cancel' },
-      {
-        text: t.collectz.actionCancel,
-        style: 'destructive',
-        onPress: () =>
-          run(async () => {
-            await cancelSession(sessionId);
-            notifySession(sessionId, 'cancelled').catch(() => {});
-          }, t.collectz.cancelledToast),
+    lightTap();
+    setConfirm({
+      title: t.collectz.cancelTitle,
+      message: t.collectz.cancelBody,
+      confirmLabel: t.collectz.actionCancel,
+      destructive: true,
+      onConfirm: () => {
+        setConfirm(null);
+        run(async () => {
+          await cancelSession(sessionId);
+          notifySession(sessionId, 'cancelled').catch(() => {});
+        }, t.collectz.cancelledToast);
       },
-    ]);
+    });
   };
 
   const deleteSess = () => {
+    lightTap();
     const anyPaid = participants.some((p) => p.status === 'pending' || p.status === 'confirmed');
-    Alert.alert(t.collectz.deleteTitle, anyPaid ? t.collectz.deleteBodyPaid : t.collectz.deleteBody, [
-      { text: t.common.cancel, style: 'cancel' },
-      {
-        text: t.common.delete,
-        style: 'destructive',
-        onPress: async () => {
-          // Notify FIRST (the join link dies with the row), then delete + leave.
-          setBusy(true);
-          try {
-            await notifySession(sessionId, 'cancelled').catch(() => {});
-            await deleteSession(sessionId);
-            successNotification();
-            showToast(t.collectz.deletedToast, 'success');
-            navigation.goBack();
-          } catch {
-            errorNotification();
-            showToast(t.collectz.actionError, 'error');
-          } finally {
-            setBusy(false);
-          }
-        },
+    setConfirm({
+      title: t.collectz.deleteTitle,
+      message: anyPaid ? t.collectz.deleteBodyPaid : t.collectz.deleteBody,
+      confirmLabel: t.common.delete,
+      destructive: true,
+      onConfirm: async () => {
+        setConfirm(null);
+        // Notify FIRST (the join link dies with the row), then delete + leave.
+        setBusy(true);
+        try {
+          await notifySession(sessionId, 'cancelled').catch(() => {});
+          await deleteSession(sessionId);
+          successNotification();
+          showToast(t.collectz.deletedToast, 'success');
+          navigation.goBack();
+        } catch {
+          errorNotification();
+          showToast(t.collectz.actionError, 'error');
+        } finally {
+          setBusy(false);
+        }
       },
-    ]);
+    });
   };
 
   // ── Participant-level actions ──
@@ -277,11 +402,21 @@ const CollectzDetail: React.FC = () => {
   const manualConfirm = (p: CollectzParticipant) =>
     run(() => confirmParticipant(p.id), fill(t.collectz.confirmedToast, { name: p.name }));
 
+  // Participant confirms render INSIDE the action FloatingModal (asOverlay) and
+  // leave it open — iOS can't present a second RN Modal over an open one, and
+  // closing+presenting in the same commit is the flaky "present while dismissing"
+  // case. Confirming closes both, then runs the action.
   const undoConfirm = (p: CollectzParticipant) => {
-    Alert.alert(t.collectz.actionUndo, p.name, [
-      { text: t.common.cancel, style: 'cancel' },
-      { text: t.collectz.actionUndo, onPress: () => run(() => resetParticipantToUnpaid(p.id), fill(t.collectz.undoToast, { name: p.name })) },
-    ]);
+    setPConfirm({
+      title: t.collectz.actionUndo,
+      message: p.name,
+      confirmLabel: t.collectz.actionUndo,
+      onConfirm: () => {
+        setPConfirm(null);
+        setActionFor(null);
+        run(() => resetParticipantToUnpaid(p.id), fill(t.collectz.undoToast, { name: p.name }));
+      },
+    });
   };
 
   const promote = (p: CollectzParticipant) =>
@@ -289,14 +424,17 @@ const CollectzDetail: React.FC = () => {
 
   const remove = (p: CollectzParticipant) => {
     const paid = p.status === 'pending' || p.status === 'confirmed';
-    Alert.alert(
-      paid ? fill(t.collectz.removePaidTitle, { name: p.name }) : fill(t.collectz.removeTitle, { name: p.name }),
-      paid ? t.collectz.removePaidBody : t.collectz.removeBody,
-      [
-        { text: t.common.cancel, style: 'cancel' },
-        { text: t.common.delete, style: 'destructive', onPress: () => run(() => removeParticipant(p.id), fill(t.collectz.removedToast, { name: p.name })) },
-      ],
-    );
+    setPConfirm({
+      title: paid ? fill(t.collectz.removePaidTitle, { name: p.name }) : fill(t.collectz.removeTitle, { name: p.name }),
+      message: paid ? t.collectz.removePaidBody : t.collectz.removeBody,
+      confirmLabel: t.common.delete,
+      destructive: true,
+      onConfirm: () => {
+        setPConfirm(null);
+        setActionFor(null);
+        run(() => removeParticipant(p.id), fill(t.collectz.removedToast, { name: p.name }));
+      },
+    });
   };
 
   const confirmFromSheet = () => {
@@ -314,26 +452,123 @@ const CollectzDetail: React.FC = () => {
     run(() => rejectParticipant(p.id, note), t.collectz.rejectedToast);
   };
 
+  // ── Request payment (per participant) ──
+  const openRequest = (p: CollectzParticipant) => {
+    if (!session) return;
+    lightTap();
+    setReqFor(p);
+    setReqMsg(buildRequestMessage(session, p.name, shares.get(p.id) ?? null));
+    setReqCopied(false);
+  };
+
+  const closeRequest = () => {
+    setReqFor(null);
+    setReqMsg('');
+    setReqCopied(false);
+  };
+
+  const copyRequest = async () => {
+    if (!reqMsg) return;
+    lightTap();
+    await Clipboard.setStringAsync(reqMsg);
+    setReqCopied(true);
+    setTimeout(() => setReqCopied(false), 3000);
+  };
+
+  const whatsappRequest = async () => {
+    if (!reqMsg) return;
+    lightTap();
+    try {
+      // No phone on roster entries — WhatsApp opens its own chat picker.
+      await Linking.openURL(`whatsapp://send?text=${encodeURIComponent(reqMsg)}`);
+      closeRequest();
+    } catch {
+      showToast(t.collectz.actionError, 'error');
+    }
+  };
+
+  // ── Participant action modal ──
+  /** Close the modal first, then run the participant action against it. */
+  const actFromModal = (fn: (p: CollectzParticipant) => void) => {
+    const p = actionFor;
+    setActionFor(null);
+    if (p) fn(p);
+  };
+
+  // WhatsApp straight from the action modal — same composed message, no preview stop.
+  const whatsappDirect = async (p: CollectzParticipant) => {
+    if (!session) return;
+    lightTap();
+    try {
+      await Linking.openURL(
+        `whatsapp://send?text=${encodeURIComponent(buildRequestMessage(session, p.name, shares.get(p.id) ?? null))}`,
+      );
+    } catch {
+      showToast(t.collectz.actionError, 'error');
+    }
+  };
+
+  // ── Cost notes (organizer scratchpad + calculator) ──
+  const openCostNotes = () => {
+    lightTap();
+    setCostNotesVisible(true);
+  };
+
+  // Any dismiss path lands here — save only when the text actually changed.
+  const closeCostNotes = (text: string | null, changed: boolean) => {
+    setCostNotesVisible(false);
+    if (!changed) return;
+    run(() => updateSession(sessionId, { calc_notes: text }), t.collectz.costNotesSaved);
+  };
+
+  // Calculator result → session amount (flat = per-person, equal = total).
+  const applyCalcAmount = (amount: number) => {
+    if (!session) return;
+    const updates = session.scheme === 'equal' ? { total_amount: amount } : { default_share: amount };
+    run(() => updateSession(sessionId, updates), t.collectz.costNotesApplied);
+  };
+
+  // Rename a team. Labels live on the session as a text[] aligned to team_count,
+  // so pad any short/absent array before writing the slot.
+  const saveTeamName = () => {
+    if (!session || renameTeamIdx == null) return;
+    const names = Array.isArray(session.team_names) ? [...session.team_names] : [];
+    while (names.length < teamCount) names.push('');
+    names[renameTeamIdx - 1] = renameDraft.trim().slice(0, 40);
+    setRenameTeamIdx(null);
+    run(() => updateSession(sessionId, { team_names: names.some((n) => n) ? names : null }), t.collectz.teamRenamed);
+  };
+
+  // Move a player between teams. The organizer can shuffle anyone, but still not
+  // past team_size — a full team is full for them too.
+  const moveToTeam = (p: CollectzParticipant, idx: number | null) => {
+    setActionFor(null);
+    if (idx != null && teamSize != null) {
+      const occupied = actives.filter((x) => x.team_idx === idx && x.id !== p.id).length;
+      if (occupied >= teamSize) { showToast(t.collectz.teamFullToast, 'error'); return; }
+    }
+    run(() => updateParticipant(p.id, { team_idx: idx }), t.collectz.teamMoved);
+  };
+
   const renderRow = (p: CollectzParticipant) => {
     const share = p.slot === 'reserve' ? null : shares.get(p.id);
     const color = statusColor(p.status);
     return (
       <Pressable
         key={p.id}
-        style={({ pressed }) => [styles.row, pressed && { opacity: 0.9 }]}
-        onPress={() => (p.status === 'pending' ? openProof(p) : undefined)}
-        onLongPress={() => remove(p)}
+        style={({ pressed }) => [styles.rowCard, neu.raisedSoft, pressed && { opacity: 0.9 }]}
+        onPress={() => { lightTap(); setActionFor(p); }}
         accessibilityRole="button"
         accessibilityLabel={p.name}
       >
+        <AvatarView
+          size={36}
+          uri={p.user_id ? profiles[p.user_id]?.avatar_uri : null}
+          presetId={p.user_id ? profiles[p.user_id]?.avatar_id : null}
+          name={p.name}
+        />
         <View style={styles.rowMain}>
           <View style={styles.rowNameLine}>
-            <AvatarView
-              size={28}
-              uri={p.user_id ? profiles[p.user_id]?.avatar_uri : null}
-              presetId={p.user_id ? profiles[p.user_id]?.avatar_id : null}
-              name={p.name}
-            />
             <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
             {!!p.user_id && (
               <View style={styles.claimedTag}>
@@ -351,29 +586,10 @@ const CollectzDetail: React.FC = () => {
           </Text>
         </View>
 
-        <View style={styles.rowRight}>
-          <View style={[styles.statusChip, { backgroundColor: withAlpha(color, 0.18) }]}>
-            <Text style={[styles.statusChipText, { color }]}>{statusLabel(p.status)}</Text>
-          </View>
-          {p.status === 'pending' && (
-            <Text style={styles.rowAction}>{t.collectz.viewProof}</Text>
-          )}
-          {p.status === 'confirmed' && (
-            <Pressable onPress={() => undoConfirm(p)} hitSlop={6}>
-              <Text style={styles.rowAction}>{t.collectz.actionUndo}</Text>
-            </Pressable>
-          )}
-          {(p.status === 'unpaid' || p.status === 'rejected') && isOpen && (
-            <Pressable onPress={() => manualConfirm(p)} hitSlop={6}>
-              <Text style={styles.rowAction}>{t.collectz.actionMarkPaid}</Text>
-            </Pressable>
-          )}
-          {p.slot === 'reserve' && isOpen && (
-            <Pressable onPress={() => promote(p)} hitSlop={6}>
-              <Text style={styles.rowAction}>{t.collectz.actionPromote}</Text>
-            </Pressable>
-          )}
+        <View style={[styles.statusChip, { backgroundColor: withAlpha(color, 0.18) }]}>
+          <Text style={[styles.statusChipText, { color }]}>{statusLabel(p.status)}</Text>
         </View>
+        <Feather name="chevron-right" size={16} color={C.textMuted} />
       </Pressable>
     );
   };
@@ -398,16 +614,29 @@ const CollectzDetail: React.FC = () => {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <PageScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+      >
         {/* Header card */}
-        <View style={styles.headerCard}>
+        <View style={[styles.headerCard, neu.raisedSoft]}>
           <View style={styles.titleRow}>
             {(() => {
               const preset = presetClubIcon(session.image_path);
               const uri = !preset && session.image_path ? clubImageUrl(session.image_path) : null;
-              return preset || uri ? (
-                <Image source={preset ? preset.source : { uri: uri! }} style={styles.clubImage} />
-              ) : null;
+              if (!preset && !uri) return null;
+              // Preset emoji PNGs are square artwork — a circular crop clips the
+              // corners (the "cropped picture" bug). Square well + contain for
+              // presets; full-bleed cover for uploaded club photos.
+              return (
+                <View style={styles.clubWell}>
+                  {preset ? (
+                    <Text style={styles.clubEmoji}>{preset.emoji}</Text>
+                  ) : (
+                    <Image source={{ uri: uri! }} style={styles.clubImagePhoto} resizeMode="cover" />
+                  )}
+                </View>
+              );
             })()}
             <Text style={[styles.title, { flex: 1 }]}>{session.title}</Text>
           </View>
@@ -426,7 +655,20 @@ const CollectzDetail: React.FC = () => {
           {!!session.maps_url && <MapPreviewCard mapsUrl={session.maps_url} venue={session.venue} compact />}
           <View style={styles.metaRow}>
             <Feather name="link" size={13} color={C.textMuted} />
-            <Text style={styles.meta}>{fill(t.collectz.shareCodeLabel, { code: session.share_code })}</Text>
+            {/* Tap = the bare code (for typing into "Join with a code");
+                long-press = the full join link (for pasting into WhatsApp).
+                The hint below makes the long-press discoverable. */}
+            <Pressable
+              onPress={() => copyShareCode(false)}
+              onLongPress={() => copyShareCode(true)}
+              delayLongPress={350}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={t.collectz.codeCopyHint}
+            >
+              <Text style={styles.meta}>{fill(t.collectz.shareCodeLabel, { code: session.share_code })}</Text>
+              <Text style={styles.codeCopyHint}>{t.collectz.codeCopyHint}</Text>
+            </Pressable>
           </View>
           {!isOpen && (
             <View style={styles.closedBanner}>
@@ -439,7 +681,7 @@ const CollectzDetail: React.FC = () => {
 
         {/* Progress */}
         {progress && (
-          <View style={styles.progressCard}>
+          <View style={[styles.progressCard, neu.raisedSoft]}>
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${Math.round(pct * 100)}%` }]} />
             </View>
@@ -454,87 +696,353 @@ const CollectzDetail: React.FC = () => {
           </View>
         )}
 
-        {/* Actions */}
+        {/* Cost notes entry — organizer scratchpad + calculator */}
+        <Pressable
+          style={({ pressed }) => [styles.notesEntry, neu.raisedSoft, pressed && { opacity: 0.9 }]}
+          onPress={openCostNotes}
+          accessibilityRole="button"
+        >
+          <View style={styles.notesEntryIcon}>
+            <Feather name="percent" size={16} color={C.accent} />
+          </View>
+          <View style={styles.notesEntryMain}>
+            <Text style={styles.notesEntryTitle}>{t.collectz.costNotesEntry}</Text>
+            <Text style={styles.notesEntryHint}>{t.collectz.costNotesEntryHint}</Text>
+          </View>
+          <Feather name="chevron-right" size={16} color={C.textMuted} />
+        </Pressable>
+
+        {/* Primary actions — the organizer's daily trio */}
         <View style={styles.actionsRow}>
-          <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={shareAnnouncement}>
+          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={shareAnnouncement}>
             <Feather name="share-2" size={15} color={C.accent} />
             <Text style={styles.actionBtnText}>{t.collectz.actionShare}</Text>
           </Pressable>
-          <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={sendReminders} disabled={busy}>
+          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={sendReminders} disabled={busy}>
             <Feather name="bell" size={15} color={C.accent} />
             <Text style={styles.actionBtnText}>{t.collectz.actionRemind}</Text>
           </Pressable>
           {isOpen ? (
-            <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={settle} disabled={busy}>
+            <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={settle} disabled={busy}>
               <Feather name="check-circle" size={15} color={C.bronze} />
               <Text style={[styles.actionBtnText, { color: C.bronze }]}>{t.collectz.actionSettle}</Text>
             </Pressable>
           ) : (
-            <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={reopen} disabled={busy}>
+            <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={reopen} disabled={busy}>
               <Feather name="rotate-ccw" size={15} color={C.accent} />
               <Text style={styles.actionBtnText}>{t.collectz.actionReopen}</Text>
             </Pressable>
           )}
         </View>
 
-        {/* v2 actions: edit / duplicate / new link / cancel / delete */}
-        <View style={styles.actionsRow}>
-          <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={edit} disabled={busy}>
-            <Feather name="edit-2" size={15} color={C.accent} />
-            <Text style={styles.actionBtnText}>{t.collectz.actionEdit}</Text>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={duplicate} disabled={busy}>
-            <Feather name="copy" size={15} color={C.accent} />
-            <Text style={styles.actionBtnText}>{t.collectz.actionDuplicate}</Text>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={regenLink} disabled={busy}>
-            <Feather name="refresh-cw" size={15} color={C.accent} />
-            <Text style={styles.actionBtnText}>{t.collectz.actionRegenLink}</Text>
-          </Pressable>
-          {isOpen && (
-            <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={cancelSess} disabled={busy}>
-              <Feather name="x-circle" size={15} color={C.overdue} />
-              <Text style={[styles.actionBtnText, { color: C.overdue }]}>{t.collectz.actionCancel}</Text>
-            </Pressable>
-          )}
-          <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={deleteSess} disabled={busy}>
-            <Feather name="trash-2" size={15} color={C.overdue} />
-            <Text style={[styles.actionBtnText, { color: C.overdue }]}>{t.collectz.actionDelete}</Text>
-          </Pressable>
-        </View>
-
-        {/* Roster */}
+        {/* Roster — who paid, right up front */}
         <Text style={styles.sectionTitle}>{t.collectz.roster}</Text>
         {actives.length === 0 && reserves.length === 0 ? (
           <Text style={styles.emptyRoster}>{t.collectz.emptyRoster}</Text>
+        ) : teamsOn ? (
+          <>
+            {teamGroups.map((g) => (
+              <View key={g.idx} style={styles.teamBlock}>
+                <Pressable
+                  style={styles.teamHeader}
+                  onPress={() => {
+                    lightTap();
+                    setRenameDraft(session.team_names?.[g.idx - 1] ?? '');
+                    setRenameTeamIdx(g.idx);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.collectz.teamRename}
+                >
+                  <Text style={styles.teamHeaderName} numberOfLines={1}>
+                    {teamLabel(session.team_names, g.idx, fill(t.collectz.teamN, { n: g.idx }))}
+                  </Text>
+                  <Text style={styles.teamHeaderCount}>
+                    {teamSize != null ? `${g.members.length}/${teamSize}` : String(g.members.length)}
+                  </Text>
+                  <Feather name="edit-2" size={12} color={C.textMuted} />
+                </Pressable>
+                {g.members.length === 0 ? (
+                  <Text style={styles.teamEmpty}>{t.collectz.teamEmpty}</Text>
+                ) : (
+                  <View style={styles.rosterList}>{g.members.map(renderRow)}</View>
+                )}
+              </View>
+            ))}
+            {unassigned.length > 0 && (
+              <View style={styles.teamBlock}>
+                <View style={styles.teamHeader}>
+                  <Text style={styles.teamHeaderName}>{t.collectz.teamNoneLabel}</Text>
+                  <Text style={styles.teamHeaderCount}>{String(unassigned.length)}</Text>
+                </View>
+                <View style={styles.rosterList}>{unassigned.map(renderRow)}</View>
+              </View>
+            )}
+          </>
         ) : (
-          <View style={styles.listCard}>{actives.map(renderRow)}</View>
+          <View style={styles.rosterList}>{actives.map(renderRow)}</View>
         )}
 
         {reserves.length > 0 && (
           <>
             <Text style={[styles.sectionTitle, styles.sectionGap]}>{t.collectz.waitingList}</Text>
-            <View style={styles.listCard}>{reserves.map(renderRow)}</View>
+            <View style={styles.rosterList}>{reserves.map(renderRow)}</View>
           </>
         )}
-      </ScrollView>
+
+        {/* Manage — edit / duplicate / new link */}
+        <Text style={[styles.sectionTitle, styles.sectionGap]}>{t.collectz.manageSection}</Text>
+        <View style={styles.actionsRow}>
+          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={edit} disabled={busy}>
+            <Feather name="edit-2" size={15} color={C.accent} />
+            <Text style={styles.actionBtnText}>{t.collectz.actionEdit}</Text>
+          </Pressable>
+          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={duplicate} disabled={busy}>
+            <Feather name="copy" size={15} color={C.accent} />
+            <Text style={styles.actionBtnText}>{t.collectz.actionDuplicate}</Text>
+          </Pressable>
+          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={regenLink} disabled={busy}>
+            <Feather name="refresh-cw" size={15} color={C.accent} />
+            <Text style={styles.actionBtnText}>{t.collectz.actionRegenLink}</Text>
+          </Pressable>
+        </View>
+
+        {/* Danger — cancel / delete, visually separated in red */}
+        <View style={[styles.actionsRow, styles.dangerRow]}>
+          {isOpen && (
+            <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={cancelSess} disabled={busy}>
+              <Feather name="x-circle" size={15} color={C.overdue} />
+              <Text style={[styles.actionBtnText, { color: C.overdue }]}>{t.collectz.actionCancel}</Text>
+            </Pressable>
+          )}
+          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={deleteSess} disabled={busy}>
+            <Feather name="trash-2" size={15} color={C.overdue} />
+            <Text style={[styles.actionBtnText, { color: C.overdue }]}>{t.collectz.actionDelete}</Text>
+          </Pressable>
+        </View>
+      </PageScrollView>
+
+      {/* Cost notes sheet — scratchpad + calculator for the per-person math */}
+      <CostNotesSheet
+        visible={costNotesVisible}
+        onClose={closeCostNotes}
+        currency={session.currency}
+        scheme={session.scheme}
+        activeCount={actives.length}
+        initialNotes={session.calc_notes}
+        onApplyAmount={applyCalcAmount}
+      />
+
+      {/* Team rename — organizer taps a team header. Participants can rename
+          from their join page too; last write wins, which is fine for a label. */}
+      <FloatingModal visible={renameTeamIdx != null} onClose={() => setRenameTeamIdx(null)} entrance="fade">
+        <View style={styles.renameWrap}>
+          <Text style={styles.renameTitle}>{t.collectz.teamRename}</Text>
+          <TextInput
+            style={styles.renameInput}
+            value={renameDraft}
+            onChangeText={setRenameDraft}
+            placeholder={renameTeamIdx != null ? fill(t.collectz.teamN, { n: renameTeamIdx }) : ''}
+            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+            maxLength={40}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={saveTeamName}
+          />
+          <NeuButton icon="check" label={t.common.save} onPress={saveTeamName} disabled={busy} />
+        </View>
+      </FloatingModal>
+
+      {/* Participant action modal — tap any roster row. Centered fade-in like
+          the Repay Credit picker (NOT a bottom slide). */}
+      <FloatingModal visible={!!actionFor} onClose={() => setActionFor(null)} entrance="fade">
+        {actionFor && session && (() => {
+          const p = actionFor;
+          const share = p.slot === 'reserve' ? null : shares.get(p.id) ?? null;
+          const color = statusColor(p.status);
+          const canNudge = (p.status === 'unpaid' || p.status === 'rejected') && isOpen;
+          const proofIsPdf = p.proof_path?.toLowerCase().endsWith('.pdf') ?? false;
+
+          // DebtTracking detail pattern: one olive primary CTA on top, the rest
+          // as a centered row of circular neu icon chips (one-color icons).
+          let primary: { icon: React.ComponentProps<typeof Feather>['name']; label: string; onPress: () => void } | null = null;
+          if (p.status === 'pending') {
+            primary = { icon: 'check-circle', label: t.collectz.actionConfirm, onPress: () => actFromModal(manualConfirm) };
+          } else if (p.slot === 'reserve' && isOpen) {
+            primary = { icon: 'arrow-up-circle', label: t.collectz.actionPromote, onPress: () => actFromModal(promote) };
+          } else if (canNudge) {
+            primary = { icon: 'check-circle', label: t.collectz.actionMarkPaid, onPress: () => actFromModal(manualConfirm) };
+          }
+
+          // Team move — organizer shuffles anyone who is actually playing.
+          const teamRow = teamsOn && p.slot === 'active' ? (
+            <View style={styles.amTeamRow}>
+              <Pressable
+                style={[styles.teamChip, neu.raised, p.team_idx == null && styles.teamChipActive]}
+                onPress={() => moveToTeam(p, null)}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.teamChipText, p.team_idx == null && styles.teamChipTextActive]}>
+                  {t.collectz.teamNoneLabel}
+                </Text>
+              </Pressable>
+              {Array.from({ length: teamCount }, (_, i) => i + 1).map((idx) => {
+                const here = p.team_idx === idx;
+                const occupied = actives.filter((x) => x.team_idx === idx && x.id !== p.id).length;
+                const full = !here && teamSize != null && occupied >= teamSize;
+                return (
+                  <Pressable
+                    key={idx}
+                    disabled={full}
+                    style={[styles.teamChip, neu.raised, here && styles.teamChipActive, full && styles.teamChipFull]}
+                    onPress={() => moveToTeam(p, idx)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.teamChipText, here && styles.teamChipTextActive]}>
+                      {teamLabel(session.team_names, idx, fill(t.collectz.teamN, { n: idx }))}
+                      {full ? ` \u00b7 ${t.collectz.teamFullShort}` : ''}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null;
+
+          const chips: Array<{ key: string; icon: string; color: string; label: string; onPress: () => void }> = [];
+          if (p.status === 'pending') {
+            chips.push({ key: 'proof', icon: 'eye', color: C.accent, label: t.collectz.viewProof, onPress: () => actFromModal(openProof) });
+          }
+          if (canNudge && p.slot === 'active') {
+            chips.push({ key: 'request', icon: 'edit-3', color: C.accent, label: t.collectz.requestTitle, onPress: () => actFromModal(openRequest) });
+            chips.push({ key: 'wa', icon: 'send', color: C.gold, label: t.collectz.requestWhatsapp, onPress: () => actFromModal(whatsappDirect) });
+          }
+          if (canNudge && p.slot === 'reserve') {
+            chips.push({ key: 'paid', icon: 'check-circle', color: C.accent, label: t.collectz.actionMarkPaid, onPress: () => actFromModal(manualConfirm) });
+          }
+          if (p.status === 'confirmed') {
+            // NOT actFromModal — these two confirm first, and their dialog renders
+            // inside this sheet, so the sheet must stay open until confirmed.
+            chips.push({ key: 'undo', icon: 'rotate-ccw', color: C.textSecondary, label: t.collectz.actionUndo, onPress: () => undoConfirm(p) });
+          }
+          chips.push({ key: 'remove', icon: 'trash-2', color: C.overdue, label: t.collectz.actionRemove, onPress: () => remove(p) });
+
+          return (
+            <View style={styles.amWrap}>
+              {/* Header: who this is */}
+              <View style={styles.amHeader}>
+                <AvatarView
+                  size={44}
+                  uri={p.user_id ? profiles[p.user_id]?.avatar_uri : null}
+                  presetId={p.user_id ? profiles[p.user_id]?.avatar_id : null}
+                  name={p.name}
+                />
+                <View style={styles.amHeaderMain}>
+                  <View style={styles.rowNameLine}>
+                    <Text style={styles.amName} numberOfLines={1}>{p.name}</Text>
+                    {!!p.user_id && (
+                      <View style={styles.claimedTag}>
+                        <Feather name="user-check" size={11} color={C.accent} />
+                        <Text style={styles.claimedTagText}>{t.collectz.claimed}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.rowShare}>
+                    {p.slot === 'reserve'
+                      ? t.collectz.reserveShare
+                      : share != null
+                        ? fmtMoney(share, session.currency)
+                        : t.collectz.shareUnknown}
+                  </Text>
+                </View>
+                <View style={[styles.statusChip, { backgroundColor: withAlpha(color, 0.18) }]}>
+                  <Text style={[styles.statusChipText, { color }]}>{statusLabel(p.status)}</Text>
+                </View>
+              </View>
+
+              {/* Submitted proof, right in the modal — confirm below it. */}
+              {p.status === 'pending' && !!p.proof_path && (
+                amProofLoading ? (
+                  <ActivityIndicator size="small" color={C.accent} style={styles.amProofLoader} />
+                ) : amProofUrl ? (
+                  proofIsPdf ? (
+                    <Pressable
+                      style={({ pressed }) => [styles.amProofPdf, neu.raised, pressed && { opacity: 0.85 }]}
+                      onPress={() => Linking.openURL(amProofUrl).catch(() => showToast(t.collectz.proofError, 'error'))}
+                      accessibilityRole="button"
+                    >
+                      <Feather name="file-text" size={16} color={C.accent} />
+                      <Text style={styles.amProofPdfText}>{t.collectz.proofOpenPdf}</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable onPress={() => actFromModal(openProof)} accessibilityRole="button" accessibilityLabel={t.collectz.viewProof}>
+                      <Image source={{ uri: amProofUrl }} style={styles.amProofImage} resizeMode="cover" />
+                    </Pressable>
+                  )
+                ) : null
+              )}
+
+              {teamRow}
+
+              {primary && (
+                <NeuButton icon={primary.icon} label={primary.label} onPress={primary.onPress} disabled={busy} />
+              )}
+
+              <View style={styles.amChipRow}>
+                {chips.map((chip) => (
+                  <Pressable
+                    key={chip.key}
+                    style={({ pressed }) => [styles.amChip, neu.raised, pressed && { opacity: 0.85 }]}
+                    onPress={chip.onPress}
+                    accessibilityRole="button"
+                    accessibilityLabel={chip.label}
+                  >
+                    <Feather name={chip.icon as any} size={16} color={chip.color} />
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          );
+        })()}
+        {/* asOverlay: lives in THIS modal's window. A nested <Modal> would present
+            behind the sheet and be invisible on iOS. */}
+        <ConfirmDialog
+          visible={!!pConfirm}
+          title={pConfirm?.title ?? ''}
+          message={pConfirm?.message}
+          confirmLabel={pConfirm?.confirmLabel ?? ''}
+          destructive={pConfirm?.destructive}
+          busy={busy}
+          onConfirm={() => pConfirm?.onConfirm()}
+          onClose={() => setPConfirm(null)}
+          asOverlay
+        />
+      </FloatingModal>
 
       {/* Proof review sheet */}
-      <BottomSheet visible={!!proofFor} onClose={closeProof} maxHeightPct={0.85} closeLabel={t.common.close}>
+      <BottomSheet
+        visible={!!proofFor}
+        onClose={closeProof}
+        maxHeightPct={0.85}
+        closeLabel={t.common.close}
+        keyboardAvoiding
+        overlay={<KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />}
+      >
         {proofFor && (
-          <View style={styles.proofWrap}>
+          <ScrollView
+            style={{ flexGrow: 0, flexShrink: 1 }}
+            contentContainerStyle={styles.proofWrap}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={styles.proofTitle}>{fill(t.collectz.proofTitle, { name: proofFor.name })}</Text>
             {proofLoading ? (
               <ActivityIndicator size="large" color={C.accent} style={styles.proofLoader} />
             ) : proofUrl ? (
               proofIsPdf ? (
-                <Pressable
-                  style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
+                <NeuButton
+                  icon="file-text"
+                  label={t.collectz.proofOpenPdf}
                   onPress={() => Linking.openURL(proofUrl).catch(() => showToast(t.collectz.proofError, 'error'))}
-                >
-                  <Feather name="file-text" size={16} color={C.onAccent} />
-                  <Text style={styles.primaryBtnText}>{t.collectz.proofOpenPdf}</Text>
-                </Pressable>
+                />
               ) : (
                 <Image source={{ uri: proofUrl }} style={styles.proofImage} resizeMode="contain" />
               )
@@ -544,15 +1052,9 @@ const CollectzDetail: React.FC = () => {
 
             {proofFor.status === 'pending' && !rejectMode && (
               <View style={styles.proofActions}>
+                <NeuButton label={t.collectz.actionConfirm} onPress={confirmFromSheet} disabled={busy} />
                 <Pressable
-                  style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
-                  onPress={confirmFromSheet}
-                  disabled={busy}
-                >
-                  <Text style={styles.primaryBtnText}>{t.collectz.actionConfirm}</Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.rejectBtn, pressed && { opacity: 0.85 }]}
+                  style={({ pressed }) => [styles.rejectBtn, neu.raised, pressed && { opacity: 0.85 }]}
                   onPress={() => { lightTap(); setRejectMode(true); }}
                 >
                   <Text style={styles.rejectBtnText}>{t.collectz.actionReject}</Text>
@@ -568,11 +1070,13 @@ const CollectzDetail: React.FC = () => {
                   value={rejectNote}
                   onChangeText={setRejectNote}
                   placeholder={fill(t.collectz.rejectNotePlaceholder, { name: proofFor.name })}
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.55)}
                   multiline
+                  onFocus={() => setMultilineFocused(true)}
+                  onBlur={() => setMultilineFocused(false)}
                 />
                 <Pressable
-                  style={({ pressed }) => [styles.rejectBtn, pressed && { opacity: 0.85 }]}
+                  style={({ pressed }) => [styles.rejectBtn, neu.raised, pressed && { opacity: 0.85 }]}
                   onPress={rejectFromSheet}
                   disabled={busy}
                 >
@@ -580,9 +1084,105 @@ const CollectzDetail: React.FC = () => {
                 </Pressable>
               </View>
             )}
-          </View>
+          </ScrollView>
         )}
       </BottomSheet>
+
+      {/* Request-payment sheet — preview the composed message, edit freely,
+          then copy it or hand off to WhatsApp (chat picker, roster has no phones). */}
+      <BottomSheet
+        visible={!!reqFor}
+        onClose={closeRequest}
+        maxHeightPct={0.85}
+        closeLabel={t.common.close}
+        keyboardAvoiding
+        overlay={<KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />}
+      >
+        {reqFor && session && (
+          <ScrollView
+            style={{ flexGrow: 0, flexShrink: 1 }}
+            contentContainerStyle={styles.reqWrap}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.proofTitle}>{t.collectz.requestTitle}</Text>
+            <Text style={styles.reqSubtitle}>
+              {reqFor.name}
+              {shares.get(reqFor.id) != null ? ` · ${fmtMoney(shares.get(reqFor.id)!, session.currency)}` : ''}
+            </Text>
+
+            <Text style={styles.reqLabel}>{t.collectz.requestMessageLabel}</Text>
+            <TextInput
+              style={styles.reqInput}
+              value={reqMsg}
+              onChangeText={setReqMsg}
+              multiline
+              textAlignVertical="top"
+              onFocus={() => setMultilineFocused(true)}
+              onBlur={() => setMultilineFocused(false)}
+            />
+
+            <View style={styles.reqBtnRow}>
+              <Pressable
+                style={({ pressed }) => [styles.reqCopyBtn, neu.raised, pressed && { opacity: 0.85 }, reqCopied && { backgroundColor: withAlpha(C.accent, 0.12) }]}
+                onPress={copyRequest}
+              >
+                <Feather name={reqCopied ? 'check' : 'copy'} size={16} color={C.accent} />
+                <Text style={styles.reqCopyText}>{reqCopied ? t.common.copied : t.collectz.requestCopy}</Text>
+              </Pressable>
+              {/* WhatsApp-green buttons stay flat per the Onyx exemptions. */}
+              <Pressable
+                style={({ pressed }) => [styles.reqWaBtn, pressed && { opacity: 0.85 }]}
+                onPress={whatsappRequest}
+              >
+                <Feather name="message-circle" size={16} color="#FFFFFF" />
+                <Text style={styles.reqWaText}>{t.collectz.requestWhatsapp}</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        )}
+      </BottomSheet>
+
+      {/* Screen-level confirms. Safe as its own <Modal>: every action that opens
+          this one fires from the page, not from inside a sheet. */}
+      <ConfirmDialog
+        visible={!!confirm}
+        title={confirm?.title ?? ''}
+        message={confirm?.message}
+        confirmLabel={confirm?.confirmLabel ?? ''}
+        destructive={confirm?.destructive}
+        busy={busy}
+        onConfirm={() => confirm?.onConfirm()}
+        onClose={() => setConfirm(null)}
+      >
+        {confirm?.summary && (() => {
+          // Who has actually paid, before settling closes the session.
+          const active = participants.filter((p) => p.slot === 'active');
+          const paid = active.filter((p) => p.status === 'confirmed');
+          const owing = active.filter((p) => p.status !== 'confirmed');
+          return (
+            <View style={styles.settleSummary}>
+              <View style={styles.settleRow}>
+                <Feather name="check-circle" size={14} color={C.accent} />
+                <Text style={styles.settleLabel}>
+                  {t.collectz.settleSummaryPaid} ({paid.length})
+                </Text>
+              </View>
+              <Text style={styles.settleNames}>{paid.length ? paid.map((p) => p.name).join(', ') : '—'}</Text>
+
+              <View style={[styles.settleRow, styles.settleRowGap]}>
+                <Feather name="alert-circle" size={14} color={owing.length ? C.overdue : C.textMuted} />
+                <Text style={styles.settleLabel}>
+                  {t.collectz.settleSummaryUnpaid} ({owing.length})
+                </Text>
+              </View>
+              <Text style={styles.settleNames}>
+                {owing.length ? owing.map((p) => p.name).join(', ') : t.collectz.settleAllPaid}
+              </Text>
+            </View>
+          );
+        })()}
+      </ConfirmDialog>
     </View>
   );
 };
@@ -590,20 +1190,55 @@ const CollectzDetail: React.FC = () => {
 const makeStyles = (C: typeof CALM) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.background },
+    scroll: { flex: 1 },
+    // Settle-confirm breakdown: who has paid vs who hasn't.
+    settleSummary: {
+      marginTop: SPACING.md,
+      padding: SPACING.md,
+      borderRadius: RADIUS.lg,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+    },
+    settleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    settleRowGap: { marginTop: SPACING.sm },
+    settleLabel: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textPrimary,
+    },
+    settleNames: {
+      fontSize: TYPOGRAPHY.size.sm,
+      color: C.textSecondary,
+      lineHeight: 19,
+      marginTop: 2,
+      marginLeft: 20,
+    },
+    codeCopyHint: {
+      fontSize: TYPOGRAPHY.size.xs,
+      color: C.textMuted,
+      marginTop: 2,
+    },
     content: { padding: SPACING.xl, paddingBottom: SPACING['5xl'] },
     loaderWrap: { flex: 1, backgroundColor: C.background, alignItems: 'center', justifyContent: 'center' },
     headerCard: {
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.border, 0.6),
       padding: SPACING.md,
       gap: 6,
       marginBottom: SPACING.md,
     },
     title: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary },
     titleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-    clubImage: { width: 44, height: 44, borderRadius: 22 },
+    clubWell: {
+      width: 52,
+      height: 52,
+      borderRadius: RADIUS.lg,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    clubEmoji: { fontSize: 32 },
+    clubImagePhoto: { width: 52, height: 52 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     meta: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
     closedBanner: {
@@ -615,10 +1250,8 @@ const makeStyles = (C: typeof CALM) =>
     },
     closedBannerText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textSecondary },
     progressCard: {
-      backgroundColor: C.surface,
+      backgroundColor: C.background,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.border, 0.6),
       padding: SPACING.md,
       gap: SPACING.sm,
       marginBottom: SPACING.md,
@@ -626,7 +1259,29 @@ const makeStyles = (C: typeof CALM) =>
     progressTrack: { height: 8, borderRadius: RADIUS.full, backgroundColor: C.pillBg, overflow: 'hidden' },
     progressFill: { height: 8, borderRadius: RADIUS.full, backgroundColor: C.accent },
     progressText: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
-    actionsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
+    // Cost notes entry card
+    notesEntry: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      borderRadius: RADIUS.lg,
+      backgroundColor: C.background,
+      padding: SPACING.md,
+      marginBottom: SPACING.md,
+    },
+    notesEntryIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: RADIUS.md,
+      backgroundColor: withAlpha(C.accent, 0.1),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    notesEntryMain: { flex: 1, gap: 1 },
+    notesEntryTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
+    notesEntryHint: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
+    actionsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md },
+    dangerRow: { marginTop: SPACING.xs, marginBottom: SPACING.lg },
     actionBtn: {
       flex: 1,
       flexDirection: 'row',
@@ -635,9 +1290,7 @@ const makeStyles = (C: typeof CALM) =>
       gap: 6,
       minHeight: 44,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.accent, 0.5),
-      backgroundColor: C.surface,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
     },
     actionBtnText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent },
     sectionTitle: {
@@ -648,19 +1301,14 @@ const makeStyles = (C: typeof CALM) =>
     },
     sectionGap: { marginTop: SPACING.lg },
     emptyRoster: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, lineHeight: 19 },
-    listCard: {
-      backgroundColor: C.surface,
-      borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: withAlpha(C.border, 0.6),
-      overflow: 'hidden',
-    },
-    row: {
+    // Roster rows are standalone neu cards (spaced, not divided) — Onyx row standard.
+    rosterList: { gap: SPACING.sm },
+    rowCard: {
       flexDirection: 'row',
       alignItems: 'center',
       padding: SPACING.md,
-      borderBottomWidth: 1,
-      borderBottomColor: withAlpha(C.border, 0.4),
+      borderRadius: RADIUS.lg,
+      backgroundColor: C.background,
       gap: SPACING.sm,
     },
     rowMain: { flex: 1, gap: 2 },
@@ -677,30 +1325,83 @@ const makeStyles = (C: typeof CALM) =>
     },
     claimedTagText: { fontSize: 10, color: C.accent, fontWeight: TYPOGRAPHY.weight.medium },
     rowShare: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
-    rowRight: { alignItems: 'flex-end', gap: 6 },
     statusChip: { borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 3 },
     statusChipText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold },
-    rowAction: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent },
+    // Participant action modal
+    amWrap: { padding: SPACING.lg, paddingTop: SPACING.sm, gap: SPACING.md },
+    amHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+    amHeaderMain: { flex: 1, gap: 2 },
+    amName: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, flexShrink: 1 },
+    // Secondary actions — DebtTracking's debtIconRow/debtIconChip pattern.
+    amChipRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm },
+    amChip: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: withAlpha(C.textPrimary, 0.06),
+    },
+    amProofLoader: { marginVertical: SPACING.lg },
+    teamBlock: { marginBottom: SPACING.md },
+    teamHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.xs,
+      paddingHorizontal: SPACING.xs,
+      paddingVertical: SPACING.xs,
+    },
+    teamHeaderName: { flex: 1, fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary },
+    teamHeaderCount: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, fontWeight: TYPOGRAPHY.weight.semibold },
+    teamEmpty: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, paddingHorizontal: SPACING.sm, paddingBottom: SPACING.xs },
+    amTeamRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      gap: SPACING.xs,
+      marginBottom: SPACING.md,
+    },
+    teamChip: {
+      borderRadius: RADIUS.full,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 6,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+    },
+    teamChipActive: { backgroundColor: C.accent },
+    teamChipFull: { opacity: 0.4 },
+    teamChipText: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium },
+    teamChipTextActive: { color: C.onAccent, fontWeight: TYPOGRAPHY.weight.bold },
+    renameWrap: { gap: SPACING.md },
+    renameTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, textAlign: 'center' },
+    renameInput: {
+      minHeight: 46,
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: C.inputBorder,
+      paddingHorizontal: SPACING.md,
+      color: C.textPrimary,
+      fontSize: TYPOGRAPHY.size.sm,
+    },
+    amProofImage: { width: '100%', height: 220, borderRadius: RADIUS.lg, backgroundColor: '#FFFFFF' },
+    amProofPdf: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      minHeight: 44,
+      borderRadius: RADIUS.lg,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+    },
+    amProofPdfText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent },
     proofWrap: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.sm, gap: SPACING.md, alignItems: 'stretch' },
     proofTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, textAlign: 'center' },
     proofLoader: { marginVertical: SPACING['3xl'] },
     proofImage: { width: '100%', height: 320, borderRadius: RADIUS.lg, backgroundColor: '#FFFFFF' },
     proofActions: { gap: SPACING.sm },
-    primaryBtn: {
-      minHeight: 50,
-      borderRadius: RADIUS.lg,
-      backgroundColor: C.accent,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: SPACING.sm,
-    },
-    primaryBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.onAccent },
     rejectBtn: {
       minHeight: 44,
       borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: C.overdue,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -719,6 +1420,45 @@ const makeStyles = (C: typeof CALM) =>
       textAlignVertical: 'top',
     },
     hint: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, textAlign: 'center' },
+    // Request-payment sheet
+    reqWrap: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.sm, gap: SPACING.sm, alignItems: 'stretch' },
+    reqSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, textAlign: 'center' },
+    reqLabel: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary, marginTop: SPACING.xs },
+    reqInput: {
+      minHeight: 180,
+      borderRadius: RADIUS.lg,
+      borderWidth: 1,
+      borderColor: C.inputBorder,
+      backgroundColor: C.background,
+      padding: SPACING.md,
+      fontSize: TYPOGRAPHY.size.base,
+      color: C.textPrimary,
+      textAlignVertical: 'top',
+      lineHeight: 22,
+    },
+    reqBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs },
+    reqCopyBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      minHeight: 48,
+      borderRadius: RADIUS.lg,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+    },
+    reqCopyText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent },
+    reqWaBtn: {
+      flex: 2,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      minHeight: 48,
+      borderRadius: RADIUS.lg,
+      backgroundColor: '#25D366',
+    },
+    reqWaText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: '#FFFFFF' },
   });
 
 export default CollectzDetail;
