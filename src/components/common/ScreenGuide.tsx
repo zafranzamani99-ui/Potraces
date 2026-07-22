@@ -604,7 +604,7 @@ const WalkThrough: React.FC<{ id: string; accent?: string; steps: GuideStep[] }>
                       accessibilityRole="button"
                       accessibilityLabel={current.kind === 'doWithMe' ? t.common.skip : (isLast ? t.common.gotIt : t.common.next)}
                     >
-                      <Text style={[styles.footerBtn, { color: accentColor }]}>
+                      <Text style={[styles.footerBtn, current.kind === 'doWithMe' ? styles.footerBtnSkip : { color: accentColor }]}>
                         {(current.kind === 'doWithMe' ? t.common.skip : (isLast ? t.common.gotIt : t.common.next)).toLowerCase()}
                       </Text>
                     </TouchableOpacity>

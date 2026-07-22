@@ -393,6 +393,7 @@ export const ms: Translations = {
     // Imbasan resit luar talian (OCR pada peranti)
     scanOfflineUsed: 'Tiada internet — dibaca dengan pengimbas peranti. Sila semak semula nombor.',
     scanOfflineFailed: 'Tiada internet dan resit tak dapat dibaca — masukkan secara manual.',
+    scanLimitBackupUsed: 'Imbasan bulan ini dah habis — dibaca dengan pengimbas backup percuma. Sila semak semula nombor.',
     notBackedUp:
       'Disimpan di telefon ini sahaja — hilang telefon, hilang semua. Naik taraf untuk sandaran awan, dompet & bajet tanpa had, AI 10× lebih, dan Echo di setiap skrin.',
     cloudBackupPaid:
@@ -582,10 +583,10 @@ export const ms: Translations = {
       // Apple Log — the automation reads the key file the Backtap shortcut saves
       // on its first successful run, so Backtap setup is a hard prerequisite.
       apIntro:
-        'Setiap ketikan kad Apple Pay log sendiri — senyap, tanpa ketik dua kali. Ikut 6 gambar di bawah; setiap satu skrin sebenar yang anda akan nampak.',
+        'Setiap ketikan kad Apple Pay log sendiri — senyap, tanpa ketik dua kali. Dahulu: buat SATU log Ketik Belakang (ia simpan kunci yang diperlukan). Kemudian ikut 6 gambar di bawah; setiap satu skrin sebenar yang anda akan nampak.',
       apPrereqTitle: 'Satu langkah dahulu',
       apPrereqBody:
-        'Apple Log guna shortcut “Potraces Quick Log” dan kunci selamat dari persediaan Ketik Belakang anda. Sediakan Log Ketik Belakang sekali — kemudian kembali ke sini.',
+        'Apple Log guna shortcut “Potraces Quick Log” dan kunci selamat yang disimpan oleh log Ketik Belakang PERTAMA anda. Sediakan Log Ketik Belakang dan buat satu log — kemudian kembali ke sini.',
       apPrereqCta: 'Sediakan Log Ketik Belakang',
       apKeyNote:
         'Berjalan pada kunci yang disimpan oleh log Ketik Belakang pertama anda. Jika prompt kata kunci tiada, buat satu log Ketik Belakang dahulu.',
@@ -3690,6 +3691,7 @@ export const ms: Translations = {
     saveReceiptTitle: 'simpan resit',
     saveReceiptSubtitle: 'snap atau pilih foto — kami baca item, jumlah, dan total untuk anda.',
     scansRemaining: 'imbasan berbaki bulan ini',
+    scansOutBackup: 'Imbasan dah habis — guna pengimbas backup percuma',
     takePhotoLabel: 'ambil foto',
     fromGallery: 'dari galeri',
     viewMyReceipts: 'lihat resit saya',
@@ -4010,6 +4012,31 @@ export const ms: Translations = {
     savingsPoint2: 'kemas kini nilai untuk jejak pertumbuhannya',
     subscriptionPoint1: 'tekan + untuk tambah bil berulang atau keahlian',
     subscriptionPoint2: 'kami ingatkan sebelum tarikh setiap satu',
+    // — walk-through payoff cards (2026-07-22) —
+    receiptPayoffTitle: 'tersimpan selamat',
+    receiptPayoffBody: "setiap resit masuk ke 'resit saya' — jumlah, kedai & gambar disimpan untuk cukai",
+    debtWhat: 'hutang — duit yang anda pinjamkan atau pinjam',
+    debtSplit: 'split — bahagi satu bil dengan kawan',
+    debtSharedSub: 'shared sub — kongsi plan seperti netflix',
+    debtPayoffTitle: 'semua di satu tempat',
+    debtPayoffBody: 'tekan + untuk tambah hutang, split, atau shared sub — tekan mana-mana untuk langsaikan',
+    savingsPayoffTitle: 'lihat ia membesar',
+    savingsPayoffBody: 'log nilai baharu bila-bila — setiap akaun & pertumbuhannya di satu tempat',
+    subsPayoffTitle: 'tak terkejut lagi',
+    subsPayoffBody: 'kami ingatkan sebelum setiap bil tiba — tekan + untuk tambah bil berulang',
+    // — new simple guides (2026-07-22) —
+    yourReports: 'laporan anda',
+    descReports: 'lihat ke mana duit pergi — ikut bulan & kategori',
+    reportsPoint1: 'tukar tempoh masa untuk banding',
+    reportsPoint2: 'tekan kategori atau kedai untuk lihat isinya',
+    collectzTitle: 'kutip dari kumpulan',
+    descCollectz: 'atur futsal, makan atau trip — kongsi satu link, lihat siapa dah bayar',
+    collectzPoint1: 'cipta sesi dan kongsi kod join',
+    collectzPoint2: 'setiap orang bayar bahagian — jejak siapa dah bayar',
+    calcTitle: 'kalkulator',
+    descCalc: 'kira cepat tanpa keluar — kemudian jadikan jawapan satu perbelanjaan',
+    calcPoint1: 'taip kiraan — ia dikira sambil menaip',
+    calcPoint2: 'log jawapan sebagai perbelanjaan, atau split',
   },
 
   partTime: {

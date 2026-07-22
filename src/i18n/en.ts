@@ -392,6 +392,7 @@ export const en = {
     // Offline receipt scan (on-device OCR fallback)
     scanOfflineUsed: 'No internet — read with the on-device scanner. Double-check the numbers.',
     scanOfflineFailed: "No internet and couldn't read this receipt — enter it manually.",
+    scanLimitBackupUsed: 'Out of scans this month — read with the free backup scanner. Double-check the numbers.',
     notBackedUp:
       'Saved on this phone only — lose it, lose everything. Go Premium for cloud backup, unlimited wallets & budgets, 10× more AI, and Echo on every screen.',
     cloudBackupPaid:
@@ -581,10 +582,10 @@ export const en = {
       // Apple Log — the automation reads the key file the Backtap shortcut saves
       // on its first successful run, so Backtap setup is a hard prerequisite.
       apIntro:
-        'Every Apple Pay card tap logs itself — silently, no double-tap. Follow the 6 pictures below; each one is a real screen you’ll see.',
+        'Every Apple Pay card tap logs itself — silently, no double-tap. First: do ONE Backtap log (that saves the key this needs). Then follow the 6 pictures below; each one is a real screen you’ll see.',
       apPrereqTitle: 'One step first',
       apPrereqBody:
-        'Apple Log uses the “Potraces Quick Log” shortcut and the secure key your Backtap setup creates. Set up Backtap Log once — then come back here.',
+        'Apple Log uses the “Potraces Quick Log” shortcut and the secure key your FIRST Backtap log saves. Set up Backtap Log and do one log — then come back here.',
       apPrereqCta: 'Set up Backtap Log',
       apKeyNote:
         'Runs on the key your first Backtap log saves. If the prompt says the key is missing, do one Backtap log first.',
@@ -3714,6 +3715,7 @@ export const en = {
     saveReceiptTitle: 'save a receipt',
     saveReceiptSubtitle: 'snap or pick a photo — we read items, amounts, and totals for you.',
     scansRemaining: 'scans left this month',
+    scansOutBackup: 'Scans used up — using the free backup scanner',
     takePhotoLabel: 'take photo',
     fromGallery: 'from gallery',
     viewMyReceipts: 'view my receipts',
@@ -4034,6 +4036,31 @@ export const en = {
     savingsPoint2: 'log a new value to track how it grows',
     subscriptionPoint1: 'tap + to add a recurring bill or membership',
     subscriptionPoint2: 'we nudge you before each one is due',
+    // — walk-through payoff cards (2026-07-22) —
+    receiptPayoffTitle: 'saved & safe',
+    receiptPayoffBody: "each receipt lands in 'my receipts' — total, shop and photo kept for tax time",
+    debtWhat: 'debts — money you lent out or borrowed',
+    debtSplit: 'split — divide one bill among friends',
+    debtSharedSub: 'shared subs — share a netflix-style plan',
+    debtPayoffTitle: 'all in one place',
+    debtPayoffBody: 'tap + to add a debt, split, or shared sub — tap any to settle it',
+    savingsPayoffTitle: 'watch it grow',
+    savingsPayoffBody: 'log a new value anytime — every account and its growth stays in one place',
+    subsPayoffTitle: 'never caught off guard',
+    subsPayoffBody: 'we nudge you before each bill is due — tap + to add a recurring bill',
+    // — new simple guides (2026-07-22) —
+    yourReports: 'your reports',
+    descReports: 'see where your money went — by month and by category',
+    reportsPoint1: 'switch the time range to compare periods',
+    reportsPoint2: "tap a category or shop to see what's inside",
+    collectzTitle: 'collect from the group',
+    descCollectz: "set up futsal, makan or a trip — share one link and see who's paid",
+    collectzPoint1: 'create a session and share the join code',
+    collectzPoint2: "everyone pays their share — track who's paid",
+    calcTitle: 'calculator',
+    descCalc: 'quick maths without leaving — then turn the answer into a spend',
+    calcPoint1: 'type a sum — it works out as you go',
+    calcPoint2: 'log the result as an expense, or split it',
   },
 
   partTime: {

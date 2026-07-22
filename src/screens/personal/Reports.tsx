@@ -44,6 +44,7 @@ import CategoryIcon from '../../components/common/CategoryIcon';
 import Donut from '../../components/common/Donut';
 import CashFlowMathSheet, { MathFocus } from '../../components/common/CashFlowMathSheet';
 import { lightTap } from '../../services/haptics';
+import ScreenGuide from '../../components/common/ScreenGuide';
 
 const DELTA_CAP = 999;
 
@@ -375,6 +376,17 @@ const PersonalReports: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <ScreenGuide
+        id="guide_reports"
+        title={t.guide.yourReports}
+        icon="bar-chart-2"
+        accent="#A688B8"
+        description={t.guide.descReports}
+        points={[
+          { icon: 'calendar', text: t.guide.reportsPoint1 },
+          { icon: 'pie-chart', text: t.guide.reportsPoint2 },
+        ]}
+      />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

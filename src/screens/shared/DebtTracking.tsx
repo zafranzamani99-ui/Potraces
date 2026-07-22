@@ -2659,8 +2659,17 @@ const DebtTracking: React.FC = () => {
     if (scanner) {
       try {
         const scanResult = await scanner.scanDocument({ maxNumDocuments: 1 });
-        if (scanResult.scannedImages?.length) imageUri = scanResult.scannedImages[0];
-      } catch { /* fall through to ImagePicker */ }
+        if (scanResult.scannedImages?.length) {
+          imageUri = scanResult.scannedImages[0];
+        } else {
+          // Scanner opened and the user cancelled / captured nothing. Respect that —
+          // do NOT fall through to a SECOND (ImagePicker) camera, which made the
+          // camera appear to open twice.
+          return;
+        }
+      } catch {
+        /* scanner genuinely unavailable/errored → fall back to the ImagePicker camera */
+      }
     }
     if (!imageUri) {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -7935,15 +7944,21 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       />
       <ScreenGuide
         id="guide_debts"
-        title={t.guide.whoOwesWho}
-        icon="git-branch"
-        description={t.guide.descDebt}
         accent={iOweColor}
-        points={[
-          { icon: 'plus', text: t.guide.debtPoint1 },
-          { icon: 'check-circle', text: t.guide.debtPoint2 },
+        steps={[
+          {
+            kind: 'intro',
+            icon: 'git-branch',
+            title: t.guide.whoOwesWho,
+            body: t.guide.descDebt,
+            points: [
+              { icon: 'user', text: t.guide.debtWhat },
+              { icon: 'scissors', text: t.guide.debtSplit },
+              { icon: 'refresh-cw', text: t.guide.debtSharedSub },
+            ],
+          },
+          { kind: 'payoff', icon: 'check-circle', title: t.guide.debtPayoffTitle, body: t.guide.debtPayoffBody },
         ]}
-        spotlight={{ targetRef: guideTargetRef, label: t.guide.debtPoint1, sublabel: t.guide.debtPoint2 }}
       />
       {/* Floats above the keyboard with a "Done" button — needed because multi-line
           inputs use Enter for new lines instead of submit.

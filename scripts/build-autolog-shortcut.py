@@ -214,9 +214,15 @@ actions = [
         "WFCondition": 101,  # ok has NO value → failed
         "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_OK, "Dictionary Value"))},
     }),
+    # Body includes the server's response so failures are diagnosable
+    # (missing-key vs bad-amount vs invalid-key) — same pattern as the Quick
+    # Log shortcut's failure notification. missing-key is the common case: the
+    # key FILE only exists after the FIRST successful Back Tap log, and "set up
+    # Quick Log" alone doesn't create it.
     action("is.workflow.actions.notification", {
         "WFNotificationActionBody": token_string([
-            "⚠️ Potraces couldn’t auto-log this — set up Quick Log (Back Tap) in Potraces first so your key is saved.",
+            "⚠️ Potraces couldn’t auto-log (", out_ref(U_RESP, "Contents of URL"),
+            "). Do ONE Backtap log first — that saves your key — then pay again.",
         ]),
     }),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_RESULT, "WFControlFlowMode": 2}),
@@ -228,8 +234,15 @@ workflow = {
     "WFWorkflowMinimumClientVersionString": "900",
     "WFWorkflowIcon": {"WFWorkflowIconStartColor": 4292093695, "WFWorkflowIconGlyphNumber": 59446},
     "WFWorkflowImportQuestions": [],
-    # Accept plain text from the automation's "Run Shortcut" hand-off.
-    "WFWorkflowInputContentItemClasses": ["WFStringContentItem"],
+    # NO input-class restriction (2026-07-22, device-verified failure): declaring
+    # ["WFStringContentItem"] renders as "Receive Text" and makes iOS COERCE the
+    # live Wallet transaction to a plain string before the first action runs —
+    # which strips the Amount/Merchant/Card properties, so the transaction path's
+    # "If Amount has any value" NEVER matched and every direct-run tap fell into
+    # the legacy split-on-"|" path with a garbage amount (server: bad-amount).
+    # With no declared classes the input arrives untyped: transactions keep their
+    # properties, and legacy text hand-offs still read as text.
+    "WFWorkflowInputContentItemClasses": [],
     "WFWorkflowOutputContentItemClasses": [],
     "WFWorkflowTypes": [],
     "WFWorkflowHasOutputFallback": False,

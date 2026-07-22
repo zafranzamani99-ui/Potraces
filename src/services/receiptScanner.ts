@@ -174,6 +174,10 @@ export async function scanReceipt(
      *  local parse must never be auto-ingested unreviewed — interactive
      *  screens show the result for the user to check, the drainer doesn't. */
     allowLocalFallback?: boolean;
+    /** Skip Gemini entirely and read on-device only. Set when the user is out
+     *  of their monthly AI scans: they still get the free on-device reader
+     *  instead of a paywall, and no AI call is spent. */
+    localOnly?: boolean;
   },
 ): Promise<ExtractedReceipt> {
   if (_scanningReceipt) {
@@ -181,13 +185,20 @@ export async function scanReceipt(
   }
   _scanningReceipt = true;
   try {
-    return await _doScanReceipt(imageUri, undefined, opts?.allowLocalFallback ?? true);
+    return await _doScanReceipt(imageUri, undefined, opts?.allowLocalFallback ?? true, opts?.localOnly ?? false);
   } finally {
     _scanningReceipt = false;
   }
 }
 
-async function _doScanReceipt(imageUri: string, preparedBase64?: string, allowLocalFallback = true): Promise<ExtractedReceipt> {
+async function _doScanReceipt(imageUri: string, preparedBase64?: string, allowLocalFallback = true, localOnly = false): Promise<ExtractedReceipt> {
+  // Out of monthly AI scans — read on-device without ever calling Gemini, so no
+  // AI quota is spent. Clear error when the device can't read it (manual entry).
+  if (localOnly) {
+    const local = await tryLocalReceiptScan(imageUri);
+    if (local) return local;
+    throw new Error('Could not read this receipt. Please enter it manually.');
+  }
   if (!isGeminiAvailable()) {
     // Offline / proxy down / cooldown — read the receipt on-device instead of
     // failing outright. Falls through to the original errors when it can't.

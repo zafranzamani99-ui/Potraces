@@ -2947,12 +2947,18 @@ const SubscriptionList: React.FC = () => {
 
       <ScreenGuide
         id="guide_subscriptions"
-        title={t.guide.yourSubscriptions}
-        icon="refresh-cw"
-        description={t.guide.descSubscriptions}
-        points={[
-          { icon: 'plus', text: t.guide.subscriptionPoint1 },
-          { icon: 'bell', text: t.guide.subscriptionPoint2 },
+        steps={[
+          {
+            kind: 'intro',
+            icon: 'refresh-cw',
+            title: t.guide.yourSubscriptions,
+            body: t.guide.descSubscriptions,
+            points: [
+              { icon: 'plus', text: t.guide.subscriptionPoint1 },
+              { icon: 'bell', text: t.guide.subscriptionPoint2 },
+            ],
+          },
+          { kind: 'payoff', icon: 'check-circle', title: t.guide.subsPayoffTitle, body: t.guide.subsPayoffBody },
         ]}
       />
     </View>

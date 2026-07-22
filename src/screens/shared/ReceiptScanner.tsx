@@ -296,8 +296,15 @@ const ReceiptScanner: React.FC = () => {
         const result = await scanner.scanDocument({ maxNumDocuments: 1 });
         if (result.scannedImages && result.scannedImages.length > 0) {
           scannedUri = result.scannedImages[0];
+        } else {
+          // Scanner opened and the user cancelled / captured nothing. Respect that —
+          // do NOT fall through to a SECOND (ImagePicker) camera, which made the
+          // camera appear to open twice.
+          return;
         }
-      } catch { /* fall through to ImagePicker */ }
+      } catch {
+        /* scanner genuinely unavailable/errored → fall back to the ImagePicker camera */
+      }
     }
     if (scannedUri) {
       setImageUri(scannedUri);
@@ -331,18 +338,21 @@ const ReceiptScanner: React.FC = () => {
 
   const handleExtract = useCallback(async () => {
     if (!imageUri) return;
-    if (!canScanReceipt()) {
+    // Out of monthly AI scans: fall back to the free on-device reader instead of
+    // paywalling — but only when this build actually ships it. Otherwise paywall.
+    const outOfScans = !canScanReceipt();
+    if (outOfScans && !isLocalOcrAvailable()) {
       setPaywallVisible(true);
       return;
     }
     setLoading(true);
     try {
-      const extracted = await scanReceipt(imageUri);
+      const extracted = await scanReceipt(imageUri, { localOnly: outOfScans });
       if (!extracted || !(extracted.total > 0) || !Array.isArray(extracted.items)) {
         throw new Error(t.receipts.noUsableData);
       }
-      // On-device OCR fallback (offline) — free: never burns the monthly AI
-      // scan quota, and the user is told to double-check what it read.
+      // On-device OCR (offline OR out of scans) — free: never burns the monthly
+      // AI scan quota, and the user is told to double-check what it read.
       const wasLocalScan = isLocalScanResult(extracted);
       if (!wasLocalScan) incrementScanCount();
       setReceipt(extracted);
@@ -354,7 +364,10 @@ const ReceiptScanner: React.FC = () => {
       setEditCategory(extracted.suggestedExpenseCategory || 'other');
       setEditMyTaxCategory(extracted.suggestedTaxCategory || 'none');
       setEditLocation(extracted.location || '');
-      showToast(wasLocalScan ? t.settings.scanOfflineUsed : t.receipts.receiptExtracted, wasLocalScan ? 'info' : 'success');
+      // Local scan fired either because we're out of scans (limit) or offline —
+      // tell the user which, so "double-check the numbers" makes sense.
+      const localMsg = outOfScans ? t.settings.scanLimitBackupUsed : t.settings.scanOfflineUsed;
+      showToast(wasLocalScan ? localMsg : t.receipts.receiptExtracted, wasLocalScan ? 'info' : 'success');
     } catch (error: any) {
       // If offline, queue the image for retry instead of just failing.
       try {
@@ -665,7 +678,11 @@ const ReceiptScanner: React.FC = () => {
 
             {Number.isFinite(TIER_LIMITS[tier].maxScansPerMonth) && (
               <Text style={styles.scanLimitText}>
-                {getRemainingScans()} {t.receipts.scansRemaining}
+                {getRemainingScans() > 0
+                  ? `${getRemainingScans()} ${t.receipts.scansRemaining}`
+                  : isLocalOcrAvailable()
+                    ? t.receipts.scansOutBackup
+                    : `0 ${t.receipts.scansRemaining}`}
               </Text>
             )}
 
@@ -1233,15 +1250,21 @@ const ReceiptScanner: React.FC = () => {
 
       <ScreenGuide
         id="guide_receipts"
-        title={t.guide.scanReceipts}
-        icon="camera"
-        description={t.guide.descReceipt}
         accent="#6BA3BE"
-        points={[
-          { icon: 'camera', text: t.guide.receiptPoint1 },
-          { icon: 'check', text: t.guide.receiptPoint2 },
+        steps={[
+          {
+            kind: 'intro',
+            icon: 'camera',
+            title: t.guide.scanReceipts,
+            body: t.guide.descReceipt,
+            points: [
+              { icon: 'camera', text: t.guide.receiptPoint1 },
+              { icon: 'check', text: t.guide.receiptPoint2 },
+            ],
+          },
+          { kind: 'spotlight', targetRef: guideTargetRef, label: t.guide.receiptPoint1, sublabel: t.guide.receiptPoint2 },
+          { kind: 'payoff', icon: 'check-circle', title: t.guide.receiptPayoffTitle, body: t.guide.receiptPayoffBody },
         ]}
-        spotlight={{ targetRef: guideTargetRef, label: t.guide.receiptPoint1, sublabel: t.guide.receiptPoint2 }}
       />
     </View>
   );

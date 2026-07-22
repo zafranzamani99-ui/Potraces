@@ -486,12 +486,18 @@ const SavingsTracker: React.FC = () => {
       <ModalToastHost />
       <ScreenGuide
         id="guide_savings"
-        title={t.guide.yourSavings}
-        icon="archive"
-        description={t.guide.descSavings}
-        points={[
-          { icon: 'plus', text: t.guide.savingsPoint1 },
-          { icon: 'edit-3', text: t.guide.savingsPoint2 },
+        steps={[
+          {
+            kind: 'intro',
+            icon: 'archive',
+            title: t.guide.yourSavings,
+            body: t.guide.descSavings,
+            points: [
+              { icon: 'plus', text: t.guide.savingsPoint1 },
+              { icon: 'edit-3', text: t.guide.savingsPoint2 },
+            ],
+          },
+          { kind: 'payoff', icon: 'check-circle', title: t.guide.savingsPayoffTitle, body: t.guide.savingsPayoffBody },
         ]}
       />
     </View>

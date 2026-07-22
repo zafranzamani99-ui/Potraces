@@ -8,6 +8,7 @@ import NeuButton from '../../components/common/NeuButton';
 import BottomSheet from '../../components/common/BottomSheet';
 import QuickSplitSheet from '../../components/split/QuickSplitSheet';
 import QuickAddExpense, { type QuickAddExpenseHandle } from '../../components/common/QuickAddExpense';
+import ScreenGuide from '../../components/common/ScreenGuide';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
@@ -183,6 +184,16 @@ const Calculator: React.FC = () => {
 
   return (
     <View style={styles.root}>
+      <ScreenGuide
+        id="guide_calculator"
+        title={t.guide.calcTitle}
+        icon="percent"
+        description={t.guide.descCalc}
+        points={[
+          { icon: 'hash', text: t.guide.calcPoint1 },
+          { icon: 'plus-circle', text: t.guide.calcPoint2 },
+        ]}
+      />
       {/* Display card (long-press to copy) */}
       <Pressable style={styles.card} onLongPress={copyResult} delayLongPress={350} accessibilityHint="Long-press to copy">
         <Pressable style={styles.historyBtn} onPress={() => { lightTap(); setShowHistory(true); }} accessibilityLabel={t.calc.history} hitSlop={8}>

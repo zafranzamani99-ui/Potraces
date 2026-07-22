@@ -92,13 +92,20 @@ Deno.serve(async (req: Request) => {
   try { payload = await req.json(); } catch { return json({ error: 'bad-json' }, 400); }
 
   const key = typeof payload.key === 'string' ? payload.key : '';
-  if (!key) return json({ error: 'missing-key' }, 401);
+  if (!key) {
+    // Diagnostic (2026-07-22 auto-log debugging): field shapes only — never values.
+    console.log(`[quick-log] reject missing-key: fields=${Object.keys(payload ?? {}).join(',')}`);
+    return json({ error: 'missing-key' }, 401);
+  }
 
   // Validate key → user.
   const key_hash = await hashKey(key);
   const { data: keyRow } = await admin.from('quick_log_keys')
     .select('user_id, revoked').eq('key_hash', key_hash).maybeSingle();
-  if (!keyRow || keyRow.revoked) return json({ error: 'invalid-key' }, 401);
+  if (!keyRow || keyRow.revoked) {
+    console.log(`[quick-log] reject invalid-key: keyLen=${key.length} revoked=${keyRow?.revoked ?? 'no-row'}`);
+    return json({ error: 'invalid-key' }, 401);
+  }
   const userId = keyRow.user_id as string;
 
   // Dynamic Payment picker: the Shortcut POSTs {key, action:'wallets'} to fetch
@@ -150,7 +157,11 @@ Deno.serve(async (req: Request) => {
   // Parse + validate amount (locale-tolerant — MIRRORS src/utils/parseAmountLoose.ts).
   // Comma-decimal keyboards ("12,5") must not become 125; cap at 1,000,000.
   const amount = parseAmountLoose(payload.amount);
-  if (amount === null) return json({ error: 'bad-amount' }, 400);
+  if (amount === null) {
+    // Raw amount is the diagnostic we need (it's just a number string, no PII).
+    console.log(`[quick-log] reject bad-amount: raw=${JSON.stringify(payload.amount)} type=${typeof payload.amount}`);
+    return json({ error: 'bad-amount' }, 400);
+  }
 
   const type = payload.type === 'income' ? 'income' : 'expense';
   const category = typeof payload.category === 'string' ? payload.category : null;

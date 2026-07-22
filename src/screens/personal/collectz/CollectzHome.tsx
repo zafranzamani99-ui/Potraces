@@ -26,6 +26,7 @@ import { useToast } from '../../../context/ToastContext';
 import FAB from '../../../components/common/FAB';
 import PageScrollView from '../../../components/common/PageScrollView';
 import NeuButton from '../../../components/common/NeuButton';
+import ScreenGuide from '../../../components/common/ScreenGuide';
 import PaywallModal from '../../../components/common/PaywallModal';
 import { useNeu } from '../../../components/common/neu';
 import { lightTap } from '../../../services/haptics';
@@ -358,6 +359,17 @@ const CollectzHome: React.FC = () => {
 
   return (
     <View style={styles.screen}>
+      <ScreenGuide
+        id="guide_collectz"
+        title={t.guide.collectzTitle}
+        icon="users"
+        accent="#6BA3BE"
+        description={t.guide.descCollectz}
+        points={[
+          { icon: 'plus-circle', text: t.guide.collectzPoint1 },
+          { icon: 'check-circle', text: t.guide.collectzPoint2 },
+        ]}
+      />
       <PageScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
