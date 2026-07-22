@@ -10,6 +10,8 @@ import { useNotesStore } from '../store/notesStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTombstoneStore } from '../store/tombstoneStore';
 import { useBudgetProfileStore } from '../store/budgetProfileStore';
+import { useCategoryStore } from '../store/categoryStore';
+import { useLearningStore } from '../store/learningStore';
 import { autoReconcileWallets } from '../utils/walletReconcile';
 import * as FileSystem from 'expo-file-system/legacy';
 import { resolveReceiptImageUri } from '../utils/receiptImage';
@@ -405,6 +407,51 @@ async function pullAll(userId: string): Promise<boolean> {
       }
     }
 
+    // Custom categories — ONE row per user, LWW blob on client_edit_at. Adopt the
+    // remote blob only when its client_edit_at is STRICTLY newer than this device's
+    // last local edit (updatedAt). applySyncedCategories carries the REMOTE edit
+    // time WITHOUT bumping it (no re-push loop) — mirrors the budget-profile block.
+    {
+      const { data: catRows, error: catError } = await supabase
+        .from('personal_categories')
+        .select('*')
+        .eq('user_id', userId)
+        .limit(1);
+      if (catError) {
+        if (__DEV__) console.warn('[personalSync] categories pull failed:', catError.message);
+        return false;
+      }
+      const remoteCat = catRows?.[0];
+      if (remoteCat && remoteCat.data && typeof remoteCat.data === 'object') {
+        const c = useCategoryStore.getState();
+        const remoteAt = new Date(remoteCat.client_edit_at ?? remoteCat.updated_at ?? 0).getTime() || 0;
+        if (remoteAt > (c.updatedAt ?? 0)) {
+          c.applySyncedCategories(remoteCat.data, remoteAt);
+        }
+      }
+    }
+
+    // Learned AI hints — same single-row LWW blob keyed by user_id.
+    {
+      const { data: learnRows, error: learnError } = await supabase
+        .from('personal_learning')
+        .select('*')
+        .eq('user_id', userId)
+        .limit(1);
+      if (learnError) {
+        if (__DEV__) console.warn('[personalSync] learning pull failed:', learnError.message);
+        return false;
+      }
+      const remoteLearn = learnRows?.[0];
+      if (remoteLearn && remoteLearn.data && typeof remoteLearn.data === 'object') {
+        const l = useLearningStore.getState();
+        const remoteAt = new Date(remoteLearn.client_edit_at ?? remoteLearn.updated_at ?? 0).getTime() || 0;
+        if (remoteAt > (l.updatedAt ?? 0)) {
+          l.applySyncedLearning(remoteLearn.data, remoteAt);
+        }
+      }
+    }
+
     // B1 (pull side): hydrate the local image file for receipts synced from
     // another device (they carry remoteImagePath but have no on-device photo yet).
     // Best-effort + idempotent — a failure just retries next sync. Set imageUri
@@ -461,6 +508,32 @@ async function pushBudgetProfile(userId: string): Promise<boolean> {
     commitments: bp.commitments ?? [],
     model_id: bp.modelId ?? null,
     client_edit_at: new Date(bp.updatedAt).toISOString(),
+  }], 'user_id');
+}
+
+// Custom categories (overrides, custom categories, order) — a single-row LWW blob
+// keyed by user_id, same convention as pushBudgetProfile. The whole persisted
+// settings object travels in one `data` jsonb column, so a field can't be dropped.
+// Push ONLY when this device has recorded a user edit (updatedAt set): a never-
+// customised device must not claim the row with an empty blob and wipe another's.
+async function pushCategories(userId: string): Promise<boolean> {
+  const c = useCategoryStore.getState();
+  if (!c.updatedAt) return true;
+  return upsertBatch('personal_categories', [{
+    user_id: userId,
+    data: c.getSyncData(),
+    client_edit_at: new Date(c.updatedAt).toISOString(),
+  }], 'user_id');
+}
+
+// Learned AI hints (category/person/wallet/type patterns) — same single-row LWW blob.
+async function pushLearning(userId: string): Promise<boolean> {
+  const l = useLearningStore.getState();
+  if (!l.updatedAt) return true;
+  return upsertBatch('personal_learning', [{
+    user_id: userId,
+    data: l.getSyncData(),
+    client_edit_at: new Date(l.updatedAt).toISOString(),
   }], 'user_id');
 }
 
@@ -527,6 +600,8 @@ async function pushAll(userId: string): Promise<boolean> {
     upsertBatch('personal_receipts', receiptsForPush.map((x) => receiptToRemote(userId, x))),
     upsertBatch('personal_notes', n.pages.map((x) => noteToRemote(userId, x))),
     pushBudgetProfile(userId),
+    pushCategories(userId),
+    pushLearning(userId),
   ]);
   const allUpsertsSucceeded = upsertResults.every((ok) => ok);
 
@@ -580,6 +655,12 @@ const SCHEMA_PROBES: Array<[string, string]> = [
   ['personal_debts', 'client_edit_at'],
   ['personal_splits', 'client_edit_at'],
   ['personal_contacts', 'is_from_phone'],
+  // personal_categories + personal_learning ship together in 20260722110000 (the
+  // newest personal migration). Probing them proves that migration ran, so on an
+  // un-migrated DB personal sync stays DISABLED (safe) rather than erroring on the
+  // categories/learning push. One probe per new table (both created in one txn).
+  ['personal_categories', 'client_edit_at'],
+  ['personal_learning', 'client_edit_at'],
 ];
 
 // A2: the schema verdict is cached ONLY when it's definitive. `false` used to be
@@ -797,6 +878,8 @@ export async function disablePersonalSync(wipeRemote = false): Promise<void> {
     // but the .eq('user_id') filter below covers every table shape).
     'personal_notes',
     'personal_budget_profile',
+    'personal_categories',
+    'personal_learning',
   ];
   await Promise.allSettled(
     tables.map((t) => supabase.from(t).delete().eq('user_id', userId)),

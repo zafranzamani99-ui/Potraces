@@ -42,6 +42,11 @@ interface CategoryState {
   businessExpenseCategoryOrder: string[];
   businessIncomeCategoryOrder: string[];
   investmentCategoryOrder: string[];
+  /**
+   * Epoch ms of the last USER edit on this device (null = never edited here).
+   * LWW key for cloud sync — bumped by every setter below, NOT by applySyncedCategories.
+   */
+  updatedAt: number | null;
 
   updateCategoryOverride: (
     type: CategoryType,
@@ -75,6 +80,10 @@ interface CategoryState {
   getExpenseCategories: (mode?: 'personal' | 'business') => CategoryOption[];
   getIncomeCategories: (mode?: 'personal' | 'business') => CategoryOption[];
   getInvestmentCategories: () => CategoryOption[];
+  /** Sync push: the persisted category blob (the fields in partialize). */
+  getSyncData: () => Partial<CategoryState>;
+  /** Sync pull: adopt a pulled remote blob verbatim (carries the REMOTE edit time). */
+  applySyncedCategories: (data: Partial<CategoryState>, updatedAt: number) => void;
 }
 
 function resolveKey(
@@ -115,6 +124,7 @@ export const useCategoryStore = create<CategoryState>()(
       businessExpenseCategoryOrder: [],
       businessIncomeCategoryOrder: [],
       investmentCategoryOrder: [],
+      updatedAt: null,
 
       updateCategoryOverride: (type, id, updates, mode = 'personal') =>
         set((state) => {
@@ -127,6 +137,7 @@ export const useCategoryStore = create<CategoryState>()(
               ...(state[key] as Record<string, CategoryOverride>),
               [id]: { ...(state[key] as Record<string, CategoryOverride>)[id], ...updates },
             },
+            updatedAt: Date.now(),
           };
         }),
 
@@ -142,6 +153,7 @@ export const useCategoryStore = create<CategoryState>()(
             'customInvestmentCategories'>;
           return {
             [key]: [...(state[key] as CategoryOption[]), newCat],
+            updatedAt: Date.now(),
           };
         }),
 
@@ -153,6 +165,7 @@ export const useCategoryStore = create<CategoryState>()(
             'customInvestmentCategories'>;
           return {
             [key]: (state[key] as CategoryOption[]).filter((c) => c.id !== id),
+            updatedAt: Date.now(),
           };
         }),
 
@@ -166,13 +179,14 @@ export const useCategoryStore = create<CategoryState>()(
             [key]: (state[key] as CategoryOption[]).map((c) =>
               c.id === id ? { ...c, ...updates } : c
             ),
+            updatedAt: Date.now(),
           };
         }),
 
       setCategoryOrder: (type, order, mode = 'personal') =>
         set(() => {
           const key = resolveKey(type, mode, 'order');
-          return { [key]: order };
+          return { [key]: order, updatedAt: Date.now() };
         }),
 
       getExpenseCategories: (mode = 'personal') => {
@@ -246,6 +260,28 @@ export const useCategoryStore = create<CategoryState>()(
         _investmentCategoriesCache = { key: cacheKey, result: cats };
         return cats;
       },
+
+      getSyncData: () => {
+        const s = get();
+        return {
+          expenseCategoryOverrides: s.expenseCategoryOverrides,
+          incomeCategoryOverrides: s.incomeCategoryOverrides,
+          customExpenseCategories: s.customExpenseCategories,
+          customIncomeCategories: s.customIncomeCategories,
+          businessExpenseCategoryOverrides: s.businessExpenseCategoryOverrides,
+          businessIncomeCategoryOverrides: s.businessIncomeCategoryOverrides,
+          customBusinessExpenseCategories: s.customBusinessExpenseCategories,
+          customBusinessIncomeCategories: s.customBusinessIncomeCategories,
+          investmentCategoryOverrides: s.investmentCategoryOverrides,
+          customInvestmentCategories: s.customInvestmentCategories,
+          expenseCategoryOrder: s.expenseCategoryOrder,
+          incomeCategoryOrder: s.incomeCategoryOrder,
+          businessExpenseCategoryOrder: s.businessExpenseCategoryOrder,
+          businessIncomeCategoryOrder: s.businessIncomeCategoryOrder,
+          investmentCategoryOrder: s.investmentCategoryOrder,
+        };
+      },
+      applySyncedCategories: (data, updatedAt) => set({ ...data, updatedAt }),
     }),
     {
       name: 'category-storage',
@@ -266,6 +302,7 @@ export const useCategoryStore = create<CategoryState>()(
         businessExpenseCategoryOrder: state.businessExpenseCategoryOrder,
         businessIncomeCategoryOrder: state.businessIncomeCategoryOrder,
         investmentCategoryOrder: state.investmentCategoryOrder,
+        updatedAt: state.updatedAt,
       }),
     }
   )

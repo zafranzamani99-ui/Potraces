@@ -129,6 +129,18 @@ export const family: Persona = {
     c.sub({ name: 'iCloud family 2TB', amount: 39.9, billingCycle: 'monthly', startDate: daysAgo(880), nextBillingDate: daysAgo(-24), category: 'subscription', isActive: true, isPaused: false, reminderDays: 1, isInstallment: false });
     c.sub({ name: 'Spotify Family', amount: 25.9, billingCycle: 'monthly', startDate: daysAgo(920), nextBillingDate: daysAgo(-12), category: 'subscription', isActive: true, isPaused: false, reminderDays: 1, isInstallment: false });
 
+    // ─── Echo budget planner — take-home rumah + komitmen tetap ────
+    c.budgetProfile({
+      takeHome: 10500,
+      commitments: [
+        { label: 'Home loan Cheras', monthly: 1850 },
+        { label: 'Honda CR-V loan', monthly: 980 },
+        { label: 'Takaful keluarga', monthly: 350 },
+        { label: 'Insurans pendidikan', monthly: 200 },
+        { label: 'Maxis + Unifi', monthly: 329 },
+      ],
+    });
+
     // ─── 4. Budgets — household monthly targets ──────────────────────
     c.budget({ category: 'food', allocatedAmount: 1500, period: 'monthly', startDate: startOfMonth(), endDate: endOfMonth() });
     c.budget({ category: 'family', allocatedAmount: 800, period: 'monthly', startDate: startOfMonth(), endDate: endOfMonth() });

@@ -92,6 +92,15 @@ export const teen: Persona = {
     c.sub({ name: 'Spotify Premium Student', amount: 10.9, billingCycle: 'monthly', startDate: daysAgo(200), nextBillingDate: daysAgo(-14), category: 'subscription', isActive: true, isPaused: false, reminderDays: 2, isInstallment: false });
     c.sub({ name: 'Hotlink prepaid top-up', amount: 15.0, billingCycle: 'monthly', startDate: daysAgo(300), nextBillingDate: daysAgo(-6), category: 'bills', isActive: true, isPaused: false, reminderDays: 2, isInstallment: false });
 
+    // ─── Echo budget planner — duit poket + langganan tetap ────────
+    c.budgetProfile({
+      takeHome: 160,
+      commitments: [
+        { label: 'Spotify Student', monthly: 10.9 },
+        { label: 'Hotlink prepaid', monthly: 15 },
+      ],
+    });
+
     // ─── 4. Budgets ──────────────────────────────────────────────────
     c.budget({ category: 'food', allocatedAmount: 120, period: 'monthly', startDate: startOfMonth(), endDate: endOfMonth() });
     c.budget({ category: 'entertainment', allocatedAmount: 60, period: 'monthly', startDate: startOfMonth(), endDate: endOfMonth() });

@@ -245,7 +245,9 @@ export async function callGeminiAPI(
 interface GeminiStreamChunk {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
+    finishReason?: string;
   }>;
+  promptFeedback?: { blockReason?: string };
 }
 
 /**
@@ -325,6 +327,15 @@ export async function* streamGeminiText(
         accumulated += delta;
         yieldedAny = true;
         push({ type: 'data', value: accumulated });
+      }
+      // Gemini's terminal chunk carries finishReason (usually with empty text +
+      // a thoughtSignature). react-native-sse never dispatches 'close' when the
+      // response ends normally — only on manual close() — so without this the
+      // generator hung until the timeout below even though the reply had fully
+      // arrived (chat stayed locked ~30s after the last token).
+      if (obj?.candidates?.[0]?.finishReason || obj?.promptFeedback) {
+        push({ type: 'close' });
+        es.close(); // abort the XHR now — nothing useful follows
       }
     } catch {
       // Partial/incomplete JSON — skip; the next event should complete it.

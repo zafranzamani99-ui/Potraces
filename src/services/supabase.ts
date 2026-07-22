@@ -223,6 +223,8 @@ export async function clearPersonalDataRemote(client: Client = supabasePersonal)
     'personal_contacts',
     'personal_savings_accounts',
     'personal_receipts',
+    'personal_notes',
+    'personal_budget_profile',
   ];
   await Promise.allSettled(
     tables.map((t) => client.from(t).delete().eq('user_id', userId)),

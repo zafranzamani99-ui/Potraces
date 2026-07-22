@@ -36,6 +36,7 @@ export const PROTECTED_KEYS = [
   'playbook-storage',
   'notes-storage',
   'category-storage',
+  'learning-storage',       // learned AI hints (also cloud-synced 2026-07-22)
 ];
 
 const KEEP_DAYS = 5;

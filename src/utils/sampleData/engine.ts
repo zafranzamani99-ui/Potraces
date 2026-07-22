@@ -131,6 +131,16 @@ export function seedPersona(bracket: SampleBracket = DEFAULT_SAMPLE_BRACKET): { 
     receipt: ({ wallet, ...r }) => {
       receiptStore.addReceipt({ ...r, walletId: resolve(wallet) });
     },
+    budgetProfile: ({ takeHome, commitments }) => {
+      // Feeds the "echo plan" planner (budgetProfileStore). Never clobber a real
+      // user's planner when appending demo onto an existing account.
+      const bp = useBudgetProfileStore.getState();
+      if (bp.takeHome !== null || bp.commitments.length > 0) return;
+      bp.setTakeHome(takeHome);
+      commitments.forEach((cmt, i) =>
+        bp.upsertCommitment({ id: `seed-commit-${i}`, label: cmt.label, monthly: cmt.monthly }),
+      );
+    },
   };
 
   persona.seed(ctx);

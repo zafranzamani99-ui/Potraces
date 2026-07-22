@@ -25,6 +25,7 @@ import { useSavingsStore } from './savingsStore';
 import { useBudgetProfileStore } from './budgetProfileStore';
 import { usePendingPaymentsStore } from './pendingPaymentsStore';
 import { useCalculatorStore } from './calculatorStore';
+import { useTombstoneStore } from './tombstoneStore';
 import {
   clearBusinessDataRemote,
   clearPersonalDataRemote,
@@ -406,6 +407,10 @@ const wipePersonalStores = async ({
     expenseCategoryOrder: [],
     incomeCategoryOrder: [],
   });
+  // Capture note ids BEFORE clearing so a user wipe can tombstone them (below) —
+  // otherwise a cloud note row that survives an offline remote-delete would
+  // re-pull on the next sync. Pairs with clearPersonalDataRemote deleting the rows.
+  const wipedNoteIds = useNotesStore.getState().pages.map((p) => p.id);
   useNotesStore.setState({
     pages: [],
     activePageId: null,
@@ -456,6 +461,10 @@ const wipePersonalStores = async ({
     useCalculatorStore.setState({
       history: [],
     });
+    // Durably tombstone the wiped notes so a re-pull (after an offline remote
+    // delete, or once sync re-enables) can't resurrect them. tombstone-store is
+    // NOT cleared by this wipe, so these survive the key removal below.
+    if (wipedNoteIds.length) useTombstoneStore.getState().addTombstones(wipedNoteIds);
   }
 
   // Purge local rolling backups of personal stores too — otherwise deleted
@@ -482,6 +491,11 @@ const wipePersonalStores = async ({
   const docDir = FileSystem.documentDirectory;
   if (docDir) {
     await FileSystem.deleteAsync(`${docDir}receipts/`, { idempotent: true }).catch(() => {});
+    // Queued receipt-scan source images are unsynced local personal data — drop
+    // them only on a deliberate user wipe (see receiptQueue.ts QUEUE_IMAGE_DIR).
+    if (userInitiated) {
+      await FileSystem.deleteAsync(`${docDir}receipt-queue/`, { idempotent: true }).catch(() => {});
+    }
   }
 
   // Remove ONLY the personal persisted keys so nothing rehydrates. Business
@@ -506,7 +520,16 @@ const wipePersonalStores = async ({
   ];
   // Unsynced stores: only a deliberate user wipe may drop these (see header).
   if (userInitiated) {
-    personalKeys.push('budget-profile-storage', 'pending-payments-storage', 'calculator-history');
+    personalKeys.push(
+      'budget-profile-storage',
+      'pending-payments-storage',
+      'calculator-history',
+      // Receipt-scan queue (unsynced local personal data). Keys mirror
+      // receiptQueue.ts: QUEUE_KEY / FAILED_KEY / PROCESSED_KEY.
+      'receipt-scan-queue-v1',
+      'receipt-scan-failed-v1',
+      'receipt-scan-processed-v1',
+    );
   }
   await Promise.all(personalKeys.map((k) => AsyncStorage.removeItem(k).catch(() => {})));
 };

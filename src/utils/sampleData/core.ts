@@ -34,6 +34,7 @@ export type TxSeed       = Omit<TxStoreInput, 'walletId'> & { wallet: string };
 export type ReceiptSeed  = Omit<ReceiptInput, 'walletId'> & { wallet: string };
 export type ContribSeed  = { amount: number; note: string };
 export type SnapshotSeed = { value: number; note: string; source: SnapshotSrc };
+export type BudgetProfileSeed = { takeHome: number; commitments: { label: string; monthly: number }[] };
 
 export interface SeedContext {
   /** Declare a wallet. `balance` is its FINAL (current) balance. */
@@ -50,6 +51,8 @@ export interface SeedContext {
   savings(seed: SavingsInput, snapshots?: SnapshotSeed[]): void;
   note(mode: 'personal' | 'business', content: string): void;
   receipt(seed: ReceiptSeed): void;
+  /** Seed Echo's "echo plan" budget planner: take-home pay + locked monthly must-pays. */
+  budgetProfile(seed: BudgetProfileSeed): void;
 }
 
 export interface Persona {

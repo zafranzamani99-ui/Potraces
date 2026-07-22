@@ -147,6 +147,18 @@ export const professional: Persona = {
     c.sub({ name: 'Spotify Premium', amount: 14.9, billingCycle: 'monthly', startDate: daysAgo(680), nextBillingDate: daysAgo(-11), category: 'subscription', isActive: true, isPaused: false, reminderDays: 2, isInstallment: false });
     c.sub({ name: 'iCloud 200GB', amount: 15.9, billingCycle: 'monthly', startDate: daysAgo(900), nextBillingDate: daysAgo(-25), category: 'subscription', isActive: true, isPaused: false, reminderDays: 1, isInstallment: false });
 
+    // ─── Echo budget planner — take-home + locked must-pays ────────
+    c.budgetProfile({
+      takeHome: 3420,
+      commitments: [
+        { label: 'PR1MA condo loan', monthly: 1150 },
+        { label: 'Myvi car loan', monthly: 580 },
+        { label: 'AIA takaful', monthly: 198 },
+        { label: 'Telefon + Unifi', monthly: 178 },
+        { label: 'Kirim mak', monthly: 300 },
+      ],
+    });
+
     // ─── 4. Budgets — what Aiman tries to stick to ─────────────────
     c.budget({ category: 'food', allocatedAmount: 600, period: 'monthly', startDate: startOfMonth(), endDate: endOfMonth() });
     c.budget({ category: 'transport', allocatedAmount: 400, period: 'monthly', startDate: startOfMonth(), endDate: endOfMonth() });

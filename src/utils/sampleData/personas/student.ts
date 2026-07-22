@@ -119,6 +119,15 @@ export const student: Persona = {
     c.sub({ name: 'Netflix (share dgn housemate)', amount: 17.0, billingCycle: 'monthly', startDate: daysAgo(260), nextBillingDate: daysAgo(-9), category: 'subscription', isActive: true, isPaused: false, reminderDays: 2, isInstallment: false });
     c.sub({ name: 'Canva Pro', amount: 39.9, billingCycle: 'monthly', startDate: daysAgo(190), nextBillingDate: daysAgo(-20), category: 'subscription', isActive: true, isPaused: false, reminderDays: 2, isInstallment: false });
 
+    // ─── Echo budget planner — income + komitmen tetap ─────────────
+    c.budgetProfile({
+      takeHome: 1200,
+      commitments: [
+        { label: 'Y15 motor loan', monthly: 220 },
+        { label: 'Langganan (Spotify/Netflix/Canva)', monthly: 68 },
+      ],
+    });
+
     // ─── 4. Budgets — apa yang Alia cuba jaga ───────────────────────
     c.budget({ category: 'food', allocatedAmount: 400, period: 'monthly', startDate: startOfMonth(), endDate: endOfMonth() });
     c.budget({ category: 'transport', allocatedAmount: 150, period: 'monthly', startDate: startOfMonth(), endDate: endOfMonth() });

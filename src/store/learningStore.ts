@@ -54,6 +54,11 @@ interface LearningState {
   walletPreferences: WalletPreference[];
   typeCorrections: TypeCorrection[];
   skippedKeywords: Record<string, number>;
+  /**
+   * Epoch ms of the last USER edit on this device (null = never edited here).
+   * LWW key for cloud sync — bumped by every learn* setter, NOT by applySyncedLearning.
+   */
+  updatedAt: number | null;
 
   learnCategory: (keyword: string, category: string) => void;
   learnPersonAlias: (raw: string, preferred: string) => void;
@@ -65,6 +70,10 @@ interface LearningState {
   getSuggestedPerson: (raw: string) => string | null;
   getSuggestedWallet: (text: string) => string | null;
   getPromptHints: () => string;
+  /** Sync push: the persisted learning blob (the fields in partialize). */
+  getSyncData: () => Partial<LearningState>;
+  /** Sync pull: adopt a pulled remote blob verbatim (carries the REMOTE edit time). */
+  applySyncedLearning: (data: Partial<LearningState>, updatedAt: number) => void;
 }
 
 export const useLearningStore = create<LearningState>()(
@@ -75,6 +84,7 @@ export const useLearningStore = create<LearningState>()(
       walletPreferences: [],
       typeCorrections: [],
       skippedKeywords: {},
+      updatedAt: null,
 
       learnCategory: (keyword, category) => {
         const kw = keyword.toLowerCase().trim();
@@ -85,6 +95,7 @@ export const useLearningStore = create<LearningState>()(
             (p) => p.keyword === kw && p.category === category,
             () => ({ keyword: kw, category, count: 1 })
           ),
+          updatedAt: Date.now(),
         }));
       },
 
@@ -98,6 +109,7 @@ export const useLearningStore = create<LearningState>()(
             (a) => a.raw === r,
             () => ({ raw: r, preferred: p, count: 1 })
           ),
+          updatedAt: Date.now(),
         }));
       },
 
@@ -110,6 +122,7 @@ export const useLearningStore = create<LearningState>()(
             (p) => p.keyword === kw,
             () => ({ keyword: kw, wallet, count: 1 })
           ),
+          updatedAt: Date.now(),
         }));
       },
 
@@ -122,6 +135,7 @@ export const useLearningStore = create<LearningState>()(
             (t) => t.keyword === kw && t.toType === toType,
             () => ({ keyword: kw, toType, count: 1 })
           ),
+          updatedAt: Date.now(),
         }));
       },
 
@@ -133,6 +147,7 @@ export const useLearningStore = create<LearningState>()(
             ...s.skippedKeywords,
             [kw]: (s.skippedKeywords[kw] || 0) + 1,
           },
+          updatedAt: Date.now(),
         }));
       },
 
@@ -197,6 +212,18 @@ export const useLearningStore = create<LearningState>()(
         if (hints.length === 0) return '';
         return `\nUSER PREFERENCES (learned from corrections):\n${hints.map((h) => `- ${h}`).join('\n')}`;
       },
+
+      getSyncData: () => {
+        const s = get();
+        return {
+          categoryPatterns: s.categoryPatterns,
+          personAliases: s.personAliases,
+          walletPreferences: s.walletPreferences,
+          typeCorrections: s.typeCorrections,
+          skippedKeywords: s.skippedKeywords,
+        };
+      },
+      applySyncedLearning: (data, updatedAt) => set({ ...data, updatedAt }),
     }),
     {
       name: 'learning-storage',
@@ -207,6 +234,7 @@ export const useLearningStore = create<LearningState>()(
         walletPreferences: state.walletPreferences,
         typeCorrections: state.typeCorrections,
         skippedKeywords: state.skippedKeywords,
+        updatedAt: state.updatedAt,
       }),
     }
   )

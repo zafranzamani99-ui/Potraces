@@ -259,7 +259,6 @@ export function splitToRemote(userId: string, s: SplitExpense) {
     participants: (s.participants ?? []).map((p) => ({ ...p })),
     items: (s.items ?? []).map((it) => ({ ...it })),
     paid_by: s.paidBy ?? null,
-    my_participant_id: (s as any).myParticipantId ?? null,
     category: s.category ?? null,
     tax_amount: finiteOrNull(s.taxAmount),
     tax_handling: s.taxHandling ?? null,
@@ -270,8 +269,7 @@ export function splitToRemote(userId: string, s: SplitExpense) {
     draft_receipt: s.draftReceipt ?? null,
     is_archived: !!s.isArchived,
     archived_at: isoOrNull(s.archivedAt),
-    date: iso((s as any).date ?? s.createdAt),
-    note: (s as any).note ?? null,
+    date: iso(s.createdAt),
     updated_at: iso(s.updatedAt),
     client_edit_at: iso(s.updatedAt),
   };
@@ -285,7 +283,6 @@ export function contactToRemote(userId: string, c: Contact) {
     phone: c.phone ?? null,
     email: c.email ?? null,
     is_from_phone: !!c.isFromPhone,
-    note: (c as any).note ?? null,
   };
 }
 
