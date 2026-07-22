@@ -7,9 +7,15 @@
 // else the Supabase anon key (server falls back to the x-device-id identity). The
 // `apikey` header is required by the Supabase gateway regardless.
 
+import * as Device from 'expo-device';
 import { clientForMode } from './supabase';
 import { useAppStore } from '../store/appStore';
 import { getDeviceId } from '../utils/deviceId';
+
+// Friendly device model (e.g. "iPhone 15", "Pixel 7") for ops device attribution.
+// A constant per install; URL-encoded so a non-ASCII model name stays header-safe.
+// modelName (not deviceName) on purpose — deviceName can be the owner's real name.
+const DEVICE_NAME_HEADER = Device.modelName ? encodeURIComponent(Device.modelName) : '';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -59,6 +65,7 @@ export async function aiProxyHeaders(): Promise<Record<string, string>> {
     Authorization: `Bearer ${bearer}`,
     apikey: ANON_KEY,
     'x-device-id': deviceId,
+    ...(DEVICE_NAME_HEADER ? { 'x-device-name': DEVICE_NAME_HEADER } : {}),
   };
 }
 

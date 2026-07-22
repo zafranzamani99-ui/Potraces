@@ -427,6 +427,7 @@ h1{font-size:clamp(1.45rem,2.6vw,1.8rem);font-weight:800;letter-spacing:-.025em}
             <th data-c="o" class="num">Out tok</th>
             <th data-c="cost" class="num">Est. cost</th>
             <th data-c="id">Identity</th>
+            <th data-c="device">Device</th>
           </tr></thead>
           <tbody id="tbody"></tbody>
         </table>
@@ -610,6 +611,8 @@ function shortId(id){
 }
 // Real email when we resolved one (signed-in users); else the shortId fallback (dev:* devices, unresolved).
 function idLabel(id){ return id ? (store.emails.get(id) || shortId(id)) : '—'; }
+// Friendly model when the app sent one, else a short slice of the opaque device id.
+function deviceLabel(e){ return e.device_name || (e.device_id ? 'id '+String(e.device_id).slice(0,6)+'…' : '—'); }
 
 /* ═══════════════ STATE ═══════════════ */
 const REFRESH_S = 60;
@@ -637,7 +640,7 @@ async function loadAll(manual){
   const [statsRes, aggRes, evRes] = await Promise.all([
     sb.rpc('admin_user_stats'),
     sb.from('ai_proxy_usage').select('identity,period,input_tokens,output_tokens,calls'),
-    sb.from('usage_events').select('identity,kind,provider,model,feature,source,input_tokens,output_tokens,created_at')
+    sb.from('usage_events').select('identity,kind,provider,model,feature,source,input_tokens,output_tokens,device_id,device_name,created_at')
       .gte('created_at', fetchGte).order('created_at', { ascending:false }).limit(8000),
   ]);
   loading = false;
@@ -906,7 +909,9 @@ function filteredEvents(){
   if (state.model !== 'all') rows = rows.filter(e => (e.model || '(unknown)') === state.model);
   if (state.q) rows = rows.filter(e =>
     (e.identity || '').toLowerCase().includes(state.q) ||
-    (store.emails.get(e.identity) || '').toLowerCase().includes(state.q));
+    (store.emails.get(e.identity) || '').toLowerCase().includes(state.q) ||
+    (e.device_name || '').toLowerCase().includes(state.q) ||
+    (e.device_id || '').toLowerCase().includes(state.q));
   return rows;
 }
 function sortRows(rows){
@@ -918,7 +923,8 @@ function sortRows(rows){
     c==='feature' ? (e.kind==='stt_mint' ? 'voice' : (e.feature||'')) :
     c==='i' ? Number(e.input_tokens||0) :
     c==='o' ? Number(e.output_tokens||0) :
-    c==='cost' ? evUsd(e) : (store.emails.get(e.identity) || e.identity || '');
+    c==='cost' ? evUsd(e) :
+    c==='device' ? (e.device_name || e.device_id || '') : (store.emails.get(e.identity) || e.identity || '');
   return [...rows].sort((a,b)=>{ const va=val(a), vb=val(b); return (va<vb?-1:va>vb?1:0)*dir; });
 }
 function rowHtml(e){
@@ -935,13 +941,14 @@ function rowHtml(e){
     <td class="num">${e.kind==='stt_mint'?'—':fmtNum(e.output_tokens)}</td>
     <td class="num cost">${e.kind==='stt_mint'?'—':money(usd, usd<0.01&&usd>0?4:2)}</td>
     <td class="tid" title="${escA(e.identity)}">${esc(idLabel(e.identity))}</td>
+    <td title="${escA(e.device_id || '')}">${esc(deviceLabel(e))}</td>
   </tr>`;
 }
 function renderTable(){
   const rows = sortRows(filteredEvents());
   const shown = rows.slice(0, state.shown);
   tbodyEl.innerHTML = shown.map(rowHtml).join('') ||
-    `<tr><td colspan="8" style="text-align:center;color:var(--faint);padding:28px">No events match these filters.</td></tr>`;
+    `<tr><td colspan="9" style="text-align:center;color:var(--faint);padding:28px">No events match these filters.</td></tr>`;
   evCountEl.textContent = `${fmtNum(rows.length)} matching · ${fmtNum(store.cur.length)} tracked in range`;
   rowCountEl.textContent = rows.length > state.shown ? `showing ${fmtNum(state.shown)} of ${fmtNum(rows.length)}` : (rows.length ? `${fmtNum(rows.length)} rows` : '');
   moreBtn.classList.toggle('hide', rows.length <= state.shown);

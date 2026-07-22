@@ -23,7 +23,7 @@ const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-device-id',
+  'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-device-id, x-device-name',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -122,10 +122,12 @@ Deno.serve(async (req: Request) => {
     // NOTE: add an ai_proxy_usage budget check here (mirror ai-proxy) before minting, to meter voice
     // minutes per identity and prevent a rotated device-id from draining the provider key.
 
+    const deviceId = req.headers.get('x-device-id')?.trim() || null;
+    const deviceName = decodeDeviceName(req.headers.get('x-device-name'));
     const res = provider === 'deepgram' ? await mintDeepgram(identity)
               : provider === 'gemini'   ? await mintGemini(identity)
               :                           await mintSoniox(identity);
-    if (res.ok) background(logMint(identity, provider)); // metering never blocks the mint
+    if (res.ok) background(logMint(identity, provider, deviceId, deviceName)); // metering never blocks the mint
     return res;
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
@@ -136,7 +138,7 @@ Deno.serve(async (req: Request) => {
 // 'user:' / 'dev:' prefix from resolveIdentity — ai-proxy stores bare user ids for
 // signed-in users. Cosmetic only; the dashboard's top-consumers view reads
 // ai_proxy_usage, not these rows.
-async function logMint(identity: string, provider: string) {
+async function logMint(identity: string, provider: string, deviceId: string | null, deviceName: string | null) {
   try {
     const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -144,8 +146,17 @@ async function logMint(identity: string, provider: string) {
     await admin.rpc('record_usage_event', {
       p_identity: identity, p_kind: 'stt_mint', p_provider: provider,
       p_model: null, p_feature: null, p_source: 'voice', p_input: 0, p_output: 0,
+      p_device: deviceId, p_device_name: deviceName,
     });
   } catch { /* metering must never break token minting */ }
+}
+
+// Friendly device model, URL-encoded by the client (see ai-proxy). Bounded to keep a
+// spoofed header from bloating a row.
+function decodeDeviceName(raw: string | null): string | null {
+  if (!raw) return null;
+  try { return decodeURIComponent(raw).slice(0, 120) || null; }
+  catch { return raw.slice(0, 120) || null; }
 }
 
 // Best-effort background work without killing the response (same pattern as ai-proxy).

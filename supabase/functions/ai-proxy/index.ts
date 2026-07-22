@@ -83,7 +83,7 @@ const MAX_THINKING_BUDGET = 1024;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type, x-device-id',
+  'Access-Control-Allow-Headers': 'authorization, content-type, x-device-id, x-device-name',
 };
 
 function json(body: unknown, status = 200): Response {
@@ -96,6 +96,14 @@ function json(body: unknown, status = 200): Response {
 function utcPeriod(): string {
   const d = new Date();
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+// Friendly device model (e.g. "iPhone 15"), URL-encoded by the client so a non-ASCII
+// name survives the header. Bounded so a spoofed header can't bloat a usage_events row.
+function decodeDeviceName(raw: string | null): string | null {
+  if (!raw) return null;
+  try { return decodeURIComponent(raw).slice(0, 120) || null; }
+  catch { return raw.slice(0, 120) || null; }
 }
 
 // Best-effort background work (usage accounting on streams) without killing the
@@ -129,6 +137,11 @@ Deno.serve(async (req: Request) => {
     if (!dev) return json({ error: 'Missing identity (x-device-id)' }, 400);
     identity = `dev:${dev}`;
   }
+
+  // Device attribution for the ops console — stored on every usage_events row (signed in
+  // too). The budget counter (ai_proxy_usage) stays keyed by identity, not device.
+  const deviceId = req.headers.get('x-device-id')?.trim() || null;
+  const deviceName = decodeDeviceName(req.headers.get('x-device-name'));
 
   // ── Parse + validate request ──────────────────────────────────────────────
   let reqBody: { provider?: string; mode?: string; model?: string; payload?: unknown; source?: string };
@@ -186,6 +199,7 @@ Deno.serve(async (req: Request) => {
           p_identity: identity, p_kind: 'ai_call', p_provider: provider,
           p_model: upstreamModel, p_feature: feature, p_source: source,
           p_input: input, p_output: output,
+          p_device: deviceId, p_device_name: deviceName,
         });
       } catch { /* noop */ }
     })();
