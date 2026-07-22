@@ -21,6 +21,7 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
+import Svg, { Path } from 'react-native-svg';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha, TERMS_URL, PRIVACY_URL } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,6 +36,28 @@ import NeuButton from './NeuButton';
 import GlassSegmentedControl from './GlassSegmentedControl';
 import { selectionChanged } from '../../services/haptics';
 import { useT, type Translations } from '../../i18n';
+
+// Verified-seal tick badge for the feature list. Scalloped starburst + check, drawn in
+// react-native-svg. The bright green is a DELIBERATE off-palette exception requested by the
+// user — the app is otherwise olive-only ("no green as success"). White check reads on green
+// in both light and dark, so both colors are baked in (not theme tokens).
+const VERIFIED_GREEN = '#22C55E';
+const VerifiedTick: React.FC<{ size?: number }> = ({ size = 18 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Path
+      d="M23 12l-2.44-2.79.34-3.69-3.61-.82-1.89-3.2L12 2.96 8.6 1.5 6.71 4.69 3.1 5.5l.34 3.7L1 12l2.44 2.79-.34 3.7 3.61.82 1.89 3.2L12 21.05l3.4 1.46 1.89-3.19 3.61-.82-.34-3.69z"
+      fill={VERIFIED_GREEN}
+    />
+    <Path
+      d="M8 12.6l3 3 5.2-6.1"
+      fill="none"
+      stroke="#FFFFFF"
+      strokeWidth={2.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
 
 // Legal links (TERMS_URL / PRIVACY_URL) live in constants so the paywall, SubscriptionCard,
 // and AppSettings all point at the same pages. Apple requires functional Terms + Privacy on
@@ -143,7 +166,8 @@ const STORE_TIER: Record<PlanTier, PremiumTier> = { basic: 'basic', pro: 'pro', 
 // ─── Compact "tell all" spec ──────────────────────────────────────────
 // Every line is derived from TIER_LIMITS (the SAME table the app enforces), so the sheet
 // can't over/under-promise — but it's packed into a 2-column grid so the whole plan fits
-// on screen without scrolling. ✓ = included, — = not on this tier. Once the count caps go
+// on screen without scrolling. Only what the tier INCLUDES is shown (every line is a sell —
+// "not included" rows are filtered out in buildItems). Once the count caps go
 // unlimited (Pro+), the six count rows collapse to one line to save even more height.
 const fmtCount = (n: number) => (n === Infinity ? '∞' : String(n));
 
@@ -176,10 +200,13 @@ const buildItems = (tier: PremiumTier, t: Translations): SpecItem[] => {
       { label: num(t.paywall.itemSavings, L.maxSavingsAccounts), on: true },
       { label: num(t.paywall.itemGoals, L.maxGoals), on: true },
       { label: num(t.paywall.itemSharedSubs, L.maxSharedSubs), on: true },
-      { label: num(t.paywall.itemPlaybooks, L.maxSavedPlaybooks), on: true },
+      // Playbooks ship in v1.2 — not sold on the paywall yet. Re-add this row (and it's
+      // already in i18n as itemPlaybooks) when the feature launches.
     );
   }
-  return items;
+  // Sell what the tier INCLUDES, not what it lacks — drop every "not included" line
+  // (e.g. Smarter Echo / Google Docs sync on Basic) so the sheet reads as pure value.
+  return items.filter((i) => i.on);
 };
 
 // Business/shop roadmap — one honest line on the sheet, clearly "soon", never a checkmark.
@@ -489,7 +516,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             </View>
 
             {/* Everything in the selected tier — a dense 2-column grid so the whole plan
-                shows at once (no scroll). Generated from TIER_LIMITS; ✓ = in, — = not. */}
+                shows at once (no scroll). Generated from TIER_LIMITS; only included features shown. */}
             <Text style={styles.specHeader}>
               {t.paywall.everythingIn}<Text style={styles.specHeaderEm}>{selected.name}</Text>
             </Text>
@@ -499,7 +526,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
                   {col.map((it) => (
                     <View key={it.label} style={styles.gridItem}>
                       {it.on ? (
-                        <Feather name="check" size={13} color={C.accent} />
+                        <VerifiedTick />
                       ) : (
                         <Text style={styles.gridDash}>—</Text>
                       )}
@@ -518,7 +545,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             {/* Unlimited counts collapse into one line at Pro+ */}
             {TIER_LIMITS[paidTier].maxWallets === Infinity && (
               <View style={styles.fullRow}>
-                <Feather name="check" size={13} color={C.accent} />
+                <VerifiedTick />
                 <Text style={styles.gridLabel}>{t.paywall.itemUnlimited}</Text>
               </View>
             )}
@@ -911,7 +938,7 @@ const makeStyles = (C: typeof CALM) =>
     },
     gridLabelOff: { color: C.textMuted },
     gridDash: {
-      width: 13,
+      width: 18,
       textAlign: 'center',
       fontSize: 12,
       color: C.textMuted,

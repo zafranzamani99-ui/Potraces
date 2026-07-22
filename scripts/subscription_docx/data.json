@@ -1,0 +1,866 @@
+{
+ "tiers": {
+  "freeTierName": "Free (tier id `free`)",
+  "tiers": [
+   {
+    "id": "free",
+    "name": "Free",
+    "priceMonthly": "No price in code (base, non-purchasable tier — not in the paywall TIERS array)",
+    "priceYearly": "n/a",
+    "yearlyPerMonth": "n/a",
+    "discount": "none",
+    "oneLineWhoItsFor": "The capped baseline: tight count caps (7 wallets, 5 budgets, 3 savings/goals/shared-subs) and low metered use (15 scans/mo, 30 AI calls/mo, 50 saved chat bubbles that lock when exceeded); no cloud backup, no Ask-Echo-per-screen, no Google Docs sync."
+   },
+   {
+    "id": "basic",
+    "name": "Basic",
+    "priceMonthly": "RM7.99/mo",
+    "priceYearly": "monthly only (no annual plan) — RM7.99/mo",
+    "yearlyPerMonth": "RM7.99 (monthly only; yearly = same as monthly)",
+    "discount": "none",
+    "oneLineWhoItsFor": "The pushed hero — pre-selected 'BEST VALUE' entry paid plan (PaywallModal.tsx:320-321); unlocks cloud backup, Ask-Echo-per-screen and photo category icons, bumps caps (13 wallets, 75 scans/mo, 300 AI/mo) and gives 4 Collectz sessions/week."
+   },
+   {
+    "id": "pro",
+    "name": "Pro",
+    "priceMonthly": "RM14/mo",
+    "priceYearly": "RM120/yr (was RM14/mo i.e. RM168/yr struck through)",
+    "yearlyPerMonth": "RM10/mo",
+    "discount": "-28% (yearly)",
+    "oneLineWhoItsFor": "For power users: all COUNT features go unlimited (wallets/budgets/savings/goals/shared-subs/playbooks) plus Google Docs sync and unlimited Collectz sessions; metered use raised to 150 scans/mo & 800 AI/mo; roadmap adds remove-branding, store templates, AI preview."
+   },
+   {
+    "id": "premium",
+    "name": "Premium",
+    "priceMonthly": "RM25/mo",
+    "priceYearly": "RM200/yr (was RM25/mo i.e. RM300/yr struck through)",
+    "yearlyPerMonth": "RM16.67/mo",
+    "discount": "-33% (yearly)",
+    "oneLineWhoItsFor": "Top tier: everything unlimited plus the highest metered ceilings (300 scans/mo, 1500 AI/mo, 3000 saved chat bubbles, 90 AI-memory bubbles) and the fullest business roadmap (remove-branding, store templates, full AI, analytics, tap-to-pay)."
+   }
+  ],
+  "billingNotes": "Pricing source of truth is the TIERS array in PaywallModal.tsx:139-161 (comment: prices mirror docs/MONETIZATION_AND_PRICING.md; every struck 'was' is a real 12x monthly price to keep the discount honest). TIER_LIMITS in tiers.ts:51-92 defines four tiers — free, basic, pro, premium — but only basic/pro/premium are sold in the paywall; 'free' has no price in code and is the un-purchasable baseline. Basic has NO yearly plan (yearly.bill = 'monthly only', PaywallModal.tsx:144), so its yearly per-month equals the monthly RM7.99. Discount pills come straight from the code: Pro -28% (PaywallModal.tsx:151), Premium -33% (PaywallModal.tsx:158); Basic and Free have no discount. Per-month equivalents verified: Pro RM120/12 = RM10/mo, Premium RM200/12 = RM16.67/mo. STORE_TIER (PaywallModal.tsx:164) maps the 'prem' card id to the 'premium' store entitlement. All prices in RM (Malaysian Ringgit). No prices were invented — Free's absence of a price reflects the code.",
+  "sources": [
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\components\\common\\PaywallModal.tsx:139-161 (TIERS array — exact monthly/yearly prices, was-prices, bill strings, discount pills)",
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\components\\common\\PaywallModal.tsx:143-146 (Basic RM7.99/mo, yearly 'monthly only')",
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\components\\common\\PaywallModal.tsx:147-153 (Pro RM14/mo, yearly RM10/mo = RM120/yr, -28%)",
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\components\\common\\PaywallModal.tsx:154-160 (Premium RM25/mo, yearly RM16.67/mo = RM200/yr, -33%)",
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\components\\common\\PaywallModal.tsx:320-321 (Basic is the pushed hero / pre-selected BEST VALUE)",
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\components\\common\\PaywallModal.tsx:163-164 (STORE_TIER: prem card -> premium entitlement)",
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\components\\common\\PaywallModal.tsx:209-227 (bizSoon/bizFeatures business roadmap per tier)",
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\constants\\tiers.ts:51-92 (TIER_LIMITS — free/basic/pro/premium caps and capability flags)",
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\constants\\tiers.ts:9-12 (principle comment: count features unlimited at Pro+, cost-metered stay capped)",
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\constants\\tiers.ts:66 (owner note: Basic 4 Collectz sessions/week; Pro+ unlimited)",
+   "c:\\ZAFRAN FOLDER\\PROJECT\\POTRACES\\Potraces\\src\\constants\\premium.ts:8-18 (re-exports TIER_LIMITS/FREE_TIER/PREMIUM_TIER from ./tiers; no prices defined here)"
+  ]
+ },
+ "limits": {
+  "resetPolicy": "Two reset regimes exist. (1) COST-METERED counters reset periodically: receipt scans and AI/Echo chat calls reset MONTHLY — premiumStore.ts:57-69 (resetScanCountIfNeeded) and :77-89 (resetAiCallsIfNeeded) zero the count when the stored reset date falls before startOfMonth(now); Collectz session CREATIONS reset per CALENDAR WEEK (tiers.ts:26-28, key name maxCollectzSessionsPerWeek). (2) COUNT caps (wallets, wallets-per-type, budgets, savings, goals, shared subs, playbooks) are NOT time-windowed — they are lifetime/concurrent ceilings on how many can exist at once; canCreate() (tiers.ts:116-118) simply blocks the next create and grandfathers anyone already over a lowered cap (never deletes). Chat-history limits (saved/memory/txn-detail bubbles) are structural, not periodic. Capability flags (export, Google Docs sync, cloud backup, Ask Echo, photo icons) are on/off entitlements, not counters. Design principle stated at tiers.ts:10-12: count features go Unlimited at Pro+, but cost-metered features (scans, AI) stay capped even on Premium to protect margin.",
+  "resources": [
+   {
+    "key": "maxAiCallsPerMonth",
+    "plainLabel": "AI / Echo chat messages",
+    "unit": "calls per month",
+    "free": "30",
+    "basic": "300",
+    "pro": "800",
+    "premium": "1500",
+    "notes": "tiers.ts:57,67,77,87. Metered; resets monthly (premiumStore.ts:77-89). Stays finite even on Premium."
+   },
+   {
+    "key": "maxScansPerMonth",
+    "plainLabel": "Receipt scans",
+    "unit": "scans per month",
+    "free": "15",
+    "basic": "75",
+    "pro": "150",
+    "premium": "300",
+    "notes": "tiers.ts:57,67,77,87. Metered; resets monthly (premiumStore.ts:57-69). Stays finite even on Premium."
+   },
+   {
+    "key": "maxCollectzSessionsPerWeek",
+    "plainLabel": "Collectz sessions you organize (joining is always free)",
+    "unit": "session creations per calendar week",
+    "free": "2",
+    "basic": "4",
+    "pro": "Unlimited",
+    "premium": "Unlimited",
+    "notes": "tiers.ts:56,66,76,86. Weekly reset per calendar week (tiers.ts:26-28)."
+   },
+   {
+    "key": "maxWallets",
+    "plainLabel": "Wallets (total)",
+    "unit": "wallets",
+    "free": "7",
+    "basic": "13",
+    "pro": "Unlimited",
+    "premium": "Unlimited",
+    "notes": "tiers.ts:53,63,73,83. Concurrent count cap, no reset."
+   },
+   {
+    "key": "maxWalletsPerType",
+    "plainLabel": "Wallets per type (bank / e-wallet / credit / cash)",
+    "unit": "wallets per type",
+    "free": "2",
+    "basic": "4",
+    "pro": "Unlimited",
+    "premium": "Unlimited",
+    "notes": "tiers.ts:53,63,73,83. Concurrent count cap, no reset."
+   },
+   {
+    "key": "maxBudgets",
+    "plainLabel": "Budgets",
+    "unit": "budgets",
+    "free": "5",
+    "basic": "10",
+    "pro": "Unlimited",
+    "premium": "Unlimited",
+    "notes": "tiers.ts:54,64,74,84. Concurrent count cap, no reset."
+   },
+   {
+    "key": "maxSavingsAccounts",
+    "plainLabel": "Savings accounts",
+    "unit": "savings accounts",
+    "free": "3",
+    "basic": "6",
+    "pro": "Unlimited",
+    "premium": "Unlimited",
+    "notes": "tiers.ts:54,64,74,84. Concurrent count cap, no reset."
+   },
+   {
+    "key": "maxGoals",
+    "plainLabel": "Goals",
+    "unit": "goals",
+    "free": "3",
+    "basic": "6",
+    "pro": "Unlimited",
+    "premium": "Unlimited",
+    "notes": "tiers.ts:54,64,74,84. Concurrent count cap, no reset."
+   },
+   {
+    "key": "maxSharedSubs",
+    "plainLabel": "Shared subscriptions / splits",
+    "unit": "shared subscriptions",
+    "free": "3",
+    "basic": "6",
+    "pro": "Unlimited",
+    "premium": "Unlimited",
+    "notes": "tiers.ts:54,64,74,84. Concurrent count cap, no reset."
+   },
+   {
+    "key": "maxActivePlaybooks",
+    "plainLabel": "Active playbooks",
+    "unit": "active playbooks",
+    "free": "2",
+    "basic": "2",
+    "pro": "2",
+    "premium": "2",
+    "notes": "tiers.ts:55,65,75,85. Same 2 across ALL tiers (does not scale with tier)."
+   },
+   {
+    "key": "maxSavedPlaybooks",
+    "plainLabel": "Saved playbooks",
+    "unit": "saved playbooks",
+    "free": "5",
+    "basic": "Unlimited",
+    "pro": "Unlimited",
+    "premium": "Unlimited",
+    "notes": "tiers.ts:55,65,75,85. Only free is capped (5); Basic+ unlimited."
+   },
+   {
+    "key": "chatSavedBubbles",
+    "plainLabel": "Echo saved chat history (readable bubbles kept before oldest conversations lock)",
+    "unit": "bubbles kept",
+    "free": "50",
+    "basic": "150",
+    "pro": "600",
+    "premium": "3000",
+    "notes": "tiers.ts:58,68,78,88. Beyond cap, oldest conversations LOCK (never delete); upgrading unlocks them. Structural, not a periodic reset."
+   },
+   {
+    "key": "chatMemoryBubbles",
+    "plainLabel": "Echo AI memory (recent bubbles re-sent to the model per reply)",
+    "unit": "bubbles per reply",
+    "free": "15",
+    "basic": "30",
+    "pro": "45",
+    "premium": "90",
+    "notes": "tiers.ts:58,68,78,88. Invisible cost dial — paid tokens on every message. Structural, not a periodic reset."
+   },
+   {
+    "key": "chatTxnDetail",
+    "plainLabel": "Transactions sent to Echo in per-line detail (older ones collapse to monthly summaries)",
+    "unit": "transactions in detail",
+    "free": "30",
+    "basic": "100",
+    "pro": "500",
+    "premium": "500",
+    "notes": "tiers.ts:58,68,78,88. 500 = full safety ceiling; Pro and Premium share it. Structural, not a periodic reset."
+   },
+   {
+    "key": "exportData",
+    "plainLabel": "Export data",
+    "unit": "capability (on/off)",
+    "free": "Yes",
+    "basic": "Yes",
+    "pro": "Yes",
+    "premium": "Yes",
+    "notes": "tiers.ts:59,69,79,89. Enabled on every tier including free."
+   },
+   {
+    "key": "cloudBackup",
+    "plainLabel": "Cloud backup / sync",
+    "unit": "capability (on/off)",
+    "free": "No",
+    "basic": "Yes",
+    "pro": "Yes",
+    "premium": "Yes",
+    "notes": "tiers.ts:60,70,80,90. Off on free; on Basic+."
+   },
+   {
+    "key": "googleDocsSync",
+    "plainLabel": "Google Docs sync",
+    "unit": "capability (on/off)",
+    "free": "No",
+    "basic": "No",
+    "pro": "Yes",
+    "premium": "Yes",
+    "notes": "tiers.ts:59,69,79,89. Pro+ only (off on free AND basic)."
+   },
+   {
+    "key": "askEchoPerScreen",
+    "plainLabel": "Ask Echo per screen",
+    "unit": "capability (on/off)",
+    "free": "No",
+    "basic": "Yes",
+    "pro": "Yes",
+    "premium": "Yes",
+    "notes": "tiers.ts:60,70,80,90. Off on free; on Basic+."
+   },
+   {
+    "key": "photoCategoryIcons",
+    "plainLabel": "Photo category icons",
+    "unit": "capability (on/off)",
+    "free": "No",
+    "basic": "Yes",
+    "pro": "Yes",
+    "premium": "Yes",
+    "notes": "tiers.ts:60,70,80,90. Off on free; on Basic+."
+   }
+  ],
+  "sources": [
+   "src/constants/tiers.ts:51-92 — TIER_LIMITS table (single source of truth; every numeric limit)",
+   "src/constants/tiers.ts:16-49 — TierLimits interface with per-field doc comments",
+   "src/constants/tiers.ts:26-28 — maxCollectzSessionsPerWeek is per calendar week; joining is free",
+   "src/constants/tiers.ts:10-12 — principle: count features unlimited at Pro+, cost-metered (scans/AI) stay capped",
+   "src/constants/tiers.ts:116-118 — canCreate(): count caps block next create, grandfather over-cap users",
+   "src/constants/premium.ts:8-18 — re-exports TIER_LIMITS/FREE_TIER/PREMIUM_TIER from tiers",
+   "src/store/premiumStore.ts:57-69 — resetScanCountIfNeeded(): monthly reset of scans (startOfMonth)",
+   "src/store/premiumStore.ts:77-89 — resetAiCallsIfNeeded(): monthly reset of AI calls (startOfMonth)",
+   "src/components/common/PaywallModal.tsx:181-202 — paywall feature list derived from TIER_LIMITS[tier]"
+  ]
+ },
+ "echo": {
+  "whatIsEcho": "Echo is Potraces's built-in AI assistant — a Gemini-powered chat \"friend\" that can see all the user's financial data (spending, wallets, debts, goals, subscriptions, playbooks, savings) and answer money questions in a calm, non-judgmental, Malaysian tone. It can also PREPARE money entries (expenses, income, debts, splits, transfers, etc.) as tap-to-confirm chips, but it never saves anything itself — the owner must tap to confirm. Source: src/services/moneyChat.ts:1-7 (module header \"Echo — Gemini-powered conversational AI\"), :38-39 (system prompt \"You are Echo, the AI inside Potraces\"), :66-74 (confirmation model — Echo cannot save/edit/delete on its own).",
+  "whereUsed": [
+   "Dedicated Money Chat screen — src/screens/personal/MoneyChat.tsx (the free entry point to Echo)",
+   "Floating olive 'zap' Echo FAB button + its greeting bubble — src/components/wallet/EchoFab.tsx:169-217. Rendered on 5 screens: BudgetPlanning, FinancialPulse, SavingsTracker, SubscriptionList, WalletManagement (grep of EchoFab usages).",
+   "This per-screen FAB is GATED by askEchoPerScreen (EchoFab.tsx:171 and :187). Free tier = askEchoPerScreen:false (tiers.ts:60), so a free user sees a lock badge (EchoFab.tsx:177-181) and tapping opens the paywall instead of Echo. Only Basic+ can open Echo from these secondary screens.",
+   "Optional once-a-day check-in greeting shown inside the chat when the echoDailyCheckin setting is on — MoneyChat.tsx:1231-1285."
+  ],
+  "freeChatLimit": "Free tier = 30 AI calls per month. Defined as maxAiCallsPerMonth: 30 in src/constants/tiers.ts:57 (free row). Confirmed by scripts/test-tier-limits.ts:29 (\"free Echo = 30/mo\"). For comparison: Basic 300, Pro 800, Premium 1500 (tiers.ts:67,77,87).",
+  "howChatsAreCounted": "Counted PER MESSAGE/REPLY, not per conversation. premiumStore.incrementAiCalls() is called exactly once after each successful Echo reply — src/services/moneyChat.ts:1030 (non-streaming path) and :1100 (streaming path), both right after a non-empty reply text is returned. A message that fails, is rate-limited, or returns empty does NOT increment. Each queued/sent message that gets answered counts as 1; an image message also counts as 1. IMPORTANT: this 30/mo counter (aiCallsCount) is a SHARED monthly AI pool, not Echo-chat-only — other AI features also call incrementAiCalls() against it: collectzParser.ts:111, intentEngine.ts:507, playbookAI.ts:628/729/777, queryEngine.ts:397. The opt-in daily check-in is excluded: it checks canUseAI() headroom (checkinMessage.ts:29) but never increments, so it 'doesn't spend the chat quota' (MoneyChat.tsx:1262-1263).",
+  "whenChatsReset": "Monthly, at the start of each calendar month. resetAiCallsIfNeeded() (src/store/premiumStore.ts:77-89) resets aiCallsCount to 0 whenever the stored aiCallsResetDate is before startOfMonth(now); it's lazily triggered on the next AI activity (canUseAI/incrementAiCalls) in the new month. Reset date is initialized to startOfMonth (premiumStore.ts:34). The user-facing error even says 'Resets next month!' (moneyChat.ts:921).",
+  "afterLimit": "Soft block, not a hard modal paywall. When the free user is out of calls, the send is stopped at the pre-flight gate: _preflightGate() calls usePremiumStore.canUseAI() (moneyChat.ts:920) which returns false, so the send returns { ok:false, error:'AI limit reached this month. Resets next month!' } (moneyChat.ts:920-922; canUseAI in premiumStore.ts:109-112). In the chat screen, result.ok is false so showError(result.error) runs (MoneyChat.tsx:1958-1962), which displays that string as a calm inline error banner that auto-dismisses after ~4 seconds (MoneyChat.tsx:1294-1298). The user's typed message still appears as their bubble but gets no Echo reply. It is NOT degraded to a weaker answer and does NOT pop a purchase modal in the main chat — you simply get no response until next month or upgrade. (The PaywallModal at MoneyChat.tsx:2647-2657 is unrelated: it gates the saved-chat-HISTORY cap chatSavedBubbles, not the monthly call limit.) Separately, on the 5 secondary screens the Echo FAB itself is paywalled for free users via askEchoPerScreen (EchoFab.tsx:171).",
+  "smartAiByTier": "Yes — Echo is genuinely smarter on paying tiers, in two ways. (1) Model: chatModelForTier() (src/services/chatModel.ts:23-25) gives Pro/Premium the smart model CHAT_MODEL_SMART='gemini-3.5-flash' and Free/Basic the cheaper CHAT_MODEL_LITE='gemini-3.1-flash-lite' (chatModel.ts:15-16). hasSmartAi(tier) is true only for 'pro'/'premium' (chatModel.ts:28-30) and drives the 'smarter AI' paywall copy. The chosen model is passed into the Gemini call at moneyChat.ts:1013 and :1087 (with a 429 fallback down the chain). (2) Context depth also scales by tier: chatMemoryBubbles (recent bubbles re-sent to the model each reply) = Free 15 / Basic 30 / Pro 45 / Premium 90, and chatTxnDetail (per-line transactions Echo sees) = Free 30 / Basic 100 / Pro 500 / Premium 500 (tiers.ts:58,68,78,88; used at moneyChat.ts:961 and :505). So higher tiers get a better model AND more memory/data.",
+  "otherNotes": "Free users effectively can only chat with Echo from the dedicated Money Chat screen; the floating Echo button on Budget/Pulse/Savings/Subscriptions/Wallet is locked for them (askEchoPerScreen:false, tiers.ts:60) and opens the paywall. Note the metered AI cap stays finite even at Premium (1500/mo) by design — cost-metered features never go unlimited (tiers.ts:9-12,29-31). The reset is monthly for AI calls (there is no daily-chat concept); the only daily concept is the optional check-in greeting, which doesn't consume the quota.",
+  "sources": [
+   "src/services/moneyChat.ts:1-7 (Echo definition)",
+   "src/services/moneyChat.ts:38-39, :66-74 (system prompt, confirmation model)",
+   "src/services/moneyChat.ts:920-922 (out-of-calls gate + error string)",
+   "src/services/moneyChat.ts:1030, :1100 (incrementAiCalls — one per successful reply)",
+   "src/services/moneyChat.ts:1013, :1087 (model passed to Gemini call)",
+   "src/services/moneyChat.ts:505, :961 (chatTxnDetail / chatMemoryBubbles by tier)",
+   "src/services/chatModel.ts:15-30 (CHAT_MODEL_SMART/LITE, chatModelForTier, hasSmartAi)",
+   "src/constants/tiers.ts:51-92 (TIER_LIMITS: free maxAiCallsPerMonth 30, askEchoPerScreen, chatMemoryBubbles, chatTxnDetail)",
+   "src/store/premiumStore.ts:71-117 (incrementAiCalls, resetAiCallsIfNeeded monthly, canUseAI)",
+   "src/components/wallet/EchoFab.tsx:169-217 (Echo FAB, lock badge, paywall gate at :171 and :187)",
+   "src/screens/personal/MoneyChat.tsx:1294-1298, :1958-1962 (showError inline banner), :2647-2657 (separate history paywall)",
+   "EchoFab rendered on: BudgetPlanning, FinancialPulse, SavingsTracker, SubscriptionList, WalletManagement (grep)",
+   "scripts/test-tier-limits.ts:29 (free Echo = 30/mo assertion)"
+  ]
+ },
+ "engine": {
+  "howLimitCheckWorks": "Every gate reads the ACTIVE tier's row in the single TIER_LIMITS table (src/constants/tiers.ts:51-92) through two pure helpers: canCreate(tier, key, currentCount) = currentCount < TIER_LIMITS[tier][key] (tiers.ts:116-118), and remainingOf() for display (tiers.ts:121-124). Infinity = unlimited (Pro/Premium count caps). The premium store exposes thin wrappers: count gates like canCreateWallet/Budget/Goal/SavingsAccount/SharedSub take the caller-supplied current count (premiumStore.ts:92-96); metered gates canScanReceipt()/canUseAI() first run resetXIfNeeded() then canCreate() against the stored counter (premiumStore.ts:99-117); capability gates hasCloudBackup/hasAskEcho/hasPhotoIcon just return the boolean from TIER_LIMITS (premiumStore.ts:120-122). Enforcement is 100% client-side — no server check; the paywall itself enforces nothing, it only reads FREE_TIER limits for its copy (PaywallModal.tsx:100-110). When billing is unconfigured, Continue calls applyTier() to unlock locally (PaywallModal.tsx:370-372).",
+  "whatHappensAtLimit": "Three behaviors, not one. (1) COUNT quota gates (wallets/budgets/savings/goals/subs) HARD-block: caller does if(!canCreateX(n)){ setPaywallVisible(true); return; } so the create is prevented and the paywall shown (Goals.tsx:810-813, SavingsTracker.tsx:224, BudgetPlanning.tsx:649). (2) METERED quota gates degrade gracefully, not block: out of scans falls back to free on-device OCR and STILL scans, paywalling only when out AND no local OCR exists (ReceiptScanner.tsx:336-340); out of AI credits silently falls back to the offline reader or returns null with no paywall (NoteEditor.tsx:465-483, spendingMirror.ts:168, checkinMessage.ts:29, reportNarrative.ts:40, intentEngine.ts:486). (3) CAPABILITY gates hard-block + paywall the whole feature (backup toggle AccountScreen.tsx:136/273; photo icons CommitmentForm.tsx:447, CategoryManager.tsx:90, Goals.tsx:1521). So: count + capability = hard block; scans/AI = soft degrade. Legacy over-cap users are grandfathered — blocked from creating MORE, never deleted (tiers.ts:110-118).",
+  "usageCountersTracked": [
+   "scanCount (+ scanResetDate) — persisted, premiumStore.ts:31-32",
+   "aiCallsCount (+ aiCallsResetDate) — persisted, premiumStore.ts:33-34",
+   "tier + subscribedAt — persisted entitlement state, premiumStore.ts:29-30",
+   "wallets/budgets/savings/goals/shared-subs counts — NOT stored in premium store; live length passed by the caller's own domain store at check time (e.g. Goals.tsx:810, BudgetPlanning.tsx:649)"
+  ],
+  "howIncremented": "incrementScanCount() does scanCount+1 (premiumStore.ts:52-55) and is called ONLY after a successful CLOUD scan — local OCR fallback never burns quota (ReceiptScanner.tsx:349-350, DebtTracking.tsx:2681/2763, CostManagement.tsx:333). incrementAiCalls() runs resetAiCallsIfNeeded() then aiCallsCount+1 (premiumStore.ts:71-75), called after each real AI call (moneyChat.ts:1030/1100, playbookAI.ts:628/729/777, queryEngine.ts:397, intentEngine.ts:507, collectzParser.ts:111). Count gates have no increment step — they read live object counts, so creating/deleting a wallet/goal/etc. moves the number naturally.",
+  "whenCountersReset": "Metered counters reset monthly and LAZILY (no timer). resetScanCountIfNeeded() / resetAiCallsIfNeeded() (premiumStore.ts:57-69, 77-89) compare the stored reset date against startOfMonth(now); if it is an earlier month or invalid, they zero the count and stamp the current month start. They fire at the top of every read gate (canScanReceipt :99-102, canUseAI :109-112, getRemainingScans :104-107, getRemainingAiCalls :114-117) and inside incrementAiCalls, so the reset happens on the first access in a new calendar month. onRehydrateStorage backfills a valid reset date on load (premiumStore.ts:143-144). Count gates (wallets etc.) never reset — they track real objects.",
+  "capabilityGatesVsQuotaGates": "CAPABILITY gates = a feature entirely locked until a tier that owns it, expressed as booleans in TIER_LIMITS: cloudBackup, askEchoPerScreen, photoCategoryIcons, plus exportData/googleDocsSync (tiers.ts:44-48). Free tier has these OFF (tiers.ts:59-60); there is no 'X free' — the whole feature is unavailable, surfaced via hasCloudBackup/hasAskEcho/hasPhotoIcon (premiumStore.ts:120-122). In the paywall these carry freeLimit:0 (backup, PaywallModal.tsx:108) which suppresses the quota trigger line (PaywallModal.tsx:334-336). QUOTA gates = X free then pay: numeric caps in TIER_LIMITS — count caps (maxWallets/Budgets/Savings/Goals/SharedSubs, unlimited=Infinity at Pro+) and metered caps (maxScansPerMonth, maxAiCallsPerMonth, which stay FINITE even on Premium because each costs real compute, tiers.ts:9-12). Their paywall copy shows 'used {currentUsage} of {freeLimit} {unit}' (PaywallModal.tsx:100-110, 337-344).",
+  "hardVsSoftGate": "HARD gate (action blocked): all COUNT quota gates and all CAPABILITY gates — caller checks the boolean, shows the paywall, and returns without doing the action (Goals.tsx:810-813, SavingsTracker.tsx:224, BudgetPlanning.tsx:649, AccountScreen.tsx:136/273, CommitmentForm.tsx:447). SOFT gate (action proceeds, degraded): the two COST-METERED resources. Scans fall back to free on-device OCR and still complete, paywalling only when no local OCR is available (ReceiptScanner.tsx:336-340). AI silently drops to the offline/rule-based path or returns null with no paywall at all (NoteEditor.tsx:465-483, spendingMirror.ts:168, checkinMessage.ts:29, reportNarrative.ts:40, queryEngine.ts:390, intentEngine.ts:486). So 'out of AI/scans' rarely blocks the user — it just quietly stops spending cloud tokens.",
+  "storeFiles": [
+   "src/store/premiumStore.ts",
+   "src/constants/tiers.ts",
+   "src/constants/premium.ts",
+   "src/components/common/PaywallModal.tsx",
+   "src/types/index.ts (PremiumState interface, ~1541-1559)"
+  ],
+  "sources": [
+   "src/store/premiumStore.ts:16-20 (enforceBackupEntitlement on downgrade)",
+   "src/store/premiumStore.ts:29-34 (persisted state incl. scanCount/aiCallsCount)",
+   "src/store/premiumStore.ts:52-89 (increment + monthly lazy reset)",
+   "src/store/premiumStore.ts:92-122 (count/metered/capability gate wrappers)",
+   "src/store/premiumStore.ts:127-147 (persist partialize + rehydrate)",
+   "src/constants/tiers.ts:51-92 (TIER_LIMITS single source of truth)",
+   "src/constants/tiers.ts:116-124 (canCreate / remainingOf)",
+   "src/components/common/PaywallModal.tsx:75-110 (PaywallFeature, buildFeatureConfig, freeLimit)",
+   "src/components/common/PaywallModal.tsx:334-344 (currentUsage/freeLimit trigger line, capability-gate suppression)",
+   "src/components/common/PaywallModal.tsx:359-373 (handleContinue local-unlock seam)",
+   "src/screens/shared/ReceiptScanner.tsx:334-350 (scan soft-gate + increment)",
+   "src/screens/notes/NoteEditor.tsx:465-483 (AI soft-gate fallback)",
+   "src/screens/personal/Goals.tsx:810-813 (count hard-gate)",
+   "src/screens/shared/AccountScreen.tsx:136,273 (cloud-backup capability hard-gate)"
+  ]
+ },
+ "worth": {
+  "items": [
+   {
+    "topic": "No free trial exists",
+    "detail": "There is no introductory free trial anywhere. The app has a permanently-free tier (people can use a limited version forever), but the paywall goes straight to a paid purchase — the fine print under the price just says 'cancel anytime' (src/i18n/en.ts:2854), and the plan definitions have no trial/intro-price field at all (src/components/common/PaywallModal.tsx:139-161). Don't tell users or the stores there's a 'X days free'."
+   },
+   {
+    "topic": "Billing is NOT switched on yet (dormant)",
+    "detail": "Real charging is currently OFF. It stays off until RevenueCat API keys are added (src/services/billing.ts:4-14, isBillingConfigured at billing.ts:30-32). Right now when someone taps 'Continue' on the paywall, the app just grants them the tier locally for FREE — no card is charged (src/components/common/PaywallModal.tsx:359-373). Going live is a 5-step checklist (create products in App Store Connect + Play Console, set keys, rebuild) listed in billing.ts:8-14. Until that's done, nobody is actually paying."
+   },
+   {
+    "topic": "Which store bills the customer — Apple or Google, never us",
+    "detail": "Potraces never touches the customer's card. On iPhones the charge goes to the customer's Apple ID / App Store account; on Android it goes to their Google Play account. The paywall automatically shows the right store's name per device (src/components/common/PaywallModal.tsx:243-247; the labels 'Apple ID'/'App Store account' vs 'Google Play account'/'Google Play subscriptions' at src/i18n/en.ts:2904-2907). The billing engine underneath is a service called RevenueCat that sits between us and the two stores (src/services/billing.ts:1-14)."
+   },
+   {
+    "topic": "How 'Restore Purchases' works",
+    "detail": "It asks the store 'has this person already paid?' and, if so, re-activates their plan on the current device — useful after reinstalling or switching phones (src/services/billing.ts:77-82). Apple requires this button to be reachable OUTSIDE the paywall, so it appears in three places: the paywall itself, the Settings subscription card, and the My Plan screen (src/components/common/PaywallModal.tsx:375-382, src/components/settings/SubscriptionCard.tsx:54-62, src/screens/shared/MyPlan.tsx:82-90). While billing is dormant it does nothing (safe no-op)."
+   },
+   {
+    "topic": "The actual prices shown",
+    "detail": "Three paid tiers (all in Malaysian Ringgit): Basic RM7.99/mo (monthly only), Pro RM14/mo or RM120/yr (works out to ~RM10/mo, badged −28%), Premium RM25/mo or RM200/yr (~RM16.67/mo, badged −33%) — src/components/common/PaywallModal.tsx:139-161. Basic is the deliberately-pushed 'hero': pre-selected and tagged BEST VALUE (PaywallModal.tsx:319-321, 455-459)."
+   },
+   {
+    "topic": "Monthly vs yearly switching",
+    "detail": "A monthly/yearly toggle sits at the top of the plan cards (src/components/common/PaywallModal.tsx:447-453). Important quirk: Basic has NO yearly option — it's monthly-only, and picking 'yearly' still shows it at RM7.99/mo (src/components/common/PaywallModal.tsx:144, src/services/billingMap.ts:18-22). Only Pro and Premium have a real yearly discount. Monthly is shown first on purpose, so the RM7.99→RM14 gap stays visible and yearly Pro (~RM10/mo) doesn't undercut Basic (PaywallModal.tsx:319-320)."
+   },
+   {
+    "topic": "The discount claims are kept honest",
+    "detail": "Every struck-through 'was' price on the yearly cards is a real 12× the monthly price, so the '−28%'/'−33%' savings badges aren't inflated (comment at src/components/common/PaywallModal.tsx:116-117; e.g. Pro yearly shows was RM14 → RM10, PaywallModal.tsx:151)."
+   },
+   {
+    "topic": "Cancel and grace behavior",
+    "detail": "Cancelling is done in the store (App Store / Google Play), and must be at least 24 hours before the period ends to avoid the next charge (src/i18n/en.ts:2897, 2902-2903). Cancelling stops FUTURE charges but the plan stays active until the end of the already-paid period — it doesn't cut them off immediately (src/i18n/en.ts:2898). The subscription auto-renews at the shown price until cancelled (en.ts:2895)."
+   },
+   {
+    "topic": "The in-app 'Cancel subscription' button is not a real store cancel",
+    "detail": "The 'Cancel subscription' link in Settings just flips the account back to Free locally and shows a toast (src/components/settings/SubscriptionCard.tsx:73-93 calling unsubscribe in src/store/premiumStore.ts:46-50). It does NOT cancel the actual store subscription — the customer must still do that in Apple/Google. Once real billing is live, RevenueCat re-syncs the true entitlement on next launch (src/services/billing.ts:41-51), so a locally 'cancelled' but still-store-active user would get their tier restored. Worth aligning this UX before launch."
+   },
+   {
+    "topic": "What 'cloud backup' gating means",
+    "detail": "This is the single biggest reason to pay. On the FREE tier data lives on that one phone only — the app literally warns 'Saved on this phone only — lose it, lose everything' (src/i18n/en.ts:396-397, cloudBackup:false at src/constants/tiers.ts:60). Every PAID tier (Basic and up) turns on cloud backup so money data survives across devices (tiers.ts:70,80,90; paywall promise 'your tracks, never lost' at src/components/common/PaywallModal.tsx:507-512, src/i18n/en.ts:2859-2860). If someone downgrades or their subscription lapses, syncing is automatically switched off so they can't keep backing up for free (src/store/premiumStore.ts:9-20)."
+   },
+   {
+    "topic": "Upgrade/downgrade ladder and 'highest tier wins'",
+    "detail": "The ladder is Free → Basic → Pro → Premium; the My Plan screen offers one step up at a time and Premium has nowhere higher to go (src/screens/shared/MyPlan.tsx:31-35). If a customer somehow holds overlapping entitlements, the app always grants the HIGHEST one they're entitled to, so a legacy/overlapping purchase can never accidentally downgrade a Premium user (src/services/billingMap.ts:43-49)."
+   },
+   {
+    "topic": "Downgrading never deletes a customer's data (grandfathering)",
+    "detail": "If someone drops to a lower tier while over the new limit (e.g. they had 6 wallets, the new cap is fewer), nothing is deleted — they simply can't create MORE until they're back under the cap (src/constants/tiers.ts:110-118, comment at src/store/premiumStore.ts:22-25). Safe, non-destructive downgrades."
+   },
+   {
+    "topic": "What free users actually get",
+    "detail": "Free tier caps: 7 wallets, 5 budgets, 3 savings accounts, 3 goals, 3 shared subscriptions, 15 receipt scans/month, 30 AI chat calls/month, and NO cloud backup, NO 'Ask Echo' AI on screens, NO photo category icons (src/constants/tiers.ts:52-61). The scan and AI monthly counters reset at the start of each calendar month (src/store/premiumStore.ts:57-89)."
+   },
+   {
+    "topic": "Scans and AI stay capped even on Premium (margin protection)",
+    "detail": "Unlike wallets/budgets/goals — which become unlimited from Pro upward because they're cheap to give — receipt scans and AI calls always have a ceiling, even on Premium (Premium = 300 scans + 1500 AI calls/month), because each one costs us real compute money (src/constants/tiers.ts:10-12, 87). This is a deliberate cost-control decision, not an oversight."
+   },
+   {
+    "topic": "Once live, plans stay in sync automatically",
+    "detail": "When billing is turned on, the app listens to RevenueCat and keeps the customer's tier matched to their true, current entitlement across renewals, expiries, refunds, and other devices — no manual reconciliation needed (src/services/billing.ts:34-52). If a refund or expiry happens, the app downgrades them automatically."
+   }
+  ],
+  "sources": [
+   "src/components/settings/SubscriptionCard.tsx",
+   "src/screens/shared/MyPlan.tsx",
+   "src/services/billing.ts",
+   "src/services/billingMap.ts",
+   "src/components/common/PaywallModal.tsx",
+   "src/store/premiumStore.ts",
+   "src/constants/tiers.ts",
+   "src/constants/premium.ts",
+   "src/i18n/en.ts"
+  ]
+ },
+ "screens": [
+  {
+   "screen": "Money Chat (Echo)",
+   "file": "src/screens/personal/MoneyChat.tsx",
+   "hasLimit": true,
+   "limitedResource": "Saved chat history bubbles (TIER_LIMITS.chatSavedBubbles) — the total number of readable message bubbles kept across the current chat plus archived conversations. NOTE: sending messages to Echo is NOT gated in this screen; only reading old saved history is capped.",
+   "freeLimit": "50 bubbles on free tier (tiers.ts:58, chatSavedBubbles: 50). Basic 150, Pro 600, Premium 3000.",
+   "whenPaywallShows": "User opens the History drawer and taps a LOCKED conversation — one whose bubbles fall beyond the tier's chatSavedBubbles cap (oldest archived conversations lock first). MoneyChat.tsx:2607-2608 (`if (locked) { lightTap(); setHistoryPaywallVisible(true); return; }`) sets the flag; PaywallModal renders at 2647-2657 with feature=\"ai\". lockedConversationIds computed at 1003-1013. The paywall does NOT appear when sending/chatting.",
+   "hardOrSoft": "hybrid (mostly soft). Nothing is deleted and chatting/current-session history is never blocked — the oldest archived over-cap conversations simply LOCK and upgrading unlocks them in place (comment 2601-2602). Reading a locked conversation is hard-blocked behind an upsell PaywallModal (opens the paywall instead of the chat). Deleting your own locked conversations always works (2625-2634), so the gate is read-only.",
+   "afterLimitBehavior": "The oldest archived conversations beyond the 50-bubble free cap are marked locked (shown dimmed with a lock icon in History, 2606/2627). They are never deleted. Tapping one opens PaywallModal (feature=\"ai\", reason=t.settings.chatLockedHint) instead of loading the chat; upgrading the tier unlocks them instantly. Sending new messages to Echo and viewing the live/current chat remain fully available — only reading over-cap archived history is gated.",
+   "whenPaywallShows_dup": "tap locked archived conversation in History drawer",
+   "usesEcho": true,
+   "usesEcho_note": "Yes — this is the Echo AI chat surface. sendChatMessageStream (services/moneyChat) streams replies token-by-token (1938-1947), parses [ACTION] blocks into pending entries, and generates a daily check-in via generateCheckinMessage. Voice input, image/receipt attach, and streaming caret are all AI-driven.",
+   "notes": "The only enforced gate in this file is the saved-history read cap (chatSavedBubbles). The AI-send caps that exist in tiers.ts (maxAiCallsPerMonth: free 30, basic 300, etc.) are NOT checked in this screen — handleSend/executeSend (1967-1988) call sendChatMessageStream unconditionally with no usage/limit guard. chatMemoryBubbles and chatTxnDetail caps are also defined in tiers.ts but applied elsewhere (in the moneyChat service that assembles context), not in this screen. PaywallModal is rendered inline as an asOverlay (2648-2656) because it sits inside the History RN Modal."
+  },
+  {
+   "screen": "Echo FAB (floating Echo button)",
+   "file": "src/components/wallet/EchoFab.tsx",
+   "hasLimit": true,
+   "limitedResource": "Ask Echo per screen — opening the floating Echo AI assistant from the wallet/screen FAB. Gated by TIER_LIMITS[tier].askEchoPerScreen.",
+   "freeLimit": "0 — this is a boolean capability gate, not a numeric quota. Free tier has askEchoPerScreen=false (fully locked); basic/pro/premium have it =true (allowed). No count/quota exists here.",
+   "whenPaywallShows": "On tapping the Echo FAB (line 171) or its greeting bubble (line 187) on the free tier.",
+   "afterLimitBehavior": "Hard-blocked. When askEchoPerScreen is false, the onPress handler calls onShowPaywall() and returns early (lines 171, 187), so the Echo sheet never opens. A lock badge is also rendered on the FAB (lines 177-181). There is no soft/degraded access — no Echo without upgrading.",
+   "hardOrSoft": "hard",
+   "usesEcho": true,
+   "notes": "No numeric free limit exists on this surface. The gate is a boolean feature flag (askEchoPerScreen, defined in src/constants/tiers.ts:47, values at lines 60/70/80/90), not a per-month/per-count usage limit. It does NOT read a premiumStore usage counter and does NOT import a PaywallModal component directly — instead it receives tier (PremiumTier) and an onShowPaywall callback via props (EchoFab.tsx:37-38) and delegates the paywall display to the parent. The component only renders the FAB + greeting bubble and, on tap, either opens Echo (onOpenSheet) or triggers the upsell. Numeric AI usage caps (e.g. maxAiCallsPerMonth) live in the tier table but are NOT enforced in this file."
+  },
+  {
+   "screen": "Receipt Scanner",
+   "file": "src/screens/shared/ReceiptScanner.tsx",
+   "hasLimit": true,
+   "limitedResource": "AI receipt scans per month (TIER_LIMITS[tier].maxScansPerMonth)",
+   "freeLimit": "15 scans/month (free tier; basic 75, pro 150, premium 300 — src/constants/tiers.ts:57)",
+   "whenPaywallShows": "When the user taps \"Extract with AI\" (handleExtract, ReceiptScanner.tsx:332), the monthly AI-scan quota is exhausted (!canScanReceipt(), :336), AND the build ships no on-device OCR fallback (!isLocalOcrAvailable(), :337). Only then does setPaywallVisible(true) fire (:338-340). PaywallModal renders at :1231-1236 with feature=\"scan\".",
+   "hardOrSoft": "conditional — soft in the shipping path, hard as fallback. Out of scans + local OCR available = SOFT: it silently downgrades to the free on-device reader (scanReceipt localOnly:true, :343) which never burns quota (incrementScanCount skipped for local scans, :350) and still records the receipt. Out of scans + NO local OCR = HARD: extraction is blocked and the paywall is shown (return at :340). Either way, manual entry + save is never gated — the extracted-form/save path works with no AI call.",
+   "afterLimitBehavior": "After 15 AI scans in the month: canScanReceipt() returns false. Tapping Extract either (a) falls back to the free on-device OCR reader with an \"double-check the numbers\" toast (t.settings.scanLimitBackupUsed, :362) if isLocalOcrAvailable(), or (b) opens PaywallModal(feature=\"scan\") and aborts if no local OCR. The hero counter switches from \"N scans remaining\" to a backup/\"0 scans remaining\" label (:672-680). Quota resets monthly via resetScanCountIfNeeded (premiumStore.ts:100).",
+   "usesEcho": true,
+   "usesPaywall": "true",
+   "usesEchoOrAI": "true",
+   "notes": "Uses AI (cloud receipt extraction via scanReceipt / \"Extract with AI\", cpu icon) but NOT Echo chat/MoneyChat — no Echo greeting or chat surface here. The AI it meters is maxScansPerMonth, a separate bucket from maxAiCallsPerMonth (Echo). incrementScanCount (:350) only fires for real cloud AI scans; on-device/local OCR scans are free and un-metered. currentUsage shown to PaywallModal = maxScansPerMonth - getRemainingScans() (:1235). Store methods: usePremiumStore canScanReceipt/getRemainingScans/incrementScanCount (:134-136), backed by canCreate/remainingOf against TIER_LIMITS. Screen purpose: capture (camera/gallery/document-scanner) -> AI or on-device extraction -> editable review form (total, vendor, items, category, LHDN tax-relief category, wallet) -> save as transaction + receipt with wallet deduction, or save draft / split bill. Offline scans are queued (enqueueReceipt) rather than paywalled."
+  },
+  {
+   "screen": "Wallet Management",
+   "file": "src/screens/personal/WalletManagement.tsx",
+   "hasLimit": true,
+   "limitedResource": "Wallets (count) — two dimensions: total wallets AND wallets-per-type (bank/ewallet/credit/cash). Separately, Echo AI access is tier-gated on this screen.",
+   "freeLimit": "Free tier: 7 total wallets (maxWallets) and 2 wallets per type (maxWalletsPerType). Echo per-screen (askEchoPerScreen) = false on free. From TIER_LIMITS.free in src/constants/tiers.ts:53-60.",
+   "hasLimit_note": "n/a",
+   "hardOrSoft": "hard",
+   "afterLimitBehavior": "Hard-blocked. The create action does not proceed; instead PaywallModal (imported line 40, rendered lines 1748-1752) is shown as an upsell. There is no soft/allow-with-upsell path — the wallet is never created past the cap.",
+   "whenPaywallShows": "Three triggers: (1) Total cap — tapping the + Add FAB (onPress={handleAdd}, line 1567) when wallets.length already >= 7. handleAdd (851-859) checks canCreateWallet(wallets.length); if false it calls setPaywallVisible(true) and returns BEFORE opening the add modal. (2) Per-type cap — in the add flow, choosing a wallet type that already has 2 of that type: handleChooseTypeAndPreset (861-889) calls canAddType (834-838, count < maxWalletsPerType); if false and the per-type limit is finite it calls showTypePaywall (840-849), which sets a reason string (\"You've reached your 2 free {type} slots. You can still add ...\"), closes the add modal, and opens the paywall. The details step is never reached. (3) Echo gate — tapping the header Echo (zap) button when echoHidden, on a tier where askEchoPerScreen is false (line 691: if (!TIER_LIMITS[tier].askEchoPerScreen) { setPaywallVisible(true); return; }); the EchoFab also fires onShowPaywall -> setPaywallVisible(true) (line 1774).",
+   "whenPaywallShows_note": "n/a",
+   "usesEcho": true,
+   "usesEchoDetail": "Yes, heavily. Draggable Echo FAB (EchoFab, line 1756) with a greeting bubble and psychology-driven wallet chips, an EchoInlineChat sheet (line 1783), and handleAskEchoWallet (610) which builds a wallet snapshot (buildWalletSnapshot, 544-604) and navigates to MoneyChat with walletContext/walletQuestion. Echo access itself is paywalled on free (askEchoPerScreen=false).",
+   "usesEcho_summary": "Echo assistant (FAB + greeting + inline chat + MoneyChat handoff) is present and used to reason over the wallet snapshot.",
+   "paywallImport": "PaywallModal imported at line 40; premiumStore used via usePremiumStore for canCreateWallet (232) and tier (233); tier limits from TIER_LIMITS/FREE_TIER (constants/premium.ts -> constants/tiers.ts).",
+   "notes": "Gate math lives in canCreate() (tiers.ts:116-118): currentCount < TIER_LIMITS[tier][key], so it blocks the NEXT create and never deletes existing wallets over the cap. Two distinct paywall paths for wallets (total via canCreateWallet in handleAdd; per-type via canAddType/showTypePaywall) plus an Echo-access paywall. All are hard blocks with a PaywallModal upsell; the screen itself does not process payment (PaywallModal handles the upsell UI). paywallReason state (245) carries the per-type message; the total-cap and Echo paths open the paywall with no custom reason."
+  },
+  {
+   "screen": "Budget Planning",
+   "file": "src/screens/personal/BudgetPlanning.tsx",
+   "hasLimit": true,
+   "limitedResource": "Number of budget categories (maxBudgets). Also a secondary AI/Echo entitlement gate (askEchoPerScreen).",
+   "freeLimit": "5 budgets on the free tier (src/constants/tiers.ts:54 maxBudgets: 5). Basic = 10, Pro/Premium = unlimited. Free tier also has askEchoPerScreen: false (tiers.ts:60), so the per-screen Ask-Echo button is gated for free users.",
+   "afterLimitBehavior": "Hard-blocked. Once budgets.length reaches the tier cap, openAddModal (BudgetPlanning.tsx:648-655) short-circuits: canCreateBudget(budgets.length) returns false, so it calls setPaywallVisible(true) and returns WITHOUT opening the add/edit sheet. The user cannot create the 6th budget on free without upgrading; only the PaywallModal (feature=\"budget\", currentUsage=budgets.length, line 2441-2446) is shown. The Echo AI button behaves the same way: setEchoPaywallVisible(true) with no fallback action for free users.",
+   "hardOrSoft": "hard",
+   "whenPaywallShows": "On tapping the add-budget action once at/over the cap (5 budgets free); separately on tapping the header Echo zap button on the free tier.",
+   "usesEcho": true,
+   "notes": "Two PaywallModal instances on this screen: feature=\"budget\" (paywallVisible, line 2441) gated by canCreateBudget → canCreate(tier,'maxBudgets',count) in premiumStore.ts:93; and feature=\"ai\" (echoPaywallVisible, line 2449) gated by TIER_LIMITS[tier].askEchoPerScreen (checked at line 1260). Imports PaywallModal (line 62), usePremiumStore (67), TIER_LIMITS (56). Echo/AI is used heavily: buildBudgetSnapshot (968) + handleAskEcho (1026) navigate to MoneyChat with a budget-context snapshot; there are psychology-based suggestedPrompts chips (794) and greeting chips. Playbook sub-feature is disabled behind PLAYBOOK_COMING_SOON=true (line 119); its separate limits (maxActivePlaybooks 2, maxSavedPlaybooks 5) are enforced via showToast, not PaywallModal, and are not currently reachable."
+  },
+  {
+   "screen": "Budget Planner Sheet",
+   "file": "src/components/common/BudgetPlannerSheet.tsx",
+   "hasLimit": true,
+   "limitedResource": "budgets (maxBudgets count cap)",
+   "freeLimit": "5",
+   "hardOrSoft": "soft",
+   "afterLimitBehavior": "Partial-allow with upsell. On Apply, it creates new budgets only up to the free-tier remaining allowance (remainingOf(tier,'maxBudgets',budgets.length), line 233; loop stops at created>=remaining, line 238) and applies all updates to existing budgets uncapped. If the plan wanted more NEW budgets than the cap allowed (created < buildable.length, line 252), the excess new budgets are silently not created and PaywallModal is shown to upsell the rest. The action is not hard-blocked; it does what the cap permits, then upsells the overflow.",
+   "whenPaywallShows": "After the user taps Apply/Create; only when the plan would create more new budgets than the free-tier remaining allowance of 5.",
+   "usesEcho": true,
+   "usesAI": "false",
+   "notes": "Paywall wiring: imports PaywallModal (line 19), remainingOf from constants/premium (line 21), tier from usePremiumStore (line 70). Free maxBudgets=5 (src/constants/tiers.ts:54). PaywallModal rendered via BottomSheet overlay slot with feature=\"budget\", currentUsage={budgets.length} (lines 361-369), gated by paywallVisible state set in commitApply (line 254). ECHO/AI nuance: the sheet is branded as Echo's budget plan, but the plan is produced by a DETERMINISTIC engine computeBudgetPlan (services/budgetPlan.ts -> recommendModel + tailorPlan + critic; imported line 32, called lines 123-138). No LLM/AI network call is made in this file, so it is not metered against maxAiCallsPerMonth here. Also has a separate non-paywall consent dialog (confirmVisible, lines 317-357) for overwriting a returning user's existing budget limits, which is unrelated to the subscription gate."
+  },
+  {
+   "screen": "Goals",
+   "file": "src/screens/personal/Goals.tsx",
+   "hasLimit": true,
+   "limitedResource": "Number of goals (maxGoals count cap). Secondary tier gates on this screen: Echo/AI per-goal coaching (askEchoPerScreen) and photo goal icons (photoCategoryIcons).",
+   "freeLimit": "3 goals on the free tier (tiers.ts:54, free.maxGoals: 3). Basic = 6, Pro/Premium = unlimited (Infinity). Echo AI coaching and photo icons are OFF on free entirely (basic+ only).",
+   "whenPaywallShows": "Tapping the add-goal FAB while already at the tier's goal cap (3 on free) triggers the primary paywall via openAddGoal (Goals.tsx:809-812).",
+   "afterLimitBehavior": "Hard-blocked. At 3 goals, openAddGoal returns early (return; at line 812) so the create-goal sheet never opens — the paywall is the only outcome, no allow-with-upsell. The Echo/AI and photo-icon gates likewise return early and block the action, showing their PaywallModal instead.",
+   "hardOrSoft": "hard",
+   "usesEcho": true,
+   "notes": "Three PaywallModal gates on this screen, all hard-blocking: (1) goal-count cap feature=\"goals\" — free=3 goals, blocks creation of the 4th; (2) feature=\"ai\" — Echo per-goal coaching chat (EchoInlineChat, rendered line 2704), blocked for free users; (3) feature=\"backup\" reason=itemPhotoIcons — photo goal icons, basic+ only. Limits sourced from usePremiumStore.canCreateGoal (premiumStore.ts:95, which calls canCreate against TIER_LIMITS) and TIER_LIMITS in src/constants/tiers.ts (re-exported via src/constants/premium.ts). Note the screen's computeGoalInsight text (lines 235-385) is LOCAL, non-AI computation; only EchoInlineChat is a real AI call and is the thing gated by the AI paywall."
+  },
+  {
+   "screen": "Savings Tracker",
+   "file": "src/screens/personal/SavingsTracker.tsx",
+   "hasLimit": true,
+   "limitedResource": "Savings/investment accounts (TIER_LIMITS[tier].maxSavingsAccounts). Note: a SECOND, separate gate on the same screen limits Echo/AI access (askEchoPerScreen boolean).",
+   "freeLimit": "3 savings accounts on the free tier (tiers.ts:54 → free maxSavingsAccounts: 3). Basic = 6, Pro/Premium = Infinity. Caveat: the in-file comments at SavingsTracker.tsx:397-398 say \"x/5\", but that is a stale comment — the actual displayed/enforced number comes from TIER_LIMITS and is 3 for free. The Echo/AI gate is a boolean, not a count (free askEchoPerScreen: false).",
+   "whenPaywallShows": "Two distinct triggers feed one shared PaywallModal (SavingsTracker.tsx:479), disambiguated by paywallFeature state ('savings' vs 'ai'):\n1. ACCOUNT CAP ('savings'): openAdd() at line 222-226 checks canCreateSavingsAccount(accounts.length); if at cap it calls showAccountPaywall() (line 219) instead of opening the add sheet. openAdd is reached by: the empty-state \"add savings\" action (line 296), the coaching-nudge action for runway/addedThisMonth (line 235), and the Add FAB. When at cap the FAB itself is swapped to a LOCK icon whose onPress is showAccountPaywall directly (line 430; the normal plus FAB at 429 is hidden via `!atAccountCap`).\n2. AI/ECHO GATE ('ai'): openEcho() at line 212-217 checks `!TIER_LIMITS[tier].askEchoPerScreen` and, if false (free tier), sets paywallFeature='ai' and opens the paywall BEFORE opening chat. Same gate fires from the EchoFab onShowPaywall prop (line 463). Reached by the coaching-band \"ask Echo\" button, the nudge concentration action, and the greeting-bubble/FAB.",
+   "afterLimitBehavior": "Hard-blocked with an upsell. For the account cap: the Add/Edit sheet never opens once accounts.length >= limit — atAccountCap (line 123) hides the plus FAB and shows a lock FAB, and openAdd short-circuits to the paywall. The plan-capacity label (line 399) shows \"count/limit\" (e.g. 3/3) to telegraph the cap. Creation is impossible until upgrade; PaywallModal is shown as the upsell. Same hard-block for Echo: chat won't open on free tier, paywall shown instead.",
+   "hardOrSoft": "hard",
+   "usesEcho": true,
+   "usesLimit": "true",
+   "hardOrSoftDetail": "hard",
+   "notes": "Echo/AI is used heavily: EchoInlineChat chat modal (line 472), draggable EchoFab with greeting bubble (line 448), a rule-based coaching band + nudges (selectNudge/coachingEngine, lines 196-198) with \"ask Echo\" chips, and a per-screen AI snapshot builder (buildSavingsSnapshot, line 210). PaywallModal is imported (line 23) and rendered once (line 479) with feature={paywallFeature} and currentUsage set to accounts.length only for the 'savings' feature. Gating comes from usePremiumStore: tier, canCreateSavingsAccount (lines 90-91) and TIER_LIMITS/askEchoPerScreen. Screen itself: splits accounts into Savings vs Investments tabs, shows a portfolio hero (total value, sparkline, time-range %, invested/growth/return), allocation breakdown, sortable account cards, update-value/history sheets, and a \"ways to grow\" investment promo."
+  },
+  {
+   "screen": "Savings Sheets",
+   "file": "src/screens/personal/savings/SavingsSheets.tsx",
+   "hasLimit": false,
+   "limitedResource": "none — no count/usage limit on savings accounts, snapshots, or any resource in this file",
+   "freeLimit": "none",
+   "whenPaywallShows": "N/A (no paywall)",
+   "afterLimitBehavior": "N/A — there is no limit. Adding/editing accounts, recording value snapshots (deposit/dividend/withdrawal/manual), and viewing history are all ungated. The save() handlers (lines 165-215, 524-541) validate only name/amount fields and call onAdd/onUpdate/onSnapshot unconditionally.",
+   "hardOrSoft": "soft",
+   "usesEcho": true,
+   "notes": "The ONLY premium touchpoint is usePremiumStore (imported line 18) used solely as a capability check: canUseAI() at line 299 gates a BACKGROUND AI auto-rate lookup. When the user picks a savings type with a published rate (ASB, Tabung Haji, ESA, GO+, FD), the field is instantly filled from a static local registry; only if canUseAI() is true does it additionally fire fetchLatestInstrumentRate (aiService, line 17/301) to refresh with Echo's latest figure. Line 303 comment explicitly states this does NOT spend the user's Echo quota. If canUseAI() is false, the AI refresh is silently skipped and the registry figure stays — no PaywallModal, no upsell, no toast, no block. So Echo/AI IS used here but as a silent, quota-free enhancement, not a gated/limited action. This file (AddEditAccountSheet, UpdateValueSheet, HistorySheet) enforces NO subscription limit or paywall on the savings resource itself. Any account-count paywall, if it exists, would live in the parent SavingsTracker screen, not here."
+  },
+  {
+   "screen": "Subscriptions / Bills list",
+   "file": "src/screens/personal/SubscriptionList.tsx",
+   "hasLimit": false,
+   "limitedResource": "None on subscriptions/bills. There is NO cap on the number of subscriptions/bills a user can create on any tier. The only tier-gated feature on this screen is the Echo AI assistant (gated by TIER_LIMITS[tier].askEchoPerScreen), not the subscription count.",
+   "freeLimit": "N/A for subscriptions — unlimited on all tiers. The Echo gate is a boolean tier capability (askEchoPerScreen), not a numeric free-count, so there is no \"N free then pay\" number for bills.",
+   "afterLimitBehavior": "Adding subscriptions/bills is never blocked or capped — the Add FAB (line 2817-2819) opens CommitmentForm and addSubscription (line 1007) runs unconditionally regardless of tier. The only limit-like behavior is the Echo AI gate: when a tier lacks askEchoPerScreen, tapping any Echo entry point opens PaywallModal (feature=\"ai\") instead of opening Echo, and the Echo FAB shows a lock badge (line 2852-2856).",
+   "hardOrSoft": "For subscriptions/bills: no gate at all (neither hard nor soft). For the Echo AI feature: hard-blocked with an upsell — the tap is intercepted (return early) and PaywallModal is shown; Echo is not delivered.",
+   "whenPaywallShows": "Only for Echo/AI, never for adding bills. PaywallModal (feature=\"ai\") opens when a user whose tier lacks TIER_LIMITS[tier].askEchoPerScreen taps an Echo entry point: header zap button (setPaywallVisible(true), line 501), the draggable Echo FAB (line 2842), or the Echo greeting bubble (line 2864).",
+   "usesEcho": true,
+   "usesPaywall": "true",
+   "hardOrSoftDetail": "PaywallModal imported at line 65; usePremiumStore/TIER_LIMITS at lines 61-62; tier read at line 474; paywallVisible state at line 477.",
+   "notes": "Screen = \"Subscriptions / Bills list\". It manages recurring commitments in three tabs (bills / payments / subs), with mark-as-paid (with double-pay/early/not-started guards), per-cycle overdue arrears rows, installment tracking + completion celebration, category breakdown, recurring-spend auto-detection from transactions, swipe-to-pay/edit, and a full Echo AI assistant (insight, snapshot, chips, inline chat). The ONLY paywall is the AI/Echo gate via askEchoPerScreen; the subscription/bill count itself is unlimited on all tiers. subscriptions.length>0 guards (lines 497, 2816) merely hide the FAB/header-Echo when the list is empty — not a paywall."
+  },
+  {
+   "screen": "Commitment Form (add bill)",
+   "file": "src/components/commitments/CommitmentForm.tsx",
+   "hasLimit": false,
+   "limitedResource": "No count/quota limit on commitments (bills) — unlimited. The only gated resource is photo icons: using a gallery photo as the bill's icon, a Basic+ premium perk.",
+   "freeLimit": "n/a for commitment count (unlimited). Photo icon is a binary feature lock: free tier = not allowed (hasPhotoIcon()===false); glyph icons and name-initial fallback are always free.",
+   "whenPaywallShows": "Tapping \"choose from gallery\" in the icon picker when hasPhotoIcon() is false (pickImage, line 447-450).",
+   "afterLimitBehavior": "Feature-level upsell, not a create block. The gallery picker is hard-blocked until upgrade — PaywallModal renders as an overlay (feature=\"backup\", reason=t.paywall.itemPhotoIcons, lines 1394-1404), plus a lock glyph beside \"choose from gallery\" (line 1224). The commitment itself still saves fine with a glyph/initial icon. handleSave (lines 528-587) has zero premium checks and calls onSave directly.",
+   "hardOrSoft": "soft for add-bill (no gate); hard for the photo-icon feature only",
+   "usesEcho": true,
+   "notes": "Imports PaywallModal (line 30) and usePremiumStore (line 32). Only premium check is s.hasPhotoIcon() (line 296 subscribe, line 447 getState in pickImage). PaywallModal shown as asOverlay inside this form's own Modal window (nested Modal would render behind on iOS), lines 1394-1404. Echo/AI: uses Echo branding — quick-capture card \"let echo fill it in\" (lines 613-641); handleQuickFill (line 504) calls parseCommitmentDraft from manglishParser to prefill the form from one natural-language line. This is a LOCAL rule/regex parser, NOT an LLM/network call. No subscription/commitment count limit exists anywhere in this file."
+  },
+  {
+   "screen": "Debt Tracking / Splits",
+   "file": "src/screens/shared/DebtTracking.tsx",
+   "hasLimit": true,
+   "limitedResource": "Shared subscriptions (organizing/creating a shared recurring sub) is the PaywallModal-gated resource. A second, separate quota also lives on this screen: cloud receipt scans per month (used by the item-based split scanner).",
+   "freeLimit": "Shared subscriptions: free tier = 3 (basic 6, pro/premium ∞) via TIER_LIMITS.free.maxSharedSubs (src/constants/tiers.ts:54). Receipt scans: free tier = 15/month via maxScansPerMonth (src/constants/tiers.ts:57).",
+   "whenPaywallShows": "Creating a 4th shared subscription on the free tier (already have 3).",
+   "hardOrSoft": "Hard block (both limits). Shared-sub cap: handleOpenSharedForm returns early and opens PaywallModal upsell instead of the create form — no way to proceed without upgrading. Scan quota: handleScanReceipt (2650-2655) and processReceiptImage (2727-2732) check !premium.canScanReceipt() and, if over quota, show a scanLimitReached error toast and return — hard-blocked, but with only an error toast, no PaywallModal upsell.",
+   "afterLimitBehavior": "Shared subscriptions: after hitting 3 on free, tapping 'add shared sub' is blocked and the PaywallModal (feature='subscription') is shown as an upgrade upsell instead of the form (DebtTracking.tsx:3384-3386, 7533-7538). Editing existing subs still works. Receipt scans: after 15 cloud scans in the month, the scan action is blocked with a t.debts.scanLimitReached error toast and no upsell modal (DebtTracking.tsx:2652-2655, 2729-2732). Note offline on-device OCR is quota-free and never increments the count (2680-2681, 2762-2763), so only cloud scans count toward the 15.",
+   "usesEcho": true,
+   "notes": "Two independent premium gates on this screen. (1) PRIMARY PAYWALL: shared-subscription creation cap, enforced via usePremiumStore.canCreateSharedSub -> canCreate(tier,'maxSharedSubs',count) (premiumStore.ts:96; tiers.ts:116). Free=3. Hard-blocks with PaywallModal upsell (feature='subscription'). Imports: usePremiumStore (line 55), PaywallModal (line 137); state sharedPaywallVisible (line 395). (2) SCAN QUOTA: canScanReceipt -> canCreate(tier,'maxScansPerMonth',scanCount) (premiumStore.ts:99-101). Free=15/month. Hard-blocks with an error TOAST only (no PaywallModal). incrementScanCount only fires for cloud scans; local on-device OCR is free. AI/ECHO: This screen does NOT use the Echo conversational assistant. It DOES use AI — cloud receipt OCR via scanReceipt() and scanReceiptStream() (used by handleScanReceipt at 2650 and processReceiptImage at 2727) to auto-extract line items for item-based bill splitting. That AI feature is what the scan quota meters. So 'uses Echo/AI' = true for AI (receipt OCR), false for the Echo chat assistant specifically."
+  },
+  {
+   "screen": "Category Manager",
+   "file": "src/components/common/CategoryManager.tsx",
+   "hasLimit": true,
+   "limitedResource": "Photo/gallery icons for categories (using a picked gallery image as the category icon, stored as \"photo:<uri>\"). This is a Basic+ premium perk. The number of custom categories is NOT limited — free users can add unlimited custom categories (openNew/addCustomCategory, lines 120-128, 143-149, no gate).",
+   "freeLimit": "No numeric quota. Photo icons are a binary feature gate, fully locked on the free tier (0 allowed) and unlocked by premium via usePremiumStore.hasPhotoIcon() (lines 82, 90). Custom-category count itself is unlimited on free.",
+   "whenPaywallShows": "Tapping the gallery/photo icon tile in the Add/Edit Category sub-modal while on the free tier (handlePickPhotoIcon, lines 88-93).",
+   "hardOrSoft": "hard",
+   "afterLimitBehavior": "Hard-blocked for the photo-icon feature: handlePickPhotoIcon returns early (line 92) so the gallery picker never opens, and PaywallModal is shown as an upsell instead. The user cannot set a photo icon without upgrading. The rest of the screen (adding/editing/deleting/reordering categories, choosing from the built-in glyph icons and color swatches) stays fully usable on free tier — only the gallery-photo icon is gated.",
+   "usesEcho": false,
+   "notes": "This screen is the category management dialog (list of expense/income/investment categories with drag-to-reorder, plus an Add/Edit sub-modal for name, icon, color). It DOES have a paywall gate but it is a feature gate, not a count/subscription quota. The only paywalled action is using a gallery photo as a category icon (usePremiumStore.hasPhotoIcon(), lines 82/90). Note the PaywallModal is passed feature=\"backup\" (line 444) even though the reason string is itemPhotoIcons (line 445) — the \"backup\" feature key appears to be the tier bucket that includes photo icons. No Echo/AI is used on this screen."
+  },
+  {
+   "screen": "Note Editor",
+   "file": "src/screens/notes/NoteEditor.tsx",
+   "hasLimit": true,
+   "limitedResource": "Echo cloud AI extraction calls — gated by usePremiumStore.canUseAI() / aiCallsCount, which reads maxAiCallsPerMonth. (A secondary voice-transcription 'quota' path exists but voice is on-device and never emits quota.)",
+   "freeLimit": "30 cloud AI calls/month on the free tier (tiers.ts:57 maxAiCallsPerMonth; basic 300, pro 800, premium 1500). NoteEditor never hardcodes the number — it comes from the tier row via canUseAI().",
+   "hasOrSoft": "soft",
+   "hardOrSoft": "soft",
+   "whenPaywallShows": "Only via the useEffect at NoteEditor.tsx:437-439: `if (voiceError?.kind === 'quota') setShowPaywall(true)` — i.e. when the voice recorder reports a quota error. Since voice recognition is on-device (useVoiceInput.ts:44 comment: 'quota' is unused by on-device recognition), this trigger effectively never fires. Critically, hitting the AI EXTRACTION limit does NOT open the paywall.",
+   "afterLimitBehavior": "Graceful degradation, not a block. In handleExtract (lines 460-496): it computes willUseCloud = isGeminiAvailable() && premium.canUseAI(). If out of monthly AI credits (canUseAI() false) or offline, it does NOT block or show the paywall — it falls back to the offline on-device reader (lines 468-484), showing a one-time notice (settings.notesOfflineNoticeSeen) then running runExtract() with the less-accurate local parser. Extraction still completes. The PaywallModal (feature=\"ai\", currentUsage=aiCallsCount) is rendered at lines 1171-1176 but is only toggled by the (dead) voice-quota effect.",
+   "usesEcho": true,
+   "whenPaywallShows2": "voiceError.kind === 'quota'",
+   "usesAI": "true",
+   "notes": "Screen is a rich-text note editor whose headline feature is Echo AI: it uses useIntentEngine (classify/retry/confirmExtraction), EchoExtractingLoader, and an extraction-confirmation modal to pull expenses/income/subscriptions/debts/savings out of free-typed notes (also voice-to-text via useVoiceInput). So it DOES use Echo/AI heavily. On limits: it is subscription-aware (imports PaywallModal, checks canUseAI, passes aiCallsCount), the cloud-AI free limit is 30 calls/month, but the enforcement is SOFT — exceeding it silently downgrades to the offline parser rather than paywalling or blocking. The only wired paywall trigger (voice 'quota') is effectively unreachable because voice is on-device. Net: an AI limit exists and is tracked, but no user action on this screen is hard-blocked or paywalled in practice."
+  },
+  {
+   "screen": "Financial Pulse",
+   "file": "src/screens/personal/FinancialPulse.tsx",
+   "hasLimit": true,
+   "limitedResource": "Echo AI assistant access (the `askEchoPerScreen` capability flag). This is the ONLY paywall gate on the screen. It is NOT a numeric subscription/create-count limit — Financial Pulse is a read-only analytics surface and gates no wallets/budgets/subs/goals creation.",
+   "freeLimit": "0 for the free tier. Free tier has `askEchoPerScreen: false` (tiers.ts:60), so free users get zero per-screen Echo access here — the FAB is shown with a lock badge and never opens the chat. Paid tiers (basic/pro/premium) have `askEchoPerScreen: true` and unlock it. (Separately, all AI is metered by `maxAiCallsPerMonth` — 30/free, 300/basic, 800/pro, 1500/premium — but that monthly cap is not enforced by this screen; this screen only checks the boolean capability.)",
+   "whenPaywallShows": "Free-tier user taps the Echo FAB or greeting bubble (EchoFab.tsx:171/:187 → onShowPaywall → PaywallModal feature=\"ai\" at FinancialPulse.tsx:922).",
+   "afterLimitBehavior": "Hard-blocked. For free tier the Echo chat never opens on this screen — tapping the FAB/greeting routes straight to the AI paywall modal (feature=\"ai\") and returns early. It is an upsell modal, but the underlying feature (Echo AI) is fully inaccessible to free users here; there is no free-N-uses-then-block metering on this screen.",
+   "hardOrSoft": "hard",
+   "usesEcho": true,
+   "notes": "Imports: `usePremiumStore` (line 28), `PaywallModal` (line 59). Reads `tier = usePremiumStore((s) => s.tier)` (line 88). Paywall state `paywallOpen` (line 326); `EchoFab` gets `tier`/`onShowPaywall` (lines 903-904); `EchoInlineChat` renders the actual chat (lines 911-921); `PaywallModal ... feature=\"ai\"` (line 922). The screen does NOT itself read/enforce any usage counter, `canCreate`, `maxAiCallsPerMonth`, or subscription-count cap — the whole gate is delegated to EchoFab and is the boolean `askEchoPerScreen` capability. USES ECHO/AI: yes, heavily — draggable Echo FAB with a pulse-aware greeting, inline Echo chat, and a rich `contextSnapshot` (score, safe-to-spend, month pace, 14-day bills, runway, debt, unusual spend) fed to the model (lines 367-390, 917). What the screen does: a forward-looking \"money vitals\" dashboard — WHOOP-style pulse score with ECG wave and week-delta, tappable component breakdown (budget/saving/bills/rhythm/goals), daily safe-to-spend dial, scrubbable month-pace chart, 14-day bills-runway strip checked against liquid wallet money, safety-net/debt tiles, a heads-up anomaly feed, and a quiet-days streak. All money math is pure via utils/pulseMath.ts and utils/insights.ts."
+  },
+  {
+   "screen": "Collectz Home",
+   "file": "src/screens/personal/collectz/CollectzHome.tsx",
+   "hasLimit": true,
+   "limitedResource": "Collectz session CREATIONS per calendar week (organizing). Joining someone else's session by code is never gated.",
+   "freeLimit": "2 per calendar week on free tier (maxCollectzSessionsPerWeek: 2, tiers.ts:56). Basic = 4/week, Pro/Premium = unlimited (Infinity).",
+   "whenPaywallShows": "Tapping the create FAB when the weekly creation count is already at the tier cap.",
+   "afterLimitBehavior": "Hard-blocked. On hitting the cap, onCreatePress returns immediately after opening the paywall (return at line 354), so navigation.navigate('CollectzCreate') (line 356) never executes — the create action does not proceed. The PaywallModal is the upsell shown in place of it. (Exceptions: a non-auth count failure fails open and allows create, lines 349-350; a signed-out auth error shows a sign-in Alert instead of the paywall, lines 339-347.)",
+   "hardOrSoft": "hard",
+   "usesEcho": false,
+   "notes": "Uses premiumStore via usePremiumStore.getState().tier (line 330) and the shared canCreate() helper (tiers.ts:116-118, count < limit). Screen otherwise lists sessions I organize + sessions I joined, a join-by-code box (submitJoinCode/handlePaste), archive toggling, and progress bars. No Echo/AI on this screen. gitStatus/permission note: MCP Gmail/Calendar/Drive connectors are unauthorized but irrelevant to this task."
+  },
+  {
+   "screen": "Playbooks",
+   "file": "src/store/playbookStore.ts",
+   "hasLimit": true,
+   "limitedResource": "Playbooks — two separate caps: (1) number of ACTIVE playbooks, and (2) number of SAVED/CLOSED (archived) playbooks.",
+   "freeLimit": "2 active playbooks; 5 saved/closed playbooks on free tier.",
+   "hardOrSoft": "hard",
+   "afterLimitBehavior": "Hard-blocked at the store boundary. createPlaybook returns null (no playbook created) once activeCount >= 2 (line 82). closePlaybook returns false (playbook stays open, not archived) once closedCount >= tier's maxSavedPlaybooks (line 133). reopenPlaybook returns false once active cap of 2 is reached (line 148). No creation/close/reopen happens; there is no soft \"allow-with-upsell\" path in this store.",
+   "usesEcho": true,
+   "hasLimitField": "true",
+   "whenPaywallShows": "This store does NOT import or render PaywallModal (it's a Zustand store, not a screen). It enforces the gate by returning null/false; the calling screen decides whether to show a paywall. Trigger points: (a) creating a 3rd active playbook when 2 are already active → createPlaybook returns null (line 78-104, gate line 81-82); (b) archiving/closing a playbook when 5 are already closed on free tier → closePlaybook returns false (line 129-143, gate line 131-133); (c) reopening an archived playbook when 2 are already active → reopenPlaybook returns false (line 145-158, gate line 148). canCreatePlaybook() (line 287) exposes the create-gate state to the UI.",
+   "usesEchoField": "true",
+   "notes": "LIMIT SOURCE: imports usePremiumStore (line 6) and FREE_TIER/TIER_LIMITS from constants/premium (line 9, re-exported from constants/tiers.ts). NO PaywallModal import here — gating is enforced at the store level via null/false returns, not by showing UI.\n\nACTIVE-PLAYBOOK CAP is NOT tier-aware: it hardcodes FREE_TIER.maxActivePlaybooks (lines 82, 148, 287). In tiers.ts maxActivePlaybooks = 2 for ALL tiers (free/basic/pro/premium), so even paying users are capped at 2 active playbooks — the \"free limit\" of 2 never lifts with upgrade.\n\nSAVED-PLAYBOOK CAP IS tier-aware: closePlaybook reads the live tier via usePremiumStore.getState().tier and checks TIER_LIMITS[tier].maxSavedPlaybooks (lines 131-133). Values: free = 5, basic/pro/premium = Infinity. So archiving beyond 5 is the actual upgrade lever; free users must upgrade (or delete) to archive a 6th.\n\nECHO/AI: Yes — the store is Echo's memory layer for Playbooks. EchoMemoryEntry (lines 11-18) holds planSummary, keyAdvice[], chatHighlights[]; saveEchoSession (lines 25, 70-76) prepends a session and keeps a rolling max of 6 entries (\"6 months of history\"). NOTE: this store does NOT meter AI calls — maxAiCallsPerMonth is defined in tiers.ts but is checked at the Echo call site / premiumStore, not here.\n\nWHAT THE STORE DOES: a Zustand+AsyncStorage-persisted store for \"Playbooks\" — money-plan envelopes created from a source amount, with allocations→line-item notebook (add/update/toggle-paid), single-owner expense linking to transactions (setExpenseLink strips a txId from all other playbooks), obligation coverage toggles, lifecycle (create/close/reopen/delete with orphaned-link cleanup), and Echo session memory. deletePlaybook also cleans orphaned playbookLinks off transactions (money-safe, playbookLinks-only). Rehydration auto-migrates legacy allocations into category-linked line items to kill a double-count source."
+  },
+  {
+   "screen": "Seller: Cost Management",
+   "file": "src/screens/seller/CostManagement.tsx",
+   "hasLimit": true,
+   "limitedResource": "AI receipt scanning — the metered `maxScansPerMonth` quota in premiumStore. Only cloud OCR scans count; on-device/local OCR results are quota-free (CostManagement.tsx:333 `if (!isLocalScanResult(parsed)) incrementScanCount()`).",
+   "freeLimit": "15 cloud receipt scans per month on the free tier (constants/tiers.ts:57 `maxScansPerMonth: 15`). Resets monthly. Nothing else on this screen is gated.",
+   "whenPaywallShows": "When the user taps the Scan-receipt pill (camera or gallery) inside the Log/Edit Cost modal. `handleScanReceipt` calls `canScanReceipt()` FIRST (CostManagement.tsx:311); if the monthly quota is already exhausted it does `setPaywallVisible(true); return;` (lines 312-313) BEFORE opening the image picker or running OCR. The PaywallModal is rendered at CostManagement.tsx:1486 with `feature=\"scan\"` and `currentUsage={TIER_LIMITS[tier].maxScansPerMonth - getRemainingScans()}` (line 1490).",
+   "afterLimitBehavior": "Hard-blocked for the scan action only: once the 15/month quota is spent, tapping Scan short-circuits with an early return and shows the PaywallModal instead of scanning. Manual cost logging is completely unaffected — the user can still type description/amount/category/vendor and save costs with no gate. So the screen as a whole is never blocked; only the AI-scan shortcut is.",
+   "hardOrSoft": "hard (for the scan feature) — early-return block + PaywallModal, no bypass. Soft in the broader sense that the screen's core job (logging costs manually) stays fully usable.",
+   "usesEcho": false,
+   "usesAI": "true",
+   "notes": "Uses AI but NOT Echo. AI = receipt OCR via `scanSellerReceipt` (CostManagement.tsx:331) which auto-fills amount/description/vendor/category from the photo; cloud scans consume the maxScansPerMonth quota, local on-device OCR does not. It does NOT use Echo/Ask-Echo chat (no `canUseAI`/`hasAskEcho` usage here; those exist in premiumStore but aren't imported by this screen). premiumStore hooks used: `canScanReceipt`, `incrementScanCount`, `getRemainingScans`, `tier` (lines 89-92). PaywallModal imported at line 42. The screen's non-gated features: manual cost entry, edit/delete costs, recurring costs, cost templates, per-season cost budget bar, category breakdown/filter/search, and transfer-to-personal of untransferred paid orders."
+  },
+  {
+   "screen": "My Plan (subscription screen)",
+   "file": "src/screens/shared/MyPlan.tsx",
+   "hasLimit": false,
+   "limitedResource": "None enforced on this screen. It only DISPLAYS usage vs. per-tier caps for 8 resources (TIER_LIMITS[tier], line 55): wallets/maxWallets, budgets, savings accounts, goals, shared subs, Collectz sessions-per-week, scans-per-month, AI calls-per-month (lines 144-152). This is a read-only usage/plan screen, not a gate.",
+   "freeLimit": "N/A — no single free number. Caps are pulled from TIER_LIMITS[the user's OWN tier] (line 55), so the numbers shown depend on the tier (free/basic/pro/premium). Meters render \"used/cap\", \"—\" while loading, or \"Unlimited\" when cap===Infinity (lines 100-111). Actual numeric caps live in constants/tiers.ts, not this file.",
+   "whenPaywallShows": "Only when the user taps the \"Upgrade to {nextTier}\" NeuButton (onPress -> setPaywallOpen(true), line 160), shown only if a next tier exists (line 156). Nothing on this screen creates a resource, so no limit-hit ever fires the paywall.",
+   "afterLimitBehavior": "No limit is enforced here, so nothing is blocked. When the upgrade button is tapped it opens PaywallModal (feature=\"ai\", lines 189-193) as an upsell. The screen itself never prevents any action — it has no create/add flow to block.",
+   "hardOrSoft": "soft",
+   "usesEcho": false,
+   "usesPaywall": "true",
+   "notes": "This is a usage-dashboard + upsell screen, NOT an enforcement gate. It imports PaywallModal (line 14) and reads usePremiumStore for tier/scanCount/aiCallsCount (lines 46-48) plus counts from wallet/personal/savings/debt/Collectz stores, but it never calls canScanReceipt/canUseAI or blocks anything — it only shows meters (renderUsageRow, lines 94-122) comparing counts to TIER_LIMITS[tier]. On mount it rolls monthly windows forward via resetScanCountIfNeeded/resetAiCallsIfNeeded so stale counts aren't shown (lines 60-64). The PaywallModal is hard-coded feature=\"ai\" regardless of context (line 192). It DISPLAYS an AI-calls-this-month meter (aiCallsCount vs limits.maxAiCallsPerMonth, line 152) but does NOT use Echo/AI itself. Reached via \"See my plan\" in SubscriptionCard (header comment lines 1-4). Also offers Restore Purchases + Terms/Privacy links (lines 166-186)."
+  },
+  {
+   "screen": "Account Screen",
+   "file": "src/screens/shared/AccountScreen.tsx",
+   "hasLimit": true,
+   "limitedResource": "Cloud Backup (personal cloud sync) — gated by premiumStore.hasCloudBackup()",
+   "freeLimit": "0 — cloud backup is entirely a paid feature, not a countable N-item allowance. Free tier gets zero cloud backup; it's a binary paid/not-paid gate (feature=\"backup\" on PaywallModal, line 715).",
+   "hardOrSoft": "hard (with a secondary soft path) — the toggle gate HARD-blocks: switch never enables, PaywallModal opens. The sign-in auto-enable path is SOFT: auth still succeeds, backup just stays off with a toast upsell.",
+   "whenPaywallShows": "Flipping the Cloud Backup Switch to ON as a non-premium user (handleToggleBackup, line 269-273).",
+   "afterLimitBehavior": "Toggle path (line 273): the switch does NOT enable sync — it early-returns and pops the PaywallModal. The action is hard-blocked; no backup runs until the user upgrades. Separately, on any sign-in (Google/Apple/phone), enableBackup() (line 121) re-checks hasCloudBackup() at line 136; a free user is NOT silently enabled — it shows a soft toast (tr.settings.cloudBackupPaid, line 142) and returns without enabling sync. The nudge toast is suppressed for grandfathered free users whose sync is already on, and when arriving from the QuickLogSetup gate (lines 139-143). Turning backup OFF (line 277) is a native Alert with cancel / turn-off / turn-off-and-wipe — not a paywall.",
+   "usesEcho": false,
+   "notes": "Imports usePremiumStore (line 33) and PaywallModal (line 34). Gate helper is premiumStore.hasCloudBackup() — checked in exactly two places: handleToggleBackup line 273 (hard paywall modal) and enableBackup line 136 (soft toast on sign-in). PaywallModal rendered once at line 712 controlled by backupPaywallVisible state (declared line 92), feature=\"backup\". No Echo/AI usage anywhere in this screen. The screen's core job: signed-out = a trust-building Google/Apple/phone+password sign-in for \"back up your money\"; signed-in = profile card, the Cloud Backup toggle + last-synced + Sync Now, sign out, and permanent server-side account delete. It is NOT a countable/metered limit (no \"N free wallets/transactions\" style cap) — cloud backup is simply a paid feature the free tier cannot turn on."
+  },
+  {
+   "screen": "Subscription Card (settings)",
+   "file": "src/components/settings/SubscriptionCard.tsx",
+   "hasLimit": false,
+   "limitedResource": "None enforced here. It only DISPLAYS the free-tier usage counters: monthly receipt scans (scanCount/15, line 103) and monthly AI calls (aiCallsCount/30, line 110). Values from FREE_TIER in src/constants/tiers.ts:57.",
+   "freeLimit": "Displayed (not enforced) free-tier caps: 15 scans/month (FREE_TIER.maxScansPerMonth) and 30 AI calls/month (FREE_TIER.maxAiCallsPerMonth), tiers.ts:57. This card renders them as \"count/limit\" but performs no comparison and no block.",
+   "whenPaywallShows": "Only on explicit user taps — never auto-triggered by exceeding a limit. Two entry points, both opening PaywallModal (lines 173-177): (1) the \"not backed up\" cloud-off notice -> openPaywall('backup') (line 118); (2) the Upgrade NeuButton CTA -> openPaywall('ai') (line 129).",
+   "afterLimitBehavior": "Nothing changes in this card when a limit is hit — it has no enforcement branch. The counters simply read e.g. \"15/15\"; no action is blocked and the paywall does not auto-open. Actual scan/AI gating lives in the feature flows elsewhere, not here. This is a status + manual-upsell surface only.",
+   "hardOrSoft": "soft — upsell only, no gate. The card never hard-blocks anything; it displays usage and offers optional \"See plans\"/upgrade CTAs that the user must tap to open the paywall.",
+   "usesEcho": false,
+   "usesPaywall": "true",
+   "notes": "Display + upsell card shared by Personal and Business settings hubs. Reads premiumStore (tier, scanCount, aiCallsCount; lines 47-50) purely to render state. If tier !== 'free' it shows a Premium badge + Cancel Subscription row with a confirm Alert calling unsubscribe() (lines 67-94); if free it shows the two usage rows, a \"not backed up\" upsell notice, and an Upgrade CTA (lines 96-132). Also has a \"See my plan\" row -> navigate('MyPlan') (line 140) where the full per-tier caps live, plus Restore Purchases and Terms/Privacy legal links (lines 150-170). No canCreate/limit comparison, no hard block, no AI invocation in this file."
+  }
+ ],
+ "gaps": {
+  "planSummary": "The monetization plan (docs/MONETIZATION_AND_PRICING.md, \"FEATURE-GATING LOCKED 2026-07-18\") defines a 4-tier model (free / Basic RM7.99 / Pro RM14 / Premium RM25) with two gate families: COUNT caps that go unlimited at Pro+ (wallets, wallets-per-type, budgets, savings, goals, shared subs) and COST-METERED caps that stay finite even at Premium (Echo AI calls/mo, receipt scans/mo, statement/CSV imports/mo), plus three capability gates off on free (Ask-Echo-per-screen, cloud backup, photo category icons) and a business/storefront + Premium-payments layer. Implementation status: the personal count caps and the Echo/scan/photo/backup/Ask-Echo gates are all BUILT and wired to src/constants/tiers.ts (TIER_LIMITS), matching the plan numbers. NOT built to plan: the statement/CSV import ladder (only a flat server-side free cap exists, no paid ladder, no client paywall), all seller/storefront paid perks (badge removal, templates, analytics, AI business insights — paywall copy only or unbuilt), the Premium payment tools (Tap-to-Pay, QR-accept — acknowledged future), and the planned invisible voice/STT minute metering. Meta-gap: no tier actually charges — RevenueCat is scaffolded but dormant (local flag flip). Code also ships two limits NOT in the pricing doc (chatSavedBubbles history lock; Collectz/Playbooks caps).",
+  "sources": [
+   "docs/MONETIZATION_AND_PRICING.md",
+   "PLAN.md",
+   "step2 July.md",
+   "step3 July.md",
+   "docs/echo-planner-critic-plan.md",
+   "docs/budget-models-echo-spec.md",
+   "src/constants/tiers.ts",
+   "supabase/functions/parse-statement/index.ts",
+   "src/screens/personal/ImportFromStatement.tsx",
+   "src/screens/personal/ImportFromCsv.tsx"
+  ],
+  "gaps": [
+   {
+    "area": "Statement / CSV imports per month",
+    "whatWasPlanned": "Metered cap 5 / 25 / 100 / 300 imports per month (free/Basic/Pro/Premium) — a cost-metered gate that stays finite at every tier",
+    "whatExistsToday": "NO tier field for imports in src/constants/tiers.ts. Only a FLAT server-side free cap of 4 (not the planned 5) in supabase/functions/parse-statement/index.ts:22 (MONTHLY_LIMIT=4). ImportFromStatement.tsx just displays 'N imports left' from the server response (line 451-452) and shows no PaywallModal on hitting the cap. ImportFromCsv.tsx is client-side parsing and is fully ungated. The paid ladder (25/100/300) is unbuilt — the edge function knows only the one free number.",
+    "status": "partial",
+    "planSource": "MONETIZATION_AND_PRICING.md:50 (table row 'Statement / CSV imports / mo | 5 | 25 | 100 | 300'); PLAN.md:202 (cap 5/user/month free); step3 July.md:136 (free 5->4 done server-side, paid ladder 25/100/300 UNBUILT)"
+   },
+   {
+    "area": "Remove 'Made with Potraces' badge (seller storefront)",
+    "whatWasPlanned": "Pro (RM14) and Premium can remove the storefront badge; free/Basic keep it — a concrete Pro upgrade reason",
+    "whatExistsToday": "Not gated or built. step3 July.md:137 states seller perks (badge removal, templates, analytics) are 'currently paywall copy only, nothing gated/built behind them.' No tier flag exists for it.",
+    "status": "missing",
+    "planSource": "MONETIZATION_AND_PRICING.md:76,194 ('Remove Made with Potraces | — | — | Pro | Premium'); step3 July.md:137"
+   },
+   {
+    "area": "Store templates + custom colours/logo (seller storefront)",
+    "whatWasPlanned": "Pro+ unlocks storefront templates and custom colours/logo",
+    "whatExistsToday": "Not gated or built — paywall copy only (step3 July.md:137). No entitlement check. Also a TO-BUILD item in the plan itself (storefront feature not shipped).",
+    "status": "missing",
+    "planSource": "MONETIZATION_AND_PRICING.md:77,197 ('templates + custom colours/logo' Pro); MONETIZATION_AND_PRICING.md:217 (storefront TO-BUILD); step3 July.md:137"
+   },
+   {
+    "area": "AI business insights (seller)",
+    "whatWasPlanned": "Pro = preview, Premium = full AI business insights",
+    "whatExistsToday": "Feature not built. The plan lists it under TO-BUILD ('build on the existing Echo/AI engine'). No gate, no screen.",
+    "status": "missing",
+    "planSource": "MONETIZATION_AND_PRICING.md:78,198 (Pro preview / Premium full); MONETIZATION_AND_PRICING.md:218 (TO-BUILD)"
+   },
+   {
+    "area": "Storefront analytics (views/clicks)",
+    "whatWasPlanned": "Premium-only storefront analytics",
+    "whatExistsToday": "Not built — TO-BUILD in the plan; no gate exists.",
+    "status": "missing",
+    "planSource": "MONETIZATION_AND_PRICING.md:79,198 (Premium analytics); MONETIZATION_AND_PRICING.md:219 (TO-BUILD)"
+   },
+   {
+    "area": "Tap-to-Pay (accept cards)",
+    "whatWasPlanned": "Premium-only payment infrastructure — the RM25 anchor",
+    "whatExistsToday": "Not built. Plan explicitly flags it as a FUTURE feature needing Apple entitlement approval and warns Premium must not launch on this promise alone.",
+    "status": "missing",
+    "planSource": "MONETIZATION_AND_PRICING.md:85 (Premium Tap-to-Pay); MONETIZATION_AND_PRICING.md:176-182,220-221 (future / must-fix caveat)"
+   },
+   {
+    "area": "DuitNow QR — accept payments",
+    "whatWasPlanned": "Premium first-access to advanced QR-accept payments",
+    "whatExistsToday": "Not built (future anchor). Only QR generation exists (free); accepting payments is unbuilt.",
+    "status": "missing",
+    "planSource": "MONETIZATION_AND_PRICING.md:86 (Premium QR-accept); MONETIZATION_AND_PRICING.md:221 (TO-BUILD, Premium future anchor)"
+   },
+   {
+    "area": "Priority AI + early access to new tools",
+    "whatWasPlanned": "Premium gets priority AI and early access to new tools",
+    "whatExistsToday": "No concrete gate implemented — aspirational positioning only; nothing in code differentiates Premium here (model routing is Pro=Premium=smart, not Premium-priority).",
+    "status": "missing",
+    "planSource": "MONETIZATION_AND_PRICING.md:87 (Premium priority AI + early access); MONETIZATION_AND_PRICING.md:59-62 (note: no smarter-than-Pro model for Premium today)"
+   },
+   {
+    "area": "Voice / STT minute metering",
+    "whatWasPlanned": "Invisible server-side fair-use ceiling on cloud speech-to-text: free 30 / Basic 120 / Pro 300 / Premium 600 minutes per month (cloud path only, no UI)",
+    "whatExistsToday": "Not built. No voice-minutes field in tiers.ts. Voice transcription runs on-device and is quota-free (NoteEditor: the voice path never emits quota; a PaywallModal wired to a dead voice-quota effect exists but never fires). Listed as a planned to-do.",
+    "status": "missing",
+    "planSource": "step3 July.md:133 (silent voice-minutes metering free 30/basic 120/pro 300/premium 600, cloud only, invisible — to-do)"
+   },
+   {
+    "area": "MoneyChat metered AI wall → paywall",
+    "whatWasPlanned": "Cost-metered AI walls are the highest-converting upsell; hitting the 30/mo Echo cap should surface PaywallModal(feature='ai')",
+    "whatExistsToday": "The 30/mo maxAiCallsPerMonth cap IS enforced in moneyChat.ts (canUseAI), but on hitting it the user gets a plain soft text error ('AI limit reached this month — resets next month!', moneyChat.ts:855), NOT the paywall. Flagged as optional upsell polish, not done.",
+    "status": "different",
+    "planSource": "MONETIZATION_AND_PRICING.md:284-287 (metered walls are highest-converting upsells); step3 July.md:16 (MoneyChat 30-chat wall shows plain text, not PaywallModal — missed conversion, optional)"
+   },
+   {
+    "area": "Billing / RevenueCat (all gates)",
+    "whatWasPlanned": "Wire RevenueCat so tiers actually charge — the #1 blocker; Continue must call purchasePackage() and set tier from a server-verified entitlement",
+    "whatExistsToday": "Scaffolded but DORMANT. billing.ts/billingMap.ts exist and Continue calls purchaseTier when configured, but isBillingConfigured() is false until API keys/products exist, so every path falls back to a LOCAL flag flip (setTier) — nothing charges anyone, and tier can be flipped locally (no server-side entitlement verification).",
+    "status": "partial",
+    "planSource": "MONETIZATION_AND_PRICING.md:3-7,236-242 (billing PLANNING, RevenueCat #1 blocker, verify server-side); step2 July.md:214-216 (Phase 6 scaffolded, dormant until keys+products)"
+   },
+   {
+    "area": "Cloud backup gate integrity",
+    "whatWasPlanned": "Cloud backup is a paid (Basic+) capability; free users cannot enable sync",
+    "whatExistsToday": "Gate exists (hasCloudBackup on AccountScreen). The manual toggle pops the paywall; and the sign-in enableBackup path now re-checks hasCloudBackup() and shows a soft toast instead of silently enabling (fixing the earlier T1 bypass). Residual gap: tier downgrade/cancellation does not force-disable an already-on backup (grandfathered by design, but step3 T2 flagged it as leaking paid sync after cancel).",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:48,118-142 (cloud backup PAID Basic+); step3 July.md:66-75 (T1 sign-in bypass, T2 downgrade-never-off)"
+   },
+   {
+    "area": "Echo AI chat per month",
+    "whatWasPlanned": "30 / 300 / 800 / 1500 Echo calls per month; only user-initiated asks count, background AI is free",
+    "whatExistsToday": "Built: maxAiCallsPerMonth 30/300/800/1500 in tiers.ts, enforced via premiumStore.canUseAI()/incrementAiCalls in moneyChat.ts and NoteEditor (with graceful on-device fallback). Matches plan numbers.",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:46,64-68 (Echo chat/mo + what counts); step2 July.md:202"
+   },
+   {
+    "area": "Ask-Echo on every screen",
+    "whatWasPlanned": "Capability gate: off on free, on at Basic+",
+    "whatExistsToday": "Built: askEchoPerScreen boolean (false on free, true Basic+) enforced on EchoFab, WalletManagement, BudgetPlanning, Goals, SavingsTracker, FinancialPulse.",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:47 (Ask Echo — free '—', Basic+ ✓); step2 July.md:204"
+   },
+   {
+    "area": "Receipt scans per month",
+    "whatWasPlanned": "15 / 75 / 150 / 300 scans per month",
+    "whatExistsToday": "Built: maxScansPerMonth 15/75/150/300 in tiers.ts, enforced via canScanReceipt()/incrementScanCount on ReceiptScanner, seller CostManagement, and DebtTracking split scanner (on-device OCR is quota-free). Matches plan.",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:49 (receipt scans 15/75/150/300)"
+   },
+   {
+    "area": "Photo on category icons",
+    "whatWasPlanned": "Capability gate: off on free, Basic+ only",
+    "whatExistsToday": "Built: photoCategoryIcons boolean via premiumStore.hasPhotoIcon(), enforced in Category Manager (gallery picker blocked, paywall shown). Custom-category count intentionally unlimited.",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:51 (photo on category icons Basic+)"
+   },
+   {
+    "area": "Wallets — total count",
+    "whatWasPlanned": "7 / 13 / ∞ / ∞",
+    "whatExistsToday": "Built: maxWallets 7/13/Infinity/Infinity in tiers.ts, enforced in WalletManagement (hard-block + paywall). Matches plan.",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:52 (wallets 7/13/∞/∞); MONETIZATION_AND_PRICING.md:293 (resolved)"
+   },
+   {
+    "area": "Wallets — per type",
+    "whatWasPlanned": "2 / 4 / ∞ / ∞ per wallet type",
+    "whatExistsToday": "Built: maxWalletsPerType 2/4/Infinity/Infinity, enforced per-type in WalletManagement. Matches plan.",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:53 (per wallet type 2/4/∞/∞); MONETIZATION_AND_PRICING.md:293"
+   },
+   {
+    "area": "Budgets",
+    "whatWasPlanned": "5 / 10 / ∞ / ∞ budget categories",
+    "whatExistsToday": "Built: maxBudgets 5/10/Infinity/Infinity, enforced in BudgetPlanning (hard-block at form-open) and BudgetPlannerSheet (partial-allow-up-to-cap then upsell). Matches plan.",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:54 (budgets 5/10/∞/∞)"
+   },
+   {
+    "area": "Savings accounts",
+    "whatWasPlanned": "3 / 6 / ∞ / ∞",
+    "whatExistsToday": "Built: maxSavingsAccounts 3/6/Infinity/Infinity, enforced in SavingsTracker (hard-block + lock FAB + paywall). Matches plan (a stale 'x/5' code comment is cosmetic).",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:55 (savings 3/6/∞/∞); MONETIZATION_AND_PRICING.md:224 (5->3)"
+   },
+   {
+    "area": "Goals",
+    "whatWasPlanned": "3 / 6 / ∞ / ∞",
+    "whatExistsToday": "Built: maxGoals 3/6/Infinity/Infinity via canCreateGoal, enforced in Goals (early return at form-open + paywall). Replaced the old hardcoded MAX_GOALS=10. Matches plan.",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:56 (goals 3/6/∞/∞); MONETIZATION_AND_PRICING.md:224 (new maxGoals:3); step2 July.md:204"
+   },
+   {
+    "area": "Shared subscriptions",
+    "whatWasPlanned": "3 / 6 / ∞ / ∞",
+    "whatExistsToday": "Built: maxSharedSubs 3/6/Infinity/Infinity via canCreateSharedSub, enforced in DebtTracking (blocks 'add shared sub' + paywall feature='subscription'). Matches plan.",
+    "status": "done",
+    "planSource": "MONETIZATION_AND_PRICING.md:57 (shared subs 3/6/∞/∞); MONETIZATION_AND_PRICING.md:224 (new maxSharedSubs); step2 July.md:204"
+   },
+   {
+    "area": "Saved chat-history bubble lock (chatSavedBubbles)",
+    "whatWasPlanned": "NOT in the pricing doc. The MONETIZATION table has no row for capping readable saved chat history; it only lists Echo calls/mo.",
+    "whatExistsToday": "Built and enforced: chatSavedBubbles 50/150/600/3000 in tiers.ts (owner-locked 2026-07-22) — archived conversations beyond the cap are locked (dimmed + lock icon) in MoneyChat History and open the paywall instead of loading. A real user-facing gate that the pricing plan never documents.",
+    "status": "different",
+    "planSource": "src/constants/tiers.ts:33-37 (chatSavedBubbles, 'owner-locked 2026-07-22'); NOT present in MONETIZATION_AND_PRICING.md §2A table (lines 44-57)"
+   },
+   {
+    "area": "Collectz sessions/week & Playbooks caps",
+    "whatWasPlanned": "NOT in any of the reviewed plan/spec docs (monetization doc, PLAN.md, step2/step3, echo specs).",
+    "whatExistsToday": "Built and enforced: maxCollectzSessionsPerWeek 2/4/∞ (Collectz Home create gate) and maxActivePlaybooks=2 / maxSavedPlaybooks 5/∞ (playbookStore create/close/reopen gates). Real gates with no documented plan source in the reviewed docs.",
+    "status": "different",
+    "planSource": "src/constants/tiers.ts:24-26 (maxCollectzSessionsPerWeek), tiers.ts (maxActivePlaybooks/maxSavedPlaybooks); absent from MONETIZATION_AND_PRICING.md, PLAN.md, step2/step3 July.md"
+   }
+  ]
+ }
+}

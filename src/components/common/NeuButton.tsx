@@ -8,6 +8,7 @@
 import React, { useCallback } from 'react';
 import { Pressable, Text, View, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { TYPOGRAPHY, SPACING, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
@@ -23,6 +24,10 @@ interface Props {
   disabled?: boolean;
   /** Fill color; defaults to the mode accent (olive). */
   color?: string;
+  /** Optional gradient fill (≥2 colors) layered over `color`. Opt-in — omit for the
+   *  standard solid Neu Select. Clips to the pill via its own radius (keeps the neu
+   *  shadow on the button view, per the seam rule). */
+  gradient?: readonly [string, string, ...string[]];
   /** Icon/label color; defaults to onAccent (white). Override when the fill's
    *  contrast ink differs from the app default — e.g. the onboarding night CTA
    *  is gold and needs near-black ink, not white. */
@@ -31,7 +36,7 @@ interface Props {
   style?: StyleProp<ViewStyle>;
 }
 
-const NeuButton: React.FC<Props> = ({ onPress, label, icon, disabled, color, textColor, accessibilityLabel, style }) => {
+const NeuButton: React.FC<Props> = ({ onPress, label, icon, disabled, color, gradient, textColor, accessibilityLabel, style }) => {
   const C = useCalm();
   const neu = useNeu();
   const fill = color ?? C.accent;
@@ -73,6 +78,15 @@ const NeuButton: React.FC<Props> = ({ onPress, label, icon, disabled, color, tex
           style,
         ]}
       >
+        {gradient && (
+          <LinearGradient
+            colors={gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFillObject, { borderRadius: RADIUS.full }]}
+          />
+        )}
         <View style={styles.inner}>
           {icon && <Feather name={icon} size={16} color={fg} />}
           <Text style={[styles.label, { color: fg }]}>{label}</Text>

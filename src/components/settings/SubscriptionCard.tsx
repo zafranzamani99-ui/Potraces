@@ -13,6 +13,11 @@ import { useToast } from '../../context/ToastContext';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 
+// Soft-lift olive for the "See plans" CTA gradient — the button lightens GENTLY toward
+// the BOTTOM (lit from below), never dark and never a bright pop. A muted step above the
+// base olive; local const since light mode has no lighter-olive token.
+const LIFT_OLIVE = '#676A1B';
+
 /**
  * Premium status + free-tier usage card, shared by Personal and Business hubs.
  * Premium (scans / AI) is account-wide, so both modes show it. Wallet/budget
@@ -126,6 +131,7 @@ const SubscriptionCard: React.FC<{ variant: 'personal' | 'business' }> = () => {
             <NeuButton
               label={t.settings.upgradeButton}
               icon="award"
+              gradient={[C.accent, LIFT_OLIVE]}
               onPress={() => openPaywall('ai')}
               style={styles.upgradeBtn}
             />
@@ -254,6 +260,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   myPlanRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.md,

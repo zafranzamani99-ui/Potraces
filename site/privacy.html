@@ -57,6 +57,10 @@
 .doc-end{max-width:var(--maxw-prose);margin:0 auto;padding:0 20px 56px;text-align:center;
   font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-caps);
   text-transform:uppercase;color:var(--ink-45)}
+/* footer legal cross-links (shared with terms.html) */
+.footer--legal .doc-links{margin-top:10px;font-family:var(--font-mono);font-size:var(--text-xs);
+  letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45)}
+.footer--legal .doc-links a{color:var(--sage-text)}
 </style>
 </head>
 <body>
@@ -120,9 +124,10 @@
       </ul>
 
       <h2 id="en-6"><span class="cl" aria-hidden="true">Cl. 6</span>6. AI features</h2>
-      <p>Optional AI features (receipt scanning, note-to-entry, voice input "Echo", and Money Chat) send the text, image, or voice recording you submit — and, for Money Chat, a short summary of your finances — to our third-party AI providers <strong>Anthropic (Claude)</strong> and <strong>Google (Gemini)</strong>, both in the United States, strictly to generate the response. Specifically:</p>
+      <p>Optional AI features (receipt scanning, bank-statement import, note-to-entry, voice input "Echo", and Money Chat) send the text, image, PDF, or voice recording you submit — and, for Money Chat, a short summary of your finances — to our third-party AI provider <strong>Google (Gemini)</strong>, in the United States, strictly to generate the response. (We may use other reputable AI providers as backups, on the same terms.) Specifically:</p>
       <ul>
         <li><strong>Receipt photos</strong> you scan are sent to Google (Gemini) to read the amount, date, and line items.</li>
+        <li><strong>Bank or e-statement files (PDF)</strong> you import are sent to Google (Gemini) to read the transactions inside them; password-protected statements are unlocked only in memory to be read, and are not stored.</li>
         <li><strong>Voice input (Echo)</strong> records audio and uploads the raw recording to Google (Gemini) for transcription. Where your device supports it, on-device speech recognition is used first; the upload is the fallback when on-device recognition isn't available.</li>
       </ul>
       <p>Providers process this data only to return the result and, per their terms, do not retain it to train their models. We do not store prompts, recordings, or responses beyond what you save. The AI gives general information only — not financial, investment, tax, or legal advice. We strip card numbers from receipts before sending. Providers' terms apply — do not submit data you consider highly sensitive.</p>
@@ -134,7 +139,7 @@
       <p>We may update this policy. Material changes will be announced in the app. Minor edits show up here with a new "last updated" date.</p>
 
       <h2 id="en-9"><span class="cl" aria-hidden="true">Cl. 9</span>9. Contact</h2>
-      <p>Email: <a href="mailto:jejakbaki.app@gmail.com">jejakbaki.app@gmail.com</a></p>
+      <p>Email: <a href="mailto:support@jejakbaki.my">support@jejakbaki.my</a></p>
     </div>
     <p class="doc-end" aria-hidden="true">End of document</p>
   </section>
@@ -185,9 +190,10 @@
       </ul>
 
       <h2 id="ms-6"><span class="cl" aria-hidden="true">Fs. 6</span>6. Ciri AI</h2>
-      <p>Ciri AI pilihan (imbasan resit, nota-ke-entri, input suara "Echo", dan Money Chat) menghantar teks, imej, atau rakaman suara yang anda masukkan — dan, untuk Money Chat, ringkasan ringkas kewangan anda — kepada pembekal AI pihak ketiga kami <strong>Anthropic (Claude)</strong> dan <strong>Google (Gemini)</strong>, kedua-duanya di Amerika Syarikat, secara ketat hanya untuk menjana respons. Secara khusus:</p>
+      <p>Ciri AI pilihan (imbasan resit, import penyata bank, nota-ke-entri, input suara "Echo", dan Money Chat) menghantar teks, imej, PDF, atau rakaman suara yang anda masukkan — dan, untuk Money Chat, ringkasan ringkas kewangan anda — kepada pembekal AI pihak ketiga kami <strong>Google (Gemini)</strong>, di Amerika Syarikat, secara ketat hanya untuk menjana respons. (Kami mungkin menggunakan pembekal AI bereputasi lain sebagai sandaran, atas terma yang sama.) Secara khusus:</p>
       <ul>
         <li><strong>Gambar resit</strong> yang anda imbas dihantar ke Google (Gemini) untuk membaca jumlah, tarikh, dan butiran barisan.</li>
+        <li><strong>Fail penyata bank atau e-penyata (PDF)</strong> yang anda import dihantar ke Google (Gemini) untuk membaca transaksi di dalamnya; penyata yang dilindungi kata laluan dibuka hanya dalam memori untuk dibaca, dan tidak disimpan.</li>
         <li><strong>Input suara (Echo)</strong> merakam audio dan memuat naik rakaman mentah ke Google (Gemini) untuk transkripsi. Jika peranti anda menyokongnya, pengecaman suara atas-peranti digunakan dahulu; muat naik hanyalah sandaran apabila pengecaman atas-peranti tidak tersedia.</li>
       </ul>
       <p>Pembekal memproses data ini hanya untuk memulangkan hasil dan, mengikut syarat mereka, tidak menyimpannya untuk melatih model mereka. Kami tidak menyimpan arahan, rakaman, atau respons melebihi apa yang anda simpan. AI memberi maklumat umum sahaja — bukan nasihat kewangan, pelaburan, cukai, atau undang-undang. Kami membuang nombor kad daripada resit sebelum menghantar. Syarat pembekal terpakai — jangan masukkan data yang anda anggap sangat sensitif.</p>
@@ -199,7 +205,7 @@
       <p>Kami boleh mengemas kini dasar ini. Perubahan penting akan diumumkan dalam aplikasi. Penyuntingan kecil muncul di sini dengan tarikh "kemas kini terakhir" yang baharu.</p>
 
       <h2 id="ms-9"><span class="cl" aria-hidden="true">Fs. 9</span>9. Hubungi</h2>
-      <p>Emel: <a href="mailto:jejakbaki.app@gmail.com">jejakbaki.app@gmail.com</a></p>
+      <p>Emel: <a href="mailto:support@jejakbaki.my">support@jejakbaki.my</a></p>
     </div>
     <p class="doc-end" aria-hidden="true">Tamat dokumen</p>
   </section>
@@ -207,6 +213,11 @@
 
 <footer class="footer--legal">
   <p data-en="© 2026 Potraces. Built in Malaysia." data-bm="© 2026 Potraces. Dibina di Malaysia.">© 2026 Potraces. Built in Malaysia.</p>
+  <p class="doc-links">
+    <a href="/privacy.html" data-en="Privacy Policy" data-bm="Dasar Privasi">Privacy Policy</a> ·
+    <a href="/terms.html" data-en="Terms of Use" data-bm="Terma Penggunaan">Terms of Use</a> ·
+    <a href="/delete-account.html" data-en="Delete data" data-bm="Padam data">Delete data</a>
+  </p>
 </footer>
 
 <script>

@@ -2,6 +2,8 @@
 
 > **Neu by default (LOCKED — 2026-07-21).** Every screen we build from now on ships in the neu design system, not the old flat/bordered style. That means: **Onyx** dark surfaces + the **Neu family** — **Neu Card** (raised card/row surfaces), **Neu Key** (icon buttons), **Neu Select** (primary CTAs), **Neu Pills** (selectors) — and the **Neu Card seam rule** (a neu shadow and `overflow:'hidden'` NEVER share a view; split them). New screens start from these recipes; don't hand-roll a flat card, a bordered container, or a raw shadow.
 
+> **Keep the Subscription & Echo guide in sync (LOCKED — 2026-07-22).** The founder-facing Word doc `Potraces_Subscription_and_Echo_Guide.docx` (repo root) documents every tier, price, limit, per-screen gate, after-limit behaviour, and planned-but-unbuilt gap. **Whenever you change ANYTHING about Echo (the AI) or the subscription/limit system — prices or `TIERS` in `PaywallModal.tsx`, `TIER_LIMITS` in `src/constants/tiers.ts`, the gating engine in `src/store/premiumStore.ts`, Echo chat limits, or you add/remove a paywall gate on any screen — you MUST update that docx in the same change.** How: **`docs/SUBSCRIPTION_DOC_MAINTENANCE.md`**. Fast path (known small change) — edit `scripts/subscription_docx/data.json`, then `python scripts/subscription_docx/make_docx.py scripts/subscription_docx/data.json Potraces_Subscription_and_Echo_Guide.docx`. Broad change — re-run the research workflow to rebuild `data.json` from code first.
+
 ## "Onyx" — dark-mode surface standard (LOCKED)
 
 **Onyx** is the app's dark-mode surface look. When the user says **"apply Onyx to `<screen>`"**, run this checklist in dark mode. It's the Goals/Debt style (all sheets/modals + shared pickers already follow it; Wallet, Bills, Debt done 2026-07-15).
