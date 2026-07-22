@@ -77,6 +77,7 @@ async function callAI(
   model: string = MODEL,
   prefill?: string,
   json = false,
+  source: string = 'smart-capture',
 ): Promise<string | null> {
   const contents: GeminiContent[] = messages.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
@@ -103,7 +104,7 @@ async function callAI(
     30_000,
     false,
     model,
-    'smart-capture',
+    source,
   );
   const raw = (data?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
   // Prepend the seed BEFORE trimming so the internal space it continues with (e.g.
@@ -169,7 +170,7 @@ export async function parseReceiptText(
       `You are a receipt parser. Given OCR text from a Malaysian receipt, extract the total amount, merchant name as description, and suggest a category from this list: ${categoryNames.join(', ')}. Return JSON only with fields: amount (number), category (string), description (string), type (always 'expense'), confidence ('high' or 'low').`,
       [{ role: 'user', content: ocrText }],
       256,
-      MODEL, undefined, true,
+      MODEL, undefined, true, 'receipt-scan',
     );
 
     if (!result) return null;
@@ -268,6 +269,7 @@ export async function parseProductList(
         provider: 'gemini',
         mode: 'generate',
         model: GEMINI_MODEL,
+        source: 'seller-products',
         payload: {
           contents: [{ parts: [{ text: PRODUCT_PARSE_SYSTEM(existingUnits, existingProducts) + '\n\n' + text }] }],
           generationConfig: { temperature: 0, maxOutputTokens: 1024, responseMimeType: 'application/json' },
@@ -286,7 +288,7 @@ export async function parseProductList(
       PRODUCT_PARSE_SYSTEM(existingUnits, existingProducts),
       [{ role: 'user', content: text }],
       2048,
-      MODEL, undefined, true,
+      MODEL, undefined, true, 'seller-products',
     );
     if (!result) return null;
     return parseParsedProducts(result);
@@ -309,6 +311,7 @@ export async function parseProductImage(
     provider: 'gemini',
     mode: 'generate',
     model: GEMINI_MODEL,
+    source: 'seller-products',
     payload: {
       contents: [{
         parts: [
@@ -444,7 +447,7 @@ export async function parseWhatsAppOrderAI(
       `You are a WhatsApp order parser for a Malaysian home-based food seller.\nThe seller's products: ${productList}\n\nGiven a WhatsApp message (often in Malay), extract the order items.\nReturn JSON array only. Each item: { "productName": string (exact name from product list), "quantity": number, "unit": string }.\nIf a product in the message doesn't match any known product, use the name as written.\nCommon Malay patterns: "nak order" = want to order, "dan" = and, "tin/bekas/balang/kotak" = container types.\nIf quantity is not specified, default to 1.\nReturn [] if the message is not an order.`,
       [{ role: 'user', content: message }],
       512,
-      MODEL, undefined, true,
+      MODEL, undefined, true, 'order-parse',
     );
 
     if (!result) return null;
@@ -578,7 +581,8 @@ export async function askFreelancerQuestion(
     return await callAI(
       `${FREELANCER_SYSTEM_PROMPT}\n\n${contextStr}`,
       messages,
-      400
+      400,
+      MODEL, undefined, false, 'echo-chat',
     );
   } catch {
     return null;
@@ -697,7 +701,8 @@ export async function askPartTimeQuestion(
     return await callAI(
       `${PARTTIME_SYSTEM_PROMPT}\n\n${contextStr}`,
       messages,
-      400
+      400,
+      MODEL, undefined, false, 'echo-chat',
     );
   } catch {
     return null;
@@ -814,7 +819,8 @@ export async function askOnTheRoadQuestion(
     return await callAI(
       `${ONTHEROAD_SYSTEM_PROMPT}\n\n${contextStr}`,
       messages,
-      400
+      400,
+      MODEL, undefined, false, 'echo-chat',
     );
   } catch {
     return null;
@@ -931,7 +937,8 @@ export async function askMixedQuestion(
     return await callAI(
       `${MIXED_SYSTEM_PROMPT}\n\n${contextStr}`,
       messages,
-      400
+      400,
+      MODEL, undefined, false, 'echo-chat',
     );
   } catch {
     return null;
@@ -970,6 +977,7 @@ async function callGeminiWithSearch(system: string, userMsg: string): Promise<st
       provider: 'gemini',
       mode: 'generate',
       model: 'gemini-3.5-flash', // fuller model — reliable Google-Search grounding
+      source: 'rate-lookup',
       payload: {
         contents: [{ role: 'user', parts: [{ text: userMsg }] }],
         system_instruction: { parts: [{ text: system }] },
@@ -1042,6 +1050,8 @@ export async function fetchLatestInstrumentRate(
       60,
       MODEL,
       '{',
+      false,
+      'rate-lookup',
     );
     if (extracted) {
       try {
@@ -1068,7 +1078,7 @@ export async function fetchLatestInstrumentRate(
     'If unsure of the very latest, give the most recent declaration you know. No prose, no markdown.';
   const raw = await callAI(system, [
     { role: 'user', content: `Instrument: ${instrumentName} (Malaysia). Latest declared annual rate?` },
-  ], 80, MODEL, '{');
+  ], 80, MODEL, '{', false, 'rate-lookup');
   if (!raw) return null;
   try {
     const out = sanitizeRate(JSON.parse(stripJsonFences(raw)));

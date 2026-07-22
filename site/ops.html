@@ -413,7 +413,7 @@ h1{font-size:clamp(1.45rem,2.6vw,1.8rem);font-weight:800;letter-spacing:-.025em}
         </div>
         <select id="srcSel" aria-label="Filter by screen"><option value="all">All screens</option></select>
         <select id="modelSel" aria-label="Filter by model"><option value="all">All models</option></select>
-        <input id="q" type="search" placeholder="Search identity…" aria-label="Search identity">
+        <input id="q" type="search" placeholder="Search email or id…" aria-label="Search email or identity">
         <button type="button" id="resetF" class="pillbtn">Reset</button>
       </div>
       <div class="tbl-wrap">
@@ -454,7 +454,7 @@ h1{font-size:clamp(1.45rem,2.6vw,1.8rem);font-weight:800;letter-spacing:-.025em}
       </section>
     </div>
 
-    <p class="sources">Sources: <code>usage_events</code> (per-call rows, since the tracker shipped) · <code>ai_proxy_usage</code> (monthly counters, since Jun 2026) · <code>admin_user_stats()</code> (users &amp; receipts, point in time). Screen labels arrive with the next app update — calls from older builds show as “Untagged”. Estimates ≠ invoice.</p>
+    <p class="sources">Sources: <code>usage_events</code> (per-call rows, since the tracker shipped) · <code>ai_proxy_usage</code> (monthly counters, since Jun 2026) · <code>admin_user_stats()</code> (users &amp; receipts, point in time) · <code>admin_identity_emails()</code> (id → email for signed-in users). Screen labels arrive with the next app update — calls from older builds show as “Untagged”. Estimates ≠ invoice.</p>
   </section>
 
 </div></main>
@@ -556,7 +556,10 @@ function altMoney(usd){ return CUR === 'MYR' ? '$' + usd.toFixed(2) : 'RM' + (us
 const SOURCE_LABELS = {
   'receipt-scan':     'Receipt scan · personal',
   'seller-receipt':   'Receipt scan · seller',
+  'seller-products':  'Product import · seller',
+  'order-parse':      'WhatsApp order parse',
   'statement-parse':  'Bank statement import',
+  'rate-lookup':      'Savings rate lookup',
   'echo-chat':        'Echo chat',
   'echo-playbook':    'Echo playbook',
   'smart-capture':    'Smart capture',
@@ -574,7 +577,7 @@ function srcFamily(s){
   if (!s || s === UNTAGGED) return '';
   if (s === 'voice') return 'amber';
   if (s.startsWith('echo')) return 'sage';
-  if (s.includes('receipt') || s.includes('statement')) return 'blue';
+  if (s.includes('receipt') || s.includes('statement') || s.includes('product')) return 'blue';
   return '';
 }
 function srcChip(s){
@@ -605,12 +608,14 @@ function shortId(id){
   if (bare.startsWith('dev:')) return 'dev '+bare.slice(4,10)+'…';
   return bare.slice(0,8)+'…';
 }
+// Real email when we resolved one (signed-in users); else the shortId fallback (dev:* devices, unresolved).
+function idLabel(id){ return id ? (store.emails.get(id) || shortId(id)) : '—'; }
 
 /* ═══════════════ STATE ═══════════════ */
 const REFRESH_S = 60;
 let cd = REFRESH_S, loading = false, modelSig = '', srcSig = '', priceSig = '', dailyData = [];
 const state = { range:'month', kind:'all', source:'all', model:'all', q:'', sort:{ c:'ts', dir:-1 }, shown:100 };
-const store = { authed:false, ok:false, stats:{}, agg:[], cur:[], prev:[], rangeStart:null };
+const store = { authed:false, ok:false, stats:{}, agg:[], cur:[], prev:[], rangeStart:null, emails:new Map() };
 
 function rangeStart(range, now){
   const { y, m, d } = mytParts(now);
@@ -648,6 +653,14 @@ async function loadAll(manual){
   store.rangeStart = startIso;
   store.cur  = ev.filter(e => e.created_at >= startIso);
   store.prev = ev.filter(e => e.created_at <  startIso);
+  // Resolve the on-screen user-id identities → emails so the table reads "who", not a uuid.
+  // dev:<device> identities aren't users and are skipped. Non-admins get zero rows back
+  // (is_admin gate in the RPC), so this silently no-ops for them.
+  const userIds = [...new Set(store.cur.map(e => e.identity).filter(id => id && !id.startsWith('dev:')))];
+  if (userIds.length){
+    const { data: em } = await sb.rpc('admin_identity_emails', { p_identities: userIds });
+    store.emails = new Map((em || []).map(r => [r.identity, r.email]).filter(([, e]) => e));
+  } else store.emails = new Map();
   store.ok = true;
   stampEl.textContent = 'Updated ' + timeFmt.format(new Date()) + ' MYT';
   cd = REFRESH_S; cdEl.textContent = cd;
@@ -891,7 +904,9 @@ function filteredEvents(){
   if (state.source === UNTAGGED) rows = rows.filter(e => e.kind !== 'stt_mint' && !e.source);
   else if (state.source !== 'all') rows = rows.filter(e => e.kind !== 'stt_mint' && e.source === state.source);
   if (state.model !== 'all') rows = rows.filter(e => (e.model || '(unknown)') === state.model);
-  if (state.q) rows = rows.filter(e => (e.identity || '').toLowerCase().includes(state.q));
+  if (state.q) rows = rows.filter(e =>
+    (e.identity || '').toLowerCase().includes(state.q) ||
+    (store.emails.get(e.identity) || '').toLowerCase().includes(state.q));
   return rows;
 }
 function sortRows(rows){
@@ -903,7 +918,7 @@ function sortRows(rows){
     c==='feature' ? (e.kind==='stt_mint' ? 'voice' : (e.feature||'')) :
     c==='i' ? Number(e.input_tokens||0) :
     c==='o' ? Number(e.output_tokens||0) :
-    c==='cost' ? evUsd(e) : (e.identity||'');
+    c==='cost' ? evUsd(e) : (store.emails.get(e.identity) || e.identity || '');
   return [...rows].sort((a,b)=>{ const va=val(a), vb=val(b); return (va<vb?-1:va>vb?1:0)*dir; });
 }
 function rowHtml(e){
@@ -919,7 +934,7 @@ function rowHtml(e){
     <td class="num">${e.kind==='stt_mint'?'—':fmtNum(e.input_tokens)}</td>
     <td class="num">${e.kind==='stt_mint'?'—':fmtNum(e.output_tokens)}</td>
     <td class="num cost">${e.kind==='stt_mint'?'—':money(usd, usd<0.01&&usd>0?4:2)}</td>
-    <td title="${escA(e.identity)}">${esc(shortId(e.identity))}</td>
+    <td class="tid" title="${escA(e.identity)}">${esc(idLabel(e.identity))}</td>
   </tr>`;
 }
 function renderTable(){
@@ -952,7 +967,7 @@ function renderTop(){
   const maxT = Math.max(...rows.map(([,r])=>r.t), 1);
   topListEl.innerHTML = rows.map(([id,r]) => `
     <div class="hrow">
-      <div class="hrow-top"><span class="hrow-name" title="${escA(id)}">${esc(shortId(id))}</span><span class="hrow-val dim num">${shortNum(r.t)} tok</span></div>
+      <div class="hrow-top"><span class="hrow-name" title="${escA(id)}">${esc(idLabel(id))}</span><span class="hrow-val dim num">${shortNum(r.t)} tok</span></div>
       <div class="hbar"><i style="width:${(r.t/maxT*100).toFixed(1)}%"></i></div>
       <div class="hrow-sub">${fmtNum(r.calls)} calls · est ${money(r.usd, r.usd<0.01&&r.usd>0?4:2)}</div>
     </div>`).join('');

@@ -60,9 +60,9 @@ const MODEL_REMAP: Record<string, string> = {
 // Feature tags the app may attach for per-screen usage attribution (ops console).
 // Anything not on this list is dropped to NULL — never trust free-form client labels.
 const VALID_SOURCES = new Set([
-  'receipt-scan', 'seller-receipt', 'statement-parse',
+  'receipt-scan', 'seller-receipt', 'statement-parse', 'seller-products', 'order-parse',
   'echo-chat', 'echo-playbook', 'smart-capture',
-  'category-explain', 'intent', 'query', 'report', 'insights',
+  'category-explain', 'intent', 'query', 'report', 'insights', 'rate-lookup',
   'voice', 'other',
 ]);
 
