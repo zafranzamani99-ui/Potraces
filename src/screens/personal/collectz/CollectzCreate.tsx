@@ -53,8 +53,10 @@ import {
   notifySession,
 } from '../../../services/collectzService';
 import { parseCollectzAnnouncement } from '../../../services/collectzParser';
+import { supabasePersonal } from '../../../services/supabase';
 import { clubIconsForCategory, presetClubIcon, CLUB_PRESET_PREFIX } from '../../../constants/clubIcons';
 import { isMapsLink } from '../../../utils/mapLink';
+import { parseAmountLoose } from '../../../utils/parseAmountLoose';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
 import { useNeu } from '../../../components/common/neu';
 import PageScrollView from '../../../components/common/PageScrollView';
@@ -62,7 +64,8 @@ import NeuButton from '../../../components/common/NeuButton';
 import NeuIconButton from '../../../components/common/NeuIconButton';
 import KeyboardDoneFab from '../../../components/common/KeyboardDoneFab';
 import CalendarPicker from '../../../components/common/CalendarPicker';
-import { fmtDate, fmtTime, fill, teamLabel } from './collectzFormat';
+import { fmtDate, fmtTime, fill, teamLabel, SOCIAL_PLATFORMS, normalizeSocial, socialHandleFromUrl, isWhatsappGroupUrl } from './collectzFormat';
+import type { CollectzSocialKey, CollectzSocials } from '../../../services/collectzService';
 
 type CategoryKey = 'sport' | 'makan' | 'trip' | 'gift' | 'other';
 const CATEGORIES: CategoryKey[] = ['sport', 'makan', 'trip', 'gift', 'other'];
@@ -76,12 +79,18 @@ interface RosterRow {
   amount: string;
   /** 1-based team (teams capacity mode only); null = not assigned yet. */
   team: number | null;
+  /** DB status for edit-mode rows — confirmed rows keep their share lock on save. */
+  status?: CollectzParticipant['status'];
 }
 
-/** Loose money parse — accepts "45", "RM45.50", "45,50". */
+/**
+ * Loose money parse — accepts "45", "RM45.50", "45,50", "1,500". Delegates to
+ * the shared locale-tolerant parser: a comma followed by 3 digits is a
+ * thousands separator (bank-app paste), NOT a decimal — the old naive
+ * comma→dot swap turned "1,500" into 1.5, a silent 1000× error.
+ */
 function parseAmount(raw: string): number | null {
-  const n = parseFloat(raw.replace(/,/g, '.').replace(/[^0-9.]/g, ''));
-  return isNaN(n) || n <= 0 ? null : n;
+  return parseAmountLoose(raw);
 }
 
 const CollectzCreate: React.FC = () => {
@@ -110,6 +119,9 @@ const CollectzCreate: React.FC = () => {
   const [eventAt, setEventAt] = useState<Date | null>(null);
   const [venue, setVenue] = useState('');
   const [mapsUrl, setMapsUrl] = useState('');
+  // Organizer contact (all optional): social handles + WhatsApp group link.
+  const [socialHandles, setSocialHandles] = useState<Record<CollectzSocialKey, string>>({ ig: '', x: '', threads: '', fb: '', telegram: '' });
+  const [groupUrl, setGroupUrl] = useState('');
   const [details, setDetails] = useState('');
   const [scheme, setScheme] = useState<CollectzScheme>('flat');
   const [shareAmount, setShareAmount] = useState('');
@@ -143,6 +155,7 @@ const CollectzCreate: React.FC = () => {
   const [templateTitle, setTemplateTitle] = useState<string | null>(null);
   const [prefilling, setPrefilling] = useState(isEdit || !!templateFrom);
   const original = useRef<CollectzSession | null>(null); // change detection for edit-notify
+  const linkedUserIds = useRef<Record<string, string>>({}); // edit mode: participant id → user_id (app-linked rows)
 
   // ── Paste-parse modal ──
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -196,6 +209,14 @@ const CollectzCreate: React.FC = () => {
         setEventAt(isEdit ? ev : (ev ? shift(s.event_at) : null));
         setVenue(s.venue ?? '');
         setMapsUrl(s.maps_url ?? '');
+        setGroupUrl(s.group_url ?? '');
+        setSocialHandles({
+          ig: socialHandleFromUrl(s.socials?.ig),
+          x: socialHandleFromUrl(s.socials?.x),
+          threads: socialHandleFromUrl(s.socials?.threads),
+          fb: socialHandleFromUrl(s.socials?.fb),
+          telegram: socialHandleFromUrl(s.socials?.telegram),
+        });
         setDetails(s.details_text ?? '');
         setScheme(s.scheme);
         setShareAmount(s.default_share != null ? String(s.default_share) : '');
@@ -222,6 +243,11 @@ const CollectzCreate: React.FC = () => {
         const preset = presetClubIcon(s.image_path);
         setImagePreset(preset ? preset.id : null);
         setOldImagePath(preset ? null : (s.image_path ?? null));
+        if (isEdit) {
+          const map: Record<string, string> = {};
+          for (const p of participants) if (p.user_id) map[p.id] = p.user_id;
+          linkedUserIds.current = map;
+        }
         setRoster(
           participants.map((p) => ({
             key: nextKey(),
@@ -230,6 +256,7 @@ const CollectzCreate: React.FC = () => {
             slot: p.slot,
             amount: p.share_amount != null ? String(p.share_amount) : '',
             team: p.team_idx ?? null,
+            status: isEdit ? p.status : undefined,
           })),
         );
         if (templateFrom) setTemplateTitle(s.title);
@@ -452,6 +479,9 @@ const CollectzCreate: React.FC = () => {
     max_participants: number | null;
     team_count: number | null;
     team_size: number | null;
+    scheme: CollectzScheme;
+    total_amount: number | null;
+    default_share: number | null;
   }): string | null => {
     const s = original.current;
     if (!s) return null;
@@ -469,6 +499,18 @@ const CollectzCreate: React.FC = () => {
             ? fill(t.collectz.changeCapacityTeams, { t: next.team_count, n: next.team_size })
             : fill(t.collectz.changeCapacity, { n: next.max_participants }),
       );
+    }
+    // Money changes are the ones participants MUST hear about — a silent price
+    // edit leaves people paying the old amount. Reuses the field labels in the
+    // same "X → Y" shape as changeVenue.
+    if (s.scheme !== next.scheme) {
+      parts.push(`${t.collectz.fieldScheme} → ${schemeLabels[next.scheme]}`);
+    }
+    if ((s.default_share ?? null) !== (next.default_share ?? null) && next.default_share != null) {
+      parts.push(`${t.collectz.fieldShareAmount.replace('{currency}', currency)} → ${next.default_share.toFixed(2)}`);
+    }
+    if ((s.total_amount ?? null) !== (next.total_amount ?? null) && next.total_amount != null) {
+      parts.push(`${t.collectz.fieldTotalAmount.replace('{currency}', currency)} → ${next.total_amount.toFixed(2)}`);
     }
     return parts.length ? parts.join(' · ') : null;
   };
@@ -537,6 +579,16 @@ const CollectzCreate: React.FC = () => {
   const doSave = useCallback(async () => {
     if (saving) return;
     setSaving(true);
+    // Organizer contact: normalize handles → canonical URLs, drop invalid group links.
+    const socialsOut: CollectzSocials = {};
+    for (const p of SOCIAL_PLATFORMS) {
+      const url = normalizeSocial(p.key, socialHandles[p.key]);
+      if (url) socialsOut[p.key] = url;
+    }
+    const contactPayload = {
+      socials: Object.keys(socialsOut).length ? socialsOut : null,
+      group_url: isWhatsappGroupUrl(groupUrl) ? groupUrl.trim() : null,
+    };
     try {
       if (isEdit && editSessionId) {
         // ── Edit path: update the session, reconcile the roster, maybe notify ──
@@ -546,6 +598,7 @@ const CollectzCreate: React.FC = () => {
           event_at: eventAt ? eventAt.toISOString() : null,
           venue: venue.trim() || null,
           maps_url: mapsUrl.trim() || null,
+          ...contactPayload,
           details_text: details.trim() || null,
           rules_text: rules.trim() || null,
           scheme,
@@ -568,12 +621,32 @@ const CollectzCreate: React.FC = () => {
           : qrImagePath;
         await updateSession(editSessionId, next);
         // Roster diff: removals first, then updates, then additions.
-        for (const id of removedIds) await removeParticipant(id);
+        for (const id of removedIds) {
+          // Tell the removed person first — collectz-notify's 'removed' kind
+          // pushes to the participant_user_id we pass, and must fire BEFORE the
+          // row is deleted (mirrors CollectzDetail's remove flow). Best-effort:
+          // a missed push must never block the removal itself.
+          const uid = linkedUserIds.current[id];
+          if (uid) {
+            await supabasePersonal.functions
+              .invoke('collectz-notify', { body: { sessionId: editSessionId, kind: 'removed', participant_user_id: uid } })
+              .catch(() => {});
+          }
+          await removeParticipant(id);
+        }
         for (const r of roster) {
           const amount = scheme === 'custom' ? parseAmount(r.amount) : null;
           const team = capMode === 'teams' && r.slot === 'active' ? r.team : null;
-          if (r.id) await updateParticipant(r.id, { name: r.name.trim(), slot: r.slot, share_amount: amount, team_idx: team });
-          else await addParticipant(editSessionId, r.name.trim(), { slot: r.slot, share_amount: amount, team_idx: team });
+          if (r.id) {
+            // Confirmed rows keep their confirm-time share lock: writing null on a
+            // flat/equal save would re-derive their share from the new roster and
+            // silently move money someone already paid.
+            const patch: Parameters<typeof updateParticipant>[1] = { name: r.name.trim(), slot: r.slot, team_idx: team };
+            if (scheme === 'custom' || r.status !== 'confirmed') patch.share_amount = amount;
+            await updateParticipant(r.id, patch);
+          } else {
+            await addParticipant(editSessionId, r.name.trim(), { slot: r.slot, share_amount: amount, team_idx: team });
+          }
         }
         // Notify participants when the change matters and the box is ticked.
         const summary = changeSummary(next);
@@ -592,6 +665,7 @@ const CollectzCreate: React.FC = () => {
         event_at: eventAt ? eventAt.toISOString() : null,
         venue: venue.trim() || null,
         maps_url: mapsUrl.trim() || null,
+        ...contactPayload,
         details_text: details.trim() || null,
         rules_text: rules.trim() || null,
         scheme,
@@ -655,7 +729,7 @@ const CollectzCreate: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [saving, isEdit, editSessionId, title, category, eventAt, venue, mapsUrl, details, rules, scheme, totalAmount, shareAmount, currency, payBy, qrPayload, qrImageUri, qrImagePath, imagePreset, imageUpload, oldImagePath, removedIds, roster, notifyChanges, capacityMax, capMode, teamCount, teamSize, teamNames, navigation, showToast, t]);
+  }, [saving, isEdit, editSessionId, title, category, eventAt, venue, mapsUrl, socialHandles, groupUrl, details, rules, scheme, totalAmount, shareAmount, currency, payBy, qrPayload, qrImageUri, qrImagePath, imagePreset, imageUpload, oldImagePath, removedIds, roster, notifyChanges, capacityMax, capMode, teamCount, teamSize, teamNames, navigation, showToast, t]);
 
   const handleSave = () => {
     if (!title.trim()) {
@@ -801,6 +875,42 @@ const CollectzCreate: React.FC = () => {
           />
           {!!mapsUrl.trim() && isMapsLink(mapsUrl.trim()) && (
             <MapPreviewCard mapsUrl={mapsUrl.trim()} compact />
+          )}
+        </View>
+
+        {/* Contact (optional) — organizer socials + WhatsApp group link. Shown to
+            everyone who has the link; skipping it changes nothing. */}
+        <View style={[styles.fieldCard, neuF.raisedSoft]}>
+          <Text style={styles.fieldCardLabel}>{t.collectz.fieldContact}</Text>
+          <Text style={styles.contactHint}>{t.collectz.fieldContactHint}</Text>
+          {SOCIAL_PLATFORMS.map((p) => (
+            <View key={p.key} style={styles.contactRow}>
+              <Feather name={p.icon as keyof typeof Feather.glyphMap} size={15} color={C.textMuted} />
+              <TextInput
+                style={[styles.fieldCardInput, styles.contactInput]}
+                value={socialHandles[p.key]}
+                onChangeText={(v) => setSocialHandles((prev) => ({ ...prev, [p.key]: v }))}
+                placeholder={`${p.label} · @handle`}
+                placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          ))}
+          <View style={styles.contactRow}>
+            <Feather name="users" size={15} color={C.textMuted} />
+            <TextInput
+              style={[styles.fieldCardInput, styles.contactInput]}
+              value={groupUrl}
+              onChangeText={setGroupUrl}
+              placeholder={t.collectz.fieldGroupPlaceholder}
+              placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+              autoCapitalize="none"
+              keyboardType="url"
+            />
+          </View>
+          {!!groupUrl.trim() && !isWhatsappGroupUrl(groupUrl) && (
+            <Text style={styles.contactWarn}>{t.collectz.groupLinkInvalid}</Text>
           )}
         </View>
 
@@ -1236,6 +1346,10 @@ const makeStyles = (C: typeof CALM) =>
       paddingVertical: SPACING.sm + 4,
       marginBottom: SPACING.md,
     },
+    contactHint: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2, marginBottom: SPACING.sm },
+    contactRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+    contactInput: { flex: 1 },
+    contactWarn: { fontSize: TYPOGRAPHY.size.xs, color: C.bronze, marginTop: 4 },
     fieldCardLabel: {
       // sm (14), not xs (12) — the label is the field's TITLE, so it must not
       // read smaller/weaker than the 15px value+placeholder sitting under it.

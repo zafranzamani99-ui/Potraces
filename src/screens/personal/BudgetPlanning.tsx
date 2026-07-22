@@ -16,7 +16,7 @@ import {
   AccessibilityInfo,
   AppState,
 } from 'react-native';
-import { KeyboardAvoidingView, KeyboardStickyView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ScrollView, Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -2290,18 +2290,13 @@ const BudgetPlanning: React.FC = () => {
             </View>
           </GestureDetector>
 
-          <KeyboardAvoidingView
-            behavior="padding"
-            style={{ flex: 1 }}
-            keyboardVerticalOffset={10}
+          <KeyboardAwareScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={styles.modalScrollContent}
           >
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-              contentContainerStyle={styles.modalScrollContent}
-              keyboardDismissMode="on-drag"
-            >
               <View style={[styles.modalHeroCard, neuF.raisedSoft]}>
                 <Text style={styles.modalFieldLabel}>
                   {t.budget.amountLabel} <Text style={styles.modalFieldRequired}>*</Text>
@@ -2395,10 +2390,9 @@ const BudgetPlanning: React.FC = () => {
                   )}
                 </Pressable>
               )}
-            </ScrollView>
-          </KeyboardAvoidingView>
+          </KeyboardAwareScrollView>
 
-          <KeyboardStickyView>
+          {/* Anchored save zone (Goals pattern — plain View, no sticky/KAV) */}
           <View style={[styles.modalSaveZone, { paddingBottom: Math.max(insets.bottom, SPACING.lg) }]}>
             <Pressable
               style={({ pressed }) => [
@@ -2432,7 +2426,6 @@ const BudgetPlanning: React.FC = () => {
               )}
             </Pressable>
           </View>
-          </KeyboardStickyView>
         </Reanimated.View>
         <ModalToastHost />
         </GestureHandlerRootView>

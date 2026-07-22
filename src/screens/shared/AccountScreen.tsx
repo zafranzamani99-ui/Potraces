@@ -31,6 +31,7 @@ import { resetBackoff } from '../../services/syncBackoff';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePremiumStore } from '../../store/premiumStore';
+import { CLOUD_BACKUP_ENABLED } from '../../constants/flags';
 import PaywallModal from '../../components/common/PaywallModal';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
@@ -139,7 +140,7 @@ export default function AccountScreen() {
       // Skip the nudge when arriving from the Quick Log gate: they signed in for the FREE
       // feature, and a paid-backup toast there reads as a bait-and-switch.
       if (!useSettingsStore.getState().personalSyncEnabled && returnTo !== 'QuickLogSetup') {
-        showToast(tr.settings.cloudBackupPaid, 'info');
+        showToast(CLOUD_BACKUP_ENABLED ? tr.settings.cloudBackupPaid : tr.settings.cloudBackupBeta, 'info');
       }
       if (returnTo) navigation.navigate(returnTo as never, returnParams as never);
       return;
@@ -269,6 +270,8 @@ export default function AccountScreen() {
   const handleToggleBackup = useCallback((value: boolean) => {
     lightTap();
     if (value) {
+      // Beta lock takes precedence over the paywall — don't dangle a dead-end upgrade.
+      if (!CLOUD_BACKUP_ENABLED) { showToast(tr.settings.cloudBackupBeta, 'info'); return; }
       // Cloud backup is a paid feature — free users get the paywall, not sync.
       if (!usePremiumStore.getState().hasCloudBackup()) { setBackupPaywallVisible(true); return; }
       enableBackup();

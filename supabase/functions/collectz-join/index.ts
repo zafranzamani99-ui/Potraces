@@ -15,7 +15,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  *   claim    — authed. Links the caller's user_id to an unclaimed roster
  *              name the organizer pre-added ("Mael" → the real Mael).
  *   add_self — authed. Inserts a new active roster row for the caller
- *              (name not pre-added by the organizer).
+ *              (name not pre-added by the organizer). Rejects with
+ *              'session_full' once actives >= max_participants — claiming a
+ *              pre-added name stays allowed (that slot is already counted).
+ *   set_team — authed roster member. Moves MYSELF into a team (null =
+ *              unassign); refuses a team already holding team_size people.
+ *   set_team_name — authed. Renames a team (organizer OR any roster member).
  *
  * Public function (verify_jwt=false). Secrets (Deno env):
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY — auto-provided by the runtime.
@@ -40,6 +45,12 @@ const json = (body: unknown, status = 200) =>
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_NAME_LEN = 60;
 
+// Brute-force brake on share_code guessing: only MISSES (unknown codes) are
+// logged per IP; past the limit further lookups 429 until the window clears.
+// Real codes never log a miss, so legitimate traffic is untouched.
+const MISS_LIMIT = 20;
+const MISS_WINDOW_MS = 15 * 60 * 1000;
+
 interface ParticipantRow {
   id: string;
   name: string;
@@ -47,6 +58,8 @@ interface ParticipantRow {
   status: 'unpaid' | 'pending' | 'confirmed' | 'rejected';
   share_amount: number | null;
   user_id: string | null;
+  team_idx: number | null;
+  reject_note: string | null;
 }
 
 /**
@@ -86,7 +99,7 @@ Deno.serve(async (req: Request) => {
   if (Number.isFinite(declaredLen) && declaredLen > MAX_BODY_BYTES) {
     return json({ error: 'Request too large.' }, 413);
   }
-  let body: { share_code?: unknown; action?: unknown; participant_id?: unknown; name?: unknown };
+  let body: { share_code?: unknown; action?: unknown; participant_id?: unknown; name?: unknown; team_idx?: unknown };
   try {
     const text = await req.text();
     if (text.length > MAX_BODY_BYTES) return json({ error: 'Request too large.' }, 413);
@@ -98,7 +111,7 @@ Deno.serve(async (req: Request) => {
   const shareCode = String(body.share_code ?? '').trim();
   const action = String(body.action ?? '').trim();
   if (!shareCode || shareCode.length > 32) return json({ error: 'share_code required' }, 400);
-  if (!['view', 'claim', 'add_self'].includes(action)) return json({ error: 'unknown action' }, 400);
+  if (!['view', 'claim', 'add_self', 'set_team', 'set_team_name'].includes(action)) return json({ error: 'unknown action' }, 400);
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -116,17 +129,43 @@ Deno.serve(async (req: Request) => {
     userId = data?.user?.id ?? null;
   }
 
+  // Too many recent share_code misses from this IP → refuse before the lookup.
+  const ip = req.headers.get('cf-connecting-ip') || (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim();
+  if (ip) {
+    const since = new Date(Date.now() - MISS_WINDOW_MS).toISOString();
+    const { count } = await admin
+      .from('collectz_view_attempts')
+      .select('*', { count: 'exact', head: true })
+      .eq('ip', ip)
+      .gte('attempted_at', since);
+    if ((count ?? 0) >= MISS_LIMIT) return json({ error: 'rate_limited' }, 429);
+  }
+
   const { data: session } = await admin
     .from('collectz_sessions')
     .select('*')
     .eq('share_code', shareCode)
     .maybeSingle();
-  if (!session) return json({ error: 'not_found' }, 404);
-  if (session.status === 'cancelled') return json({ error: 'cancelled' }, 410);
+  if (!session) {
+    if (ip) {
+      await admin.from('collectz_view_attempts').insert({ ip });
+      // Opportunistic prune — misses are rare outside an enumeration attack.
+      await admin
+        .from('collectz_view_attempts')
+        .delete()
+        .lt('attempted_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+    }
+    return json({ error: 'not_found' }, 404);
+  }
+  // Cancelled: the join link is dead for mutations (410), but `view` still
+  // returns the normal payload — the web page and app render the cancelled
+  // state with the organizer's contact (socials/group_url) so paid
+  // participants can chase refunds.
+  if (session.status === 'cancelled' && action !== 'view') return json({ error: 'cancelled' }, 410);
 
   const { data: participants } = await admin
     .from('collectz_participants')
-    .select('id,name,slot,status,share_amount,user_id')
+    .select('id,name,slot,status,share_amount,user_id,team_idx,reject_note')
     .eq('session_id', session.id)
     .order('created_at', { ascending: true })
     .order('id', { ascending: true });
@@ -154,6 +193,12 @@ Deno.serve(async (req: Request) => {
         status: session.status,
         image_path: session.image_path,
         maps_url: session.maps_url,
+        max_participants: session.max_participants,
+        team_count: session.team_count,
+        team_size: session.team_size,
+        team_names: session.team_names,
+        socials: session.socials,
+        group_url: session.group_url,
       },
       participants: roster.map((p) => ({
         id: p.id,
@@ -162,6 +207,10 @@ Deno.serve(async (req: Request) => {
         status: p.status,
         effective_share: shares.get(p.id) ?? null,
         claimed: p.user_id != null,
+        team_idx: p.team_idx,
+        // The organizer's rejection note is payment feedback for the roster
+        // member — surfaced so the web page can show WHY, not just "rejected".
+        reject_note: p.status === 'rejected' ? p.reject_note : null,
       })),
       progress: {
         active_count: actives.length,
@@ -187,6 +236,8 @@ Deno.serve(async (req: Request) => {
             slot: mine.slot,
             status: mine.status,
             effective_share: shares.get(mine.id) ?? null,
+            team_idx: mine.team_idx,
+            reject_note: mine.status === 'rejected' ? mine.reject_note : null,
           }
         : null;
     }
@@ -194,9 +245,56 @@ Deno.serve(async (req: Request) => {
     return json(payload);
   }
 
-  // claim / add_self require auth and an open session.
+  // claim / add_self / set_team / set_team_name require auth and an open session.
   if (!userId) return json({ error: 'auth_required' }, 401);
   if (session.status !== 'open') return json({ error: 'session_closed' }, 409);
+
+  if (action === 'set_team' || action === 'set_team_name') {
+    const teamCount: number = session.team_count ?? 0;
+    const mine = roster.find((p) => p.user_id === userId);
+
+    if (action === 'set_team') {
+      // Move MYSELF into a team (null = unassign). Reserves hold no team slot.
+      if (!mine) return json({ error: 'not_in_roster' }, 403);
+      if (mine.slot !== 'active') return json({ error: 'team_reserve' }, 409);
+      const teamIdx = body.team_idx == null ? null : Number(body.team_idx);
+      if (teamIdx !== null) {
+        if (!Number.isInteger(teamIdx) || teamIdx < 1 || teamIdx > teamCount) {
+          return json({ error: 'team_invalid' }, 400);
+        }
+        if (session.team_size != null) {
+          const members = actives.filter((p) => p.team_idx === teamIdx && p.id !== mine.id);
+          if (members.length >= session.team_size) return json({ error: 'team_full' }, 409);
+        }
+      }
+      const { error } = await admin
+        .from('collectz_participants')
+        .update({ team_idx: teamIdx })
+        .eq('id', mine.id);
+      if (error) return json({ error: 'team_failed' }, 500);
+      return json({ ok: true, team_idx: teamIdx });
+    }
+
+    // set_team_name — the organizer OR any roster member may rename.
+    if (!mine && session.owner_id !== userId) return json({ error: 'not_in_roster' }, 403);
+    const teamIdx = Number(body.team_idx);
+    if (!Number.isInteger(teamIdx) || teamIdx < 1 || teamIdx > teamCount) {
+      return json({ error: 'team_invalid' }, 400);
+    }
+    const teamName = String(body.name ?? '').trim();
+    if (!teamName || teamName.length > MAX_NAME_LEN) return json({ error: 'name_invalid' }, 400);
+    const names: string[] = (Array.isArray(session.team_names) ? session.team_names : [])
+      .map((n: string | null) => n ?? '');
+    while (names.length < teamCount) names.push('');
+    names[teamIdx - 1] = teamName;
+    const { error } = await admin
+      .from('collectz_sessions')
+      .update({ team_names: names })
+      .eq('id', session.id);
+    if (error) return json({ error: 'team_failed' }, 500);
+    return json({ ok: true, team_names: names });
+  }
+
   if (roster.some((p) => p.user_id === userId)) return json({ error: 'already_joined' }, 409);
 
   if (action === 'claim') {
@@ -218,6 +316,13 @@ Deno.serve(async (req: Request) => {
   // add_self
   const name = String(body.name ?? '').trim();
   if (!name || name.length > MAX_NAME_LEN) return json({ error: 'name_invalid' }, 400);
+
+  // Capacity: adding yourself creates a NEW active row, so it's rejected once
+  // the roster is full. Claiming a pre-added name above stays allowed — that
+  // slot is already counted in actives.
+  if (session.max_participants != null && actives.length >= session.max_participants) {
+    return json({ error: 'session_full' }, 409);
+  }
 
   const { data: inserted, error } = await admin
     .from('collectz_participants')

@@ -91,9 +91,8 @@ import ModalToastHost from '../../components/common/ModalToastHost';
 import OfflineBanner from '../../components/common/OfflineBanner';
 import RAnimated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
-// TEMP: the "exploring with demo data" banner is hidden for now — flip to
-// true to bring it back.
-const SHOW_SAMPLE_DATA_BANNER = false;
+// The "exploring with demo data" banner — the start-fresh exit from demo mode.
+const SHOW_SAMPLE_DATA_BANNER = true;
 
 const getGreetingKey = (): 'goodMorning' | 'goodAfternoon' | 'goodEvening' => {
   const hour = new Date().getHours();
@@ -824,8 +823,9 @@ const PersonalDashboard: React.FC = () => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={C.textMuted}
+            tintColor={C.accent}
             colors={[C.accent]}
+            progressViewOffset={insets.top + SPACING.md}
           />
         }
       >
@@ -843,7 +843,7 @@ const PersonalDashboard: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel={t.settings.name}
             >
-              <Avatar size={28} raised />
+              <Avatar size={34} />
             </Pressable>
             <Text style={styles.greeting}>{greeting}</Text>
           </View>

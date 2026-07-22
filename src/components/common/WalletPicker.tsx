@@ -158,7 +158,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
         );
       })}
     </View>
-  ), [selectedId, onSelect, typeFilter, currency, neu, styles, t]);
+  ), [selectedId, onSelect, typeFilter, currency, neu, neuModal, styles, C, t]); // neuModal/C: rebuilt on theme change — rows go stale after a Control-Center appearance flip without them
 
   if (wallets.length === 0) return null;
 

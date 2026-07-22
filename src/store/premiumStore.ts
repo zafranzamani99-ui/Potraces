@@ -5,6 +5,7 @@ import { startOfMonth } from 'date-fns';
 import { PremiumState, PremiumTier } from '../types';
 import { canCreate, remainingOf, TIER_LIMITS } from '../constants/premium';
 import { disablePersonalSync } from '../services/personalSync';
+import { CLOUD_BACKUP_ENABLED } from '../constants/flags';
 
 // Losing the cloud-backup entitlement (a genuine downgrade / cancel) must STOP syncing —
 // otherwise a downgraded user keeps backing up for free and the toggle still reads ON.
@@ -117,7 +118,8 @@ export const usePremiumStore = create<PremiumState>()(
       },
 
       // ── Capability gates ──
-      hasCloudBackup: () => TIER_LIMITS[get().tier].cloudBackup,
+      // Beta lock: even a (locally-unlocked) paid tier can't back up until launch.
+      hasCloudBackup: () => CLOUD_BACKUP_ENABLED && TIER_LIMITS[get().tier].cloudBackup,
       hasAskEcho: () => TIER_LIMITS[get().tier].askEchoPerScreen,
       hasPhotoIcon: () => TIER_LIMITS[get().tier].photoCategoryIcons,
     }),

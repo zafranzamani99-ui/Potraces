@@ -82,7 +82,7 @@ INTENT TYPES:
 - income: user received money
 - debt: someone owes money or user owes someone
 - debt_update: update on existing debt (paid back, settled)
-- bnpl: buy now pay later / installment / credit card purchase
+- bnpl: buy-now-pay-later or credit-card activity — BOTH a PURCHASE on credit ("beli/guna/pakai spaylater/atome") AND a REPAYMENT of a credit/BNPL balance ("bayar/langsai/lunas/settle spaylater", "bayar kad kredit"). Product words: spaylater, spay, shopee paylater, atome, grab paylater, boost payflex, ansuran, kad kredit / credit card. A "bayar/langsai/lunas <bnpl product>" line is bnpl, NOT debt_update (debt_update is only for money owed to a PERSON).
 - subscription: a RECURRING commitment or bill paid each cycle — rent (sewa/rumah sewa), monthly services (netflix, spotify, icloud, gym), internet/phone bills paid every month (unifi, digi), insurance (insurans/takaful), tuition fees (yuran). Signal words: monthly/bulanan/tiap bulan/every month, langganan, recurring, auto debit, sewa, weekly/yearly, or a due day (25hb, due 25th). A one-off mention with NO recurring signal stays an expense.
 - seller_order: business order from customer
 - seller_cost: business cost/ingredient purchase

@@ -54,6 +54,7 @@ import NeuButton from '../../components/common/NeuButton';
 import FAB from '../../components/common/FAB';
 import CommitmentForm from '../../components/commitments/CommitmentForm';
 import EmptyState from '../../components/common/EmptyState';
+import GlassSegmentedControl from '../../components/common/GlassSegmentedControl';
 import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useDebtStore } from '../../store/debtStore';
@@ -401,7 +402,8 @@ const SubscriptionList: React.FC = () => {
 
   // ── View state ──────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAnnual, setShowAnnual] = useState(false);
+  // Recurring-load display period: per-day / per-month / per-year (day = yearly ÷ 365).
+  const [period, setPeriod] = useState<'day' | 'mo' | 'yr'>('mo');
   const [heroMonthOffset, setHeroMonthOffset] = useState(0);
   const heroTouchRef = useRef({ x: 0, time: 0 });
   const slideX = useSharedValue(0);
@@ -1233,7 +1235,7 @@ const SubscriptionList: React.FC = () => {
           <Image source={{ uri: sub.imageUri }} style={styles.rowIconImage} />
         ) : sub.iconName ? (
           <View style={[styles.rowIcon, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
-            {renderIcon(sub.iconName, 18, C.accent)}
+            {renderIcon(sub.iconName, 24, C.accent)}
           </View>
         ) : (
           <View style={[
@@ -1487,7 +1489,7 @@ const SubscriptionList: React.FC = () => {
       .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime())[0];
     const nextDueDays = nextDueSub ? differenceInDays(startOfDay(new Date(nextDueSub.nextBillingDate)), startOfDay(new Date())) : null;
     const overdueCount = isCurrent ? unpaidSubs.filter(s => new Date(s.nextBillingDate) < startOfDay(new Date())).length : 0;
-    const displayAmount = showAnnual ? yearlyTotal : monthlyTotal;
+    const displayAmount = period === 'yr' ? yearlyTotal : period === 'day' ? yearlyTotal / 365 : monthlyTotal;
 
     return (
       <Reanimated.View
@@ -1529,20 +1531,12 @@ const SubscriptionList: React.FC = () => {
               </Pressable>
             )}
           </View>
-          <View style={[styles.heroSegment, neu.inset, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
-            <Pressable
-              onPress={() => { lightTap(); setShowAnnual(false); }}
-              style={[styles.heroSegBtn, !showAnnual && styles.heroSegBtnActive]}
-            >
-              <Text style={[styles.heroSegText, !showAnnual && styles.heroSegTextActive]}>/mo</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => { lightTap(); setShowAnnual(true); }}
-              style={[styles.heroSegBtn, showAnnual && styles.heroSegBtnActive]}
-            >
-              <Text style={[styles.heroSegText, showAnnual && styles.heroSegTextActive]}>/yr</Text>
-            </Pressable>
-          </View>
+          <GlassSegmentedControl
+            values={['/day', '/mo', '/yr']}
+            selectedIndex={period === 'day' ? 0 : period === 'mo' ? 1 : 2}
+            onChange={(i) => setPeriod(i === 0 ? 'day' : i === 1 ? 'mo' : 'yr')}
+            width={120}
+          />
         </View>
 
         <Text style={styles.heroAmount}>
@@ -1821,17 +1815,17 @@ const SubscriptionList: React.FC = () => {
   // ─── Stats line ───────────────────────────────────────
   const renderStatsLine = () => {
     if (subscriptions.length === 0) return null;
-    const displayAmount = showAnnual ? totalAnnual : totalMonthly;
+    const displayAmount = period === 'yr' ? totalAnnual : period === 'day' ? totalAnnual / 365 : totalMonthly;
     const { cleared, pending, paused } = heroStats;
 
     return (
       <Pressable
-        onPress={() => { lightTap(); setShowAnnual(!showAnnual); }}
+        onPress={() => { lightTap(); setPeriod(period === 'day' ? 'mo' : period === 'mo' ? 'yr' : 'day'); }}
         style={styles.statsLine}
       >
         <Text style={styles.statsAmount}>
           {currency} {displayAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          <Text style={styles.statsPeriod}>/{showAnnual ? 'yr' : 'mo'}</Text>
+          <Text style={styles.statsPeriod}>/{period}</Text>
         </Text>
         <View style={styles.statsDivider} />
         <Text style={styles.statsCounts}>
@@ -3232,29 +3226,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: 22,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
-  },
-  heroSegment: {
-    flexDirection: 'row',
-    backgroundColor: withAlpha(C.accent, 0.10),
-    borderRadius: RADIUS.full,
-    padding: 2,
-  },
-  heroSegBtn: {
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
-  },
-  heroSegBtnActive: {
-    backgroundColor: C.accent,
-  },
-  heroSegText: {
-    fontSize: 11,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textMuted,
-    fontVariant: ['tabular-nums'],
-  },
-  heroSegTextActive: {
-    color: C.onAccent,
   },
   heroBreakdownRow: {
     flexDirection: 'row',

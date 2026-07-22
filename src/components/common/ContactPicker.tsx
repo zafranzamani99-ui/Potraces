@@ -196,7 +196,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
         )}
       </TouchableOpacity>
     );
-  }, [selectedContacts, handleSelectPhoneContact]);
+  }, [selectedContacts, handleSelectPhoneContact, styles, C]); // styles/C: rebuilt on theme change — rows go stale after a Control-Center appearance flip without them
 
   return (
     <View style={styles.container}>

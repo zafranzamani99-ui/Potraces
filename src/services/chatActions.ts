@@ -1612,6 +1612,7 @@ RULES:
 - For update_subscription: only include fields that are changing (newAmount and/or billingCycle).
 - For add_bnpl: the creditWallet must be a credit-type wallet (SPayLater, credit card). Records both the expense and credit usage.
 - For repay_credit: fromWallet is the bank/ewallet paying off the credit. If user doesn't mention source, omit fromWallet — the app asks which wallet paid; when the user answers, re-emit the action WITH fromWallet.
+- BNPL/credit synonyms — recognise these even when spoken/spelled loosely (voice often mangles them): spaylater, spay, "spay later", "s pay later", shopee paylater, atome, grab paylater / grabpaylater, boost payflex, riipay, ansuran, kad kredit. REPAY verbs (→ repay_credit): bayar, langsai, lunas, lunaskan, settle, clear, potong. PURCHASE verbs (→ add_bnpl): beli, guna, pakai, swipe.
 - For delete_transaction: match using description + amount + matchType. If user wants to fix a wrong amount, prefer edit_transaction over deleting + re-adding. If there are duplicates, use deleteAll:true.
 - For edit_transaction: match the OLD values (amount, description), then provide the NEW values (newAmount, newDescription, newCategory, newDate). NEVER add correction entries — just edit directly.
 - ALWAYS prefer edit_transaction over "delete + re-add" or "add correction entry". Users want simple, direct fixes.

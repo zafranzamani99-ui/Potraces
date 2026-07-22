@@ -622,14 +622,27 @@ function App() {
         }, delay);
         return;
       }
+      // Removed from the roster: their participant row is gone, so the join
+      // screen would dead-end — land on the Collectz home list instead.
+      if (data?.type === 'collectz_removed') {
+        useAppStore.getState().setMode('personal');
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            (navigationRef as any).navigate('CollectzHome');
+          }
+        }, delay);
+        return;
+      }
       if (
         (data?.type === 'collectz_confirmed' ||
           data?.type === 'collectz_rejected' ||
           data?.type === 'collectz_reminder' ||
-          // v2: organizer edits / cancels / settles — participant lands on their join screen
+          // v2: organizer edits / cancels / settles / promotes a reserve —
+          // participant lands on their join screen
           data?.type === 'collectz_edited' ||
           data?.type === 'collectz_cancelled' ||
-          data?.type === 'collectz_settled') &&
+          data?.type === 'collectz_settled' ||
+          data?.type === 'collectz_promoted') &&
         data.sessionId
       ) {
         useAppStore.getState().setMode('personal');

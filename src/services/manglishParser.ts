@@ -70,9 +70,10 @@ const DEBT_UPDATE_KEYWORDS = [
 
 // BNPL keywords
 const BNPL_KEYWORDS = [
-  'spaylater', 'shopee pay later', 'grabpay later', 'atome', 'split',
-  'ansuran', 'installment', 'instalment', 'pay later', 'bnpl',
-  'credit card', 'kad kredit',
+  'spaylater', 'spay later', 'spay', 'shopee pay later', 'shopeepay later',
+  'grabpay later', 'grab paylater', 'grabpaylater', 'atome', 'split',
+  'ansuran', 'installment', 'instalment', 'pay later', 'paylater', 'bnpl',
+  'boost payflex', 'payflex', 'riipay', 'credit card', 'kad kredit',
 ];
 
 // Seller/business keywords

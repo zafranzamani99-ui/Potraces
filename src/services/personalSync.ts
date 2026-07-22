@@ -8,6 +8,7 @@ import { useReceiptStore } from '../store/receiptStore';
 import { useSavingsStore } from '../store/savingsStore';
 import { useNotesStore } from '../store/notesStore';
 import { useSettingsStore } from '../store/settingsStore';
+import { CLOUD_BACKUP_ENABLED } from '../constants/flags';
 import { useTombstoneStore } from '../store/tombstoneStore';
 import { useBudgetProfileStore } from '../store/budgetProfileStore';
 import { useCategoryStore } from '../store/categoryStore';
@@ -753,6 +754,10 @@ function scheduleRerun(): void {
 // sync. This layered guard replaced the blunt kill-switch after the 2026-06-11
 // data-loss incident. See memory: personal-sync-critical-bugs.
 export function syncPersonal(): Promise<void> {
+  // Beta lock — cloud backup is disabled until launch; never push/pull tester
+  // data to the production DB, even if a stale personalSyncEnabled survives.
+  // See constants/flags.CLOUD_BACKUP_ENABLED.
+  if (!CLOUD_BACKUP_ENABLED) return Promise.resolve();
   if (inflight) { _rerunRequested = true; return inflight; }
   const settings = useSettingsStore.getState();
   // Cheap SYNCHRONOUS gate — no await, so it's safe to short-circuit before we

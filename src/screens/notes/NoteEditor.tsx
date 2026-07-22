@@ -146,7 +146,11 @@ const NoteEditor: React.FC = () => {
     retry,
     confirmExtraction,
     skipExtraction,
-  } = useIntentEngine({ pageId });
+  } = useIntentEngine({
+    pageId,
+    onSetupWallet: (presetId) =>
+      navigation.navigate('WalletManagement', { prefillPreset: presetId }),
+  });
 
   const {
     isRecording,

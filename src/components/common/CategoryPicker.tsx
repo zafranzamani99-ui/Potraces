@@ -117,7 +117,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
         )}
       </TouchableOpacity>
     );
-  }, [selectedId, onSelect]);
+  }, [selectedId, onSelect, styles, neuS, C]); // styles/neuS/C: rebuilt on theme change — without them the rows keep stale dark-mode surfaces after a Control-Center appearance flip
 
   const renderCategoryButton = (category: CategoryOption) => (
     <TouchableOpacity

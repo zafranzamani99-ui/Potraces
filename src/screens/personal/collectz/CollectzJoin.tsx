@@ -13,6 +13,7 @@ import {
   Alert,
   Image,
   useWindowDimensions,
+  Linking,
 } from 'react-native';
 // Page scroller = gesture-handler's ScrollView (the DebtTracking recipe). The
 // app is wrapped in GestureHandlerRootView, and RNGH's ScrollView arbitrates
@@ -49,10 +50,17 @@ import {
   qrImageUrl,
   joinTeam,
   renameTeam,
+  joinErrorMessage,
 } from '../../../services/collectzService';
 import { presetClubIcon } from '../../../constants/clubIcons';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
-import { fmtDateTime, fmtMoney, fill, teamLabel } from './collectzFormat';
+import { fmtDateTime, fmtMoney, fill, teamLabel, SOCIAL_PLATFORMS } from './collectzFormat';
+
+// Leave/unclaim is wired below, but the collectz-join edge function has no
+// 'leave' action yet (its whitelist stops at view/claim/add_self/set_team/
+// set_team_name, so a tap would 400 'unknown action'). Gated OFF until the
+// server half ships — flip this once collectz-join handles action:'leave'.
+const LEAVE_ENABLED = false;
 
 const CollectzJoin: React.FC = () => {
   const C = useCalm();
@@ -72,6 +80,7 @@ const CollectzJoin: React.FC = () => {
   const [view, setView] = useState<CollectzJoinView | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [failMsg, setFailMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Team rename: which team is being renamed, plus the draft label.
   const [renameTeamIdx, setRenameTeamIdx] = useState<number | null>(null);
@@ -125,9 +134,15 @@ const CollectzJoin: React.FC = () => {
       const v = await viewByShareCode(code);
       setView(v);
       setFailed(false);
-    } catch {
+      setFailMsg(null);
+    } catch (err) {
+      // Keep the server's reason ("This session was cancelled.", "Session not
+      // found — check the link.") — a generic wall with a doomed Retry hides
+      // what actually happened from someone who may have already paid.
+      const msg = err instanceof Error && err.message ? err.message : null;
+      setFailMsg(msg);
       setFailed(true);
-      showToast(t.collectz.joinOpenError, 'error');
+      showToast(msg ?? t.collectz.joinOpenError, 'error');
     } finally {
       setLoading(false);
     }
@@ -275,7 +290,18 @@ const CollectzJoin: React.FC = () => {
     setCode(next);
   };
 
-  const claim = async (participantId: string) => {
+  // Confirm before binding — a claimed name locks to your account, so one
+  // fat-fingered chip tap shouldn't make you someone else.
+  const claim = (p: { id: string; name: string }) => {
+    if (!code || busy) return;
+    lightTap();
+    Alert.alert(fill(t.collectz.claimConfirmTitle, { name: p.name }), t.collectz.claimConfirmBody, [
+      { text: t.common.cancel, style: 'cancel' },
+      { text: t.collectz.claimConfirmCta, onPress: () => doClaim(p.id) },
+    ]);
+  };
+
+  const doClaim = async (participantId: string) => {
     if (!code || busy) return;
     setBusy(true);
     try {
@@ -287,7 +313,10 @@ const CollectzJoin: React.FC = () => {
         promptSignIn();
       } else {
         errorNotification();
-        showToast(t.collectz.claimError, 'error');
+        // Surface the real reason ("That name was already claimed.") and refresh —
+        // losing the claim race must not leave the taken name looking tappable.
+        showToast(err instanceof Error && err.message ? err.message : t.collectz.claimError, 'error');
+        await load();
       }
     } finally {
       setBusy(false);
@@ -417,6 +446,52 @@ const CollectzJoin: React.FC = () => {
     }
   };
 
+  // Leave / unclaim — undo a wrong claim or step out while still unpaid. The
+  // edge action frees the name (or drops a self-added row). collectzService has
+  // no wrapper for it yet, so parse the error body the same way its invokeJoin
+  // does (every collectz-join error rides in a non-2xx body).
+  const leaveNow = async () => {
+    if (!code) return;
+    setBusy(true);
+    try {
+      const { data, error } = await supabasePersonal.functions.invoke('collectz-join', {
+        body: { share_code: code, action: 'leave' },
+      });
+      if (error) {
+        let errCode: string | null = null;
+        const ctx = (error as { context?: { json?: () => Promise<unknown> } }).context;
+        if (ctx?.json) {
+          try {
+            const parsed = (await ctx.json()) as { error?: string } | null;
+            if (parsed && typeof parsed.error === 'string') errCode = parsed.error;
+          } catch {
+            // body not JSON — fall through to the generic message
+          }
+        }
+        throw new Error(errCode ? joinErrorMessage(errCode) : error.message || 'Could not reach the server.');
+      }
+      const payload = data as { error?: string } | null;
+      if (payload?.error) throw new Error(joinErrorMessage(payload.error));
+      successNotification();
+      showToast(t.collectz.leaveDone, 'success');
+      await load();
+    } catch (err) {
+      errorNotification();
+      showToast(err instanceof Error && err.message ? err.message : t.collectz.actionError, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const leave = () => {
+    if (busy) return;
+    lightTap();
+    Alert.alert(t.collectz.leaveTitle, t.collectz.leaveBody, [
+      { text: t.common.cancel, style: 'cancel' },
+      { text: t.collectz.leaveCta, style: 'destructive', onPress: leaveNow },
+    ]);
+  };
+
   // ── Loading / failure / code-entry states ──
   if (loading) {
     return (
@@ -452,7 +527,7 @@ const CollectzJoin: React.FC = () => {
     return (
       <View style={styles.loaderWrap}>
         <Feather name="alert-circle" size={32} color={C.textMuted} />
-        <Text style={styles.loaderText}>{t.collectz.joinOpenError}</Text>
+        <Text style={styles.loaderText}>{failMsg ?? t.collectz.joinOpenError}</Text>
         {!!code && (
           <NeuButton label={t.common.retry} onPress={() => { setLoading(true); load(); }} style={styles.retryBtn} />
         )}
@@ -511,6 +586,37 @@ const CollectzJoin: React.FC = () => {
           </View>
         )}
         {!!session.maps_url && <MapPreviewCard mapsUrl={session.maps_url} venue={session.venue} />}
+        {/* Organizer contact (optional): WhatsApp group + socials. Only https
+            values render — server data never reaches openURL unchecked. */}
+        {!!(session.group_url || (session.socials && Object.keys(session.socials).length)) && (
+          <View style={styles.contactChips}>
+            {!!session.group_url && /^https:\/\/chat\.whatsapp\.com\//i.test(session.group_url) && (
+              <Pressable
+                style={({ pressed }) => [styles.waChip, pressed && { opacity: 0.85 }]}
+                onPress={() => { lightTap(); Linking.openURL(session.group_url!).catch(() => {}); }}
+                accessibilityRole="link"
+              >
+                <Feather name="message-circle" size={14} color="#FFFFFF" />
+                <Text style={styles.waChipText}>{t.collectz.joinGroupChip}</Text>
+              </Pressable>
+            )}
+            {SOCIAL_PLATFORMS.map((p) => {
+              const url = session.socials?.[p.key];
+              if (!url || !/^https?:\/\//i.test(url)) return null;
+              return (
+                <Pressable
+                  key={p.key}
+                  style={({ pressed }) => [styles.socialChip, neu.raised, pressed && { opacity: 0.85 }]}
+                  onPress={() => { lightTap(); Linking.openURL(url).catch(() => {}); }}
+                  accessibilityRole="link"
+                >
+                  <Feather name={p.icon as keyof typeof Feather.glyphMap} size={13} color={C.textSecondary} />
+                  <Text style={styles.socialChipText}>{p.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
         {!!payByLine && (
           <View style={styles.metaRow}>
             <Feather name="clock" size={13} color={C.bronze} />
@@ -567,7 +673,7 @@ const CollectzJoin: React.FC = () => {
                   <Pressable
                     key={p.id}
                     style={({ pressed }) => [styles.claimChip, neu.raised, pressed && { opacity: 0.85 }]}
-                    onPress={() => claim(p.id)}
+                    onPress={() => claim(p)}
                     disabled={busy}
                   >
                     <Text style={styles.claimChipText}>{p.name}</Text>
@@ -678,13 +784,23 @@ const CollectzJoin: React.FC = () => {
 
               {my.status === 'pending' && (
                 <View style={styles.stateBox}>
-                  <ActivityIndicator size="small" color={C.gold} />
-                  <Text style={styles.stateTitle}>{t.collectz.pendingTitle}</Text>
-                  <Text style={styles.myHint}>{t.collectz.pendingBody}</Text>
-                  {isOpen && (
-                    <Pressable style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.85 }]} onPress={withdraw} disabled={busy}>
-                      <Text style={styles.secondaryBtnText}>{t.collectz.withdraw}</Text>
-                    </Pressable>
+                  {isOpen ? (
+                    <>
+                      <ActivityIndicator size="small" color={C.gold} />
+                      <Text style={styles.stateTitle}>{t.collectz.pendingTitle}</Text>
+                      <Text style={styles.myHint}>{t.collectz.pendingBody}</Text>
+                      <Pressable style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.85 }]} onPress={withdraw} disabled={busy}>
+                        <Text style={styles.secondaryBtnText}>{t.collectz.withdraw}</Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    // Session settled/cancelled with the proof still unreviewed —
+                    // a spinner promising a review would wait forever. Say so.
+                    <>
+                      <Feather name="help-circle" size={28} color={C.gold} />
+                      <Text style={styles.stateTitle}>{t.collectz.pendingClosedTitle}</Text>
+                      <Text style={styles.myHint}>{t.collectz.pendingClosedBody}</Text>
+                    </>
                   )}
                 </View>
               )}
@@ -701,6 +817,21 @@ const CollectzJoin: React.FC = () => {
                 <Text style={styles.myHint}>{t.collectz.sessionClosed}</Text>
               )}
             </>
+          )}
+
+          {/* Wrong name, or plans changed? Only while unpaid — money that
+              already moved is the organizer's to sort out. */}
+          {LEAVE_ENABLED && isOpen && my.status === 'unpaid' && (
+            <Pressable
+              style={({ pressed }) => [styles.leaveBtn, pressed && { opacity: 0.7 }]}
+              onPress={leave}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel={t.collectz.leaveBtn}
+            >
+              <Feather name="log-out" size={13} color={C.textMuted} />
+              <Text style={styles.leaveBtnText}>{t.collectz.leaveBtn}</Text>
+            </Pressable>
           )}
         </View>
       )}
@@ -883,6 +1014,12 @@ const makeStyles = (C: typeof CALM) =>
     clubImagePhoto: { width: 52, height: 52 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     meta: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
+    // organizer contact chips — WhatsApp green stays FLAT per the Onyx exemptions
+    contactChips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: 2 },
+    waChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#25D366', borderRadius: RADIUS.full, paddingVertical: 8, paddingHorizontal: 14 },
+    waChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: '#FFFFFF' },
+    socialChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: withAlpha(C.textPrimary, 0.03), borderRadius: RADIUS.full, paddingVertical: 8, paddingHorizontal: 14 },
+    socialChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: C.textSecondary },
     closedBanner: {
       marginTop: 4,
       borderRadius: RADIUS.md,
@@ -954,6 +1091,8 @@ const makeStyles = (C: typeof CALM) =>
     },
     joinedRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, alignSelf: 'stretch' },
     joinedText: { flex: 1, fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
+    leaveBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: SPACING.xs },
+    leaveBtnText: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, fontWeight: TYPOGRAPHY.weight.medium },
     rejectedNote: { fontSize: TYPOGRAPHY.size.sm, color: C.overdue, lineHeight: 19, alignSelf: 'stretch' },
     shareLabel: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, marginTop: SPACING.xs },
     shareAmount: { fontSize: 36, lineHeight: 42, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary },

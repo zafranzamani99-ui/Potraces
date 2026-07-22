@@ -85,6 +85,7 @@ export const WALLET_PRESETS: WalletPreset[] = [
   { id: 'uob_my', name: 'UOB', type: 'bank', icon: 'home', color: '#003478' },
   { id: 'ocbc_my', name: 'OCBC', type: 'bank', icon: 'home', color: '#DD0000' },
   // E-Wallets
+  { id: 'mae', name: 'MAE', type: 'ewallet', icon: 'smartphone', color: '#FFC300' },
   { id: 'tng', name: 'Touch n Go', type: 'ewallet', icon: 'smartphone', color: '#005ABE' },
   { id: 'grabpay', name: 'GrabPay', type: 'ewallet', icon: 'smartphone', color: '#00B14F' },
   { id: 'boost', name: 'Boost', type: 'ewallet', icon: 'smartphone', color: '#EE2E24' },
@@ -137,6 +138,7 @@ export const BANK_LOGOS: Record<string, any> = {
   credit_card: require('../../assets/credit-logo/creditcard-logo.png'),
   tiktok_paylater: require('../../assets/credit-logo/tiktokpaylater-logo.png'),
   // E-Wallets
+  mae: require('../../assets/e-wallet/mae-logo.png'),
   tng: require('../../assets/e-wallet/touchngo-logo.png'),
   grabpay: require('../../assets/e-wallet/grab-pay-logo.png'),
   boost: require('../../assets/e-wallet/boost-logo.png'),

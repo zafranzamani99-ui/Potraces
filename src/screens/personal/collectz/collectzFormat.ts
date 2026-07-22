@@ -1,6 +1,44 @@
 // Collectz screens — shared display helpers (dates, money, template fill).
 // Kept tiny and pure so every Collectz screen formats values the same way.
 
+import type { CollectzSocialKey } from '../../../services/collectzService';
+
+// ── Organizer contact (socials + WhatsApp group) ──────────────────────────
+/** Display order + canonical URL base per platform. Labels are brand names —
+ *  identical in EN/BM (DuitNow QR precedent), so no i18n keys needed. */
+export const SOCIAL_PLATFORMS: { key: CollectzSocialKey; label: string; icon: string; base: string }[] = [
+  { key: 'ig', label: 'Instagram', icon: 'instagram', base: 'https://instagram.com/' },
+  { key: 'x', label: 'X', icon: 'twitter', base: 'https://x.com/' },
+  { key: 'threads', label: 'Threads', icon: 'at-sign', base: 'https://threads.net/@' },
+  { key: 'fb', label: 'Facebook', icon: 'facebook', base: 'https://facebook.com/' },
+  { key: 'telegram', label: 'Telegram', icon: 'send', base: 'https://t.me/' },
+];
+
+/** "@name" / "name" / full URL → canonical profile URL. Null when blank. */
+export function normalizeSocial(key: CollectzSocialKey, raw: string | null | undefined): string | null {
+  const v = (raw ?? '').trim();
+  if (!v) return null;
+  if (/^https?:\/\//i.test(v)) return v;
+  const handle = v.replace(/^@/, '').trim();
+  if (!handle) return null;
+  const meta = SOCIAL_PLATFORMS.find((p) => p.key === key);
+  return meta ? meta.base + handle : null;
+}
+
+/** Reverse for edit-prefill: canonical URL → the short handle for the input. */
+export function socialHandleFromUrl(url: string | null | undefined): string {
+  const v = (url ?? '').trim();
+  if (!v) return '';
+  if (!/^https?:\/\//i.test(v)) return v;
+  const seg = v.replace(/\/+$/, '').split('/').pop() ?? '';
+  return seg.replace(/^@/, '');
+}
+
+/** Only real WhatsApp group invites pass — anything else is rejected quietly. */
+export function isWhatsappGroupUrl(u: string): boolean {
+  return /^https:\/\/chat\.whatsapp\.com\/\S+$/i.test(u.trim());
+}
+
 /** "20 Jul 2026" — same shape as the service's announcement date. */
 export function fmtDate(iso: string | null | undefined): string | null {
   if (!iso) return null;

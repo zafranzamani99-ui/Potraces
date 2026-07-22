@@ -73,3 +73,5 @@ nul
 
 # Claude Code local settings
 .claude/
+
+remotion-promo/.env

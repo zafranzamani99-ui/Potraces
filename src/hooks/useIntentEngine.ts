@@ -4,6 +4,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Alert } from 'react-native';
 import { classifyIntent, IntentResult } from '../services/intentEngine';
 import { answerQuery, QueryAnswer } from '../services/queryEngine';
 import { isGeminiAvailable } from '../services/geminiClient';
@@ -24,6 +25,11 @@ import { useCalm } from './useCalm';
 interface UseIntentEngineOptions {
   pageId: string;
   enabled?: boolean;
+  /**
+   * Called when a BNPL note has no credit wallet and the user opts to create one.
+   * `presetId` is the matching WALLET_PRESETS id (e.g. 'spaylater') to prefill.
+   */
+  onSetupWallet?: (presetId: string) => void;
 }
 
 export type ClassifyStep = 'scanning' | 'ai' | 'local' | null;
@@ -45,6 +51,7 @@ interface UseIntentEngineReturn {
 export function useIntentEngine({
   pageId,
   enabled = true,
+  onSetupWallet,
 }: UseIntentEngineOptions): UseIntentEngineReturn {
   const [isClassifying, setIsClassifying] = useState(false);
   const [classifyStep, setClassifyStep] = useState<ClassifyStep>(null);
@@ -326,6 +333,99 @@ export function useIntentEngine({
         return;
       }
 
+      // ── BNPL / Credit → walletStore ──
+      // "bayar/langsai/lunas spaylater" REPAYS a credit wallet (usedCredit ↓, cash
+      // out of a bank wallet); "beli/guna spaylater" is a PURCHASE on credit
+      // (usedCredit ↑). Mirrors chatActions add_bnpl / repay_credit. With no credit
+      // wallet set up there's nothing to repay/charge → fall back to a cash expense.
+      if (extraction.type === 'bnpl' && amount > 0) {
+        const raw = `${extraction.rawText || ''} ${description || ''}`.toLowerCase();
+        const isRepay =
+          /\b(bayar|langsai|lunas|lunaskan|settle|clear|potong|repay|pay ?off)\b/.test(raw) &&
+          !/\b(beli|guna|pakai|swipe|charge|belanja)\b/.test(raw);
+
+        // Resolve the credit wallet: a name match in the note text, else the sole credit wallet.
+        const creditWallets = wallets.filter((w) => w.type === 'credit');
+        const creditW =
+          creditWallets.find((w) => raw.includes(w.name.toLowerCase())) ||
+          (wallet ? creditWallets.find((w) => w.name.toLowerCase() === wallet.toLowerCase()) : undefined) ||
+          (creditWallets.length === 1 ? creditWallets[0] : undefined);
+
+        // No matching credit wallet → don't silently pick one. Tell the user and
+        // let them choose: save as a plain expense now, or set up the wallet first.
+        // Pick neither and the card stays PENDING (a draft) — re-saving it later,
+        // once the SPayLater wallet exists, routes it into that wallet automatically.
+        if (!creditW) {
+          const saveAsExpense = () => {
+            const wId = ensureWalletId();
+            const txnId = addTransaction({
+              amount,
+              category: category || 'bnpl',
+              description: description || '',
+              date: new Date(),
+              type: 'expense',
+              mode,
+              walletId: wId,
+              inputMethod: 'text',
+              rawInput: extraction.rawText,
+              confidence: 'high',
+            });
+            if (wId) useWalletStore.getState().deductFromWallet(wId, amount);
+            updateExtractionStatus(pageId, extractionId, 'confirmed', txnId);
+          };
+          // Match the note to a credit/BNPL wallet preset so setup prefills name + type.
+          const presetId = /atome/.test(raw)
+            ? 'atome'
+            : /grab\s*pay\s*later|grabpaylater/.test(raw)
+              ? 'grab_paylater'
+              : /kad kredit|credit card/.test(raw)
+                ? 'credit_card'
+                : 'spaylater'; // default covers spay / spaylater / shopee
+          Alert.alert(t.notes.bnplNoWalletTitle, t.notes.bnplNoWalletBody, [
+            { text: t.notes.bnplSaveAsExpense, onPress: saveAsExpense },
+            { text: t.notes.bnplSetupWallet, onPress: () => onSetupWallet?.(presetId) },
+            { text: t.common.cancel, style: 'cancel' },
+          ]);
+          return; // leave the extraction pending (draft) until they act
+        }
+
+        if (isRepay) {
+          // Cap to what's owed, pay from a NON-credit wallet, and leave the
+          // 'repayment' paper trail so reconcileWalletBalances keeps the source
+          // deduction (mirrors chatActions repay_credit / WalletManagement.handleRepay).
+          const owed = creditW.usedCredit || 0;
+          const capped = Math.min(amount, owed);
+          const source =
+            wallets.find((w) => w.type !== 'credit' && w.isDefault) ||
+            wallets.find((w) => w.type !== 'credit');
+          const srcId = source?.id ?? ensureWalletId();
+          if (capped > 0 && srcId && srcId !== creditW.id) {
+            useWalletStore.getState().deductFromWallet(srcId, capped);
+            useWalletStore.getState().repayCredit(creditW.id, capped);
+            useWalletStore.getState().logActivity(srcId, creditW.id, capped, 'repayment');
+          }
+          updateExtractionStatus(pageId, extractionId, 'confirmed', creditW.id);
+          return;
+        }
+
+        // Purchase ON credit: usedCredit ↑ + record the expense against the credit wallet.
+        useWalletStore.getState().useCredit(creditW.id, amount);
+        const txnId = addTransaction({
+          amount,
+          category: category || 'shopping',
+          description: description || '',
+          date: new Date(),
+          type: 'expense',
+          mode,
+          walletId: creditW.id,
+          inputMethod: 'text',
+          rawInput: extraction.rawText,
+          confidence: 'high',
+        });
+        updateExtractionStatus(pageId, extractionId, 'confirmed', txnId);
+        return;
+      }
+
       // ── Seller Cost → sellerStore ──
       if (extraction.type === 'seller_cost' && amount > 0) {
         const activeSeason = getActiveSeason();
@@ -467,7 +567,7 @@ export function useIntentEngine({
     [
       pageId, wallets, mode, t, C,
       addTransaction, addSubscription, goals, contributeToGoal,
-      updateExtractionStatus,
+      updateExtractionStatus, onSetupWallet,
       contacts, debts, addDebt, addPayment, addContact,
       addIngredientCost, getActiveSeason,
     ]

@@ -1385,6 +1385,20 @@ const WalletManagement: React.FC = () => {
     }
   }, [route.params?.focusSection, scrollToCredit, navigation]);
 
+  // Opened from a BNPL note's "set up wallet" → jump straight into the add flow
+  // with the matching credit/BNPL preset selected (name + type prefilled).
+  useEffect(() => {
+    const presetId = route.params?.prefillPreset;
+    if (!presetId) return;
+    navigation.setParams({ prefillPreset: undefined });
+    const preset = WALLET_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    if (!canCreateWallet(wallets.length)) { setPaywallVisible(true); return; }
+    resetForm();
+    setModalVisible(true);
+    handleChooseTypeAndPreset(preset.type, preset.id);
+  }, [route.params?.prefillPreset, navigation, canCreateWallet, wallets.length, resetForm, handleChooseTypeAndPreset]);
+
   const renderTypeSection = useCallback((type: WalletType, walletList: Wallet[]) => {
     if (walletList.length === 0) return null;
     const config = WALLET_TYPE_CONFIG[type];

@@ -332,20 +332,35 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
   const cfg = featureConfig[feature];
   const selected = TIERS.find((tr) => tr.id === tier)!;
 
+  // The AI headline number scales with the SELECTED tier vs the free allowance
+  // (free 30 → Basic 300 = 10× · Pro 800 = 27× · Premium 1500 = 50×). Every other
+  // gate uses qualitative copy ("every"/"all"/"without"), so only AI is tier-driven.
+  const headEm =
+    feature === 'ai'
+      ? `${Math.round(TIER_LIMITS[STORE_TIER[tier]].maxAiCallsPerMonth / FREE_TIER.maxAiCallsPerMonth)}×`
+      : cfg.headEm;
+
   // "· cancel anytime" is composed from i18n; the numeric price stays in the tier data.
   const underLine = `${selected.under[billing]} · ${t.paywall.cancelAnytime}`;
 
+  // AI gate: the sub-line shows the SELECTED tier's monthly allowance ("300 AI chats every
+  // month") — a friendlier "here's what you get" that scales as you tap Basic/Pro/Premium.
+  // Other gates keep the usage/limit trigger (they pass currentUsage).
   const triggerText =
     cfg.freeLimit <= 0
       ? '' // capability gate (e.g. cloud backup) — no quota line
-      : currentUsage !== undefined
-        ? t.paywall.triggerUsed
-            .replace('{used}', String(currentUsage))
-            .replace('{limit}', String(cfg.freeLimit))
+      : feature === 'ai'
+        ? t.paywall.triggerTierMonthly
+            .replace('{limit}', String(TIER_LIMITS[STORE_TIER[tier]].maxAiCallsPerMonth))
             .replace('{unit}', cfg.unit)
-        : t.paywall.triggerLimit
-            .replace('{limit}', String(cfg.freeLimit))
-            .replace('{unit}', cfg.unit);
+        : currentUsage !== undefined
+          ? t.paywall.triggerUsed
+              .replace('{used}', String(currentUsage))
+              .replace('{limit}', String(cfg.freeLimit))
+              .replace('{unit}', cfg.unit)
+          : t.paywall.triggerLimit
+              .replace('{limit}', String(cfg.freeLimit))
+              .replace('{unit}', cfg.unit);
 
   const pickTier = (id: PlanTier) => {
     selectionChanged();
@@ -439,7 +454,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             {/* Headline = the promise, one olive word */}
             <Text style={styles.headline}>
               {cfg.headA}
-              <Text style={styles.headlineEm}>{cfg.headEm}</Text>
+              <Text style={styles.headlineEm}>{headEm}</Text>
               {cfg.headB}
             </Text>
             {triggerText ? <Text style={styles.trigger}>{triggerText}</Text> : null}

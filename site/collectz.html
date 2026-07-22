@@ -51,7 +51,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
 <!-- Shared design system — tokens FIRST, then site. -->
 <link rel="stylesheet" href="/tokens.css">
@@ -89,7 +89,8 @@
 
 /* roster */
 .cz-roster{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:12px}
-.cz-person{display:flex;align-items:center;gap:10px}
+.cz-person{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cz-reject-note{width:100%;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--terracotta)}
 .cz-name{flex:1;min-width:0;font-weight:var(--fw-medium);overflow-wrap:anywhere}
 .cz-share{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);flex-shrink:0}
 .cz-chip{flex-shrink:0;font-family:var(--font-mono);font-size:var(--text-xs);padding:4px 10px;border-radius:var(--radius-pill)}
@@ -98,6 +99,9 @@
 .cz-chip--confirmed{background:var(--sage-pale);color:var(--sage-text)}
 .cz-chip--rejected{background:rgba(168,72,46,.10);color:var(--terracotta)}
 .cz-wait{font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45);margin:18px 0 -4px}
+
+/* cancelled banner (head card) */
+.cz-cancel{padding:10px 14px;border-radius:12px;background:rgba(168,72,46,.10);color:var(--terracotta);font-size:.95rem;line-height:var(--leading-relaxed)}
 
 /* CTAs + honest mono footnote */
 .cz-cta{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:var(--space-xl)}
@@ -423,8 +427,10 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       waiting: 'Waiting list',
       unpaid: 'Unpaid', pending: 'Pending', confirmed: 'Confirmed', rejected: 'Rejected',
       settled: 'Settled',
+      rejectReason: 'Reason',
       progFull: function(x, y, n, m){ return x + ' confirmed of ' + y + ' — ' + n + '/' + m + ' paid'; },
-      progOpen: function(x, n, m){ return x + ' confirmed — ' + n + '/' + m + ' paid'; }
+      progOpen: function(x, n, m){ return x + ' confirmed — ' + n + '/' + m + ' paid'; },
+      groupChip: 'Join the WhatsApp group'
     },
     ms: {
       loading: 'Tengah load kutipan…',
@@ -441,8 +447,10 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       waiting: 'Senarai menunggu',
       unpaid: 'Belum bayar', pending: 'Menunggu', confirmed: 'Disahkan', rejected: 'Ditolak',
       settled: 'Selesai',
+      rejectReason: 'Sebab',
       progFull: function(x, y, n, m){ return x + ' disahkan daripada ' + y + ' — ' + n + '/' + m + ' dah bayar'; },
-      progOpen: function(x, n, m){ return x + ' disahkan — ' + n + '/' + m + ' dah bayar'; }
+      progOpen: function(x, n, m){ return x + ' disahkan — ' + n + '/' + m + ' dah bayar'; },
+      groupChip: 'Join group WhatsApp'
     }
   };
 
@@ -470,7 +478,8 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   function rm(n){
     var v = Number(n);
     if (!isFinite(v)) return null;
-    return 'RM ' + v.toFixed(2);
+    var cur = (DATA && DATA.session && DATA.session.currency) || 'RM';
+    return cur + ' ' + v.toFixed(2);
   }
   /* Malaysian-friendly: "17 Jul 2026" (month name follows the page language) */
   function fmtDate(iso){
@@ -538,6 +547,8 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     headHtml += '<h2 class="cz-title">' + esc(session.title || 'Collectz') + '</h2>';
     if (session.status === 'settled') {
       headHtml += '<span class="badge badge--sage">' + esc(s.settled) + '</span>';
+    } else if (session.status === 'cancelled') {
+      headHtml += '<div class="cz-cancel"><strong>' + esc(s.cancelledT) + '</strong> — ' + esc(s.cancelledM) + '</div>';
     }
     var rows = '';
     var dateStr = fmtDate(session.event_at);
@@ -547,8 +558,9 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     var payBy = fmtDate(session.pay_by);
     if (payBy) rows += metaRow(s.payBy, esc(payBy));
     if (rows) headHtml += '<div class="cz-rows">' + rows + '</div>';
-    /* map preview (static via map-preview fn; falls back to plain link buttons) */
-    if (session.maps_url) {
+    /* map preview (static via map-preview fn; falls back to plain link buttons).
+       Scheme-guarded like socials below — the raw URL becomes an href, so only http(s). */
+    if (session.maps_url && /^https?:\/\//.test(session.maps_url)) {
       var mc = parseMapCoords(session.maps_url);
       var gUrl = mc ? ('https://www.google.com/maps/search/?api=1&query=' + mc.lat + ',' + mc.lon) : session.maps_url;
       var wUrl = mc ? ('https://waze.com/ul?ll=' + mc.lat + ',' + mc.lon + '&navigate=yes') : session.maps_url;
@@ -560,10 +572,27 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
         + '<a href="' + esc(wUrl) + '" target="_blank" rel="noopener" style="flex:1;text-align:center;padding:8px;border-radius:8px;background:rgba(79,81,4,.08);color:var(--olive,#4F5104);text-decoration:none;font-size:13px;font-weight:600">Waze</a>'
         + '</div>';
     }
+
+    /* ── organizer contact (optional): WhatsApp group + socials.
+          Only http(s) URLs render — a hostile record can't smuggle javascript: in. ── */
+    var contactChips = '';
+    if (session.group_url && /^https:\/\/chat\.whatsapp\.com\//.test(session.group_url)) {
+      contactChips += '<a href="' + esc(session.group_url) + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;padding:8px 14px;border-radius:999px;background:#25D366;color:#fff;text-decoration:none;font-size:13px;font-weight:600">' + esc(s.groupChip) + '</a>';
+    }
+    var SOC_LABELS = { ig: 'Instagram', x: 'X', threads: 'Threads', fb: 'Facebook', telegram: 'Telegram' };
+    Object.keys(SOC_LABELS).forEach(function (k) {
+      var u = session.socials && session.socials[k];
+      if (u && /^https?:\/\//.test(u)) {
+        contactChips += '<a href="' + esc(u) + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;padding:8px 14px;border-radius:999px;background:rgba(34,30,25,.06);color:var(--ink,#221E19);text-decoration:none;font-size:13px;font-weight:600">' + SOC_LABELS[k] + '</a>';
+      }
+    });
+    if (contactChips) {
+      headHtml += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">' + contactChips + '</div>';
+    }
     els.head.innerHTML = headHtml;
 
     /* ── progress card ── */
-    var confirmedAmt = rm(pr.confirmed_amount || 0) || 'RM 0.00';
+    var confirmedAmt = rm(pr.confirmed_amount || 0);
     var target = pr.target_amount != null ? rm(pr.target_amount) : null;
     var n = pr.confirmed_count || 0;
     var m = pr.active_count || 0;
@@ -592,8 +621,10 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       var status = s[p.status] || p.status || s.unpaid;
       var chip = '<span class="cz-chip cz-chip--' + esc(p.status || 'unpaid') + '">' + esc(status) + '</span>';
       var share = rm(p.effective_share);
+      var note = (p.status === 'rejected' && p.reject_note)
+        ? '<span class="cz-reject-note">' + esc(s.rejectReason + ': ' + p.reject_note) + '</span>' : '';
       return '<li class="cz-person"><span class="cz-name">' + esc(p.name) + '</span>' +
-        (share ? '<span class="cz-share">' + esc(share) + '</span>' : '') + chip + '</li>';
+        (share ? '<span class="cz-share">' + esc(share) + '</span>' : '') + chip + note + '</li>';
     }
     var rosterHtml = '<p class="mono-caps">' + esc(s.roster) + '</p><ul class="cz-roster">' +
       actives.map(person).join('') + '</ul>';
@@ -622,6 +653,10 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       return res.json().catch(function(){ return {}; }).then(function(body){
         if (!res.ok || (body && body.error)) {
           var e = body && body.error;
+          /* Cancelled sessions: newer collectz-join returns the view payload so we
+             can show the cancelled banner + organizer contact chips; older deploys
+             410 with just the error, so keep the plain cancelled message as fallback. */
+          if (body && body.session) { DATA = body; renderSession(); return; }
           showError(e === 'not_found' ? 'notFound' : e === 'cancelled' ? 'cancelled' : 'generic');
           return;
         }

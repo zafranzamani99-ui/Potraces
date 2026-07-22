@@ -42,6 +42,12 @@ When an auditor agent writes a new report, it adds one line here.
 | [ANDROID_SCROLL_AUDIT.md](ANDROID_SCROLL_AUDIT.md) | android-scroll-auditor | 🔴 "always hard to scroll on Android dev build" — root cause = RNGH `ScrollView` on all 84 files (0 native; only 1 truly needs it) + 17 redundant `GestureHandlerRootView` inside Modals + module-level `LayoutAnimation`/focus JS-thread stalls; ships to release (Hermes already ON, not the cause); 12-step iOS-safe fix plan, biggest lever = migrate gesture-free scrolls to native RN ScrollView |
 | [LOAD_READINESS.md](LOAD_READINESS.md) | load-readiness lead | 🟡 1,000-user / ~100-concurrent verdict = **CONDITIONAL-GO** — synthesis of 4 verified dimension audits; blockers = unverified seller multi-device tombstone-delete + buyer double-submit (data-loss, always-on) + shared AI provider RPM (free tier ~15) + plan-gated Supavisor pool; ends with k6 + 2-device load-test plan |
 
+## Collectz
+| Report | Owner agent | What it covers |
+|---|---|---|
+| [COLLECTZ_READINESS.md](COLLECTZ_READINESS.md) | collectz-fix-loop workflow | 🟢 **READY** (2026-07-23) — all 28 confirmed holes + 4 audit residuals closed at root cause across 4 fix→review rounds (see addendum); open items are product calls only: confirm-lock-after-price-edit (R5), leave/unclaim dark behind LEAVE_ENABLED=false (needs server `leave` action), low polish list |
+| [COLLECTZ_DEPLOYMENT.md](COLLECTZ_DEPLOYMENT.md) | collectz-fix-loop workflow | Ordered ship checklist: `db push` (2 migrations) → deploy collectz-join/notify/remind → git push (site via Vercel — WARNING: rides with full SEGAR v6 redesign) → EAS Update (pure TS, no native rebuild); rollback notes per step |
+
 ## Echo Voice Input
 | Report | Owner agent | What it covers |
 |---|---|---|

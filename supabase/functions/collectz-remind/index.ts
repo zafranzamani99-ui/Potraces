@@ -58,19 +58,23 @@ Deno.serve(async (req: Request) => {
 
   const { data: session } = await admin
     .from('collectz_sessions')
-    .select('id,title,owner_id,scheme,total_amount,default_share,currency,last_reminded_at')
+    .select('id,title,owner_id,status,scheme,total_amount,default_share,currency,last_reminded_at')
     .eq('id', sessionId)
     .maybeSingle();
   if (!session || session.owner_id !== user.id) return json({ error: 'forbidden' }, 403);
+  // Never blast "pay now" for a settled/cancelled session.
+  if (session.status !== 'open') return json({ error: 'session_closed' }, 409);
 
   const { data: participants } = await admin
     .from('collectz_participants')
     .select('id,user_id,slot,share_amount')
     .eq('session_id', sessionId)
-    .in('status', ['unpaid', 'rejected'])
-    .not('user_id', 'is', null);
-  const targets = (participants ?? []).filter((p) => p.slot === 'active');
-  if (targets.length === 0) return json({ ok: true, sent: 0 });
+    .in('status', ['unpaid', 'rejected']);
+  const unpaidActives = (participants ?? []).filter((p) => p.slot === 'active');
+  const targets = unpaidActives.filter((p) => p.user_id != null);
+  // Unpaid actives with no app account — a push can never reach them.
+  const unlinked = unpaidActives.length - targets.length;
+  if (targets.length === 0) return json({ ok: true, sent: 0, eligible: 0, unlinked, no_token: 0 });
 
   // 24h cooldown between blasts, checked only once there is someone to
   // remind: a no-target call stays free and does not consume the window.
@@ -105,12 +109,16 @@ Deno.serve(async (req: Request) => {
   };
 
   let sent = 0;
+  let noToken = 0;
   for (const p of targets) {
     const { data: tokens } = await admin
       .from('device_tokens')
       .select('token')
       .eq('user_id', p.user_id);
-    if (!tokens || tokens.length === 0) continue;
+    if (!tokens || tokens.length === 0) {
+      noToken += 1;
+      continue;
+    }
 
     const share = shareFor(p);
     const amount = share != null
@@ -138,11 +146,15 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // Stamp the blast so the cooldown above holds for the next 24h.
-  await admin
-    .from('collectz_sessions')
-    .update({ last_reminded_at: new Date().toISOString() })
-    .eq('id', sessionId);
+  // Stamp the blast so the cooldown above holds for the next 24h — but only
+  // when something actually went out. A blast where every target lacked a
+  // device token reached nobody and shouldn't burn the organizer's window.
+  if (sent > 0) {
+    await admin
+      .from('collectz_sessions')
+      .update({ last_reminded_at: new Date().toISOString() })
+      .eq('id', sessionId);
+  }
 
-  return json({ ok: true, sent });
+  return json({ ok: true, sent, eligible: targets.length, unlinked, no_token: noToken });
 });

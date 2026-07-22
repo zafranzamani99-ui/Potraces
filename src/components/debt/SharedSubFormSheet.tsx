@@ -637,7 +637,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
             <View style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(C.dimBg, 0.4) }]} />
           </Pressable>
           <View style={styles.iconPickerWrap} pointerEvents="box-none">
-            <View style={[styles.iconPickerCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.iconPickerCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
               <View style={styles.iconPickerHeader}>
                 <Text style={styles.iconPickerTitle}>
                   {t.sharedSubs.choosePrefix}

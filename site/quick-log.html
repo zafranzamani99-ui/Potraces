@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <!--
   Potraces — Quick Log (Back Tap) feature page.  jejakbaki.my/quick-log.html
-  TENANG v5: studied aave.com subpage pattern — centered hero with one italic accent
-  word, flat pills, real phone mock, white step cards floating on a sage panel,
-  cream closing panel. Links /tokens.css then /site.css; page-unique layout only
-  in the slim <style> below, written against var() tokens + shared kit classes.
+  SEGAR v6: real captures replace the CSS phone mock (quick-log.mp4 in the hero,
+  notes.mp4 in "more ways"), tap rings actually ripple now, new type + copy.
+  Links /tokens.css then /site.css; page-unique layout only in the slim <style>.
 -->
 <html lang="en">
 <head>
@@ -12,10 +11,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#FEFDFB">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://jngmanwvhbpkpkeklfiv.supabase.co; media-src 'self'">
 
 <title>Quick Log · Potraces</title>
-<meta name="description" content="Log an expense without opening the app. Double tap the back of your iPhone, or pay with Apple Pay. Setting it up takes one tap.">
+<meta name="description" content="Log an expense without opening the app. Double tap the back of your iPhone, or pay with Apple Pay. Setup is one tap.">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://jejakbaki.my/quick-log.html">
 
@@ -23,12 +22,12 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Potraces">
 <meta property="og:title" content="Quick Log · Potraces">
-<meta property="og:description" content="Log an expense without opening the app. Double tap the back of your iPhone, or pay with Apple Pay. Setting it up takes one tap.">
+<meta property="og:description" content="Log an expense without opening the app. Double tap the back of your iPhone, or pay with Apple Pay. Setup is one tap.">
 <meta property="og:url" content="https://jejakbaki.my/quick-log.html">
 <meta property="og:image" content="https://jejakbaki.my/assets/og-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Potraces · calm money tracking for irregular earners in Malaysia">
+<meta property="og:image:alt" content="Potraces · the calm money app for irregular earners in Malaysia">
 <meta property="og:locale" content="en_MY">
 <meta property="og:locale:alternate" content="ms_MY">
 
@@ -37,7 +36,7 @@
 <meta name="twitter:title" content="Quick Log · Potraces">
 <meta name="twitter:description" content="Double tap the back of your iPhone to log an expense. Potraces does the rest. Setup is one tap.">
 <meta name="twitter:image" content="https://jejakbaki.my/assets/og-card.png">
-<meta name="twitter:image:alt" content="Potraces · calm money tracking for irregular earners in Malaysia">
+<meta name="twitter:image:alt" content="Potraces · the calm money app for irregular earners in Malaysia">
 
 <!-- Favicons -->
 <link rel="icon" href="/assets/icon.png" type="image/png">
@@ -45,59 +44,45 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
 <!-- Shared design system — tokens FIRST, then site. -->
 <link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/site.css">
 
 <style>
-/* Hallmark · TENANG v5 · studied: aave.com · quick-log.html */
+/* Hallmark · SEGAR v6 · quick-log.html page-local layer */
 
-/* ── HERO — studied centered stack: kicker, tint badge, display H1 w/ one italic word ── */
+/* ── HERO — centered stack: kicker, tint badge, display H1 ── */
 .ql-kicker{display:flex;justify-content:center;align-items:baseline;gap:12px;color:var(--ink-45);margin-bottom:var(--space-md)}
 .ql-hero .badge{margin-bottom:var(--space-lg)}
 .ql-arrow{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-/* demo cluster — real phone mock + the back-tap card beside it, on white */
+/* demo cluster — REAL capture + the back-tap ripple card beside it */
 .ql-demo{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:40px 56px;margin-top:var(--space-3xl);width:100%}
 .ql-demo-note{display:flex;flex-direction:column;align-items:center;gap:14px}
 .ql-mock{display:flex;flex-direction:column;align-items:center;gap:18px;padding:30px 30px 24px}
 .ql-tap-visual{position:relative;width:124px;height:124px;display:flex;align-items:center;justify-content:center}
-.ql-tap-ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);border-radius:50%;border:1.5px solid var(--sage-a35)}
-.ql-tap-ring.r1{width:62px;height:62px}
-.ql-tap-ring.r2{width:92px;height:92px;border-color:var(--sage-a18)}
-.ql-tap-ring.r3{width:122px;height:122px;border-color:var(--ink-06)}
 .tap-phone{width:34px;height:58px;background:var(--surface);border:2px solid var(--ink);border-radius:9px;box-shadow:var(--shadow-sm);position:relative;z-index:2}
 .ql-logged{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:.88rem;font-weight:var(--fw-medium);color:var(--ink);font-variant-numeric:tabular-nums;border-top:1px solid var(--ink-12);padding-top:14px}
 .ql-logged .lg-ic{width:22px;height:22px;border-radius:50%;background:var(--sage);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;font-size:.72rem;flex-shrink:0}
 .ql-chit-cap{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45)}
 
-/* quick-log prompt mock — the REAL app interior (calm olive), --app-* scope only */
-.qlp{background:var(--app-bg);color:var(--app-text);flex:1;display:flex;flex-direction:column;gap:10px;padding:40px 14px 16px;font-size:11px;font-family:var(--font)}
-.qlp-hd{display:flex;align-items:center;justify-content:space-between}
-.qlp-hd b{font-size:12.5px;font-weight:var(--fw-semibold);color:var(--app-text)}
-.qlp-hd span{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--app-text-2);font-weight:var(--fw-semibold)}
-.qlp-amt{background:var(--app-surface);border:1px solid var(--app-border);border-radius:14px;padding:14px;text-align:center}
-.qlp-amt .lbl{font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:var(--app-text-2);font-weight:var(--fw-semibold)}
-.qlp-amt .val{font-size:26px;font-weight:var(--fw-semibold);letter-spacing:-.5px;color:var(--app-olive);margin-top:3px;font-variant-numeric:tabular-nums}
-.qlp-amt .val small{font-size:13px;font-weight:var(--fw-regular);opacity:.7;margin-right:2px}
-.qlp-lbl{font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:var(--app-text-2);font-weight:var(--fw-semibold);margin-top:2px}
-.qlp-chips{display:flex;flex-wrap:wrap;gap:6px}
-.qlp-chip{border:1px solid var(--app-border);background:var(--app-surface);border-radius:999px;padding:5px 10px;color:var(--app-text-2);font-weight:var(--fw-medium)}
-.qlp-chip.on{background:var(--app-olive);border-color:var(--app-olive);color:var(--app-surface)}
-.qlp-pay{display:flex;align-items:center;justify-content:space-between;background:var(--app-surface);border:1px solid var(--app-border);border-radius:10px;padding:9px 12px}
-.qlp-pay b{font-weight:var(--fw-semibold);color:var(--app-text)}
-.qlp-pay span{color:var(--app-text-2)}
-.qlp-save{margin-top:auto;background:var(--app-olive);color:var(--app-surface);border-radius:999px;padding:11px;text-align:center;font-weight:var(--fw-semibold);font-size:12px}
-
 /* ── HOW IT WORKS — white step cards floating on the sage panel ── */
 .ql-steps{display:grid;grid-template-columns:1fr;gap:16px}
 .ql-step{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
 .ql-num{font-family:var(--font-mono);font-size:var(--text-xs);font-weight:var(--fw-medium);letter-spacing:var(--tracking-caps);color:var(--sage-text);background:var(--sage-pale);padding:5px 12px;border-radius:var(--radius-pill)}
-.ql-step h3{font-size:var(--text-lg);font-weight:var(--fw-medium);letter-spacing:var(--tracking-tight)}
+.ql-step h3{font-size:var(--text-lg);font-weight:var(--fw-semibold);letter-spacing:var(--tracking-tight)}
 .ql-step p{color:var(--ink-65);line-height:var(--leading-relaxed);font-size:var(--text-sm)}
 @media (min-width:768px){.ql-steps{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}}
+
+/* ── MORE WAYS — notes video beside copy ── */
+.ql-more{display:grid;gap:var(--space-2xl);align-items:center}
+@media (min-width:860px){.ql-more{grid-template-columns:1fr .8fr}}
+.ql-more-copy h2{font-size:var(--text-3xl);font-weight:var(--fw-bold);letter-spacing:var(--tracking-display);line-height:var(--leading-tight);margin-bottom:var(--space-md);text-wrap:balance}
+.ql-more-copy p{font-size:var(--text-md);color:var(--ink-65);max-width:46ch;text-wrap:pretty}
+.ql-more-stage{display:flex;justify-content:center}
+.ql-more-stage .phone{width:min(270px,74vw)}
 
 /* ── TWO WAYS — quiet white two-column comparison card ── */
 .ql-ways-table .wm{white-space:nowrap;vertical-align:top}
@@ -109,7 +94,7 @@
 
 /* ── CLOSING — cream panel, centered ── */
 .ql-final{text-align:center}
-.ql-final h2{font-size:var(--text-3xl);font-weight:var(--fw-medium);letter-spacing:var(--tracking-display);line-height:var(--leading-tight);margin-bottom:14px}
+.ql-final h2{font-size:var(--text-3xl);font-weight:var(--fw-bold);letter-spacing:var(--tracking-display);line-height:var(--leading-tight);margin-bottom:14px}
 .ql-final p{font-size:var(--text-md);color:var(--ink-65);margin:0 auto 30px;max-width:44ch}
 .ql-cta-wau{display:block;width:52px;height:52px;margin:0 auto 20px;border-radius:var(--radius-md);overflow:hidden}
 .ql-cta-wau svg{width:100%;height:100%;display:block}
@@ -119,7 +104,7 @@
 <div class="grain" aria-hidden="true"></div>
 <a class="skip" href="#main" data-en="Skip to content" data-bm="Terus ke kandungan">Skip to content</a>
 
-<!-- ════════════ NAV — quiet white, ink pill CTA ════════════ -->
+<!-- ════════════ NAV — glass bar, ink pill CTA ════════════ -->
 <header class="nav" id="nav">
   <div class="container">
     <a class="brand" href="/" aria-label="Potraces home">
@@ -164,19 +149,19 @@
 
 <main id="main">
 
-<!-- ════════════ HERO — studied centered subpage pattern ════════════ -->
+<!-- ════════════ HERO — the double tap, shown for real ════════════ -->
 <section class="hero-center ql-hero">
   <div class="container">
     <p class="mono-caps ql-kicker">
       <span>NO. 01</span>
       <span data-en="Feature sheet · Quick Log" data-bm="Borang ciri · Log Pantas">Feature sheet · Quick Log</span>
     </p>
-    <span class="badge badge--sage" data-en="Now set up in one tap" data-bm="Sekarang setup satu tap je">Now set up in one tap</span>
+    <span class="badge badge--sage badge--shimmer" data-en="Setup is one tap now" data-bm="Setup satu tap je sekarang">Setup is one tap now</span>
     <h1>
-      <span data-en="Log an expense " data-bm="Log belanja ">Log an expense </span><em class="accent-word" data-en="without" data-bm="tanpa">without</em><span data-en=" opening the app." data-bm=" buka app pun."> opening the app.</span>
+      <span data-en="The app you never " data-bm="App yang tak payah ">The app you never </span><em class="accent-word" data-en="open" data-bm="buka">open</em><span data-en=" still logs it." data-bm=" pun tetap log."> still logs it.</span>
     </h1>
     <p class="lead">
-      <span data-en="Double tap the back of your iPhone. Amount, category, payment, done. Potraces saves it while the app stays closed, and setting it all up takes one tap." data-bm="Double tap belakang iPhone kau. Jumlah, kategori, cara bayar, siap. Potraces simpan terus walaupun app tak buka, dan nak setup pun satu tap je." class="block">Double tap the back of your iPhone. Amount, category, payment, done. Potraces saves it while the app stays closed, and setting it all up takes one tap.</span>
+      <span data-en="Double tap the back of your iPhone — amount, category, payment, done in three taps while the app stays closed. Setting it up takes exactly one." data-bm="Double tap belakang iPhone kau — jumlah, kategori, cara bayar, siap dalam tiga tap sementara app kekal tutup. Nak setup pun cuma satu tap." class="block">Double tap the back of your iPhone — amount, category, payment, done in three taps while the app stays closed. Setting it up takes exactly one.</span>
     </p>
     <div class="hero-actions">
       <a class="btn btn-pill--ink btn-lg" href="/beta.html" data-en="Join the beta" data-bm="Sertai beta">Join the beta</a>
@@ -186,36 +171,23 @@
       </a>
     </div>
 
-    <div class="ql-demo reveal" aria-hidden="true">
-      <div class="phone phone--sm">
-        <!-- SHOT SLOT "quick-log": when the real capture lands, replace the inner mock with <img class="shot" src="/assets/screens/quick-log.png" alt="Quick Log prompt — amount, category and payment in three taps"> -->
+    <div class="ql-demo reveal">
+      <div class="phone phone--sm" role="img" aria-label="Quick Log in action — one typed line sorted into amount, type and wallet">
         <div class="phone-screen" data-shot="quick-log">
-          <div class="qlp">
-            <div class="qlp-hd"><b>Quick Log</b><span>Back Tap</span></div>
-            <div class="qlp-amt"><span class="lbl">Amount</span><div class="val"><small>RM</small>12.50</div></div>
-            <span class="qlp-lbl">Category</span>
-            <div class="qlp-chips">
-              <span class="qlp-chip on">🍜 Makan</span>
-              <span class="qlp-chip">⛽ Minyak</span>
-              <span class="qlp-chip">🛒 Groceries</span>
-            </div>
-            <span class="qlp-lbl">Payment</span>
-            <div class="qlp-pay"><b>DuitNow</b><span>Maybank ··19</span></div>
-            <div class="qlp-save">Save · 3 taps</div>
-          </div>
+          <video class="shot" muted loop playsinline preload="metadata" poster="/assets/screens/quick-log-poster.webp" data-autoplay aria-label="Quick Log — logging an expense in seconds, captured from the real app"><source src="/assets/screens/quick-log.mp4" type="video/mp4"></video>
         </div>
       </div>
-      <div class="ql-demo-note">
+      <div class="ql-demo-note" aria-hidden="true">
         <div class="card ql-mock">
-          <div class="ql-tap-visual">
-            <span class="ql-tap-ring r1"></span>
-            <span class="ql-tap-ring r2"></span>
-            <span class="ql-tap-ring r3"></span>
+          <div class="ql-tap-visual ripple-set">
+            <span class="ripple-ring"></span>
+            <span class="ripple-ring"></span>
+            <span class="ripple-ring"></span>
             <span class="tap-phone"></span>
           </div>
           <div class="ql-logged"><span class="lg-ic">✓</span><span>Logged RM12.50</span></div>
         </div>
-        <p class="ql-chit-cap" data-en="three taps, done." data-bm="3 tap je, siap.">three taps, done.</p>
+        <p class="ql-chit-cap" data-en="double tap · three taps · done" data-bm="double tap · tiga tap · siap">double tap · three taps · done</p>
       </div>
     </div>
   </div>
@@ -239,23 +211,48 @@
           <span class="ql-num n1" aria-hidden="true">01</span>
           <div>
             <h3 data-en="Set it up in one tap" data-bm="Setup dengan satu tap">Set it up in one tap</h3>
-            <p data-en="In Potraces go to Settings, then Money Setup, then Quick Log, and tap 'Set up in one tap'. The app builds your key and downloads the shortcut for you, then a share sheet opens: tap 'Shortcuts', then 'Add Shortcut'. Last, turn on Back Tap in iPhone Settings under Accessibility, Touch, Back Tap, Double Tap, and pick 'Potraces Quick Log'. Nothing to copy, nothing to paste. There is a real picture for every step, and you can tap a picture to make it bigger." data-bm="Dalam Potraces pergi ke Tetapan, lepas tu Tetapan Wang, lepas tu Log Pantas, kemudian tap 'Sedia dalam satu ketukan'. App buat kunci kau dan muat turun shortcut untuk kau, lepas tu satu share sheet akan buka: tap 'Shortcuts', lepas tu 'Add Shortcut'. Last sekali, hidupkan Back Tap dalam Settings iPhone bawah Accessibility, Touch, Back Tap, Double Tap, dan pilih 'Potraces Quick Log'. Tak payah copy, tak payah paste. Ada gambar sebenar untuk setiap langkah, dan kau boleh tap gambar tu untuk besarkan.">In Potraces go to Settings, then Money Setup, then Quick Log, and tap 'Set up in one tap'. The app builds your key and downloads the shortcut for you, then a share sheet opens: tap 'Shortcuts', then 'Add Shortcut'. Last, turn on Back Tap in iPhone Settings under Accessibility, Touch, Back Tap, Double Tap, and pick 'Potraces Quick Log'. Nothing to copy, nothing to paste. There is a real picture for every step, and you can tap a picture to make it bigger.</p>
+            <p data-en="In Potraces go to Settings, then Money Setup, then Quick Log, and tap 'Set up in one tap'. The app builds your key and downloads the shortcut for you, then a share sheet opens: tap 'Shortcuts', then 'Add Shortcut'. Last, turn on Back Tap in iPhone Settings under Accessibility, Touch, Back Tap, Double Tap, and pick 'Potraces Quick Log'. Nothing to copy, nothing to paste — and there's a real picture for every step." data-bm="Dalam Potraces pergi ke Tetapan, lepas tu Tetapan Wang, lepas tu Log Pantas, kemudian tap 'Sedia dalam satu ketukan'. App buat kunci kau dan muat turun shortcut untuk kau, lepas tu satu share sheet akan buka: tap 'Shortcuts', lepas tu 'Add Shortcut'. Last sekali, hidupkan Back Tap dalam Settings iPhone bawah Accessibility, Touch, Back Tap, Double Tap, dan pilih 'Potraces Quick Log'. Tak payah copy, tak payah paste — dan ada gambar sebenar untuk setiap langkah.">In Potraces go to Settings, then Money Setup, then Quick Log, and tap 'Set up in one tap'. The app builds your key and downloads the shortcut for you, then a share sheet opens: tap 'Shortcuts', then 'Add Shortcut'. Last, turn on Back Tap in iPhone Settings under Accessibility, Touch, Back Tap, Double Tap, and pick 'Potraces Quick Log'. Nothing to copy, nothing to paste — and there's a real picture for every step.</p>
           </div>
         </article>
         <article class="card ql-step reveal" style="--d:90ms">
           <span class="ql-num n2" aria-hidden="true">02</span>
           <div>
             <h3 data-en="Double tap the back" data-bm="Double tap belakang phone">Double tap the back</h3>
-            <p data-en="A prompt pops up over whatever is on screen. Type the amount, pick a category, pick how you paid. Add a note if you want, or skip it." data-bm="Satu prompt akan pop up atas apa je yang ada kat skrin. Taip jumlah, pilih kategori, pilih cara kau bayar. Tambah nota kalau nak, atau skip je.">A prompt pops up over whatever is on screen. Type the amount, pick a category, pick how you paid. Add a note if you want, or skip it.</p>
+            <p data-en="A prompt pops up over whatever's on screen. Type the amount, pick a category, pick how you paid. Note if you want — skip if you don't." data-bm="Satu prompt akan pop up atas apa je yang ada kat skrin. Taip jumlah, pilih kategori, pilih cara kau bayar. Nak nota, tambah — tak nak, skip je.">A prompt pops up over whatever's on screen. Type the amount, pick a category, pick how you paid. Note if you want — skip if you don't.</p>
           </div>
         </article>
         <article class="card ql-step reveal" style="--d:180ms">
           <span class="ql-num n3" aria-hidden="true">03</span>
           <div>
             <h3 data-en="It saves itself" data-bm="Ia simpan sendiri">It saves itself</h3>
-            <p data-en="Potraces saves it to your account in the background. A notification says 'Logged RM12.50'. Tap it and the entry is already there." data-bm="Potraces simpan terus dalam akaun kau, dalam background. Notification akan tunjuk 'Logged RM12.50'. Tap je, entry tu dah pun ada.">Potraces saves it to your account in the background. A notification says 'Logged RM12.50'. Tap it and the entry is already there.</p>
+            <p data-en="Potraces files it in the background. A notification says 'Logged RM12.50' — tap it and the entry's already sitting in your book." data-bm="Potraces simpan terus dalam background. Notification tunjuk 'Logged RM12.50' — tap je, entry tu dah pun duduk dalam buku kau.">Potraces files it in the background. A notification says 'Logged RM12.50' — tap it and the entry's already sitting in your book.</p>
           </div>
         </article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ MORE WAYS — notes + Echo, captured for real ════════════ -->
+<section class="ql-moreways">
+  <div class="container">
+    <p class="mono-caps ql-kicker reveal">
+      <span>NO. 03</span>
+      <span data-en="More ways in" data-bm="Lagi cara masuk">More ways in</span>
+    </p>
+    <div class="ql-more">
+      <div class="ql-more-copy reveal">
+        <h2>
+          <span data-en="Or jot it in " data-bm="Atau catat dalam ">Or jot it in </span><em class="accent-word" data-en="Notes" data-bm="Nota">Notes</em><span data-en=" and let Echo file it." data-bm=" dan biar Echo uruskan."> and let Echo file it.</span>
+        </h2>
+        <p data-en="Scribble 'bayar Astro 89.90 tiap bulan' into the app's notes and Echo spots the commitment, the amount, the schedule — then offers to add it properly. Watch it happen on the right, captured straight from the app." data-bm="Conteng 'bayar Astro 89.90 tiap bulan' dalam nota app dan Echo kesan komitmen tu, jumlahnya, jadualnya — lepas tu tawar untuk tambah terus. Tengok kat sebelah, dirakam terus dari app.">Scribble 'bayar Astro 89.90 tiap bulan' into the app's notes and Echo spots the commitment, the amount, the schedule — then offers to add it properly. Watch it happen on the right, captured straight from the app.</p>
+      </div>
+      <div class="ql-more-stage reveal">
+        <div class="phone" role="img" aria-label="Notes with Echo — a written note detected and turned into a tracked commitment">
+          <div class="phone-screen">
+            <video class="shot" muted loop playsinline preload="none" poster="/assets/screens/notes-poster.webp" data-autoplay aria-label="Notes — Echo reads a note and files the commitment it finds"><source src="/assets/screens/notes.mp4" type="video/mp4"></video>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -265,12 +262,12 @@
 <section class="ql-ways">
   <div class="container">
     <p class="mono-caps ql-kicker reveal">
-      <span>NO. 03</span>
+      <span>NO. 04</span>
       <span data-en="Logging without the app" data-bm="Log tanpa buka app">Logging without the app</span>
     </p>
     <div class="section-head reveal">
       <h2>
-        <span data-en="Two ways to log without " data-bm="Dua cara log tanpa ">Two ways to log without </span><em class="accent-word" data-en="opening it." data-bm="buka app.">opening it.</em>
+        <span data-en="Two ways to log without " data-bm="Dua cara log tanpa ">Two ways to log without </span><em class="accent-word" data-en="opening" data-bm="buka">opening</em><span data-en=" it." data-bm=" app."> it.</span>
       </h2>
     </div>
     <div class="table-wrap reveal">
@@ -305,10 +302,10 @@
     <div class="panel panel--cream reveal">
       <span class="ql-cta-wau" id="ctawau" aria-hidden="true"></span>
       <h2>
-        <span data-en="Set it up once. It takes " data-bm="Setup sekali je. Cuma ">Set it up once. It takes </span><em class="accent-word" data-en="one tap." data-bm="satu tap.">one tap.</em>
+        <span data-en="Set it up once. It takes " data-bm="Setup sekali je. Cuma ">Set it up once. It takes </span><em class="accent-word" data-en="one" data-bm="satu">one</em><span data-en=" tap." data-bm=" tap."> tap.</span>
       </h2>
       <p>
-        <span data-en="Quick Log is rolling out to beta testers now. Join, tap once to set it up, and log your next expense without opening the app." data-bm="Log Pantas dah mula rolling out untuk beta tester sekarang. Join, tap sekali untuk setup, lepas tu log belanja seterusnya tanpa buka app." class="block">Quick Log is rolling out to beta testers now. Join, tap once to set it up, and log your next expense without opening the app.</span>
+        <span data-en="Quick Log is rolling out to beta testers now. Join, tap once, and log your next belanja without opening the app." data-bm="Log Pantas tengah rolling out untuk beta tester sekarang. Join, tap sekali, lepas tu log belanja seterusnya tanpa buka app." class="block">Quick Log is rolling out to beta testers now. Join, tap once, and log your next belanja without opening the app.</span>
       </p>
       <a class="btn btn-pill--ink btn-lg" href="/beta.html" data-en="Join the beta" data-bm="Sertai beta">Join the beta</a>
     </div>
@@ -326,7 +323,7 @@
           <span class="logo" aria-hidden="true" id="footlogo"></span>
           <span data-en="Potraces" data-bm="Potraces">Potraces</span>
         </a>
-        <p class="bline" data-en="Calm money tracking for irregular earners in Malaysia." data-bm="Jejak duit yang tenang untuk pencari rezeki tak tetap di Malaysia.">Calm money tracking for irregular earners in Malaysia.</p>
+        <p class="bline" data-en="The calm money app for irregular earners in Malaysia." data-bm="App duit yang tenang untuk pencari rezeki tak tetap di Malaysia.">The calm money app for irregular earners in Malaysia.</p>
       </div>
       <div class="footer-cols">
         <div class="footer-col">
@@ -406,7 +403,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
 </g>\
 <circle cx="512" cy="368" r="11" fill="#B2780A"/>\
 </g></svg>';
-['navlogo','footlogo','herowau','herowau2','storywau','darkwau','ctawau','wlicon','wlicon2'].forEach(function(id){
+['navlogo','footlogo','ctawau'].forEach(function(id){
   var el = document.getElementById(id);
   if (el) el.innerHTML = WAU_SVG;
 });
@@ -478,6 +475,26 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
   }, {threshold:0.12, rootMargin:'0px 0px -40px 0px'});
   els.forEach(function(el){ io.observe(el); });
+})();
+
+/* ── real-capture videos: play only while in view; reduced-motion = poster only ── */
+(function(){
+  var vids=document.querySelectorAll('video.shot[data-autoplay]');
+  if(!vids.length) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if(!('IntersectionObserver' in window)){
+    vids.forEach(function(v){ v.muted=true; if(v.play) v.play().catch(function(){}); });
+    return;
+  }
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      var v=en.target;
+      if(en.isIntersecting && en.intersectionRatio>=0.5){
+        v.muted=true; if(v.play) v.play().catch(function(){});
+      } else if(v.pause){ v.pause(); }
+    });
+  },{threshold:[0,0.5,1]});
+  vids.forEach(function(v){ io.observe(v); });
 })();
 
 /* ── current year ── */

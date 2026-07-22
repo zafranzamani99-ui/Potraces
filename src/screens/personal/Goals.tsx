@@ -447,15 +447,15 @@ const GoalCard = React.memo(function GoalCard({
       onPress={() => onPress(goal)}
     >
       <CircularProgress
-        size={48}
-        strokeWidth={3.5}
+        size={60}
+        strokeWidth={4}
         percentage={goal.isPaused ? 0 : goal.percentage}
         color={goal.isPaused ? C.neutral : goal.color}
         trackColor={withAlpha(C.textPrimary, 0.1)}
       >
         {goal.imageUri
-          ? <Image source={{ uri: goal.imageUri }} style={{ width: 30, height: 30, borderRadius: 15 }} />
-          : renderGoalIcon(goal.icon || 'f/target', 18, goal.isPaused ? C.neutral : goal.color)}
+          ? <Image source={{ uri: goal.imageUri }} style={{ width: 48, height: 48, borderRadius: 24 }} />
+          : renderGoalIcon(goal.icon || 'f/target', 34, goal.isPaused ? C.neutral : goal.color)}
       </CircularProgress>
       <Text style={[styles.goalCardName, goal.isPaused && { color: C.neutral }]}>
         {goal.name}
@@ -1762,14 +1762,11 @@ const Goals: React.FC = () => {
             </GestureDetector>
 
             <KeyboardAwareScrollView
-              style={{ flex: 1 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               nestedScrollEnabled
               keyboardDismissMode="on-drag"
-              scrollEventThrottle={16}
               contentContainerStyle={{ paddingHorizontal: SPACING.lg, paddingBottom: SPACING['3xl'] + insets.bottom }}
-              bottomOffset={20}
             >
               {/* ── Hero: ring preview + amount input ── */}
               <Pressable style={styles.gfHeroArea} onPress={() => goalTargetRef.current?.focus()}>

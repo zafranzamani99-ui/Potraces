@@ -9,6 +9,7 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
+  Alert,
   Image,
   Linking,
   Share,
@@ -56,11 +57,11 @@ import {
   cancelSession,
   regenerateShareCode,
   duplicateSession,
-  notifySession,
   clubImageUrl,
   buildRequestMessage,
   type CollectzProfile,
 } from '../../../services/collectzService';
+import { supabasePersonal } from '../../../services/supabase';
 import { AvatarView } from '../../../components/common/Avatar';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
 import CostNotesSheet from '../../../components/collectz/CostNotesSheet';
@@ -105,6 +106,8 @@ const CollectzDetail: React.FC = () => {
   const [reqFor, setReqFor] = useState<CollectzParticipant | null>(null);
   const [reqMsg, setReqMsg] = useState('');
   const [reqCopied, setReqCopied] = useState(false);
+  // Share-code row inline feedback: which variant landed on the clipboard (null = idle)
+  const [codeCopied, setCodeCopied] = useState<null | 'code' | 'link'>(null);
   // Participant action modal (tap a roster row)
   const [actionFor, setActionFor] = useState<CollectzParticipant | null>(null);
   // Team rename: which team is being renamed, and the draft label.
@@ -249,13 +252,15 @@ const CollectzDetail: React.FC = () => {
     Share.share({ message: buildWhatsappAnnouncement(session, progress?.activeCount ?? 0) }).catch(() => {});
   };
 
-  // Tap copies the code, long-press copies the full join link. Distinct toasts
-  // so the user always knows WHICH of the two landed on their clipboard.
+  // Tap copies the code, long-press copies the full join link. Inline swap on the
+  // row itself (icon → check, hint → "code copied"/"link copied") so the user
+  // always knows WHICH of the two landed — same mechanism as copyRequest below.
   const copyShareCode = async (asLink: boolean) => {
     if (!session) return;
     lightTap();
     await Clipboard.setStringAsync(asLink ? collectzUrl(session.share_code) : session.share_code);
-    showToast(asLink ? t.collectz.linkCopied : t.collectz.codeCopied, 'success');
+    setCodeCopied(asLink ? 'link' : 'code');
+    setTimeout(() => setCodeCopied(null), 1400);
   };
 
   // Not via run(): its catch shows a generic error, which would hide the real
@@ -276,6 +281,55 @@ const CollectzDetail: React.FC = () => {
     }
   };
 
+  // Notify fanout with reach feedback — remind's honesty applied to notify: the
+  // organizer must see "notified 2 of 9", not a silent fire-and-forget that may
+  // have pushed nobody. M = app-linked roster (only they are reachable by push).
+  // Never throws — the session change already landed by the time this runs.
+  const notifyWithReach = async (kind: 'settled' | 'cancelled') => {
+    const linked = participants.filter((p) => !!p.user_id).length;
+    try {
+      const { data, error } = await supabasePersonal.functions.invoke('collectz-notify', {
+        body: { sessionId, kind },
+      });
+      if (error || (data as { error?: string } | null)?.error) throw new Error('notify_failed');
+      // `reached`/`eligible` count PARTICIPANTS (a phone+tablet person is 1), so
+      // n of m stays honest — `sent` counts tokens and can exceed the roster.
+      const reached = (data as { reached?: number } | null)?.reached ?? 0;
+      const eligible = (data as { eligible?: number } | null)?.eligible ?? linked;
+      showToast(fill(t.collectz.notifyReach, { n: reached, m: eligible }), reached > 0 ? 'success' : 'info');
+    } catch {
+      showToast(t.collectz.notifyFailed, 'info');
+    }
+  };
+
+  // Push can't reach organizer-typed names (no user_id) — after a cancel the
+  // group chat is the only channel left, so offer a ready-made WhatsApp blast.
+  const promptShareUpdate = (s: CollectzSession) => {
+    const unlinked = participants.filter((p) => !p.user_id).length;
+    const lines = [`*${s.title}*`, '', `❌ ${t.collectz.waCancelLine}`];
+    const d = fmtDateTime(s.event_at);
+    if (d) lines.push(`📅 ${d}`);
+    if (s.venue) lines.push(`📍 ${s.venue}`);
+    const message = lines.join('\n');
+    Alert.alert(
+      t.collectz.shareUpdateTitle,
+      unlinked > 0 ? fill(t.collectz.shareUpdateBodyUnlinked, { n: unlinked }) : t.collectz.shareUpdateBody,
+      [
+        { text: t.collectz.shareUpdateSkip, style: 'cancel' },
+        {
+          text: t.collectz.requestWhatsapp,
+          onPress: () => {
+            // No group phone on file — WhatsApp opens its own chat picker; the
+            // system share sheet is the fallback when WhatsApp isn't installed.
+            Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`).catch(() =>
+              Share.share({ message }).catch(() => {}),
+            );
+          },
+        },
+      ],
+    );
+  };
+
   const settle = () => {
     lightTap();
     setConfirm({
@@ -289,7 +343,7 @@ const CollectzDetail: React.FC = () => {
         setConfirm(null);
         run(async () => {
           await updateSession(sessionId, { status: 'settled' });
-          notifySession(sessionId, 'settled').catch(() => {}); // best-effort
+          await notifyWithReach('settled');
         }, t.collectz.settledToast);
       },
     });
@@ -339,12 +393,25 @@ const CollectzDetail: React.FC = () => {
       message: t.collectz.cancelBody,
       confirmLabel: t.collectz.actionCancel,
       destructive: true,
-      onConfirm: () => {
+      // Not via run(): after the cancel lands we surface notify reach and then
+      // offer the WhatsApp fallback — unclaimed names get no push at all.
+      onConfirm: async () => {
         setConfirm(null);
-        run(async () => {
+        const s = session;
+        setBusy(true);
+        try {
           await cancelSession(sessionId);
-          notifySession(sessionId, 'cancelled').catch(() => {});
-        }, t.collectz.cancelledToast);
+          successNotification();
+          showToast(t.collectz.cancelledToast, 'success');
+          await notifyWithReach('cancelled');
+          await load();
+          if (s) promptShareUpdate(s);
+        } catch {
+          errorNotification();
+          showToast(t.collectz.actionError, 'error');
+        } finally {
+          setBusy(false);
+        }
       },
     });
   };
@@ -362,7 +429,7 @@ const CollectzDetail: React.FC = () => {
         // Notify FIRST (the join link dies with the row), then delete + leave.
         setBusy(true);
         try {
-          await notifySession(sessionId, 'cancelled').catch(() => {});
+          await notifyWithReach('cancelled');
           await deleteSession(sessionId);
           successNotification();
           showToast(t.collectz.deletedToast, 'success');
@@ -432,7 +499,17 @@ const CollectzDetail: React.FC = () => {
       onConfirm: () => {
         setPConfirm(null);
         setActionFor(null);
-        run(() => removeParticipant(p.id), fill(t.collectz.removedToast, { name: p.name }));
+        run(async () => {
+          // Tell the removed person first — collectz-notify's 'removed' kind
+          // pushes to the participant_user_id we pass (it does NOT read the row).
+          // Best-effort: a missed push must never block the removal itself.
+          if (p.user_id) {
+            await supabasePersonal.functions
+              .invoke('collectz-notify', { body: { sessionId, kind: 'removed', participant_user_id: p.user_id } })
+              .catch(() => {});
+          }
+          await removeParticipant(p.id);
+        }, fill(t.collectz.removedToast, { name: p.name }));
       },
     });
   };
@@ -653,23 +730,28 @@ const CollectzDetail: React.FC = () => {
             </View>
           )}
           {!!session.maps_url && <MapPreviewCard mapsUrl={session.maps_url} venue={session.venue} compact />}
-          <View style={styles.metaRow}>
-            <Feather name="link" size={13} color={C.textMuted} />
-            {/* Tap = the bare code (for typing into "Join with a code");
-                long-press = the full join link (for pasting into WhatsApp).
-                The hint below makes the long-press discoverable. */}
-            <Pressable
-              onPress={() => copyShareCode(false)}
-              onLongPress={() => copyShareCode(true)}
-              delayLongPress={350}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel={t.collectz.codeCopyHint}
-            >
-              <Text style={styles.meta}>{fill(t.collectz.shareCodeLabel, { code: session.share_code })}</Text>
-              <Text style={styles.codeCopyHint}>{t.collectz.codeCopyHint}</Text>
-            </Pressable>
-          </View>
+          {/* SHARE CODE — its own Neu Card: the code is the hero (big, letter-spaced),
+              the WHOLE card is the tap target (tap = bare code, long-press = join link),
+              and the icon well flips to a check while the hint names WHICH variant
+              landed ("code copied"/"link copied") for 1.4s. */}
+          <Pressable
+            onPress={() => copyShareCode(false)}
+            onLongPress={() => copyShareCode(true)}
+            delayLongPress={350}
+            accessibilityRole="button"
+            accessibilityLabel={t.collectz.codeCopyHint}
+            style={({ pressed }) => [styles.codeCard, neu.raisedSoft, pressed && { opacity: 0.9 }]}
+          >
+            <View style={styles.codeCardLeft}>
+              <Text style={styles.codeCardCode}>{session.share_code}</Text>
+              <Text style={[styles.codeCopyHint, codeCopied && { color: C.accent, fontWeight: TYPOGRAPHY.weight.semibold }]}>
+                {codeCopied ? (codeCopied === 'link' ? t.collectz.linkCopied : t.collectz.codeCopied) : t.collectz.codeCopyHint}
+              </Text>
+            </View>
+            <View style={[styles.codeCardWell, neu.well, codeCopied && { backgroundColor: withAlpha(C.accent, 0.12) }]}>
+              <Feather name={codeCopied ? 'check' : 'copy'} size={16} color={codeCopied ? C.accent : C.textSecondary} />
+            </View>
+          </Pressable>
           {!isOpen && (
             <View style={styles.closedBanner}>
               <Text style={styles.closedBannerText}>
@@ -718,10 +800,13 @@ const CollectzDetail: React.FC = () => {
             <Feather name="share-2" size={15} color={C.accent} />
             <Text style={styles.actionBtnText}>{t.collectz.actionShare}</Text>
           </Pressable>
-          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={sendReminders} disabled={busy}>
-            <Feather name="bell" size={15} color={C.accent} />
-            <Text style={styles.actionBtnText}>{t.collectz.actionRemind}</Text>
-          </Pressable>
+          {/* Remind only while open — the server rejects it (session_closed) once settled/cancelled */}
+          {isOpen && (
+            <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={sendReminders} disabled={busy}>
+              <Feather name="bell" size={15} color={C.accent} />
+              <Text style={styles.actionBtnText}>{t.collectz.actionRemind}</Text>
+            </Pressable>
+          )}
           {isOpen ? (
             <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={settle} disabled={busy}>
               <Feather name="check-circle" size={15} color={C.bronze} />
@@ -1160,6 +1245,9 @@ const CollectzDetail: React.FC = () => {
           const active = participants.filter((p) => p.slot === 'active');
           const paid = active.filter((p) => p.status === 'confirmed');
           const owing = active.filter((p) => p.status !== 'confirmed');
+          // Pending = proof uploaded but unreviewed. Settling parks those people
+          // on a closed "waiting for review" screen — call it out explicitly.
+          const pendingProofs = active.filter((p) => p.status === 'pending');
           return (
             <View style={styles.settleSummary}>
               <View style={styles.settleRow}>
@@ -1179,6 +1267,12 @@ const CollectzDetail: React.FC = () => {
               <Text style={styles.settleNames}>
                 {owing.length ? owing.map((p) => p.name).join(', ') : t.collectz.settleAllPaid}
               </Text>
+
+              {pendingProofs.length > 0 && (
+                <Text style={styles.settlePendingNote}>
+                  {fill(t.collectz.settlePendingProofs, { n: pendingProofs.length })}
+                </Text>
+              )}
             </View>
           );
         })()}
@@ -1212,10 +1306,48 @@ const makeStyles = (C: typeof CALM) =>
       marginTop: 2,
       marginLeft: 20,
     },
+    settlePendingNote: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.gold,
+      lineHeight: 19,
+      marginTop: SPACING.sm,
+    },
     codeCopyHint: {
       fontSize: TYPOGRAPHY.size.xs,
       color: C.textMuted,
       marginTop: 2,
+    },
+    // SHARE CODE card — Neu Card recipe (raisedSoft on C.background, no border);
+    // marginTop keeps the breathing room above that codeRowGap used to give.
+    codeCard: {
+      marginTop: SPACING.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: SPACING.md,
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.lg,
+      borderRadius: RADIUS.lg,
+      backgroundColor: C.background,
+    },
+    codeCardLeft: { flex: 1, minWidth: 0 },
+    codeCardCode: {
+      fontSize: TYPOGRAPHY.size['2xl'],
+      fontWeight: TYPOGRAPHY.weight.bold,
+      letterSpacing: 4,
+      color: C.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    // small recessed icon slot inside the card (TransactionItem well pattern —
+    // an indicator, not a standalone button, so it sits IN the surface)
+    codeCardWell: {
+      width: 40,
+      height: 40,
+      borderRadius: RADIUS.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: withAlpha(C.textPrimary, 0.04),
     },
     content: { padding: SPACING.xl, paddingBottom: SPACING['5xl'] },
     loaderWrap: { flex: 1, backgroundColor: C.background, alignItems: 'center', justifyContent: 'center' },

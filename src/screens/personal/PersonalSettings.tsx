@@ -315,7 +315,7 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                     accessibilityRole="button"
                     accessibilityLabel={t.settings.avatarTitle}
                   >
-                    <Avatar size={34} raised />
+                    <Avatar size={42} />
                   </Pressable>
                   <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.name}</Text>
                 </View>

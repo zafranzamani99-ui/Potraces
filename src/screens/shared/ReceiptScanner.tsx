@@ -630,7 +630,7 @@ const ReceiptScanner: React.FC = () => {
         {isSelected && <Feather name="check" size={18} color={itemColor} />}
       </TouchableOpacity>
     );
-  }, [editMyTaxCategory, C, styles]);
+  }, [editMyTaxCategory, C, styles, neu]); // neu: rebuilt on theme change, same as styles/C
 
   return (
     <View style={{ flex: 1 }}>
