@@ -41,6 +41,7 @@
     "test:quicklogkey": "tsx scripts/test-quick-log-key.ts",
     "test:emvqr": "tsx src/services/__tests__/emvQr.test.ts",
     "test:paymentparse": "tsx src/services/__tests__/paymentScreenshotParser.test.ts",
+    "test:receiptdetect": "tsx src/services/__tests__/receiptDetect.test.ts",
     "test:paymentdedupe": "tsx src/utils/__tests__/paymentDedupeKey.test.ts",
     "tryparse": "tsx scripts/try-payment-parse.ts",
     "test:savingstypes": "tsx scripts/test-savings-types.ts",

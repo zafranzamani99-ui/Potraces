@@ -385,6 +385,13 @@ export interface StallModifier {
   priceDelta: number;
 }
 
+/** A stall-owned product category: a name + a Feather icon, used to group the list. */
+export interface StallCategory {
+  name: string;
+  /** Feather icon glyph name (e.g. 'coffee'). */
+  icon: string;
+}
+
 export interface StallProduct {
   id: string;
   name: string;
@@ -397,6 +404,8 @@ export interface StallProduct {
   unitCost?: number;
   /** Optional unit of measurement (pcs, pack, kg…) for stock + price. */
   unit?: string;
+  /** Optional category, used to group the product list (free-text, reused via chips). */
+  category?: string;
   /** Optional product photo — local device URI (stall is local-only, no upload). */
   imageUrl?: string;
   /** Optional quick modifiers shown as a second tap when selling. */
@@ -533,6 +542,8 @@ export interface StallState {
   roundCashTo5: boolean;
   /** Stall-owned product units (separate from seller's units). Managed in Business Settings. */
   units: string[];
+  /** Stall-owned product categories (name + Feather icon). Groups the product list. */
+  categories: StallCategory[];
 
   // Session actions
   startSession: (name?: string, productSetup?: { productId: string; startQty: number }[], where?: string) => string;
@@ -593,6 +604,12 @@ export interface StallState {
   removeUnit: (u: string) => void;
   /** Replace the unit list with a new order (from drag-to-reorder). */
   reorderUnits: (units: string[]) => void;
+  /** Add a product category (name + Feather icon; trimmed + deduped; empty ignored). */
+  addCategory: (name: string, icon: string) => void;
+  /** Remove a product category by name. */
+  removeCategory: (name: string) => void;
+  /** Replace the category list with a new order (from drag-to-reorder). */
+  reorderCategories: (categories: StallCategory[]) => void;
   /** Delete stall data for this business setup, scoped. Local only. */
   resetStallData: (scope?: StallResetScope) => void;
 

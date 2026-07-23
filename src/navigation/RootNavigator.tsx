@@ -95,6 +95,7 @@ import MixedAddCost from '../screens/business/mixed/AddCost';
 import MixedStreamHistory from '../screens/business/mixed/StreamHistory';
 import MixedReports from '../screens/business/mixed/MixedReports';
 import NoteEditor from '../screens/notes/NoteEditor';
+import { flushPendingReceiptReview } from '../services/shareToLog';
 
 const Stack = createNativeStackNavigator();
 
@@ -269,7 +270,7 @@ const RootNavigator: React.FC = () => {
   };
 
   return (
-    <NavigationContainer ref={navigationRef} theme={navTheme}>
+    <NavigationContainer ref={navigationRef} theme={navTheme} onReady={flushPendingReceiptReview}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,

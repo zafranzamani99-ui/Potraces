@@ -13,10 +13,17 @@
  */
 import { Platform } from 'react-native';
 import { requireOptionalNativeModule } from 'expo';
-import { deleteAsync } from 'expo-file-system/legacy';
+import {
+  deleteAsync,
+  copyAsync,
+  makeDirectoryAsync,
+  getInfoAsync,
+  documentDirectory,
+} from 'expo-file-system/legacy';
 import * as Notifications from 'expo-notifications';
 import { parsePaymentScreenshot, type ParsedPayment } from './paymentScreenshotParser';
-import { recognizeRows, isLocalOcrAvailable } from './localReceiptOcr';
+import { recognizeRows, isLocalOcrAvailable, extractReceiptFromRows } from './localReceiptOcr';
+import { navigationRef } from '../navigation/navigationRef';
 import { logQuickExpense, type QuickLogResult } from './quickLog';
 import { prepareImage } from './receiptScanner';
 import { callGeminiAPI, isGeminiAvailable } from './geminiClient';
@@ -25,8 +32,17 @@ import { usePremiumStore } from '../store/premiumStore';
 import { useCategoryStore } from '../store/categoryStore';
 import { usePersonalStore } from '../store/personalStore';
 import { useNotificationStore } from '../store/notificationStore';
+import { useAppStore } from '../store/appStore';
 import { globalShowToast } from '../context/ToastContext';
 import { dedupeKeyFor } from '../utils/paymentDedupeKey';
+import { addSharedKey, pruneSharedKeysByLiveTxIds } from '../utils/sharedPaymentDedupe';
+import {
+  getPendingReceiptRaw,
+  listPendingReceipts,
+  removePendingReceipt,
+  pruneExpiredReceipts,
+  RECEIPT_TTL_MS,
+} from '../utils/sharedReceiptInbox';
 
 // Temporary on-device diagnostics for the Share-to-Log flow. Logs stream to Metro
 // (visible to the developer); the user-facing outcome still shows via the toast in the
@@ -57,6 +73,31 @@ export async function reconcileSharedPayments(): Promise<void> {
   if (Platform.OS !== 'ios' || !ShareExtNative?.getSharedFilePaths || _reconciling) return;
   _reconciling = true;
   try {
+    // 1) Expire pending receipts older than 24h → delete their stashed images. A receipt is
+    //    tap-to-scan only; if never tapped within 24h it's gone (the user re-shares).
+    try {
+      const expired = await pruneExpiredReceipts();
+      for (const r of expired) {
+        try { await deleteAsync(normalizeUri(r.file), { idempotent: true }); } catch { /* */ }
+      }
+    } catch { /* best-effort */ }
+
+    // 1b) Self-heal the app-group payment dedupe: drop entries whose transaction was deleted, so
+    //     the share extension never shows "already logged" for a payment the user removed.
+    try {
+      const live = new Set(usePersonalStore.getState().transactions.map((t) => t.id));
+      await pruneSharedKeysByLiveTxIds(live);
+    } catch { /* best-effort */ }
+
+    // 2) Receipts are opened ONLY by tapping their notification — so on a plain foreground we
+    //    LEAVE them stashed. The one exception: if notifications are OFF there's no tap path,
+    //    so we open the receipt here (once) as a safety net. Which staged files are receipts?
+    //    the ones the extension stashed (matched by basename — no re-OCR needed).
+    const notifsOn = await notificationsGranted();
+    let pending: Array<{ rid: string; file: string; ts: number }> = [];
+    try { pending = await listPendingReceipts(); } catch { pending = []; }
+    const receiptByBase = new Map(pending.map((r) => [basename(r.file), r]));
+
     let paths: string[] = [];
     try {
       paths = (await ShareExtNative.getSharedFilePaths()) ?? [];
@@ -64,30 +105,135 @@ export async function reconcileSharedPayments(): Promise<void> {
       dbg(`reconcile list failed: ${String(e).slice(0, 60)}`);
       paths = [];
     }
-    if (paths.length > 0) dbg(`reconcile: ${paths.length} staged file(s)`);
+    if (paths.length > 0) dbg(`reconcile: ${paths.length} staged file(s), notifsOn=${notifsOn}`);
+
+    let openedReceipt = false;
     for (const p of paths) {
-      if (IMAGE_EXT_RE.test(p)) {
-        try {
-          // Silent: the share extension already fired the "Logged RM…" notification;
-          // this just writes the ledger entry (wallet deduction, dedupe).
-          await logPaymentFromShare(p, { silent: true });
-        } catch {
-          // logPaymentFromShare already reports its own failure
+      if (!IMAGE_EXT_RE.test(p)) {
+        try { await deleteAsync(p, { idempotent: true }); } catch { /* */ }
+        continue;
+      }
+      const entry = receiptByBase.get(basename(p));
+      if (entry) {
+        // A pending RECEIPT. Tap-only → leave it for the notification tap (do NOT delete; the
+        // 24h prune above cleans it eventually). Safety net: notifications OFF → open it now
+        // (once per foreground), then consume it.
+        if (!notifsOn && !openedReceipt) {
+          openedReceipt = true;
+          try { await openReceiptReview(entry.file); } catch { /* */ }
+          await removePendingReceipt(entry.rid);
+          try { await deleteAsync(p, { idempotent: true }); } catch { /* */ }
         }
+        continue;
       }
-      // Delete regardless of type so a stray/unreadable file never blocks future shares.
-      try {
-        await deleteAsync(p, { idempotent: true });
-      } catch {
-        /* best-effort cleanup */
-      }
+      // Not a pending receipt → a PAYMENT (unchanged): silent-log + delete. scanReceipts:false so
+      // an untagged receipt is never auto-opened from a silent reconcile.
+      try { await logPaymentFromShare(p, { silent: true, scanReceipts: false }); } catch { /* */ }
+      try { await deleteAsync(p, { idempotent: true }); } catch { /* */ }
     }
   } finally {
     _reconciling = false;
   }
 }
 
+function basename(p: string): string {
+  const s = p.split(/[?#]/)[0];
+  return s.substring(s.lastIndexOf('/') + 1);
+}
+
+async function notificationsGranted(): Promise<boolean> {
+  try {
+    const perm = await Notifications.getPermissionsAsync();
+    return perm.status === 'granted';
+  } catch {
+    return true; // assume ON (tap-only) — the user's primary intent
+  }
+}
+
+/**
+ * Tap of a "Receipt found" notification → open the scanner for THAT receipt, but only if it's
+ * still within the 24h window. Expired or already-gone → a brief toast (nothing to scan). This
+ * is the ONLY entry point that opens a shared receipt when notifications are on.
+ */
+export async function openSharedReceiptById(rid?: string): Promise<void> {
+  if (!rid) return; // a legacy notification with no id → nothing to do
+  let entry: { file: string; ts: number } | null = null;
+  try { entry = await getPendingReceiptRaw(rid); } catch { entry = null; }
+  if (!entry) {
+    try { globalShowToast('That receipt is no longer available — share it again.', 'info'); } catch { /* */ }
+    return;
+  }
+  if (Date.now() - entry.ts > RECEIPT_TTL_MS) {
+    await removePendingReceipt(rid);
+    try { await deleteAsync(normalizeUri(entry.file), { idempotent: true }); } catch { /* */ }
+    try { globalShowToast('This receipt expired — share it again to scan.', 'info'); } catch { /* */ }
+    return;
+  }
+  await openReceiptReview(entry.file);
+  await removePendingReceipt(rid);
+  try { await deleteAsync(normalizeUri(entry.file), { idempotent: true }); } catch { /* */ }
+}
+
 export { dedupeKeyFor };
+
+// ─── Receipt hand-off ────────────────────────────────────────
+// A shared store RECEIPT is handed to the full ReceiptScanner review (owner's choice —
+// not silent-logged; the user confirms items/total/category and taps Save). The transient
+// app-group image is copied into an app-owned dir BEFORE reconcile deletes the staged
+// original, then we navigate to the scanner. If navigation isn't ready yet (a cold-launch
+// reconcile), the copied URI is stashed and drained by flushPendingReceiptReview() once
+// App.tsx reports nav ready / on the next foreground.
+let pendingReceiptUri: string | null = null;
+
+async function copyToInbox(uri: string): Promise<string> {
+  const dir = `${documentDirectory}shared-inbox/`;
+  try {
+    const info = await getInfoAsync(dir);
+    if (!info.exists) await makeDirectoryAsync(dir, { intermediates: true });
+  } catch {
+    /* best-effort — copyAsync below still fails loudly if the dir is truly unavailable */
+  }
+  const ext = (uri.match(IMAGE_EXT_RE)?.[1] ?? 'jpg').toLowerCase();
+  const dest = `${dir}receipt-${Date.now()}.${ext}`;
+  await copyAsync({ from: uri, to: dest });
+  return dest;
+}
+
+function navigateToReceipt(uri: string): boolean {
+  if (!navigationRef.isReady()) return false;
+  try {
+    // Share-to-Log captures personal spending — like the payment path, a shared receipt
+    // logs to personal, so switch mode before the review screen reads it (App.tsx does the
+    // same for the share deep-link).
+    if (useAppStore.getState().mode !== 'personal') useAppStore.getState().setMode('personal');
+    (navigationRef as any).navigate('ReceiptScanner', { imageUri: uri, autoScan: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Open the ReceiptScanner review screen for a shared receipt. Copies the image out of the
+ * transient app-group path first so it survives the reconcile cleanup, then navigates (or
+ * stashes for flushPendingReceiptReview when nav isn't ready). Never throws.
+ */
+export async function openReceiptReview(imageUri: string): Promise<void> {
+  let uri = normalizeUri(imageUri);
+  try {
+    uri = await copyToInbox(uri);
+  } catch {
+    // Couldn't copy out — fall back to the original path (still readable until reconcile
+    // deletes it; if navigation is ready now, the scanner reads it before that happens).
+  }
+  if (!navigateToReceipt(uri)) pendingReceiptUri = uri;
+}
+
+/** Drain a receipt detected while navigation wasn't ready yet. Call on nav-ready + foreground. */
+export function flushPendingReceiptReview(): void {
+  if (!pendingReceiptUri) return;
+  if (navigateToReceipt(pendingReceiptUri)) pendingReceiptUri = null;
+}
 
 const MAX_AMOUNT = 1_000_000;
 // Below this local confidence, prefer letting Echo re-read the image for a better
@@ -188,10 +334,22 @@ function inboxLogged(direction: 'out' | 'in', amount: number, payee: string | nu
 function notifyCouldntRead(message?: string): Promise<void> {
   const msg = message ?? "Couldn't read that one — tap to add it manually.";
   dbg(`OUTCOME couldnt-read: ${msg}`);
-  try { globalShowToast(msg, 'error'); } catch { /* toast host not mounted */ }
-  return fireNotification("Couldn't read that one", message ?? 'Tap to add it manually.', {
-    type: 'share_failed',
-  });
+  // NO lock-screen banner — it's not urgent, and a slow (post-AI) alert confused users. Show
+  // an in-app toast if we're in the foreground, and record it QUIETLY in the bell under
+  // Announcements (a non-'transaction' type), never the Transactions tab.
+  try { globalShowToast(msg, 'info'); } catch { /* toast host not mounted */ }
+  try {
+    useNotificationStore.getState().addNotification({
+      id: `share-notpay-${Date.now()}`,
+      type: 'update',
+      title: 'Not a successful payment',
+      body: msg,
+      createdAt: Date.now(),
+    });
+  } catch {
+    // best-effort — the inbox record must never break the flow
+  }
+  return Promise.resolve();
 }
 
 function notifyAlreadyLogged(): Promise<void> {
@@ -322,27 +480,6 @@ export async function echoEnrichPayment(
   }
 }
 
-/** Fire-and-forget: patch category/merchant on an already-logged row. NEVER amount. */
-async function enrichAfterLog(
-  imageUri: string,
-  parsed: ParsedPayment,
-  txId: string,
-): Promise<void> {
-  try {
-    const echo = await echoEnrichPayment(imageUri, parsed);
-    if (!echo) return;
-    const patch: { category?: string; description?: string } = {};
-    if (echo.categoryId) patch.category = echo.categoryId;
-    if (echo.merchant) patch.description = echo.merchant;
-    // Only category/description — amount/type/walletId untouched, so no wallet re-delta.
-    if (Object.keys(patch).length > 0) {
-      usePersonalStore.getState().updateTransaction(txId, patch);
-    }
-  } catch {
-    // best-effort enrichment
-  }
-}
-
 // ─── Orchestrator ────────────────────────────────────────────
 /**
  * Entry point for a shared payment screenshot. `imageUri` is a local file path
@@ -351,21 +488,22 @@ async function enrichAfterLog(
  */
 export async function logPaymentFromShare(
   imageUri: string | null | undefined,
-  opts?: { silent?: boolean; useAI?: boolean },
+  opts?: { silent?: boolean; scanReceipts?: boolean },
 ): Promise<void> {
   // silent: the iOS share extension already fired the "Logged RM…" notification, so the
   // app-group reconcile writes the ledger entry WITHOUT firing a second notification.
   const silent = opts?.silent ?? false;
-  // useAI: Gemini is OFF by default so the share flow never costs money — the local reader
-  // already extracts the amount + merchant and guesses the category for free. AI (merchant/
-  // category enrichment, or an unrecognized-layout fallback) is opt-in for the future
-  // "smart fallback" (rules-first, AI only when unsure). No caller passes it today.
-  const useAI = opts?.useAI ?? false;
-  // Always record the logged payment in the in-app inbox (silent or not); only the
-  // OS banner is gated by `silent` (the iOS share extension already showed one).
+  // Record every logged payment in the in-app inbox (silent or not); only the OS banner is
+  // gated by `silent` (the iOS share extension already showed one for CONFIDENT payments).
   const nLogged = (d: 'out' | 'in', a: number, p: string | null, txId: string) => {
     inboxLogged(d, a, p, txId);
     return silent ? Promise.resolve() : notifyLogged(d, a, p);
+  };
+  // The uncertain→AI path ALWAYS notifies: the extension showed a neutral "checking…" card
+  // (it can't run AI itself), so the app delivers the final answer even in a silent reconcile.
+  const nLoggedAI = (d: 'out' | 'in', a: number, p: string | null, txId: string) => {
+    inboxLogged(d, a, p, txId);
+    return notifyLogged(d, a, p);
   };
   const nCouldnt = (m?: string) => (silent ? Promise.resolve() : notifyCouldntRead(m));
   const nAlready = () => (silent ? Promise.resolve() : notifyAlreadyLogged());
@@ -379,10 +517,11 @@ export async function logPaymentFromShare(
     const uri = normalizeUri(imageUri);
 
     let parsed: ParsedPayment | null = null;
+    let rows: string[] = [];
     const ocrAvail = isLocalOcrAvailable();
     if (ocrAvail) {
       try {
-        const rows = await recognizeRows(uri);
+        rows = await recognizeRows(uri);
         dbg(`ocr ok, ${rows.length} rows`);
         parsed = parsePaymentScreenshot(rows);
       } catch (e) {
@@ -401,24 +540,45 @@ export async function logPaymentFromShare(
     }
 
     const localAmount = parsed && parsed.isPaymentScreen && parsed.amount != null ? parsed : null;
-    const echoUsable = useAI && isGeminiAvailable() && usePremiumStore.getState().canUseAI();
 
-    // Strategy A — confident local amount (or Echo unavailable): log immediately,
-    // then enrich category/merchant in the background.
-    if (localAmount && (localAmount.confidence >= CONFIDENT || !echoUsable)) {
+    // 1) CONFIDENT local payment → log now. The extension already notified, so silent-gated.
+    //    Never calls AI — this is the free/offline common path.
+    if (localAmount && localAmount.confidence >= CONFIDENT) {
       const result = logFromParsed(localAmount);
       if (!result) {
         await nAlready();
         return;
       }
       await nLogged(localAmount.direction ?? 'out', result.amount, localAmount.payee, result.txId);
-      if (useAI) void enrichAfterLog(uri, localAmount, result.txId);
+      // Tag the shared-dedupe key with this txn so the extension shows "Already logged" on a
+      // repeat, and a later delete of this txn frees the key for a fresh re-share.
+      void addSharedKey(dedupeKeyFor(localAmount), result.txId);
       return;
     }
 
-    // Strategy B — low/no local amount + Echo available: let Echo supply the amount
-    // BEFORE logging (so there is exactly one wallet delta).
-    if (echoUsable) {
+    // 1b) RECEIPT — a store receipt (an itemised list + a grand TOTAL + a vendor) is a real
+    //     expense, but the payment rules reject it as multi-amount. Detect it locally (free,
+    //     offline, NO AI — so it runs BEFORE the paid uncertain→AI path below) and hand off to
+    //     the full ReceiptScanner review; the owner wants receipts confirmed, not silent-logged.
+    //     Skip in-app screens (debts/bills/paywall → not_payment_screen) — never receipts.
+    if (parsed && parsed.reason !== 'not_payment_screen') {
+      const receipt = extractReceiptFromRows(rows);
+      if (receipt) {
+        dbg(`receipt: RM ${receipt.total} · ${receipt.vendor ?? '?'} (${receipt.itemCount} items)`);
+        // Receipts are tap-only: a silent reconcile passes scanReceipts:false and must NOT open
+        // the scanner (the notification tap does, via openSharedReceiptById). Only the direct /
+        // deep-link path (scanReceipts !== false) opens it here.
+        if (opts?.scanReceipts !== false) await openReceiptReview(uri);
+        return;
+      }
+    }
+
+    // 2) UNCERTAIN — there's a price on screen but the rules couldn't confirm payment-or-not
+    //    (a possibly-complicated payment layout). This is the ONLY paid path: ask Gemini, but
+    //    only when online AND within the monthly AI quota. Only the rare hard screens reach
+    //    here, so cost stays tiny. Always notifies (the extension showed a neutral "checking…").
+    const aiAvailable = isGeminiAvailable() && usePremiumStore.getState().canUseAI();
+    if (parsed?.uncertain && aiAvailable) {
       const echo = await echoEnrichPayment(uri, parsed);
       if (echo?.amount && echo.amount > 0) {
         const result = logFromEcho(echo, parsed);
@@ -427,13 +587,17 @@ export async function logPaymentFromShare(
           return;
         }
         const dir = echo.direction ?? parsed?.direction ?? 'out';
-        await nLogged(dir, result.amount, echo.merchant ?? parsed?.payee ?? null, result.txId);
+        await nLoggedAI(dir, result.amount, echo.merchant ?? parsed?.payee ?? null, result.txId);
+        void addSharedKey(echoDedupeKey(echo, parsed), result.txId);
         return;
       }
+      // AI didn't find a payment either → it really isn't one. Always tell the user.
+      await notifyCouldntRead("This isn't a successful payment — nothing logged.");
+      return;
     }
 
-    // Fallback — Echo couldn't help but we DO have a (low-confidence) local amount:
-    // log it rather than lose a real payment (still undoable + editable).
+    // 3) Low-confidence local amount (a price below the confident bar, AI unavailable/offline)
+    //    → log it rather than lose a real payment (still editable). Silent-gated.
     if (localAmount) {
       const result = logFromParsed(localAmount);
       if (!result) {
@@ -441,9 +605,13 @@ export async function logPaymentFromShare(
         return;
       }
       await nLogged(localAmount.direction ?? 'out', result.amount, localAmount.payee, result.txId);
+      // Tag the shared-dedupe key with this txn so the extension shows "Already logged" on a
+      // repeat, and a later delete of this txn frees the key for a fresh re-share.
+      void addSharedKey(dedupeKeyFor(localAmount), result.txId);
       return;
     }
 
+    // 4) Confident reject (list / summary / receipt / random image) → nothing logged.
     await nCouldnt();
   } catch {
     await nCouldnt();

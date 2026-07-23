@@ -26,7 +26,7 @@ const getDocumentScanner = (): typeof import('react-native-document-scanner-plug
     return require('react-native-document-scanner-plugin').default;
   } catch { return null; }
 };
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { format, getYear, parse, isValid } from 'date-fns';
@@ -121,6 +121,12 @@ const ReceiptScanner: React.FC = () => {
   const guideTargetRef = useRef<any>(null);
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<NavigationProp>();
+  // Share-to-Log hands off a shared RECEIPT image here (via navigationRef) so the user
+  // reviews items/total/category and saves — nothing is auto-logged for receipts.
+  const route = useRoute();
+  const sharedParams = route.params as { imageUri?: string; autoScan?: boolean } | undefined;
+  const sharedImageUri = sharedParams?.imageUri;
+  const sharedAutoScan = sharedParams?.autoScan === true;
   const { showToast } = useToast();
   const mode = useAppStore((s) => s.mode);
   const currency = useSettingsStore((s) => s.currency);
@@ -397,6 +403,26 @@ const ReceiptScanner: React.FC = () => {
       setLoading(false);
     }
   }, [imageUri, canScanReceipt, incrementScanCount, showToast]);
+
+  // Share-to-Log receipt hand-off: load the shared image into state, then auto-run the scan
+  // ONCE so the screen opens straight into the review flow (identical local/AI path a gallery
+  // pick takes). Two effects because setImageUri is async — the extract must wait until the
+  // shared image is actually in `imageUri`. Refs make each step fire exactly once.
+  const autoImageLoadedRef = useRef(false);
+  const autoExtractRef = useRef(false);
+  useEffect(() => {
+    if (!sharedImageUri || autoImageLoadedRef.current) return;
+    autoImageLoadedRef.current = true;
+    setImageUri(sharedImageUri);
+    setReceipt(null);
+  }, [sharedImageUri]);
+  useEffect(() => {
+    if (!sharedAutoScan || autoExtractRef.current) return;
+    if (imageUri && imageUri === sharedImageUri && !receipt) {
+      autoExtractRef.current = true;
+      void handleExtract();
+    }
+  }, [sharedAutoScan, imageUri, sharedImageUri, receipt, handleExtract]);
 
   const handleReset = useCallback(() => {
     setImageUri(null);

@@ -22,7 +22,12 @@ import { useSettingsStore, clearBusinessLocalData } from './src/store/settingsSt
 import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
-import { logPaymentFromShare, reconcileSharedPayments } from './src/services/shareToLog';
+import {
+  logPaymentFromShare,
+  reconcileSharedPayments,
+  flushPendingReceiptReview,
+  openSharedReceiptById,
+} from './src/services/shareToLog';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
 import { refreshQuickLogConfigured } from './src/services/quickLogKey';
 import './src/services/quickLogCategories'; // side-effect: keeps the Shortcut's live category list fresh
@@ -463,9 +468,9 @@ function App() {
       // table into the inbox (same id as the launch fetch, so no duplicate).
       if (data?.type === 'broadcast') { refreshBroadcasts(); return; }
       // Share-to-log outcomes are recorded in the inbox at log time (shareToLog.ts),
-      // reliably and on both platforms — don't double-insert from the foreground push,
-      // and never inbox a "couldn't read" alert.
-      if (data?.type === 'share_logged' || data?.type === 'share_failed') return;
+      // reliably and on both platforms — don't double-insert from the foreground push. The
+      // "Receipt found" nudge is transient (reconcile opens the scanner) — don't inbox it.
+      if (data?.type === 'share_logged' || data?.type === 'share_receipt') return;
       // Persist any other foreground push into the in-app inbox.
       const c = n.request.content;
       useNotificationStore.getState().addNotification({
@@ -647,9 +652,11 @@ function App() {
   // the app processes it here — on launch and every time it returns to the foreground.
   React.useEffect(() => {
     if (Platform.OS !== 'ios') return;
-    void reconcileSharedPayments();
+    // A shared RECEIPT is detected during reconcile and opens the review screen; if
+    // navigation wasn't ready yet (cold launch), it's stashed — flush it after reconcile.
+    void reconcileSharedPayments().then(flushPendingReceiptReview);
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void reconcileSharedPayments();
+      if (state === 'active') void reconcileSharedPayments().then(flushPendingReceiptReview);
     });
     return () => sub.remove();
   }, []);
@@ -662,7 +669,7 @@ function App() {
       if (handledId === id) return; // cold-start check + live listener overlap
       handledId = id;
       const data = response.notification.request.content.data as
-        { type?: string; orderId?: string; sessionId?: string } | undefined;
+        { type?: string; orderId?: string; sessionId?: string; rid?: string } | undefined;
       if (data?.type === 'broadcast') {
         // Broadcast tap → pull it into the inbox, then open the Notifications screen.
         refreshBroadcasts();
@@ -696,10 +703,14 @@ function App() {
         }, delay);
         return;
       }
-      if (data?.type === 'share_failed') {
-        // Share-to-Log couldn't read the screenshot → open Quick Add for manual entry.
+      if (data?.type === 'share_receipt') {
+        // TAP of a "Receipt found" notification → open the scanner for THAT receipt (by rid),
+        // but only if it's still within 24h. This is the ONLY entry point that scans a shared
+        // receipt when notifications are on — a plain app open never reaches here, so receipts
+        // are tap-only (see shareToLog.reconcileSharedPayments).
         useAppStore.getState().setMode('personal');
-        setTimeout(() => openQuickAdd('expense'), delay);
+        const rid = data.rid;
+        setTimeout(() => { void openSharedReceiptById(rid); }, delay);
         return;
       }
       if ((data?.type === 'new_order' || data?.type === 'payment_received') && data.orderId) {
@@ -763,6 +774,12 @@ function App() {
     // delay: the navigator is still mounting on a cold launch.
     Notifications.getLastNotificationResponseAsync().then((r) => {
       if (r) handleResponse(r, 900);
+      // Clear the OS-persisted "last response" so it can't re-fire on a FUTURE cold launch.
+      // getLastNotificationResponseAsync is sticky — it re-returns the same tapped notification
+      // every launch until superseded — which made an old "Couldn't read" (share_failed) tap
+      // auto-open Quick Add on every open. Native-backed in expo-notifications 0.32.17; .catch
+      // guards older prebuilt binaries.
+      Notifications.clearLastNotificationResponseAsync().catch(() => {});
     }).catch(() => {});
     return () => sub.remove();
   }, []);

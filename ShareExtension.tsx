@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { close, type InitialProps } from 'expo-share-extension';
 import * as Notifications from 'expo-notifications';
-import { recognizeRows, isLocalOcrAvailable } from './src/services/localReceiptOcr';
+import { recognizeRows, isLocalOcrAvailable, extractReceiptFromRows } from './src/services/localReceiptOcr';
 import { parsePaymentScreenshot } from './src/services/paymentScreenshotParser';
+import { dedupeKeyFor } from './src/utils/paymentDedupeKey';
+import { hasSharedKey, addSharedKey } from './src/utils/sharedPaymentDedupe';
+import { addPendingReceipt } from './src/utils/sharedReceiptInbox';
 
 /**
  * iOS share-extension root — Flow C. iOS blocks a share extension from launching its host
@@ -15,7 +18,15 @@ import { parsePaymentScreenshot } from './src/services/paymentScreenshotParser';
  * since this extension already notified.
  */
 
-type Status = 'loading' | 'success' | 'not_payment' | 'failed' | 'error';
+type Status =
+  | 'loading'
+  | 'success'
+  | 'not_payment'
+  | 'failed'
+  | 'error'
+  | 'checking'
+  | 'already'
+  | 'receipt';
 
 const C = {
   scrim: '#0E0E0E',
@@ -25,6 +36,7 @@ const C = {
   accent: '#8A9A5B',
   green: '#5B9A6B',
   amber: '#C9A24B',
+  blue: '#5B7A9A',
   red: '#C7644E',
 };
 
@@ -35,6 +47,14 @@ const VIEW: Record<Exclude<Status, 'loading'>, { color: string; glyph: string; t
   not_payment: { color: C.accent, glyph: '✕', title: 'Not a successful payment' },
   failed: { color: C.accent, glyph: '✕', title: 'Not a successful payment' },
   error: { color: C.accent, glyph: '✕', title: "Couldn't read it" },
+  // Uncertain: the rules can't tell. The extension can't run AI, so it hands off — the app
+  // takes a closer look (AI) when opened. Neutral, not a ✓ or ✕.
+  checking: { color: C.amber, glyph: '…', title: 'Needs a closer look' },
+  // Already logged (this exact payment was recorded before) — a grey ✓, no notification.
+  already: { color: C.sub, glyph: '✓', title: 'Already logged' },
+  // A store receipt — a real expense, but richer than a one-tap payment. Nothing is logged
+  // here; the app opens the full receipt review so the user confirms items/total and saves.
+  receipt: { color: C.blue, glyph: '🧾', title: 'Receipt' },
 };
 
 function toFileUri(p: string): string {
@@ -80,6 +100,24 @@ export default function ShareExtension({ images, files }: InitialProps) {
           const verb = parsed.direction === 'in' ? 'received' : 'paid';
           const tail = parsed.payee ? ` · ${parsed.payee}` : '';
           const msg = `RM ${parsed.amount.toFixed(2)} ${verb}${tail}`;
+
+          // Already logged this exact payment (and it still exists)? → show it, no duplicate
+          // notification. The app removes the key when the transaction is deleted, so a
+          // delete-then-reshare logs fresh again.
+          const key = dedupeKeyFor({
+            refId: parsed.refId,
+            direction: parsed.direction,
+            amount: parsed.amount,
+            datetime: parsed.datetime,
+            payee: parsed.payee,
+          });
+          if (await hasSharedKey(key)) {
+            setStatus('already');
+            setSubtitle(msg);
+            finishAfter(1800);
+            return;
+          }
+
           const perm = await Notifications.getPermissionsAsync();
           if (perm.status === 'granted') {
             await Notifications.scheduleNotificationAsync({
@@ -87,9 +125,54 @@ export default function ShareExtension({ images, files }: InitialProps) {
               trigger: null,
             });
           }
+          await addSharedKey(key);
           setStatus('success');
           setSubtitle(msg);
           finishAfter(1800);
+          return;
+        }
+
+        // Store receipt (an itemised list + a grand TOTAL + a vendor). Not a payment
+        // confirmation, but a real expense — nothing is LOGGED here. Stash it (keyed by a random
+        // rid) and fire a "tap to review" notification carrying that rid. The app scans it ONLY
+        // when the notification is TAPPED (within 24h), never on a plain open. If notifications
+        // are OFF there's no tap path, so we tell the user to open the app (the reconcile falls
+        // back to opening it there). Skip in-app screens (debts/bills/paywall).
+        const receipt =
+          parsed.reason !== 'not_payment_screen' ? extractReceiptFromRows(rows) : null;
+        if (receipt) {
+          const rid = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+          if (raw) await addPendingReceipt(rid, toFileUri(raw));
+          const tail = receipt.vendor ? ` · ${receipt.vendor}` : '';
+          const perm = await Notifications.getPermissionsAsync();
+          const notifsOn = perm.status === 'granted';
+          if (notifsOn) {
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'Receipt found',
+                body: `RM ${receipt.total.toFixed(2)}${tail} — tap to review & save`,
+                data: { type: 'share_receipt', rid },
+              },
+              trigger: null,
+            });
+          }
+          setStatus('receipt');
+          setSubtitle(
+            notifsOn
+              ? 'Tap the notification to review & save it.'
+              : 'Open Potraces to review & save it.',
+          );
+          finishAfter(2600);
+          return;
+        }
+
+        // Rules aren't sure (a price on screen but not clearly a payment or a list). The
+        // extension can't run AI, so hand off: the app takes a closer look (AI) when opened,
+        // and fires the final notification then. No notification here.
+        if (parsed.uncertain) {
+          setStatus('checking');
+          setSubtitle('Open Potraces — this one needs a closer look.');
+          finishAfter(2600);
           return;
         }
 

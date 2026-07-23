@@ -30,8 +30,12 @@ interface PaymentDedupeState {
   has: (key: string) => boolean;
   /** The transaction id recorded for a key if within the TTL, else undefined. */
   txIdFor: (key: string) => string | undefined;
+  /** The dedupe key that produced a given txId (any age), else undefined. */
+  keyForTxId: (txId: string) => string | undefined;
   /** Drop a key (e.g. its transaction was deleted → allow re-logging). */
   remove: (key: string) => void;
+  /** Drop the entry that produced a given txId; returns the key removed (for cross-store cleanup). */
+  removeByTxId: (txId: string) => string | undefined;
   /** Drop keys older than the TTL. Returns how many were removed. */
   prune: () => number;
 }
@@ -59,6 +63,12 @@ export const usePaymentDedupeStore = create<PaymentDedupeState>()(
         return e.txId;
       },
 
+      keyForTxId: (txId) => {
+        if (!txId) return undefined;
+        for (const [k, e] of Object.entries(get()._keys)) if (e.txId === txId) return k;
+        return undefined;
+      },
+
       remove: (key) => {
         if (!key || !get()._keys[key]) return;
         set((state) => {
@@ -66,6 +76,21 @@ export const usePaymentDedupeStore = create<PaymentDedupeState>()(
           delete next[key];
           return { _keys: next };
         });
+      },
+
+      removeByTxId: (txId) => {
+        if (!txId) return undefined;
+        const cur = get()._keys;
+        let foundKey: string | undefined;
+        for (const [k, e] of Object.entries(cur)) {
+          if (e.txId === txId) { foundKey = k; break; }
+        }
+        if (foundKey) {
+          const next = { ...cur };
+          delete next[foundKey];
+          set({ _keys: next });
+        }
+        return foundKey;
       },
 
       prune: () => {

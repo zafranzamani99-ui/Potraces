@@ -1,5 +1,5 @@
-import React, { useCallback, useLayoutEffect, useMemo } from 'react';
-import { View, Text, SectionList, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -86,10 +86,13 @@ const NotificationRow: React.FC<{
   );
 };
 
+type NotifFilter = 'all' | 'transaction' | 'announcement';
+
 const Notifications: React.FC = () => {
   const navigation = useNavigation<any>();
   const C = useCalm();
   const t = useT();
+  const neu = useNeu(undefined, { faintDark: true }); // Neu Pills (Onyx rule 3)
   const styles = useMemo(() => makeStyles(C), [C]);
 
   const items = useNotificationStore((s) => s.items);
@@ -98,17 +101,23 @@ const Notifications: React.FC = () => {
   const markAllRead = useNotificationStore((s) => s.markAllRead);
   const remove = useNotificationStore((s) => s.remove);
 
-  // Separate logged transactions from updates/announcements into their own
-  // sections. Each section stays newest-first (items are already sorted). A
-  // section is omitted entirely when empty so a header never floats alone.
-  const sections = useMemo(() => {
+  const [filter, setFilter] = useState<NotifFilter>('all');
+
+  // Split into logged transactions vs updates/announcements; the pills filter
+  // between them. Each bucket stays newest-first (items are already sorted).
+  const { filtered, pills } = useMemo(() => {
     const txns = items.filter(isTransaction);
-    const rest = items.filter((n) => !isTransaction(n));
-    const out: { key: string; title: string; data: AppNotification[] }[] = [];
-    if (txns.length) out.push({ key: 'txn', title: t.notifications.sectionTransactions, data: txns });
-    if (rest.length) out.push({ key: 'ann', title: t.notifications.sectionAnnouncements, data: rest });
-    return out;
-  }, [items, t]);
+    const anns = items.filter((n) => !isTransaction(n));
+    const data = filter === 'transaction' ? txns : filter === 'announcement' ? anns : items;
+    return {
+      filtered: data,
+      pills: [
+        { key: 'all' as NotifFilter, label: t.notifications.filterAll, count: items.length },
+        { key: 'transaction' as NotifFilter, label: t.notifications.filterTransactions, count: txns.length },
+        { key: 'announcement' as NotifFilter, label: t.notifications.filterAnnouncements, count: anns.length },
+      ],
+    };
+  }, [items, filter, t]);
 
   const onPress = useCallback(
     (n: AppNotification) => {
@@ -134,28 +143,54 @@ const Notifications: React.FC = () => {
     });
   }, [navigation, hasUnread, markAllRead, styles, t]);
 
-  // Only draw a section header when there's more than one section — a lone
-  // group doesn't need a label above it.
-  const showHeaders = sections.length > 1;
-
   return (
     <View style={styles.container}>
-      <SectionList
-        sections={sections}
+      {/* ── Neu Pills filter bar (fixed above the list) ── */}
+      {items.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.pillScroll}
+          contentContainerStyle={styles.pillRow}
+        >
+          {pills.map((p) => {
+            const active = filter === p.key;
+            return (
+              <TouchableOpacity
+                key={p.key}
+                style={[styles.pill, neu.raised, active && styles.pillActive]}
+                onPress={() => { lightTap(); setFilter(p.key); }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+              >
+                <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                  {p.label}{p.count > 0 && p.key !== 'all' ? ` ${p.count}` : ''}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      <FlatList
+        data={filtered}
         keyExtractor={(n) => n.id}
         renderItem={({ item, index }) => (
           <NotificationRow item={item} index={index} onPress={onPress} onDelete={remove} />
         )}
-        renderSectionHeader={
-          showHeaders
-            ? ({ section }) => <Text style={styles.sectionHeader}>{section.title}</Text>
-            : undefined
-        }
-        stickySectionHeadersEnabled={false}
-        contentContainerStyle={items.length ? styles.listContent : styles.listEmpty}
+        contentContainerStyle={filtered.length ? styles.listContent : styles.listEmpty}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <EmptyState icon="bell" title={t.notifications.emptyTitle} message={t.notifications.emptyMessage} />
+          items.length === 0 ? (
+            <EmptyState icon="bell" title={t.notifications.emptyTitle} message={t.notifications.emptyMessage} />
+          ) : (
+            <EmptyState
+              icon={filter === 'transaction' ? 'credit-card' : 'volume-2'}
+              title={t.notifications.filterEmpty}
+              message={t.notifications.emptyMessage}
+            />
+          )
         }
       />
     </View>
@@ -173,15 +208,29 @@ const makeStyles = (C: typeof CALM) =>
       fontSize: TYPOGRAPHY.size.sm,
       fontWeight: TYPOGRAPHY.weight.semibold,
     },
-    sectionHeader: {
-      fontSize: TYPOGRAPHY.size.xs,
-      fontWeight: TYPOGRAPHY.weight.semibold,
-      color: C.textMuted,
-      textTransform: 'uppercase',
-      letterSpacing: 0.6,
-      marginTop: SPACING.sm,
-      marginBottom: SPACING.md,
+    // ── Neu Pills filter bar ──
+    pillScroll: { flexGrow: 0, flexShrink: 0 },
+    pillRow: {
+      flexDirection: 'row',
+      gap: SPACING.sm,
+      paddingHorizontal: SPACING.lg,
+      paddingTop: SPACING.md,
+      paddingBottom: SPACING.sm,
     },
+    pill: {
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.xs + 3,
+      borderRadius: RADIUS.full,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+    },
+    pillActive: { backgroundColor: C.accent },
+    pillText: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.medium,
+      color: C.textSecondary,
+      letterSpacing: 0.1,
+    },
+    pillTextActive: { color: C.onAccent, fontWeight: TYPOGRAPHY.weight.bold },
     rowShadow: { borderRadius: RADIUS.xl, marginBottom: SPACING.sm + 6 },
     card: {
       flexDirection: 'row',
