@@ -1378,6 +1378,7 @@ export const en = {
     addWhatYouSell: 'add what you sell',
     addDetails: 'add details',
     selectUnit: 'select unit',
+    manageUnitsInSettings: 'manage units in settings',
     unitPlaceholder: 'unit',
     pricePlaceholder: '0.00',
     update: 'update',
@@ -4248,6 +4249,54 @@ export const en = {
     changeSetupConfirmBtn: 'continue',
   },
 
+  // Stall "Manage" hub (mirrors sellerManage; no Seasons — stall has sessions instead)
+  stallManage: {
+    heading: 'MANAGE',
+    subtitle: 'products, sales, costs, and settings',
+    productsTitle: 'Products',
+    productsSub: 'what you sell and pricing',
+    nProducts: '{n} products',
+    transactionsTitle: 'Transactions',
+    transactionsSub: 'every sale across your sessions',
+    nSales: '{n} sales',
+    costsTitle: 'Costs',
+    costsSub: 'money out across your sessions',
+    nCosts: '{n} entries',
+    thisMonth: '{currency} {amount} this month',
+    settingsTitle: 'Settings',
+    settingsSub: 'currency, preferences, data',
+    changeSetupLink: 'change business setup',
+    changeSetupConfirmTitle: 'Change business setup?',
+    changeSetupConfirmMsg:
+      'This takes you back to choose your income type. Your products, sales, and data stay safe.',
+    changeSetupConfirmBtn: 'continue',
+  },
+
+  // Stall Transactions screen (flat list of every sale across all sessions)
+  stallTransactions: {
+    title: 'Transactions',
+    subtitle: 'every sale, newest first',
+    totalLabel: 'total sales',
+    nSales: '{n} sales',
+    custom: 'custom sale',
+    cash: 'cash',
+    qr: 'QR',
+    card: 'card',
+    empty: 'No sales yet',
+    emptySub: 'Sales you make during a session show up here.',
+  },
+
+  // Stall Costs screen (flat list of every session expense)
+  stallCosts: {
+    title: 'Costs',
+    subtitle: 'money out, newest first',
+    totalLabel: 'total costs',
+    nEntries: '{n} entries',
+    thisMonth: '{currency} {amount} this month',
+    empty: 'No costs logged',
+    emptySub: 'Costs you add when closing a session show up here.',
+  },
+
   businessDashboard: {
     keptThisMonth: 'kept this month',
     earnedThisMonth: 'earned this month',
@@ -4796,6 +4845,19 @@ export const en = {
     createSave: 'Create session',
     uploadFailedAfterCreate: 'Session created — but an image failed to upload. Edit the session to add it.',
     createError: "Couldn't create the session — try again.",
+    // "Session created" confirmation modal
+    createdTitle: 'Session created',
+    createdSubtitle: 'Share the code or link with your group',
+    createdCodeLabel: 'Join code',
+    createdLinkLabel: 'Join link',
+    createdCodeHint: 'Tap to copy code',
+    createdLinkHint: 'Tap to copy link',
+    createdShareCta: 'Share to WhatsApp',
+    createdViewSession: 'View session',
+    createdTeamsSummary: '{t} teams · {n} each',
+    createdCapSummary: '{n} players max',
+    createdRosterSummary: '{n} on the roster',
+    createdCostSummary: '{amount} court/total',
     // v2 — edit / template / image / maps
     editSave: 'Save changes',
     notifyChanges: 'Notify participants of changes',

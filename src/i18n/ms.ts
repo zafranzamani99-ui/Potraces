@@ -1378,6 +1378,7 @@ export const ms: Translations = {
     addWhatYouSell: 'tambah apa yang anda jual',
     addDetails: 'tambah butiran',
     selectUnit: 'pilih unit',
+    manageUnitsInSettings: 'urus unit di tetapan',
     unitPlaceholder: 'unit',
     pricePlaceholder: '0.00',
     update: 'kemas kini',
@@ -4224,6 +4225,54 @@ export const ms: Translations = {
     changeSetupConfirmBtn: 'teruskan',
   },
 
+  // Hab "Urus" gerai (cermin sellerManage; tiada Musim — gerai guna sesi)
+  stallManage: {
+    heading: 'URUS',
+    subtitle: 'produk, jualan, kos, dan tetapan',
+    productsTitle: 'Produk',
+    productsSub: 'apa yang anda jual dan harga',
+    nProducts: '{n} produk',
+    transactionsTitle: 'Transaksi',
+    transactionsSub: 'setiap jualan merentas sesi anda',
+    nSales: '{n} jualan',
+    costsTitle: 'Kos',
+    costsSub: 'wang keluar merentas sesi anda',
+    nCosts: '{n} entri',
+    thisMonth: '{currency} {amount} bulan ini',
+    settingsTitle: 'Tetapan',
+    settingsSub: 'mata wang, keutamaan, data',
+    changeSetupLink: 'tukar tetapan perniagaan',
+    changeSetupConfirmTitle: 'Tukar tetapan perniagaan?',
+    changeSetupConfirmMsg:
+      'Ini bawa anda kembali untuk pilih jenis pendapatan. Produk, jualan, dan data anda kekal selamat.',
+    changeSetupConfirmBtn: 'teruskan',
+  },
+
+  // Skrin Transaksi gerai (senarai setiap jualan merentas semua sesi)
+  stallTransactions: {
+    title: 'Transaksi',
+    subtitle: 'setiap jualan, terbaru dahulu',
+    totalLabel: 'jumlah jualan',
+    nSales: '{n} jualan',
+    custom: 'jualan lain',
+    cash: 'tunai',
+    qr: 'QR',
+    card: 'kad',
+    empty: 'Belum ada jualan',
+    emptySub: 'Jualan yang anda buat semasa sesi akan muncul di sini.',
+  },
+
+  // Skrin Kos gerai (senarai setiap perbelanjaan sesi)
+  stallCosts: {
+    title: 'Kos',
+    subtitle: 'wang keluar, terbaru dahulu',
+    totalLabel: 'jumlah kos',
+    nEntries: '{n} entri',
+    thisMonth: '{currency} {amount} bulan ini',
+    empty: 'Tiada kos direkod',
+    emptySub: 'Kos yang anda tambah semasa tutup sesi akan muncul di sini.',
+  },
+
   businessDashboard: {
     keptThisMonth: 'simpan bulan ni',
     earnedThisMonth: 'dapat bulan ni',
@@ -4772,6 +4821,19 @@ export const ms: Translations = {
     createSave: 'Cipta sesi',
     uploadFailedAfterCreate: 'Sesi dicipta — tetapi imej gagal dimuat naik. Edit sesi untuk tambah semula.',
     createError: 'Tak dapat cipta sesi — cuba lagi.',
+    // Pengesahan "Sesi dicipta"
+    createdTitle: 'Sesi dicipta',
+    createdSubtitle: 'Kongsi kod atau pautan dengan kumpulan anda',
+    createdCodeLabel: 'Kod sertai',
+    createdLinkLabel: 'Pautan sertai',
+    createdCodeHint: 'Ketuk untuk salin kod',
+    createdLinkHint: 'Ketuk untuk salin pautan',
+    createdShareCta: 'Kongsi ke WhatsApp',
+    createdViewSession: 'Lihat sesi',
+    createdTeamsSummary: '{t} pasukan · {n} setiap satu',
+    createdCapSummary: '{n} pemain maksimum',
+    createdRosterSummary: '{n} dalam senarai',
+    createdCostSummary: '{amount} kos court/jumlah',
     // v2 — edit / templat / imej / peta
     editSave: 'Simpan perubahan',
     notifyChanges: 'Beritahu peserta tentang perubahan',

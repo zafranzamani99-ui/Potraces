@@ -14,7 +14,6 @@ import {
   Alert,
   Platform,
   BackHandler,
-  Share,
   Image,
   useWindowDimensions,
 } from 'react-native';
@@ -49,7 +48,6 @@ import {
   getSessionWithRoster,
   uploadClubImage,
   uploadQrImage,
-  buildWhatsappAnnouncement,
   notifySession,
 } from '../../../services/collectzService';
 import { parseCollectzAnnouncement } from '../../../services/collectzParser';
@@ -58,6 +56,7 @@ import { clubIconsForCategory, presetClubIcon, CLUB_PRESET_PREFIX } from '../../
 import { isMapsLink } from '../../../utils/mapLink';
 import { parseAmountLoose } from '../../../utils/parseAmountLoose';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
+import CollectzCreatedModal from '../../../components/collectz/CollectzCreatedModal';
 import { useNeu } from '../../../components/common/neu';
 import PageScrollView from '../../../components/common/PageScrollView';
 import NeuButton from '../../../components/common/NeuButton';
@@ -162,6 +161,11 @@ const CollectzCreate: React.FC = () => {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [parsing, setParsing] = useState(false);
+
+  // ── "Session created" confirmation (summary + code/link to copy) ──
+  const [createdSession, setCreatedSession] = useState<
+    { session: CollectzSession; activeCount: number; rosterCount: number } | null
+  >(null);
 
   // ── Date/time picker ──
   const [picker, setPicker] = useState<{ field: 'event' | 'eventEnd' | 'payBy'; mode: 'date' | 'time' } | null>(null);
@@ -771,11 +775,13 @@ const CollectzCreate: React.FC = () => {
         });
       }
       successNotification();
-      navigation.replace('CollectzDetail', { sessionId: session.id });
-      // Straight into the share sheet — the announcement carries the join link.
-      Share.share({
-        message: buildWhatsappAnnouncement(session, rows.filter((r) => r.slot === 'active').length),
-      }).catch(() => {});
+      // Confirmation first (was: navigate + auto-open the share sheet). The modal
+      // shows a summary + the code/link to copy, and owns "Share" + "View session".
+      setCreatedSession({
+        session,
+        activeCount: rows.filter((r) => r.slot === 'active').length,
+        rosterCount: rows.length,
+      });
     } catch (err) {
       errorNotification();
       // Keep the friendly copy in production, but append the real reason in dev —
@@ -1369,6 +1375,20 @@ const CollectzCreate: React.FC = () => {
 
       {/* Gold keyboard-done FAB — floats above the keyboard while a note field is focused */}
       <KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />
+
+      {/* "Session created" confirmation — summary + tap-to-copy code/link. Opening
+          the session (button or backdrop) replaces this screen with the detail. */}
+      <CollectzCreatedModal
+        visible={!!createdSession}
+        session={createdSession?.session ?? null}
+        activeCount={createdSession?.activeCount ?? 0}
+        rosterCount={createdSession?.rosterCount ?? 0}
+        onOpen={() => {
+          const id = createdSession?.session.id;
+          setCreatedSession(null);
+          if (id) navigation.replace('CollectzDetail', { sessionId: id });
+        }}
+      />
     </View>
   );
 };
