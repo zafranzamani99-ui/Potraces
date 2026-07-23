@@ -1,5 +1,3 @@
-import { requireOptionalNativeModule } from 'expo';
-
 /**
  * Pending "share a receipt → TAP the notification to scan it" inbox, shared between the iOS
  * share EXTENSION and the host APP via a JSON file in the app-group container.
@@ -27,14 +25,29 @@ export interface PendingReceipt {
 }
 type Store = Record<string, PendingReceipt>; // keyed by receipt id (rid)
 
-const native = requireOptionalNativeModule('ExpoShareExtension') as
-  | {
-      readSharedString?: (name: string) => Promise<string | null>;
-      writeSharedString?: (name: string, content: string) => Promise<boolean>;
+type ExtModule = {
+  readSharedString?: (name: string) => Promise<string | null>;
+  writeSharedString?: (name: string, content: string) => Promise<boolean>;
+} | null;
+
+// Lazy: don't pull the native `expo` module in at import time (expo/winter needs
+// RN's `__DEV__`, which breaks tsx unit tests). Resolve + memoize on first real
+// use; degrade to null (no-op) if it can't load in a test/node context.
+let _native: ExtModule | undefined;
+function getNative(): ExtModule {
+  if (_native === undefined) {
+    try {
+      const { requireOptionalNativeModule } = require('expo');
+      _native = (requireOptionalNativeModule('ExpoShareExtension') as ExtModule) ?? null;
+    } catch {
+      _native = null;
     }
-  | null;
+  }
+  return _native;
+}
 
 async function read(): Promise<Store> {
+  const native = getNative();
   if (!native?.readSharedString) return {};
   try {
     const raw = await native.readSharedString(FILE);
@@ -47,6 +60,7 @@ async function read(): Promise<Store> {
 }
 
 async function write(store: Store): Promise<void> {
+  const native = getNative();
   if (!native?.writeSharedString) return;
   try {
     await native.writeSharedString(FILE, JSON.stringify(store));
