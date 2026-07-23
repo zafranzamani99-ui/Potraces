@@ -591,6 +591,8 @@ export interface StallState {
   addUnit: (u: string) => void;
   /** Remove a product unit. */
   removeUnit: (u: string) => void;
+  /** Replace the unit list with a new order (from drag-to-reorder). */
+  reorderUnits: (units: string[]) => void;
   /** Delete stall data for this business setup, scoped. Local only. */
   resetStallData: (scope?: StallResetScope) => void;
 
@@ -669,6 +671,8 @@ export type RootStackParamList = {
   FinancialPulse: undefined;
   ReceiptHistory: undefined;
   ReceiptDetail: { receiptId: string };
+  Notifications: undefined;
+  NotificationDetail: { id: string };
   Settings: { section?: SettingsSection; scrollTo?: string } | undefined;
   /** Dedicated category manager (category deep-links forward here). */
   ManageCategories: { mode: 'personal' | 'business' } | undefined;

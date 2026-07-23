@@ -1482,6 +1482,10 @@ export const en = {
     manageUnitsTitle: 'product units',
     addUnitPlaceholder: 'add a unit',
     addUnitBtn: 'add unit',
+    addNewUnit: 'add new unit',
+    newUnitTitle: 'new unit',
+    saveUnit: 'save',
+    reorderHint: 'hold & drag to reorder',
 
     // Phase 2 — cash box + money out + kept (all optional)
     floatLabel: 'starting cash (optional)',
@@ -3864,12 +3868,16 @@ export const en = {
     minutesAgo: '{n}m ago',
     hoursAgo: '{n}h ago',
     daysAgo: '{n}d ago',
+    // ── Section headers ──
+    sectionTransactions: 'Transactions',
+    sectionAnnouncements: 'Updates & Announcements',
     // ── Detail screen ──
     from: 'From',
     received: 'Received',
     sourceUpdate: 'System update',
     sourceBroadcast: 'Announcement',
     sourcePush: 'Notification',
+    sourceTransaction: 'Transaction',
     updateNow: 'Update now',
     deleteNotification: 'Delete notification',
     deleteConfirmMsg: 'This notification will be removed from your inbox.',

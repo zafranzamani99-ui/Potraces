@@ -47,7 +47,7 @@ PODS:
     - ExpoModulesCore
   - EXNotifications (0.32.17):
     - ExpoModulesCore
-  - Expo (54.0.35):
+  - Expo (54.0.36):
     - ExpoModulesCore
     - hermes-engine
     - RCTRequired
@@ -3241,7 +3241,7 @@ SPEC CHECKSUMS:
   EXJSONUtils: 1d3e4590438c3ee593684186007028a14b3686cd
   EXManifests: 4eb6d80e7f6e07b4db68d2e1a5da58a915825b68
   EXNotifications: 6b4dced0f3dfd0dfb9d7c5d47a5ccd86764fc73c
-  Expo: 0402aa13b318225ab96c28f8f6ed374efd62ca16
+  Expo: 213810830daece4970ccf62cfb3d34e47496cd41
   expo-dev-client: 11d439b492da4debb14d8c1d1ac5c725ecc71a37
   expo-dev-launcher: a1fa980e36477563afcbc19e759e76f9bf2d20ad
   expo-dev-menu: 34e1cbb3d6e1408904d341f448be69b158425c60
@@ -3406,6 +3406,6 @@ SPEC CHECKSUMS:
   Yoga: 3fd22c2cae22d7a2b0f0b538f55f7c2a17dc94d5
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 
-PODFILE CHECKSUM: a965469567256f51519bf064a9cd83307a3dcb9f
+PODFILE CHECKSUM: 58967d1df084d21450776fefad973f82d94706a0
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.17.0

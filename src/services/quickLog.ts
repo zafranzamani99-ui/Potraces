@@ -148,9 +148,20 @@ export function logQuickExpense(params: QuickLogParams): QuickLogResult | null {
   if (!(amount > 0)) return null;
 
   // Cross-path dedupe: the same payment can arrive by two log paths (a shared
-  // screenshot and an auto-log). If we already logged this key, drop it here so
-  // the wallet is never deducted twice. Same null contract as an invalid amount.
-  if (params.dedupeKey && usePaymentDedupeStore.getState().has(params.dedupeKey)) return null;
+  // screenshot and an auto-log). Drop a repeat ONLY while the earlier transaction
+  // still exists, so the wallet is never deducted twice — but if the user deleted
+  // that transaction and re-shares the same screenshot, re-logging is allowed.
+  if (params.dedupeKey) {
+    const dedupe = usePaymentDedupeStore.getState();
+    if (dedupe.has(params.dedupeKey)) {
+      const prevTxId = dedupe.txIdFor(params.dedupeKey);
+      const stillExists = prevTxId
+        ? usePersonalStore.getState().transactions.some((t) => t.id === prevTxId)
+        : false;
+      if (stillExists) return null; // genuine duplicate — earlier log is still there
+      dedupe.remove(params.dedupeKey); // stale key (deleted txn / legacy) → allow this log
+    }
+  }
 
   const type = params.type === 'income' ? 'income' : 'expense';
   // Apple Pay Auto Log arrives with category 'other' + the merchant in `note`.
@@ -197,9 +208,9 @@ export function logQuickExpense(params: QuickLogParams): QuickLogResult | null {
     else useWalletStore.getState().addToWallet(walletId, amount);
   }
 
-  // Record the dedupe key only after a successful log, so a failed/invalid
-  // attempt doesn't block a later real one.
-  if (params.dedupeKey) usePaymentDedupeStore.getState().add(params.dedupeKey);
+  // Record the dedupe key + the transaction it produced (so a later repeat is only
+  // blocked while this transaction still exists). Only after a successful log.
+  if (params.dedupeKey) usePaymentDedupeStore.getState().add(params.dedupeKey, txId);
 
   return { txId, walletId, walletName: wallet?.name, amount, type, categoryName };
 }

@@ -207,6 +207,9 @@ export const useStallStore = create<StallState>()(
       removeUnit: (u) =>
         set((state) => ({ units: (state.units || []).filter((x) => x !== u) })),
 
+      // Persist a new unit order from drag-to-reorder in the unit manager.
+      reorderUnits: (units) => set(() => ({ units: [...units] })),
+
       getLastSetup: () => {
         const closed = get().sessions.filter((s) => !s.isActive && s.closedAt);
         if (closed.length === 0) return null;

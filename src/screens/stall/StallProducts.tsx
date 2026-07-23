@@ -14,6 +14,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
@@ -33,6 +34,7 @@ const StallProducts: React.FC = () => {
   const neu = useNeu(undefined, { faintDark: true });
   const { products, addProduct, updateProduct, deleteProduct, roundCashTo5, setRoundCashTo5, units } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
+  const navigation = useNavigation<any>();
 
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -163,6 +165,69 @@ const StallProducts: React.FC = () => {
           entrance="fade"
           showDragHandle={false}
           maxWidth={520}
+          overlay={showUnitPicker ? (
+            // Dim backdrop that closes ONLY the picker (not the whole form). The inner
+            // card stops taps from bubbling, so tapping the card never dismisses.
+            <Pressable
+              style={styles.unitModalOverlay}
+              onPress={() => setShowUnitPicker(false)}
+              accessibilityRole="button"
+              accessibilityLabel={t.common.close}
+            >
+              <Pressable style={[styles.unitModalContent, neu.raisedModal]} onStartShouldSetResponder={() => true}>
+                <View style={styles.unitPickerHeader}>
+                  <Text style={styles.unitPickerTitle}>{t.stall.selectUnit}</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowUnitPicker(false)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.common.close}
+                  >
+                    <Feather name="x" size={20} color={C.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView
+                  style={[styles.unitPickerList, styles.unitPickerListBleed]}
+                  contentContainerStyle={styles.unitPickerListContent}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  {units.map((u) => {
+                    const selected = unit === u;
+                    return (
+                      <TouchableOpacity
+                        key={u}
+                        style={[styles.unitPickerItem, selected ? styles.unitPickerItemSelected : neu.raised]}
+                        activeOpacity={0.7}
+                        onPress={() => { setUnit(selected ? '' : u); setShowUnitPicker(false); }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={u}
+                      >
+                        <View style={[styles.unitPickerIcon, selected && styles.unitPickerIconSelected]}>
+                          <Feather name="box" size={16} color={selected ? C.onAccent : C.bronze} />
+                        </View>
+                        <Text style={[styles.unitPickerItemText, selected && styles.unitPickerItemTextSelected]}>{u}</Text>
+                        {selected && <Feather name="check" size={16} color={C.bronze} style={{ marginLeft: 'auto' }} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {/* Manage units in settings — matches seller mode. Closes the sheet
+                      and jumps to Settings (stall → "Manage units"). */}
+                  <TouchableOpacity
+                    style={styles.unitManageBtn}
+                    activeOpacity={0.7}
+                    onPress={() => { setShowUnitPicker(false); setShowForm(false); navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'units' }); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.stall.manageUnitsInSettings}
+                  >
+                    <Feather name="settings" size={14} color={C.bronze} />
+                    <Text style={styles.unitManageText}>{t.stall.manageUnitsInSettings}</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </Pressable>
+            </Pressable>
+          ) : null}
         >
           <KeyboardAwareScrollView
             style={styles.sheetKAS}
@@ -214,6 +279,13 @@ const StallProducts: React.FC = () => {
                     <Feather name="camera" size={18} color={C.bronze} />
                   )}
                 </Pressable>
+                {!imageUrl && (
+                  // "+" badge on the empty camera icon (matches the CommitmentForm
+                  // photo picker). pointerEvents none → taps fall through to the tile.
+                  <View style={styles.inlinePhotoPlus} pointerEvents="none">
+                    <Feather name="plus" size={9} color={C.onAccent} />
+                  </View>
+                )}
                 {imageUrl && (
                   <Pressable
                     style={styles.inlinePhotoRemove}
@@ -360,52 +432,6 @@ const StallProducts: React.FC = () => {
               </View>
             </View>
           </KeyboardAwareScrollView>
-
-          {/* Unit picker — rendered IN-CARD, NOT a second RN <Modal>. iOS presents
-              only one modal at a time, so a stacked FloatingModal never appeared and
-              the dropdown read as "un-tappable". This overlay lives inside the open
-              form modal → one responder tree → taps always land. */}
-          {showUnitPicker && (
-            <View style={styles.unitPickerOverlay}>
-              <View style={styles.unitPickerHeader}>
-                <Text style={styles.unitPickerTitle}>{t.stall.selectUnit}</Text>
-                <TouchableOpacity
-                  onPress={() => setShowUnitPicker(false)}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.common.close}
-                >
-                  <Feather name="x" size={20} color={C.textSecondary} />
-                </TouchableOpacity>
-              </View>
-              <KeyboardAwareScrollView
-                style={styles.unitPickerList}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                {units.map((u) => {
-                  const selected = unit === u;
-                  return (
-                    <TouchableOpacity
-                      key={u}
-                      style={[styles.unitPickerItem, selected && styles.unitPickerItemSelected]}
-                      activeOpacity={0.7}
-                      onPress={() => { setUnit(selected ? '' : u); setShowUnitPicker(false); }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={u}
-                    >
-                      <View style={[styles.unitPickerIcon, selected && styles.unitPickerIconSelected]}>
-                        <Feather name="box" size={16} color={selected ? C.onAccent : C.bronze} />
-                      </View>
-                      <Text style={[styles.unitPickerItemText, selected && styles.unitPickerItemTextSelected]}>{u}</Text>
-                      {selected && <Feather name="check" size={16} color={C.bronze} style={{ marginLeft: 'auto' }} />}
-                    </TouchableOpacity>
-                  );
-                })}
-              </KeyboardAwareScrollView>
-            </View>
-          )}
         </FloatingModal>
 
         {/* Add button — always visible; opens the product sheet */}
@@ -732,8 +758,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
     letterSpacing: 0.1,
-    marginTop: -SPACING.sm,
-    marginBottom: SPACING.lg,
+    // ── Hand-tune the two header gaps here ──────────────────────
+    // Both vertical gaps around "add what you sell" live on THIS style.
+    // marginTop  = space between the "new product" title and this line.
+    //   (was -SPACING.sm / -8, which pulled them together)
+    // marginBottom = space between this line and the first field row.
+    marginTop: SPACING.sm,     // ← title ↔ description gap  (SPACING.sm = 8)
+    marginBottom: SPACING.xl,  // ← description ↔ fields gap (SPACING.xl = 24)
   },
   modalCloseBtn: {
     width: 32,
@@ -793,6 +824,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.bronze,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // "+" badge on the empty photo tile (bottom-right, ringed by the card bg)
+  inlinePhotoPlus: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: C.bronze,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.background,
   },
   rowThumb: {
     width: 40,
@@ -883,11 +928,25 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   confirmCol: {
     flex: 2,
   },
-  // ─── Unit picker (in-card overlay over the form) ────────────
-  unitPickerOverlay: {
+  // ─── Unit picker (floats over the form via FloatingModal overlay slot) ──
+  // Dim full-screen backdrop; tap closes ONLY the picker. Matches seller mode.
+  unitModalOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: C.background,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  // Onyx dialog card floating over a dim scrim: neu.raisedModal (spread at the call
+  // site) supplies the C.background surface + a single soft neutral drop — the neu
+  // kit's dialog fragment, no white halo. Border per the floating-modal-outline rule.
+  unitModalContent: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: RADIUS.xl,
     padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.12),
   },
   unitPickerHeader: {
     flexDirection: 'row',
@@ -904,17 +963,30 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexGrow: 0,
     maxHeight: 360,
   },
+  // Shape-3 seam fix: bleed the scroll viewport past the neu rows so its clip can't
+  // shear the boxShadow; content padding puts the rows back (see the onyx seam rule).
+  unitPickerListBleed: {
+    marginHorizontal: -SPACING.lg,
+  },
+  unitPickerListContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  // Onyx option row: neu.raised (unselected, spread at call site) / bronze fill
+  // (selected). Base surface comes from the neu fragment — no bg here.
   unitPickerItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
     paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
     minHeight: 48,
+    marginBottom: SPACING.sm,
   },
   unitPickerItemSelected: {
-    backgroundColor: withAlpha(C.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.12),
   },
   unitPickerIcon: {
     width: 32,
@@ -933,6 +1005,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   unitPickerItemTextSelected: {
     fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+  },
+  // "manage units in settings" footer row (list footer, matches seller mode) —
+  // divider line above it via borderTop, exactly like seller's unitModalManageBtn.
+  unitManageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.md,
+    minHeight: 44,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  unitManageText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
   },
 });

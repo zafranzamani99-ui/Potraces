@@ -1,5 +1,5 @@
 import React, { useCallback, useLayoutEffect, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import { View, Text, SectionList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -11,25 +11,8 @@ import { useT } from '../../i18n';
 import { useNeu } from '../../components/common/neu';
 import { lightTap } from '../../services/haptics';
 import EmptyState from '../../components/common/EmptyState';
-import { useNotificationStore, AppNotification, NotificationType } from '../../store/notificationStore';
-
-const TYPE_ICON: Record<NotificationType, keyof typeof Feather.glyphMap> = {
-  update: 'download',
-  broadcast: 'volume-2',
-  push: 'bell',
-};
-
-const typeTint = (type: NotificationType, C: typeof CALM): string =>
-  type === 'update' ? C.accent : type === 'broadcast' ? C.bronze : C.deepOlive;
-
-function relTime(ts: number, t: ReturnType<typeof useT>): string {
-  const mins = Math.floor((Date.now() - ts) / 60000);
-  if (mins < 1) return t.notifications.justNow;
-  if (mins < 60) return t.notifications.minutesAgo.replace('{n}', String(mins));
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return t.notifications.hoursAgo.replace('{n}', String(hrs));
-  return t.notifications.daysAgo.replace('{n}', String(Math.floor(hrs / 24)));
-}
+import { useNotificationStore, AppNotification } from '../../store/notificationStore';
+import { iconFor, tintFor, relTime, isTransaction } from '../../utils/notificationMeta';
 
 const NotificationRow: React.FC<{
   item: AppNotification;
@@ -64,13 +47,13 @@ const NotificationRow: React.FC<{
     [deleteTap, styles.swipeDeleteBtn, t, C.surface],
   );
 
-  const tint = typeTint(item.type, C);
+  const tint = tintFor(item, C);
 
   const content = (
     <TouchableOpacity activeOpacity={0.85} onPress={() => onPress(item)} accessibilityRole="button">
       <View style={styles.card}>
         <View style={[styles.iconWrap, neu.well, { backgroundColor: withAlpha(tint, 0.14) }]}>
-          <Feather name={TYPE_ICON[item.type]} size={ICON_SIZE.sm} color={tint} />
+          <Feather name={iconFor(item)} size={ICON_SIZE.sm} color={tint} />
         </View>
         <View style={styles.body}>
           <View style={styles.titleRow}>
@@ -115,14 +98,25 @@ const Notifications: React.FC = () => {
   const markAllRead = useNotificationStore((s) => s.markAllRead);
   const remove = useNotificationStore((s) => s.remove);
 
+  // Separate logged transactions from updates/announcements into their own
+  // sections. Each section stays newest-first (items are already sorted). A
+  // section is omitted entirely when empty so a header never floats alone.
+  const sections = useMemo(() => {
+    const txns = items.filter(isTransaction);
+    const rest = items.filter((n) => !isTransaction(n));
+    const out: { key: string; title: string; data: AppNotification[] }[] = [];
+    if (txns.length) out.push({ key: 'txn', title: t.notifications.sectionTransactions, data: txns });
+    if (rest.length) out.push({ key: 'ann', title: t.notifications.sectionAnnouncements, data: rest });
+    return out;
+  }, [items, t]);
+
   const onPress = useCallback(
     (n: AppNotification) => {
       lightTap();
       if (!n.read) markRead(n.id);
-      const url = n.data?.storeUrl;
-      if (n.type === 'update' && typeof url === 'string' && url) Linking.openURL(url).catch(() => {});
+      navigation.navigate('NotificationDetail', { id: n.id });
     },
-    [markRead],
+    [markRead, navigation],
   );
 
   useLayoutEffect(() => {
@@ -140,14 +134,24 @@ const Notifications: React.FC = () => {
     });
   }, [navigation, hasUnread, markAllRead, styles, t]);
 
+  // Only draw a section header when there's more than one section — a lone
+  // group doesn't need a label above it.
+  const showHeaders = sections.length > 1;
+
   return (
     <View style={styles.container}>
-      <FlatList
-        data={items}
+      <SectionList
+        sections={sections}
         keyExtractor={(n) => n.id}
         renderItem={({ item, index }) => (
           <NotificationRow item={item} index={index} onPress={onPress} onDelete={remove} />
         )}
+        renderSectionHeader={
+          showHeaders
+            ? ({ section }) => <Text style={styles.sectionHeader}>{section.title}</Text>
+            : undefined
+        }
+        stickySectionHeadersEnabled={false}
         contentContainerStyle={items.length ? styles.listContent : styles.listEmpty}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
@@ -168,6 +172,15 @@ const makeStyles = (C: typeof CALM) =>
       color: C.accent,
       fontSize: TYPOGRAPHY.size.sm,
       fontWeight: TYPOGRAPHY.weight.semibold,
+    },
+    sectionHeader: {
+      fontSize: TYPOGRAPHY.size.xs,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+      marginTop: SPACING.sm,
+      marginBottom: SPACING.md,
     },
     rowShadow: { borderRadius: RADIUS.xl, marginBottom: SPACING.sm + 6 },
     card: {

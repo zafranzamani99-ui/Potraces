@@ -40,6 +40,13 @@ interface FloatingModalProps {
    */
   entrance?: 'slide' | 'fade';
   children: React.ReactNode;
+  /**
+   * Optional node rendered ABOVE the card and backdrop, still INSIDE this one RN
+   * <Modal> (iOS shows only one modal at a time, so a picker can't be its own
+   * stacked Modal). Supply an absolutely-positioned overlay with its OWN backdrop
+   * so tapping outside a sub-picker closes just the picker, not the whole sheet.
+   */
+  overlay?: React.ReactNode;
 }
 
 const FloatingModal: React.FC<FloatingModalProps> = ({
@@ -50,6 +57,7 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
   swipeToDismiss = true,
   entrance = 'slide',
   children,
+  overlay,
 }) => {
   const C = useCalm();
   const { height: SCREEN_H } = useWindowDimensions();
@@ -185,6 +193,8 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
           {card}
         </KAView>
       </Reanimated.View>
+      {/* Sub-picker overlay: sits above the card + backdrop, inside this one Modal. */}
+      {overlay}
       <ModalToastHost />
       </GestureHandlerRootView>
     </Modal>

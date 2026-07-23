@@ -4,13 +4,12 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useSellerStore } from '../../store/sellerStore';
+import { useStallStore } from '../../store/stallStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
 import { useAuthStore } from '../../store/authStore';
 import { signOut, supabaseBusiness } from '../../services/supabase';
-import { syncAll, clearProfileCache } from '../../services/sellerSync';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
 import { useT } from '../../i18n';
@@ -18,14 +17,17 @@ import { useFadeSlide } from '../../utils/fadeSlide';
 import { lightTap } from '../../services/haptics';
 
 // ─── Component ───────────────────────────────────────────────
-const SellerManage: React.FC = () => {
+// Stall "Manage" hub — the stall counterpart to seller/Manage.tsx. Same neu/Onyx
+// card layout; stall has sessions (not seasons), so the cards are Products, Sales
+// (Transactions), Costs, and Settings, plus change-setup + sign out.
+const StallManage: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const isDark = useIsDark();
   const bizSuccess = semantic(BIZ_SAFE.success, isDark);
   const styles = useMemo(() => makeStyles(C), [C]);
   const neuF = useNeu(undefined, { faintDark: true });
-  const { products, seasons, ingredientCosts, orders } = useSellerStore();
+  const { products, sessions } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -33,15 +35,28 @@ const SellerManage: React.FC = () => {
   const incomeType = useBusinessStore((s) => s.incomeType);
   const [setupModalVisible, setSetupModalVisible] = useState(false);
 
-  const activeSeason = seasons.find((s) => s.isActive) || null;
-  const paidOrders = useMemo(() => orders.filter((o) => o.isPaid), [orders]);
-  const totalCostsThisMonth = useMemo(() => ingredientCosts
-    .filter((c) => {
-      const d = c.date instanceof Date ? c.date : new Date(c.date);
-      const now = new Date();
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    })
-    .reduce((sum, c) => sum + c.amount, 0), [ingredientCosts]);
+  // Sales across every session (stall "transactions").
+  const salesCount = useMemo(
+    () => sessions.reduce((sum, s) => sum + (s.sales?.length || 0), 0),
+    [sessions],
+  );
+
+  // Costs (session expenses) — total count + this-month sum.
+  const { costsCount, totalCostsThisMonth } = useMemo(() => {
+    const now = new Date();
+    let count = 0;
+    let month = 0;
+    for (const s of sessions) {
+      for (const e of s.expenses || []) {
+        count += 1;
+        const d = e.timestamp instanceof Date ? e.timestamp : new Date(e.timestamp);
+        if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+          month += e.amount;
+        }
+      }
+    }
+    return { costsCount: count, totalCostsThisMonth: month };
+  }, [sessions]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert(
@@ -52,16 +67,8 @@ const SellerManage: React.FC = () => {
         {
           text: t.settings.signOut,
           onPress: () => {
-            const { isAuthenticated, isVerified } = useAuthStore.getState().business;
-            let syncData: any = null;
-            if (isAuthenticated && isVerified) {
-              const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
-              syncData = { products, orders, seasons, sellerCustomers };
-            }
             useAuthStore.getState().resetBusiness();
-            clearProfileCache();
             if (navigation.canGoBack()) navigation.goBack();
-            if (syncData) syncAll(syncData.products, syncData.orders, syncData.seasons, syncData.sellerCustomers).catch(() => {});
             clearBusinessLocalData().catch(() => {});
             signOut(supabaseBusiness).catch(() => {});
           },
@@ -85,10 +92,9 @@ const SellerManage: React.FC = () => {
   const productsAnim = useFadeSlide(60);
   const transactionsAnim = useFadeSlide(90);
   const costsAnim = useFadeSlide(120);
-  const seasonsAnim = useFadeSlide(180);
-  const settingsAnim = useFadeSlide(240);
-  const setupLinkAnim = useFadeSlide(290);
-  const signOutAnim = useFadeSlide(320);
+  const settingsAnim = useFadeSlide(180);
+  const setupLinkAnim = useFadeSlide(240);
+  const signOutAnim = useFadeSlide(280);
 
   return (
     <>
@@ -99,8 +105,8 @@ const SellerManage: React.FC = () => {
     >
       {/* ─── Page Header ──────────────────────────────────── */}
       <Animated.View style={[styles.header, headerAnim]}>
-        <Text style={styles.headerLabel}>{t.sellerManage.heading}</Text>
-        <Text style={styles.headerSubtitle}>{t.sellerManage.subtitle}</Text>
+        <Text style={styles.headerLabel}>{t.stallManage.heading}</Text>
+        <Text style={styles.headerSubtitle}>{t.stallManage.subtitle}</Text>
       </Animated.View>
 
       {/* ─── Products Card ────────────────────────────────── */}
@@ -110,36 +116,36 @@ const SellerManage: React.FC = () => {
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel={`Products. ${products.length} products. Navigate to product catalog.`}
-          onPress={() => navigation.getParent()?.navigate('SellerProducts')}
+          onPress={() => navigation.getParent()?.navigate('StallProducts')}
         >
           <View style={[styles.iconBox, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
             <Feather name="package" size={24} color={C.accent} />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>{t.sellerManage.productsTitle}</Text>
-            <Text style={styles.cardSubtitle}>{t.sellerManage.productsSub}</Text>
-            <Text style={styles.cardBadge}>{t.sellerManage.nProducts.replace('{n}', String(products.length))}</Text>
+            <Text style={styles.cardTitle}>{t.stallManage.productsTitle}</Text>
+            <Text style={styles.cardSubtitle}>{t.stallManage.productsSub}</Text>
+            <Text style={styles.cardBadge}>{t.stallManage.nProducts.replace('{n}', String(products.length))}</Text>
           </View>
           <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
       </Animated.View>
 
-      {/* ─── Transactions Card ─────────────────────────────── */}
+      {/* ─── Transactions (sales) Card ─────────────────────── */}
       <Animated.View style={transactionsAnim}>
         <TouchableOpacity
           style={[styles.card, neuF.raisedSoft]}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel={`Transactions. ${paidOrders.length} paid orders. Navigate to transaction list.`}
-          onPress={() => navigation.getParent()?.navigate('SellerTransactions')}
+          accessibilityLabel={`Transactions. ${salesCount} sales. Navigate to sales list.`}
+          onPress={() => navigation.getParent()?.navigate('StallTransactions')}
         >
           <View style={[styles.iconBox, { backgroundColor: withAlpha(bizSuccess, 0.12) }]}>
             <Feather name="list" size={24} color={bizSuccess} />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>{t.sellerManage.transactionsTitle}</Text>
-            <Text style={styles.cardSubtitle}>{t.sellerManage.transactionsSub}</Text>
-            <Text style={styles.cardBadge}>{t.sellerManage.nPaidOrders.replace('{n}', String(paidOrders.length))}</Text>
+            <Text style={styles.cardTitle}>{t.stallManage.transactionsTitle}</Text>
+            <Text style={styles.cardSubtitle}>{t.stallManage.transactionsSub}</Text>
+            <Text style={styles.cardBadge}>{t.stallManage.nSales.replace('{n}', String(salesCount))}</Text>
           </View>
           <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
@@ -151,45 +157,19 @@ const SellerManage: React.FC = () => {
           style={[styles.card, neuF.raisedSoft]}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel={`Costs. ${ingredientCosts.length} entries. Navigate to cost management.`}
-          onPress={() => navigation.getParent()?.navigate('SellerCosts')}
+          accessibilityLabel={`Costs. ${costsCount} entries. Navigate to costs.`}
+          onPress={() => navigation.getParent()?.navigate('StallCosts')}
         >
           <View style={styles.iconBox}>
             <Feather name="shopping-bag" size={24} color={C.bronze} />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>{t.sellerManage.costsTitle}</Text>
-            <Text style={styles.cardSubtitle}>{t.sellerManage.costsSub}</Text>
+            <Text style={styles.cardTitle}>{t.stallManage.costsTitle}</Text>
+            <Text style={styles.cardSubtitle}>{t.stallManage.costsSub}</Text>
             <View style={styles.badgeRow}>
-              <Text style={styles.cardBadge}>{t.sellerManage.nEntries.replace('{n}', String(ingredientCosts.length))}</Text>
+              <Text style={styles.cardBadge}>{t.stallManage.nCosts.replace('{n}', String(costsCount))}</Text>
               {totalCostsThisMonth > 0 && (
-                <Text style={styles.costBadge}>{t.sellerManage.thisMonth.replace('{currency}', currency).replace('{amount}', totalCostsThisMonth.toFixed(0))}</Text>
-              )}
-            </View>
-          </View>
-          <Feather name="chevron-right" size={20} color={C.textMuted} />
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* ─── Seasons Card ─────────────────────────────────── */}
-      <Animated.View style={seasonsAnim}>
-        <TouchableOpacity
-          style={[styles.card, neuF.raisedSoft, activeSeason && styles.cardHighlighted]}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={`Seasons. ${seasons.length} seasons.${activeSeason ? ` Active season: ${activeSeason.name}.` : ''} Navigate to season history.`}
-          onPress={() => navigation.getParent()?.navigate('PastSeasons')}
-        >
-          <View style={[styles.iconBox, { backgroundColor: withAlpha(C.gold, 0.12) }]}>
-            <Feather name="calendar" size={24} color={C.gold} />
-          </View>
-          <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>{t.sellerManage.seasonsTitle}</Text>
-            <Text style={styles.cardSubtitle}>{t.sellerManage.seasonsSub}</Text>
-            <View style={styles.badgeRow}>
-              <Text style={styles.cardBadge}>{t.sellerManage.nSeasons.replace('{n}', String(seasons.length))}</Text>
-              {activeSeason && (
-                <Text style={styles.activeBadge}>{t.sellerManage.activeSeason.replace('{name}', activeSeason.name)}</Text>
+                <Text style={styles.costBadge}>{t.stallManage.thisMonth.replace('{currency}', currency).replace('{amount}', totalCostsThisMonth.toFixed(0))}</Text>
               )}
             </View>
           </View>
@@ -204,14 +184,14 @@ const SellerManage: React.FC = () => {
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel="Settings. Currency, preferences, and data. Navigate to settings."
-          onPress={() => navigation.getParent()?.navigate('SellerSettings')}
+          onPress={() => navigation.getParent()?.navigate('Settings')}
         >
           <View style={[styles.iconBox, { backgroundColor: withAlpha(C.lavender, 0.15) }]}>
             <Feather name="settings" size={24} color={C.lavender} />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>{t.sellerManage.settingsTitle}</Text>
-            <Text style={styles.cardSubtitle}>{t.sellerManage.settingsSub}</Text>
+            <Text style={styles.cardTitle}>{t.stallManage.settingsTitle}</Text>
+            <Text style={styles.cardSubtitle}>{t.stallManage.settingsSub}</Text>
           </View>
           <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
@@ -223,11 +203,11 @@ const SellerManage: React.FC = () => {
           style={styles.setupLink}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel={t.sellerManage.changeSetupLink}
+          accessibilityLabel={t.stallManage.changeSetupLink}
           onPress={handleOpenSetup}
         >
           <Feather name="briefcase" size={18} color={C.textMuted} />
-          <Text style={styles.setupLinkText}>{t.sellerManage.changeSetupLink}</Text>
+          <Text style={styles.setupLinkText}>{t.stallManage.changeSetupLink}</Text>
         </TouchableOpacity>
       </Animated.View>
 
@@ -256,11 +236,11 @@ const SellerManage: React.FC = () => {
     >
       <Pressable style={styles.confirmOverlay} onPress={() => setSetupModalVisible(false)}>
         <View style={[styles.confirmCard, neuF.raisedModal]} onStartShouldSetResponder={() => true}>
-          <Text style={styles.confirmTitle}>{t.sellerManage.changeSetupConfirmTitle}</Text>
+          <Text style={styles.confirmTitle}>{t.stallManage.changeSetupConfirmTitle}</Text>
           {!!incomeType && (
             <Text style={styles.confirmCurrent} numberOfLines={1}>{incomeType}</Text>
           )}
-          <Text style={styles.confirmSub}>{t.sellerManage.changeSetupConfirmMsg}</Text>
+          <Text style={styles.confirmSub}>{t.stallManage.changeSetupConfirmMsg}</Text>
           <View style={styles.confirmBtns}>
             <TouchableOpacity
               style={[styles.confirmBtn, styles.confirmCancelBtn, neuF.raised]}
@@ -276,9 +256,9 @@ const SellerManage: React.FC = () => {
               onPress={handleConfirmSetup}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel={t.sellerManage.changeSetupConfirmBtn}
+              accessibilityLabel={t.stallManage.changeSetupConfirmBtn}
             >
-              <Text style={styles.confirmPrimaryText}>{t.sellerManage.changeSetupConfirmBtn}</Text>
+              <Text style={styles.confirmPrimaryText}>{t.stallManage.changeSetupConfirmBtn}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -315,7 +295,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: SPACING.xs,
   },
 
-  // Card
+  // Card (Neu Card: C.background base + neu shadow, no border — no overflow clip)
   card: {
     backgroundColor: C.background,
     borderRadius: RADIUS.lg,
@@ -358,26 +338,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: SPACING.xs,
   },
 
-  // Badge row for seasons
+  // Badge row (count + this-month cost)
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: SPACING.xs,
     gap: SPACING.sm,
   },
-  activeBadge: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.bronze,
-  },
   costBadge: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.bronze,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
-  },
-  cardHighlighted: {
-    borderWidth: 1,
-    borderColor: withAlpha(C.gold, 0.3),
-    backgroundColor: withAlpha(C.gold, 0.03),
   },
 
   // Change business setup
@@ -480,4 +451,4 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 });
 
-export default SellerManage;
+export default StallManage;

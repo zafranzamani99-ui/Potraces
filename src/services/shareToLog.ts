@@ -12,6 +12,8 @@
  * it only patches category/merchant on an already-logged row.
  */
 import { Platform } from 'react-native';
+import { requireOptionalNativeModule } from 'expo';
+import { deleteAsync } from 'expo-file-system/legacy';
 import * as Notifications from 'expo-notifications';
 import { parsePaymentScreenshot, type ParsedPayment } from './paymentScreenshotParser';
 import { recognizeRows, isLocalOcrAvailable } from './localReceiptOcr';
@@ -22,7 +24,68 @@ import { ANDROID_CHANNELS } from './pushNotifications';
 import { usePremiumStore } from '../store/premiumStore';
 import { useCategoryStore } from '../store/categoryStore';
 import { usePersonalStore } from '../store/personalStore';
+import { useNotificationStore } from '../store/notificationStore';
+import { globalShowToast } from '../context/ToastContext';
 import { dedupeKeyFor } from '../utils/paymentDedupeKey';
+
+// Temporary on-device diagnostics for the Share-to-Log flow. Logs stream to Metro
+// (visible to the developer); the user-facing outcome still shows via the toast in the
+// notify* helpers. Flip off once the flow is verified.
+const SHARE_DEBUG = false;
+function dbg(msg: string) {
+  if (SHARE_DEBUG) console.log(`[share] ${msg}`);
+}
+
+// Native handle to list the app-group "sharedData" dir where the iOS share extension
+// stages payment screenshots. null off iOS / when the module isn't in the build. iOS
+// blocks a share extension from launching the host app, so instead of a deep-link
+// hand-off the app reconciles this shared container whenever it becomes active.
+const ShareExtNative = requireOptionalNativeModule('ExpoShareExtension') as
+  | { getSharedFilePaths?: () => Promise<string[]> }
+  | null;
+
+const IMAGE_EXT_RE = /\.(jpe?g|png|heic|heif)$/i;
+let _reconciling = false;
+
+/**
+ * Process any payment screenshots the iOS share extension staged in the app-group
+ * container: log each, then delete it so it's never re-processed. Safe to call
+ * repeatedly (re-entry guarded; logQuickExpense dedupes by key too). No-op off iOS or
+ * when nothing is staged. Call on launch and on every AppState → 'active'.
+ */
+export async function reconcileSharedPayments(): Promise<void> {
+  if (Platform.OS !== 'ios' || !ShareExtNative?.getSharedFilePaths || _reconciling) return;
+  _reconciling = true;
+  try {
+    let paths: string[] = [];
+    try {
+      paths = (await ShareExtNative.getSharedFilePaths()) ?? [];
+    } catch (e) {
+      dbg(`reconcile list failed: ${String(e).slice(0, 60)}`);
+      paths = [];
+    }
+    if (paths.length > 0) dbg(`reconcile: ${paths.length} staged file(s)`);
+    for (const p of paths) {
+      if (IMAGE_EXT_RE.test(p)) {
+        try {
+          // Silent: the share extension already fired the "Logged RM…" notification;
+          // this just writes the ledger entry (wallet deduction, dedupe).
+          await logPaymentFromShare(p, { silent: true });
+        } catch {
+          // logPaymentFromShare already reports its own failure
+        }
+      }
+      // Delete regardless of type so a stray/unreadable file never blocks future shares.
+      try {
+        await deleteAsync(p, { idempotent: true });
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
+  } finally {
+    _reconciling = false;
+  }
+}
 
 export { dedupeKeyFor };
 
@@ -86,21 +149,54 @@ async function fireNotification(
   }
 }
 
-function notifyLogged(direction: 'out' | 'in', amount: number, payee: string | null): Promise<void> {
+function loggedBody(direction: 'out' | 'in', amount: number, payee: string | null): string {
   const verb = direction === 'in' ? 'received' : 'paid';
   const tail = payee ? ` · ${payee}` : '';
-  return fireNotification('Logged to Potraces', `RM ${amount.toFixed(2)} ${verb}${tail}`, {
-    type: 'share_logged',
-  });
+  return `RM ${amount.toFixed(2)} ${verb}${tail}`;
+}
+
+function notifyLogged(direction: 'out' | 'in', amount: number, payee: string | null): Promise<void> {
+  const msg = loggedBody(direction, amount, payee);
+  dbg(`OUTCOME logged: ${msg}`);
+  // In-app toast (visible in the foreground) + notification (for the background).
+  try { globalShowToast(msg, 'success'); } catch { /* toast host not mounted */ }
+  return fireNotification('Logged to Potraces', msg, { type: 'share_logged' });
+}
+
+/**
+ * Record a logged payment into the in-app Notification inbox. Runs on EVERY
+ * successful log — including the silent iOS app-group reconcile (where the OS
+ * banner came from the share-extension process and never reaches this app's
+ * foreground listener). Deterministic id (`txn-<txId>`) so the same payment is
+ * never inboxed twice. Best-effort: a failure here must never break the log.
+ */
+function inboxLogged(direction: 'out' | 'in', amount: number, payee: string | null, txId: string): void {
+  try {
+    useNotificationStore.getState().addNotification({
+      id: `txn-${txId}`,
+      type: 'transaction',
+      title: 'Logged to Potraces',
+      body: loggedBody(direction, amount, payee),
+      createdAt: Date.now(),
+      data: { type: 'share_logged', direction, amount, payee: payee ?? undefined, txId },
+    });
+  } catch {
+    // inbox is best-effort — never let it break the actual ledger write
+  }
 }
 
 function notifyCouldntRead(message?: string): Promise<void> {
+  const msg = message ?? "Couldn't read that one — tap to add it manually.";
+  dbg(`OUTCOME couldnt-read: ${msg}`);
+  try { globalShowToast(msg, 'error'); } catch { /* toast host not mounted */ }
   return fireNotification("Couldn't read that one", message ?? 'Tap to add it manually.', {
     type: 'share_failed',
   });
 }
 
 function notifyAlreadyLogged(): Promise<void> {
+  dbg('OUTCOME already-logged (dedupe)');
+  try { globalShowToast('Already logged — this payment was already recorded.', 'info'); } catch { /* */ }
   return fireNotification('Already logged', 'This payment was already recorded.', {
     type: 'share_logged',
   });
@@ -253,42 +349,70 @@ async function enrichAfterLog(
  * (iOS: app-group container path from the share extension; Android: a cache file
  * copied from the share intent). Silent on success beyond the local notification.
  */
-export async function logPaymentFromShare(imageUri: string | null | undefined): Promise<void> {
+export async function logPaymentFromShare(
+  imageUri: string | null | undefined,
+  opts?: { silent?: boolean; useAI?: boolean },
+): Promise<void> {
+  // silent: the iOS share extension already fired the "Logged RM…" notification, so the
+  // app-group reconcile writes the ledger entry WITHOUT firing a second notification.
+  const silent = opts?.silent ?? false;
+  // useAI: Gemini is OFF by default so the share flow never costs money — the local reader
+  // already extracts the amount + merchant and guesses the category for free. AI (merchant/
+  // category enrichment, or an unrecognized-layout fallback) is opt-in for the future
+  // "smart fallback" (rules-first, AI only when unsure). No caller passes it today.
+  const useAI = opts?.useAI ?? false;
+  // Always record the logged payment in the in-app inbox (silent or not); only the
+  // OS banner is gated by `silent` (the iOS share extension already showed one).
+  const nLogged = (d: 'out' | 'in', a: number, p: string | null, txId: string) => {
+    inboxLogged(d, a, p, txId);
+    return silent ? Promise.resolve() : notifyLogged(d, a, p);
+  };
+  const nCouldnt = (m?: string) => (silent ? Promise.resolve() : notifyCouldntRead(m));
+  const nAlready = () => (silent ? Promise.resolve() : notifyAlreadyLogged());
+
+  dbg(`start uri=${imageUri ? String(imageUri).slice(-28) : 'NULL'} silent=${silent}`);
   if (!imageUri) {
-    await notifyCouldntRead();
+    await nCouldnt('No image received from the share.');
     return;
   }
   try {
     const uri = normalizeUri(imageUri);
 
     let parsed: ParsedPayment | null = null;
-    if (isLocalOcrAvailable()) {
+    const ocrAvail = isLocalOcrAvailable();
+    if (ocrAvail) {
       try {
-        parsed = parsePaymentScreenshot(await recognizeRows(uri));
-      } catch {
+        const rows = await recognizeRows(uri);
+        dbg(`ocr ok, ${rows.length} rows`);
+        parsed = parsePaymentScreenshot(rows);
+      } catch (e) {
+        dbg(`ocr THREW: ${String(e).slice(0, 60)}`);
         parsed = null;
       }
+    } else {
+      dbg('OCR not available in this build');
     }
+    dbg(`parsed pay=${parsed?.isPaymentScreen} amt=${parsed?.amount} reason=${parsed?.reason} conf=${parsed?.confidence}`);
 
     // Explicit failed/declined screen → never log a wrong success.
     if (parsed && parsed.reason === 'failed') {
-      await notifyCouldntRead('That looked like a failed payment — nothing logged.');
+      await nCouldnt('That looked like a failed payment — nothing logged.');
       return;
     }
 
     const localAmount = parsed && parsed.isPaymentScreen && parsed.amount != null ? parsed : null;
-    const echoUsable = isGeminiAvailable() && usePremiumStore.getState().canUseAI();
+    const echoUsable = useAI && isGeminiAvailable() && usePremiumStore.getState().canUseAI();
 
     // Strategy A — confident local amount (or Echo unavailable): log immediately,
     // then enrich category/merchant in the background.
     if (localAmount && (localAmount.confidence >= CONFIDENT || !echoUsable)) {
       const result = logFromParsed(localAmount);
       if (!result) {
-        await notifyAlreadyLogged();
+        await nAlready();
         return;
       }
-      await notifyLogged(localAmount.direction ?? 'out', result.amount, localAmount.payee);
-      void enrichAfterLog(uri, localAmount, result.txId);
+      await nLogged(localAmount.direction ?? 'out', result.amount, localAmount.payee, result.txId);
+      if (useAI) void enrichAfterLog(uri, localAmount, result.txId);
       return;
     }
 
@@ -303,7 +427,7 @@ export async function logPaymentFromShare(imageUri: string | null | undefined): 
           return;
         }
         const dir = echo.direction ?? parsed?.direction ?? 'out';
-        await notifyLogged(dir, result.amount, echo.merchant ?? parsed?.payee ?? null);
+        await nLogged(dir, result.amount, echo.merchant ?? parsed?.payee ?? null, result.txId);
         return;
       }
     }
@@ -313,15 +437,15 @@ export async function logPaymentFromShare(imageUri: string | null | undefined): 
     if (localAmount) {
       const result = logFromParsed(localAmount);
       if (!result) {
-        await notifyAlreadyLogged();
+        await nAlready();
         return;
       }
-      await notifyLogged(localAmount.direction ?? 'out', result.amount, localAmount.payee);
+      await nLogged(localAmount.direction ?? 'out', result.amount, localAmount.payee, result.txId);
       return;
     }
 
-    await notifyCouldntRead();
+    await nCouldnt();
   } catch {
-    await notifyCouldntRead();
+    await nCouldnt();
   }
 }

@@ -81,6 +81,13 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
 
   useEffect(() => {
     if (!scrollTo || !ready) return;
+    // Unit deep-link (from the product form's "manage units in settings") →
+    // open the right unit manager directly instead of just scrolling.
+    if (scrollTo === 'units') {
+      navigation.setParams({ scrollTo: undefined } as never);
+      incomeType === 'stall' ? setStallUnitManagerVisible(true) : setUnitManagerVisible(true);
+      return;
+    }
     // Category deep-links now land on the dedicated screen — forward.
     if (scrollTo === 'categories') {
       navigation.setParams({ scrollTo: undefined } as never);
@@ -94,7 +101,7 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
       navigation.setParams({ scrollTo: undefined } as never);
     }, 100);
     return () => clearTimeout(timer);
-  }, [scrollTo, ready, navigation]);
+  }, [scrollTo, ready, navigation, incomeType]);
 
   useEffect(() => {
     if (!section) return;

@@ -22,7 +22,7 @@ import { useSettingsStore, clearBusinessLocalData } from './src/store/settingsSt
 import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
-import { logPaymentFromShare } from './src/services/shareToLog';
+import { logPaymentFromShare, reconcileSharedPayments } from './src/services/shareToLog';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
 import { refreshQuickLogConfigured } from './src/services/quickLogKey';
 import './src/services/quickLogCategories'; // side-effect: keeps the Shortcut's live category list fresh
@@ -462,6 +462,10 @@ function App() {
       // Broadcast arriving while the app is open → pull it from the announcements
       // table into the inbox (same id as the launch fetch, so no duplicate).
       if (data?.type === 'broadcast') { refreshBroadcasts(); return; }
+      // Share-to-log outcomes are recorded in the inbox at log time (shareToLog.ts),
+      // reliably and on both platforms — don't double-insert from the foreground push,
+      // and never inbox a "couldn't read" alert.
+      if (data?.type === 'share_logged' || data?.type === 'share_failed') return;
       // Persist any other foreground push into the in-app inbox.
       const c = n.request.content;
       useNotificationStore.getState().addNotification({
@@ -546,10 +550,10 @@ function App() {
         return;
       }
 
-      // Share-to-Log: the iOS share extension fires potraces://share?payload={image,text,url}.
-      // Hand the shared screenshot to the offline-first OCR→parse→log pipeline (which
-      // fires its own "Logged RM…" / "couldn't read" local notification). Personal mode
-      // first so it works from business / cold start. Must be before the isAdd guard.
+      // Share-to-Log (legacy deep-link path): iOS blocks a share extension from launching the
+      // host app, so the extension does the work itself + the app reconciles the app-group on
+      // foreground. This branch is kept as a harmless fallback if a `potraces://share` ever
+      // does arrive (e.g. Android/future). Must be before the isAdd guard.
       if (head === 'share') {
         if (useAppStore.getState().mode !== 'personal') {
           useAppStore.getState().setMode('personal');
@@ -634,6 +638,18 @@ function App() {
     const emitter = new NativeEventEmitter(mod);
     const sub = emitter.addListener('PotracesShareImage', (uri: string) => {
       if (uri) void logPaymentFromShare(uri);
+    });
+    return () => sub.remove();
+  }, []);
+
+  // iOS Share-to-Log reconcile. iOS blocks a share extension from launching the host
+  // app, so the extension stages the shared screenshot in the app-group container and
+  // the app processes it here — on launch and every time it returns to the foreground.
+  React.useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    void reconcileSharedPayments();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void reconcileSharedPayments();
     });
     return () => sub.remove();
   }, []);

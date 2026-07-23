@@ -1482,6 +1482,10 @@ export const ms: Translations = {
     manageUnitsTitle: 'unit produk',
     addUnitPlaceholder: 'tambah unit',
     addUnitBtn: 'tambah unit',
+    addNewUnit: 'tambah unit baharu',
+    newUnitTitle: 'unit baharu',
+    saveUnit: 'simpan',
+    reorderHint: 'tahan & seret untuk susun semula',
 
     // Phase 2 — duit dalam kotak + duit keluar + simpan (semua pilihan)
     floatLabel: 'duit permulaan (pilihan)',
@@ -3840,12 +3844,16 @@ export const ms: Translations = {
     minutesAgo: '{n}m lepas',
     hoursAgo: '{n}j lepas',
     daysAgo: '{n}h lepas',
+    // ── Tajuk seksyen ──
+    sectionTransactions: 'Transaksi',
+    sectionAnnouncements: 'Kemas kini & Pengumuman',
     // ── Skrin butiran ──
     from: 'Daripada',
     received: 'Diterima',
     sourceUpdate: 'Kemas kini sistem',
     sourceBroadcast: 'Pengumuman',
     sourcePush: 'Notifikasi',
+    sourceTransaction: 'Transaksi',
     updateNow: 'Kemas kini sekarang',
     deleteNotification: 'Padam notifikasi',
     deleteConfirmMsg: 'Notifikasi ini akan dibuang dari peti masuk anda.',

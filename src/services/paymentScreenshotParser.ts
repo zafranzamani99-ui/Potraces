@@ -102,9 +102,20 @@ function pickAmount(hits: AmountHit[]): AmountHit | null {
 // ── Status / direction ──────────────────────────────────────
 const SUCCESS_RE =
   /\b(payment\s*successful|transfer\s*successful|transaction\s*successful|successful|berjaya|payment\s*complete|success)\b|\bpaid\b|duitnow/i;
+// STRONG success phrases only (excludes bare "paid"/"payment", which litter list screens).
+// Used as one of the "hard payment signals" that lets a multi-amount screen still count.
+const SUCCESS_PHRASE_RE =
+  /\b(payment\s*successful|transfer\s*successful|transaction\s*successful|berjaya|payment\s*complete|paid\s*successfully|sent\s*successfully|\bsuccessful\b)\b/i;
 const FAIL_RE = /\b(failed|unsuccessful|gagal|declined|rejected|cancelled|canceled|tidak\s*berjaya)\b/i;
 const INCOMING_RE = /\b(received|you\s*received|diterima|credited|money\s*in|incoming|masuk)\b/i;
 const OUTGOING_RE = /\b(paid|sent|payment|bayar|scan\s*&?\s*pay|transfer\s*to|kepada|debited)\b/i;
+
+// Summary / list screens — debt & split trackers, "you owe / owed to you / unpaid",
+// spend breakdowns — contain amounts and a stray "paid"/"payment" word but are NOT a
+// single payment confirmation. Matching this rejects the screen outright, so e.g. a
+// "You owe RM650 · 100.00 paid" debts screen never logs a phantom RM100 payment.
+const NOT_PAYMENT_SCREEN_RE =
+  /\b(you\s*owe|owed\s*to\s*you|you'?re\s*owed|unpaid|\bsplits?\b|\bdebts?\b|installments?|across\s*\d+\s*splits?|commitments?|upcoming|overdue|this\s*month)\b/i;
 
 // ── Payee ───────────────────────────────────────────────────
 // Rows that are labels/metadata, never a payee.
@@ -112,10 +123,16 @@ const LABEL_ROW_RE =
   /\b(reference|ref\s*no|rujukan|transaction|date|time|tarikh|masa|type|jenis|status|successful|berjaya|receipt|resit|share|done|balance|baki|amount|jumlah|method|kaedah|wallet|bank|payment|failed|gagal|try\s*again)\b/i;
 // "to NAME" / "from NAME" / "kepada NAME" — the payee is captured directly.
 const TO_FROM_RE = /\b(?:to|kepada|from|daripada|dari)\s+([A-Za-z][A-Za-z'@.\- ]{2,})$/i;
+// Details-screen label/value row: "Merchant  Acme Sdn Bhd" / "Payee: Ali" — the payee is
+// the VALUE after the label, not the label itself.
+const MERCHANT_ROW_RE =
+  /\b(?:merchant|payee|recipient|penerima|beneficiary|paid\s*to|pay\s*to)\b\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9'@.\-& ]{2,})$/i;
 
 function extractPayee(rows: string[], amountRowIndex: number): string | null {
-  // 1) explicit "to/from NAME"
+  // 1) explicit "Merchant/Payee: NAME" (details screen) or "to/from NAME" — capture the value.
   for (const row of rows) {
+    const mm = row.match(MERCHANT_ROW_RE);
+    if (mm) return tidy(mm[1]);
     const m = row.match(TO_FROM_RE);
     if (m) return tidy(m[1]);
   }
@@ -274,7 +291,26 @@ export function parsePaymentScreenshot(rawRows: string[]): ParsedPayment {
     walletHint: null, confidence: 0,
   };
 
-  // A failed/declined screen: never log a wrong success.
+  // Guards FIRST — a list / summary / pricing screen (debts, bills, subscriptions, a
+  // paywall) is never a single payment, even if a stray "paid"/"failed"/"cancel" word
+  // happens to appear on it. These must beat the failed-payment check below.
+  if (NOT_PAYMENT_SCREEN_RE.test(joined)) return empty;
+
+  // Multi-amount guard: a real payment confirmation shows ONE hero amount (balances/fees
+  // are already excluded from `hits`). Several distinct amounts ⇒ a list/summary/pricing
+  // screen UNLESS it carries a hard payment signal — a reference id, a pay method (Scan &
+  // Pay / DuitNow / QR), or an explicit "successful" phrase.
+  const refId = extractRefId(rows);
+  const method = extractMethod(rows);
+  const distinctAmounts = new Set(hits.filter((h) => !h.excluded).map((h) => h.value)).size;
+  // A payment METHOD word (DuitNow / transfer / Scan & Pay) also litters transaction
+  // HISTORY lists, so it is NOT a reliable single-payment signal. Require a hard one: an
+  // explicit "successful" status phrase or a reference id — both live on a single-payment
+  // details screen, neither on a history list.
+  const strongSignal = SUCCESS_PHRASE_RE.test(joined) || !!refId;
+  if (distinctAmounts >= 3 && !strongSignal) return empty;
+
+  // A failed/declined SINGLE payment: never log a wrong success.
   if (failed && !success) return { ...empty, reason: 'failed' };
 
   // Looks like a payment (status word, or an amount + a paid/received verb)?
@@ -284,11 +320,10 @@ export function parsePaymentScreenshot(rawRows: string[]): ParsedPayment {
 
   const direction: PaymentDirection = incoming ? 'in' : 'out';
   const payee = extractPayee(rows, picked.rowIndex);
-  const refId = extractRefId(rows);
   const datetime = extractDateTime(rows);
-  const method = extractMethod(rows);
   const walletHint = extractWalletHint(rows);
   const currency = detectCurrency(rows, picked);
+  // refId + method were computed above for the multi-amount guard.
 
   // Confidence: amount is the backbone; each extra field corroborates.
   let confidence = 0.45;
