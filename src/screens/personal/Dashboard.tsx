@@ -1559,6 +1559,7 @@ const makeStyles = (C: typeof CALM) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      marginTop: SPACING.sm, // tiny gap so the QR doesn't collide with the bell above it
       marginBottom: SPACING.lg,
     },
     modeRow: {
