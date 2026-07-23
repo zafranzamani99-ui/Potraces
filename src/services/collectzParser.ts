@@ -58,18 +58,20 @@ Extract STRICT JSON (no markdown, no commentary) with this exact shape:
                                    // → end is 01:00 the NEXT day). null if only one
                                    // time is stated.
   "venue": string | null,          // place only, e.g. "MG2 Bangi"
-  "details_text": string | null,   // NON-payment extras: play style / game rules
-                                   // ("main 7 minit", "seri dua-dua keluar", "king
-                                   // stay"), court numbers, attire. Translate/clean
-                                   // into a short readable line. Join lines with "\\n".
-                                   // null if none.
-  "rules_text": string | null,     // PAYMENT rules ONLY: how much + how to pay + who
-                                   // to pay + deadline + cancel policy. Preserve the
-                                   // FULL scheme even when you also fill the numeric
-                                   // fields below — e.g. "RM45 per team. Pay your team
-                                   // head first; the head pays RM45 to the organizer's
-                                   // QR. No individual payments. Last-minute cancels
-                                   // pay their own team." "\\n"-joined. null if none.
+  "details_text": string | null,   // The NON-payment extra lines (play style / game
+                                   // rules, court numbers, attire), COPIED VERBATIM from
+                                   // the message. Keep the ORIGINAL language (leave Malay
+                                   // as Malay), wording, bullets and emojis exactly. Do
+                                   // NOT translate, summarize, reword, or add anything.
+                                   // "\\n"-joined in original order. null if none.
+  "rules_text": string | null,     // The PAYMENT-rules lines (how much / who to pay /
+                                   // deadline / cancel policy), COPIED VERBATIM from the
+                                   // message. Keep the ORIGINAL language, wording, bullets
+                                   // and emojis exactly — do NOT translate, summarize,
+                                   // reword, or append your own "RM9 each" note. You STILL
+                                   // read these lines to compute scheme/amounts below, but
+                                   // what you RETURN here is the untouched original text.
+                                   // "\\n"-joined in original order. null if none.
   "scheme": "flat" | "equal" | "custom" | null,
                                    // flat = one fixed price EACH PERSON pays.
                                    // equal = only a lump total, to divide by headcount.
@@ -110,9 +112,9 @@ PER-TEAM PRICING (important — "RM45 satu team" / "RM45/team" / "bayar ikut tea
       (e.g. each TEAM block is numbered 1..5 → team size 5), or an explicit
       "5 orang satu team" / "per team 6".
     * scheme = "flat", default_share = round(perTeamPrice / teamSize) to 2 decimals.
-- ALWAYS keep the human payment instructions ("pay team head first", "aku nak RM45
-  kt QR aku", "tak terima bayar sorang-sorang", cancel policy) in rules_text so
-  nothing is lost.
+- The per-person amount goes into default_share ONLY. The original payment lines
+  are returned in rules_text VERBATIM (see its rule above) — do NOT replace them
+  with a computed "RM9 each" note or a translation.
 - If you genuinely cannot tell the team size, leave scheme=null and
   default_share=null, and put the full "RM45 per team" scheme into rules_text.
 
@@ -128,15 +130,19 @@ Futsal Khamis 25/7/2026
 Masa: 9pm-11pm
 Tempat: MG2 Bangi
 Harga Court : RM180
+
+Attention ‼️
 - Bayar ikut team iaitu RM45 satu team
 - Bayar kt kepala team korang baru bayar kt aku. Aku nak RM 45 kt QR aku
 - Tak terima bayar sorang sorang
 - Sape yang cancel last minit bayar kt team masing masing.
-Play style
+
+Play style ‼️
 - Main 7 minit
 - Seri dua dua kluar
 - Dalam masa tujuh minit yang leading stay
 - King Stay
+
 TEAM 1
 1. Mael
 2.
@@ -145,33 +151,21 @@ TEAM 1
 5.
 TEAM 2
 1. Raja Arep
-2.
-3.
-4.
-5.
 TEAM 3
 1. Kai
-2.
-3.
-4.
-5.
 TEAM 4
-1.
 1. pg aikol
-2.
-3.
-4.
-5.
 """
-output:
+output (note: details_text and rules_text are the ORIGINAL lines copied word-for-word,
+NOT translated — only the numeric fields are computed):
 {
   "title": "Futsal Khamis 25/7/2026",
   "category": "sport",
   "event_at": "2026-07-25T21:00:00+08:00",
   "event_end": "2026-07-25T23:00:00+08:00",
   "venue": "MG2 Bangi",
-  "details_text": "Play style: 7 minutes per game, draw = both teams out, the leading team within the 7 minutes stays, king stays.",
-  "rules_text": "RM45 per team (5 per team ≈ RM9 each). Pay your team head first, then the head pays RM45 to the organizer's QR. No individual payments. Last-minute cancellations pay their own team.",
+  "details_text": "Play style ‼️\\n- Main 7 minit\\n- Seri dua dua kluar\\n- Dalam masa tujuh minit yang leading stay\\n- King Stay",
+  "rules_text": "- Bayar ikut team iaitu RM45 satu team\\n- Bayar kt kepala team korang baru bayar kt aku. Aku nak RM 45 kt QR aku\\n- Tak terima bayar sorang sorang\\n- Sape yang cancel last minit bayar kt team masing masing.",
   "scheme": "flat",
   "total_amount": 180,
   "default_share": 9,
