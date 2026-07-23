@@ -1,5 +1,5 @@
-import React, { useCallback, useLayoutEffect, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -11,25 +11,8 @@ import { useT } from '../../i18n';
 import { useNeu } from '../../components/common/neu';
 import { lightTap } from '../../services/haptics';
 import EmptyState from '../../components/common/EmptyState';
-import { useNotificationStore, AppNotification, NotificationType } from '../../store/notificationStore';
-
-const TYPE_ICON: Record<NotificationType, keyof typeof Feather.glyphMap> = {
-  update: 'download',
-  broadcast: 'volume-2',
-  push: 'bell',
-};
-
-const typeTint = (type: NotificationType, C: typeof CALM): string =>
-  type === 'update' ? C.accent : type === 'broadcast' ? C.bronze : C.deepOlive;
-
-function relTime(ts: number, t: ReturnType<typeof useT>): string {
-  const mins = Math.floor((Date.now() - ts) / 60000);
-  if (mins < 1) return t.notifications.justNow;
-  if (mins < 60) return t.notifications.minutesAgo.replace('{n}', String(mins));
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return t.notifications.hoursAgo.replace('{n}', String(hrs));
-  return t.notifications.daysAgo.replace('{n}', String(Math.floor(hrs / 24)));
-}
+import { useNotificationStore, AppNotification } from '../../store/notificationStore';
+import { iconFor, tintFor, relTime, isTransaction } from '../../utils/notificationMeta';
 
 const NotificationRow: React.FC<{
   item: AppNotification;
@@ -64,13 +47,13 @@ const NotificationRow: React.FC<{
     [deleteTap, styles.swipeDeleteBtn, t, C.surface],
   );
 
-  const tint = typeTint(item.type, C);
+  const tint = tintFor(item, C);
 
   const content = (
     <TouchableOpacity activeOpacity={0.85} onPress={() => onPress(item)} accessibilityRole="button">
       <View style={styles.card}>
         <View style={[styles.iconWrap, neu.well, { backgroundColor: withAlpha(tint, 0.14) }]}>
-          <Feather name={TYPE_ICON[item.type]} size={ICON_SIZE.sm} color={tint} />
+          <Feather name={iconFor(item)} size={ICON_SIZE.sm} color={tint} />
         </View>
         <View style={styles.body}>
           <View style={styles.titleRow}>
@@ -103,10 +86,13 @@ const NotificationRow: React.FC<{
   );
 };
 
+type NotifFilter = 'all' | 'transaction' | 'announcement';
+
 const Notifications: React.FC = () => {
   const navigation = useNavigation<any>();
   const C = useCalm();
   const t = useT();
+  const neu = useNeu(undefined, { faintDark: true }); // Neu Pills (Onyx rule 3)
   const styles = useMemo(() => makeStyles(C), [C]);
 
   const items = useNotificationStore((s) => s.items);
@@ -115,14 +101,31 @@ const Notifications: React.FC = () => {
   const markAllRead = useNotificationStore((s) => s.markAllRead);
   const remove = useNotificationStore((s) => s.remove);
 
+  const [filter, setFilter] = useState<NotifFilter>('all');
+
+  // Split into logged transactions vs updates/announcements; the pills filter
+  // between them. Each bucket stays newest-first (items are already sorted).
+  const { filtered, pills } = useMemo(() => {
+    const txns = items.filter(isTransaction);
+    const anns = items.filter((n) => !isTransaction(n));
+    const data = filter === 'transaction' ? txns : filter === 'announcement' ? anns : items;
+    return {
+      filtered: data,
+      pills: [
+        { key: 'all' as NotifFilter, label: t.notifications.filterAll, count: items.length },
+        { key: 'transaction' as NotifFilter, label: t.notifications.filterTransactions, count: txns.length },
+        { key: 'announcement' as NotifFilter, label: t.notifications.filterAnnouncements, count: anns.length },
+      ],
+    };
+  }, [items, filter, t]);
+
   const onPress = useCallback(
     (n: AppNotification) => {
       lightTap();
       if (!n.read) markRead(n.id);
-      const url = n.data?.storeUrl;
-      if (n.type === 'update' && typeof url === 'string' && url) Linking.openURL(url).catch(() => {});
+      navigation.navigate('NotificationDetail', { id: n.id });
     },
-    [markRead],
+    [markRead, navigation],
   );
 
   useLayoutEffect(() => {
@@ -142,16 +145,52 @@ const Notifications: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      {/* ── Neu Pills filter bar (fixed above the list) ── */}
+      {items.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.pillScroll}
+          contentContainerStyle={styles.pillRow}
+        >
+          {pills.map((p) => {
+            const active = filter === p.key;
+            return (
+              <TouchableOpacity
+                key={p.key}
+                style={[styles.pill, neu.raised, active && styles.pillActive]}
+                onPress={() => { lightTap(); setFilter(p.key); }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+              >
+                <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                  {p.label}{p.count > 0 && p.key !== 'all' ? ` ${p.count}` : ''}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
       <FlatList
-        data={items}
+        data={filtered}
         keyExtractor={(n) => n.id}
         renderItem={({ item, index }) => (
           <NotificationRow item={item} index={index} onPress={onPress} onDelete={remove} />
         )}
-        contentContainerStyle={items.length ? styles.listContent : styles.listEmpty}
+        contentContainerStyle={filtered.length ? styles.listContent : styles.listEmpty}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <EmptyState icon="bell" title={t.notifications.emptyTitle} message={t.notifications.emptyMessage} />
+          items.length === 0 ? (
+            <EmptyState icon="bell" title={t.notifications.emptyTitle} message={t.notifications.emptyMessage} />
+          ) : (
+            <EmptyState
+              icon={filter === 'transaction' ? 'credit-card' : 'volume-2'}
+              title={t.notifications.filterEmpty}
+              message={t.notifications.emptyMessage}
+            />
+          )
         }
       />
     </View>
@@ -169,6 +208,29 @@ const makeStyles = (C: typeof CALM) =>
       fontSize: TYPOGRAPHY.size.sm,
       fontWeight: TYPOGRAPHY.weight.semibold,
     },
+    // ── Neu Pills filter bar ──
+    pillScroll: { flexGrow: 0, flexShrink: 0 },
+    pillRow: {
+      flexDirection: 'row',
+      gap: SPACING.sm,
+      paddingHorizontal: SPACING.lg,
+      paddingTop: SPACING.md,
+      paddingBottom: SPACING.sm,
+    },
+    pill: {
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.xs + 3,
+      borderRadius: RADIUS.full,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+    },
+    pillActive: { backgroundColor: C.accent },
+    pillText: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.medium,
+      color: C.textSecondary,
+      letterSpacing: 0.1,
+    },
+    pillTextActive: { color: C.onAccent, fontWeight: TYPOGRAPHY.weight.bold },
     rowShadow: { borderRadius: RADIUS.xl, marginBottom: SPACING.sm + 6 },
     card: {
       flexDirection: 'row',

@@ -48,7 +48,7 @@ import {
   type JoinedRow,
 } from '../../../services/collectzService';
 import { presetClubIcon } from '../../../constants/clubIcons';
-import { fmtDateTime, fmtMoney, fill } from './collectzFormat';
+import { fmtEventRange, fmtMoney, fill } from './collectzFormat';
 
 // Pull a join code out of pasted text — either a bare code or a full share
 // link (collectzUrl → SITE_BASE/<code>). Strip to the code alphabet + upper.
@@ -230,7 +230,7 @@ const CollectzHome: React.FC = () => {
   const renderCard = (s: CollectzSession, mine: boolean) => {
     const progress = mine ? computeProgress(s, rosters[s.id] ?? []) : null;
     const jprog = !mine ? joinedProgress[s.id] : null;
-    const dateLine = fmtDateTime(s.event_at);
+    const dateLine = fmtEventRange(s.event_at, s.event_end);
     const pct =
       progress && progress.target && progress.target > 0
         ? Math.min(progress.confirmed / progress.target, 1)

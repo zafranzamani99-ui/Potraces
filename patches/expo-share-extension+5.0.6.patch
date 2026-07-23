@@ -1,0 +1,80 @@
+diff --git a/node_modules/expo-share-extension/ios/ExpoShareExtensionModule.swift b/node_modules/expo-share-extension/ios/ExpoShareExtensionModule.swift
+index 770e940..1955a26 100644
+--- a/node_modules/expo-share-extension/ios/ExpoShareExtensionModule.swift
++++ b/node_modules/expo-share-extension/ios/ExpoShareExtensionModule.swift
+@@ -13,6 +13,75 @@ public class ExpoShareExtensionModule: Module {
+       NotificationCenter.default.post(name: NSNotification.Name("openHostApp"), object: nil, userInfo: userInfo)
+     }
+ 
++    // Potraces Share-to-Log: read/write a small text file in the app-group container ROOT,
++    // shared between the host app AND the share extension. Backs the payment-dedupe record
++    // so the extension can show "Already logged" (and skip the notification) for a repeat,
++    // and so the OS notifications match the in-app inbox. readSharedString resolves nil when
++    // the file is absent; both are no-ops if the app group can't be resolved.
++    AsyncFunction("readSharedString") { (name: String, promise: Promise) in
++      DispatchQueue.global(qos: .background).async {
++        guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String,
++              let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
++          DispatchQueue.main.async { promise.resolve(nil) }
++          return
++        }
++        let contents = try? String(contentsOf: container.appendingPathComponent(name), encoding: .utf8)
++        DispatchQueue.main.async { promise.resolve(contents) }
++      }
++    }
++
++    AsyncFunction("writeSharedString") { (name: String, content: String, promise: Promise) in
++      DispatchQueue.global(qos: .background).async {
++        guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String,
++              let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
++          DispatchQueue.main.async { promise.resolve(false) }
++          return
++        }
++        do {
++          try content.write(to: container.appendingPathComponent(name), atomically: true, encoding: .utf8)
++          DispatchQueue.main.async { promise.resolve(true) }
++        } catch {
++          DispatchQueue.main.async { promise.resolve(false) }
++        }
++      }
++    }
++
++    // Added for Potraces Share-to-Log: list the files the share extension staged in the
++    // app-group "sharedData" dir so the host app can read + log them on next foreground
++    // (iOS blocks a share extension from launching the host app, so a deep-link hand-off
++    // is unreliable — the app reconciles the shared container instead). Returns file:// URLs.
++    AsyncFunction("getSharedFilePaths") { (promise: Promise) in
++      DispatchQueue.global(qos: .background).async {
++        guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {
++          DispatchQueue.main.async { promise.reject("ERR_APP_GROUP", "Could not find AppGroup in info.plist") }
++          return
++        }
++        guard let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
++          DispatchQueue.main.async { promise.reject("ERR_CONTAINER_URL", "Could not resolve app group container URL") }
++          return
++        }
++        let fileManager = FileManager.default
++        let sharedDataUrl = containerUrl.appendingPathComponent("sharedData")
++        var paths: [String] = []
++        if fileManager.fileExists(atPath: sharedDataUrl.path) {
++          do {
++            let contents = try fileManager.contentsOfDirectory(atPath: sharedDataUrl.path)
++            for item in contents {
++              let itemUrl = sharedDataUrl.appendingPathComponent(item)
++              var isDir: ObjCBool = false
++              if fileManager.fileExists(atPath: itemUrl.path, isDirectory: &isDir), !isDir.boolValue {
++                paths.append(itemUrl.absoluteString)
++              }
++            }
++          } catch {
++            DispatchQueue.main.async { promise.reject("ERR_LIST_SHARED", "Error listing sharedData: \(error)") }
++            return
++          }
++        }
++        DispatchQueue.main.async { promise.resolve(paths) }
++      }
++    }
++
+     AsyncFunction("clearAppGroupContainer") { (date: String?, promise: Promise) in
+       DispatchQueue.global(qos: .background).async {
+         guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {

@@ -66,7 +66,7 @@ import { AvatarView } from '../../../components/common/Avatar';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
 import CostNotesSheet from '../../../components/collectz/CostNotesSheet';
 import { presetClubIcon } from '../../../constants/clubIcons';
-import { fmtDateTime, fmtMoney, fill, teamLabel } from './collectzFormat';
+import { fmtEventRange, fmtMoney, fill, teamLabel } from './collectzFormat';
 
 /** Payload for the shared ConfirmDialog. `summary` adds the settle breakdown. */
 interface ConfirmState {
@@ -307,7 +307,7 @@ const CollectzDetail: React.FC = () => {
   const promptShareUpdate = (s: CollectzSession) => {
     const unlinked = participants.filter((p) => !p.user_id).length;
     const lines = [`*${s.title}*`, '', `❌ ${t.collectz.waCancelLine}`];
-    const d = fmtDateTime(s.event_at);
+    const d = fmtEventRange(s.event_at, s.event_end);
     if (d) lines.push(`📅 ${d}`);
     if (s.venue) lines.push(`📍 ${s.venue}`);
     const message = lines.join('\n');
@@ -686,7 +686,7 @@ const CollectzDetail: React.FC = () => {
         ? progress.confirmedCount / progress.activeCount
         : 0;
 
-  const dateLine = fmtDateTime(session.event_at);
+  const dateLine = fmtEventRange(session.event_at, session.event_end);
   const proofIsPdf = proofFor?.proof_path?.toLowerCase().endsWith('.pdf') ?? false;
 
   return (
@@ -775,6 +775,32 @@ const CollectzDetail: React.FC = () => {
                   })} · ${fill(t.collectz.confirmedCount, { n: progress.confirmedCount, m: progress.activeCount })}`
                 : fill(t.collectz.confirmedCount, { n: progress.confirmedCount, m: progress.activeCount })}
             </Text>
+          </View>
+        )}
+
+        {/* Session info — details, court/total cost, and payment rules. Previously
+            only participants saw these (on the join page); the organizer had no
+            way to review what they'd entered. */}
+        {(!!session.details_text || session.total_amount != null || !!session.rules_text) && (
+          <View style={[styles.infoCard, neu.raisedSoft]}>
+            {!!session.details_text && (
+              <View style={styles.infoBlock}>
+                <Text style={styles.infoLabel}>{t.collectz.eventDetails}</Text>
+                <Text style={styles.infoBody}>{session.details_text}</Text>
+              </View>
+            )}
+            {session.total_amount != null && (
+              <View style={styles.infoBlock}>
+                <Text style={styles.infoLabel}>{t.collectz.totalCostLabel}</Text>
+                <Text style={styles.infoCost}>{fmtMoney(session.total_amount, session.currency)}</Text>
+              </View>
+            )}
+            {!!session.rules_text && (
+              <View style={styles.infoBlock}>
+                <Text style={styles.infoLabel}>{t.collectz.rulesSection}</Text>
+                <Text style={styles.infoBody}>{session.rules_text}</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -1391,6 +1417,24 @@ const makeStyles = (C: typeof CALM) =>
     progressTrack: { height: 8, borderRadius: RADIUS.full, backgroundColor: C.pillBg, overflow: 'hidden' },
     progressFill: { height: 8, borderRadius: RADIUS.full, backgroundColor: C.accent },
     progressText: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
+    // Session info card — details / court cost / rules
+    infoCard: {
+      borderRadius: RADIUS.lg,
+      backgroundColor: C.background,
+      padding: SPACING.md,
+      gap: SPACING.md,
+      marginBottom: SPACING.md,
+    },
+    infoBlock: { gap: 4 },
+    infoLabel: {
+      fontSize: TYPOGRAPHY.size.xs,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    infoBody: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, lineHeight: 20 },
+    infoCost: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
     // Cost notes entry card
     notesEntry: {
       flexDirection: 'row',

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform, Appearance } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform, Appearance, NativeModules, NativeEventEmitter } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -22,6 +22,12 @@ import { useSettingsStore, clearBusinessLocalData } from './src/store/settingsSt
 import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
+import {
+  logPaymentFromShare,
+  reconcileSharedPayments,
+  flushPendingReceiptReview,
+  openSharedReceiptById,
+} from './src/services/shareToLog';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
 import { refreshQuickLogConfigured } from './src/services/quickLogKey';
 import './src/services/quickLogCategories'; // side-effect: keeps the Shortcut's live category list fresh
@@ -461,6 +467,10 @@ function App() {
       // Broadcast arriving while the app is open → pull it from the announcements
       // table into the inbox (same id as the launch fetch, so no duplicate).
       if (data?.type === 'broadcast') { refreshBroadcasts(); return; }
+      // Share-to-log outcomes are recorded in the inbox at log time (shareToLog.ts),
+      // reliably and on both platforms — don't double-insert from the foreground push. The
+      // "Receipt found" nudge is transient (reconcile opens the scanner) — don't inbox it.
+      if (data?.type === 'share_logged' || data?.type === 'share_receipt') return;
       // Persist any other foreground push into the in-app inbox.
       const c = n.request.content;
       useNotificationStore.getState().addNotification({
@@ -545,6 +555,23 @@ function App() {
         return;
       }
 
+      // Share-to-Log (legacy deep-link path): iOS blocks a share extension from launching the
+      // host app, so the extension does the work itself + the app reconciles the app-group on
+      // foreground. This branch is kept as a harmless fallback if a `potraces://share` ever
+      // does arrive (e.g. Android/future). Must be before the isAdd guard.
+      if (head === 'share') {
+        if (useAppStore.getState().mode !== 'personal') {
+          useAppStore.getState().setMode('personal');
+        }
+        try {
+          const payload = JSON.parse(params.payload ?? '{}') as { image?: string | null };
+          void logPaymentFromShare(payload.image ?? null);
+        } catch {
+          void logPaymentFromShare(null);
+        }
+        return;
+      }
+
       const isAdd = ['add', 'quick-add', 'quickadd', 'add-income', 'add-expense', 'income', 'log'].includes(head);
       if (!isAdd) return;
 
@@ -601,6 +628,39 @@ function App() {
     return () => sub.remove();
   }, []);
 
+  // Android Share-to-Log bridge. expo-share-extension is iOS-only; on Android the
+  // native ShareModule catches a SEND image/* intent, copies it to cache, and
+  // exposes it two ways (mirrors Linking's getInitialURL vs 'url' event): a cold
+  // start reads getInitialShare(), a warm share arrives on the PotracesShareImage
+  // event (MainActivity is singleTask → onNewIntent). Both feed the same pipeline.
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const mod = (NativeModules as any).PotracesShare;
+    if (!mod) return;
+    mod.getInitialShare?.()
+      .then((uri: string | null) => { if (uri) void logPaymentFromShare(uri); })
+      .catch(() => {});
+    const emitter = new NativeEventEmitter(mod);
+    const sub = emitter.addListener('PotracesShareImage', (uri: string) => {
+      if (uri) void logPaymentFromShare(uri);
+    });
+    return () => sub.remove();
+  }, []);
+
+  // iOS Share-to-Log reconcile. iOS blocks a share extension from launching the host
+  // app, so the extension stages the shared screenshot in the app-group container and
+  // the app processes it here — on launch and every time it returns to the foreground.
+  React.useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    // A shared RECEIPT is detected during reconcile and opens the review screen; if
+    // navigation wasn't ready yet (cold launch), it's stashed — flush it after reconcile.
+    void reconcileSharedPayments().then(flushPendingReceiptReview);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void reconcileSharedPayments().then(flushPendingReceiptReview);
+    });
+    return () => sub.remove();
+  }, []);
+
   // Push notification tap → navigate (order / quick-log / collectz)
   React.useEffect(() => {
     let handledId: string | null = null;
@@ -609,7 +669,7 @@ function App() {
       if (handledId === id) return; // cold-start check + live listener overlap
       handledId = id;
       const data = response.notification.request.content.data as
-        { type?: string; orderId?: string; sessionId?: string } | undefined;
+        { type?: string; orderId?: string; sessionId?: string; rid?: string } | undefined;
       if (data?.type === 'broadcast') {
         // Broadcast tap → pull it into the inbox, then open the Notifications screen.
         refreshBroadcasts();
@@ -631,15 +691,26 @@ function App() {
         }, delay);
         return;
       }
-      if (data?.type === 'quick_log') {
+      if (data?.type === 'quick_log' || data?.type === 'share_logged') {
         // Switch to personal mode (RootNavigator re-renders to PersonalNavigator)
         // and open the full transactions list, where the new entry is visible.
+        // Share-to-Log's "Logged RM…" notification tap lands here too.
         useAppStore.getState().setMode('personal');
         setTimeout(() => {
           if (navigationRef.isReady()) {
             (navigationRef as any).navigate('TransactionsList');
           }
         }, delay);
+        return;
+      }
+      if (data?.type === 'share_receipt') {
+        // TAP of a "Receipt found" notification → open the scanner for THAT receipt (by rid),
+        // but only if it's still within 24h. This is the ONLY entry point that scans a shared
+        // receipt when notifications are on — a plain app open never reaches here, so receipts
+        // are tap-only (see shareToLog.reconcileSharedPayments).
+        useAppStore.getState().setMode('personal');
+        const rid = data.rid;
+        setTimeout(() => { void openSharedReceiptById(rid); }, delay);
         return;
       }
       if ((data?.type === 'new_order' || data?.type === 'payment_received') && data.orderId) {
@@ -703,6 +774,12 @@ function App() {
     // delay: the navigator is still mounting on a cold launch.
     Notifications.getLastNotificationResponseAsync().then((r) => {
       if (r) handleResponse(r, 900);
+      // Clear the OS-persisted "last response" so it can't re-fire on a FUTURE cold launch.
+      // getLastNotificationResponseAsync is sticky — it re-returns the same tapped notification
+      // every launch until superseded — which made an old "Couldn't read" (share_failed) tap
+      // auto-open Quick Add on every open. Native-backed in expo-notifications 0.32.17; .catch
+      // guards older prebuilt binaries.
+      Notifications.clearLastNotificationResponseAsync().catch(() => {});
     }).catch(() => {});
     return () => sub.remove();
   }, []);

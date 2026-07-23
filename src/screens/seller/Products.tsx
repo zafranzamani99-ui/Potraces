@@ -1219,6 +1219,13 @@ const Products: React.FC = () => {
               <Feather name="camera" size={16} color={C.bronze} />
             )}
           </Pressable>
+          {!newImageUrl && !imageUploading && (
+            // "+" badge on the empty camera icon (matches the CommitmentForm photo
+            // picker + stall mode). pointerEvents none → taps fall through to the tile.
+            <View style={styles.inlinePhotoPlus} pointerEvents="none">
+              <Feather name="plus" size={9} color={C.onAccent} />
+            </View>
+          )}
           {newImageUrl && !imageUploading && (
             <Pressable
               style={({ pressed }) => [styles.inlinePhotoRemove, pressed && { opacity: 0.7 }]}
@@ -1774,7 +1781,7 @@ const Products: React.FC = () => {
               onPress={() => { lightTap(); setShowUnitPicker(false); }}
             >
               <Pressable
-                style={styles.unitModalContent}
+                style={[styles.unitModalContent, neuF.raisedModal]}
                 onPress={(e) => e.stopPropagation()}
               >
                 <View style={styles.unitModalHeader}>
@@ -1790,9 +1797,10 @@ const Products: React.FC = () => {
                 <FlatList
                   data={allUnits}
                   keyExtractor={(u) => u}
-                  style={styles.unitModalList}
+                  style={[styles.unitModalList, styles.unitModalListBleed]}
+                  contentContainerStyle={styles.unitModalListContent}
                   showsVerticalScrollIndicator={false}
-                  removeClippedSubviews
+                  removeClippedSubviews={false}
                   windowSize={5}
                   maxToRenderPerBatch={8}
                   renderItem={({ item: u }) => {
@@ -1801,7 +1809,7 @@ const Products: React.FC = () => {
                       <TouchableOpacity
                         style={[
                           styles.unitModalItem,
-                          isSelected && styles.unitModalItemSelected,
+                          isSelected ? styles.unitModalItemSelected : neuF.raised,
                         ]}
                         activeOpacity={0.7}
                         onPress={() => {
@@ -1846,7 +1854,7 @@ const Products: React.FC = () => {
                         lightTap();
                         setShowUnitPicker(false);
                         setShowAdd(false);
-                        navigation.navigate('SellerSettings');
+                        navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'units' });
                       }}
                     >
                       <Feather name="settings" size={14} color={C.bronze} />
@@ -2919,10 +2927,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   unitModalContent: {
     width: '100%',
     maxHeight: '60%',
-    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+    // Onyx dialog: neuF.raisedModal (spread at call site) = C.background surface +
+    // soft neutral drop; border per the floating-modal-outline rule.
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.12),
   },
   unitModalHeader: {
     flexDirection: 'row',
@@ -2938,17 +2948,30 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   unitModalList: {
     flexGrow: 0,
   },
+  // Shape-3 seam fix: bleed the scroll viewport past the neu rows so its clip can't
+  // shear the boxShadow; content padding puts the rows back (see the onyx seam rule).
+  unitModalListBleed: {
+    marginHorizontal: -SPACING.lg,
+  },
+  unitModalListContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  // Onyx option row: neuF.raised (unselected, spread at call site) / bronze fill
+  // (selected). Base surface comes from the neu fragment — no bg here.
   unitModalItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
     minHeight: 48,
+    marginBottom: SPACING.sm,
   },
   unitModalItemSelected: {
-    backgroundColor: withAlpha(C.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.12),
   },
   unitModalItemLeft: {
     flexDirection: 'row',
@@ -3130,6 +3153,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     height: 20,
     borderRadius: RADIUS.md,
     backgroundColor: withAlpha(C.textPrimary, 0.5),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.background,
+  },
+  // "+" badge on the empty photo tile (bottom-right, ringed by the card bg)
+  inlinePhotoPlus: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: C.bronze,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,

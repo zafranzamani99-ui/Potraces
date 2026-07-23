@@ -8,7 +8,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type NotificationType = 'update' | 'broadcast' | 'push';
+export type NotificationType = 'update' | 'broadcast' | 'push' | 'transaction';
 
 export interface AppNotification {
   id: string;

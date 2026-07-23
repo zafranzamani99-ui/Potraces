@@ -75,6 +75,7 @@ const NewstInput: React.FC<NewstInputProps> = ({
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [focused, setFocused] = useState(false);
+  const [fieldW, setFieldW] = useState(0);
   const floated = focused || value.length > 0;
   const anim = useRef(new Animated.Value(floated ? 1 : 0)).current;
 
@@ -92,10 +93,14 @@ const NewstInput: React.FC<NewstInputProps> = ({
     fontSize: anim.interpolate({ inputRange: [0, 1], outputRange: [16, 12] }),
     color: focused ? C.textPrimary : floated ? C.textSecondary : C.neutral,
     backgroundColor: floated ? C.background : 'transparent',
+    // Bound the label to the field so adjustsFontSizeToFit has a target to shrink
+    // into (the label hugs its text for the border notch, so without this cap a
+    // long label just spills past the field edge instead of shrinking).
+    maxWidth: fieldW ? fieldW - 24 : undefined,
   };
 
   return (
-    <View style={style}>
+    <View style={style} onLayout={(e) => setFieldW(e.nativeEvent.layout.width)}>
       <View
         style={[
           styles.box,
@@ -123,7 +128,13 @@ const NewstInput: React.FC<NewstInputProps> = ({
           selectionColor={withAlpha(C.textPrimary, 0.2)}
         />
       </View>
-      <Animated.Text pointerEvents="none" style={[styles.label, labelStyle]}>
+      <Animated.Text
+        pointerEvents="none"
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.5}
+        style={[styles.label, labelStyle]}
+      >
         {label}
       </Animated.Text>
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}

@@ -6,6 +6,7 @@ import {
   StallSession,
   StallSale,
   StallProduct,
+  StallCategory,
   RegularCustomer,
   SessionCondition,
 } from '../types';
@@ -23,6 +24,13 @@ const roundCash = (amount: number, method: 'cash' | 'qr' | 'card', roundCashTo5:
 /** Starter product units for a fresh install (stall-owned, separate from seller). */
 const STALL_DEFAULT_UNITS = ['pcs', 'pack', 'plate', 'cup', 'bottle', 'kg'];
 
+/** Starter product categories (name + Feather icon) for a fresh install. */
+const STALL_DEFAULT_CATEGORIES: StallCategory[] = [
+  { name: 'Drinks', icon: 'coffee' },
+  { name: 'Food', icon: 'shopping-bag' },
+  { name: 'Snacks', icon: 'gift' },
+];
+
 export const useStallStore = create<StallState>()(
   persist(
     (set, get) => ({
@@ -34,6 +42,7 @@ export const useStallStore = create<StallState>()(
       preOrders: [],
       roundCashTo5: false,
       units: [...STALL_DEFAULT_UNITS],
+      categories: [...STALL_DEFAULT_CATEGORIES],
 
       // ─── Data reset (delete stall data for this business setup) ──
       // Scoped, local wipe. persist middleware rewrites 'stall-storage' on set.
@@ -206,6 +215,23 @@ export const useStallStore = create<StallState>()(
 
       removeUnit: (u) =>
         set((state) => ({ units: (state.units || []).filter((x) => x !== u) })),
+
+      // Persist a new unit order from drag-to-reorder in the unit manager.
+      reorderUnits: (units) => set(() => ({ units: [...units] })),
+
+      // ─── Product categories (stall-owned, name + icon) ─────
+      addCategory: (name, icon) =>
+        set((state) => {
+          const clean = name.trim();
+          const current = state.categories || [];
+          if (!clean || current.some((c) => c.name.toLowerCase() === clean.toLowerCase())) return state;
+          return { categories: [...current, { name: clean, icon }] };
+        }),
+
+      removeCategory: (name) =>
+        set((state) => ({ categories: (state.categories || []).filter((c) => c.name !== name) })),
+
+      reorderCategories: (categories) => set(() => ({ categories: [...categories] })),
 
       getLastSetup: () => {
         const closed = get().sessions.filter((s) => !s.isActive && s.closedAt);
@@ -848,11 +874,14 @@ export const useStallStore = create<StallState>()(
         })),
         roundCashTo5: state.roundCashTo5,
         units: state.units,
+        categories: state.categories,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
           // Existing installs (persisted before units existed) get the starter set.
           if (!state.units || state.units.length === 0) state.units = [...STALL_DEFAULT_UNITS];
+          // Existing installs (persisted before categories existed) get the starter set.
+          if (!state.categories || state.categories.length === 0) state.categories = [...STALL_DEFAULT_CATEGORIES];
           const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
           state.sessions = state.sessions.map((s: any) => ({
             ...s,

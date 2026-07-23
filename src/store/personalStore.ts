@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PersonalState, Transfer } from '../types';
 import { useWalletStore } from './walletStore';
 import { useTombstoneStore } from './tombstoneStore';
+import { removeSharedEntry } from '../utils/sharedPaymentDedupe';
+import { usePaymentDedupeStore } from './paymentDedupeStore';
 import { newId } from '../utils/id';
 import { roundMoney, applyGoalContribution } from '../utils/money';
 import { advanceBillingDate } from '../utils/billing';
@@ -117,6 +119,13 @@ export const usePersonalStore = create<PersonalState>()(
           _deletedTransactionIds: [...(state._deletedTransactionIds ?? []), id],
         }));
         useTombstoneStore.getState().addTombstones([id]);
+        // Free any Share-to-Log dedupe key this txn holds, so re-sharing the same payment
+        // screenshot logs it fresh again (no-op for non-share txns / off iOS). ONE app-group
+        // read-modify-write removes the entry by KEY (via the local store's key↔txId map, robust
+        // even when the app-group txId link is stale/null) AND by txId — a single write avoids the
+        // self-race that re-added the key and lands faster before a fast re-share reads it.
+        const key = usePaymentDedupeStore.getState().removeByTxId(id);
+        void removeSharedEntry(key, id);
         if (!prev || !prev.walletId) return;
         const wallets = useWalletStore.getState();
         if (prev.type === 'expense') wallets.addToWallet(prev.walletId, prev.amount);

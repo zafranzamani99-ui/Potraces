@@ -307,6 +307,51 @@ async function runOcr(imagePath: string): Promise<ParsedReceiptText> {
   return { rows, rawText: rows.join('\n') };
 }
 
+/**
+ * OCR an image to its reconstructed text ROWS (the input `parsePaymentScreenshot`
+ * expects). Thin public wrapper over the shared `runOcr` so Share-to-Log reuses
+ * the exact same ML Kit read + row reconstruction the receipt paths use. Guard
+ * with `isLocalOcrAvailable()` first — throws when the native module is absent.
+ */
+export async function recognizeRows(imagePath: string): Promise<string[]> {
+  return (await runOcr(imagePath)).rows;
+}
+
+export interface ReceiptDetection {
+  vendor?: string;
+  total: number;
+  itemCount: number;
+}
+
+/**
+ * Decide whether already-OCR'd rows are a STORE RECEIPT — vs a payment-confirmation
+ * screen, a transaction-history list, or an in-app screen. Reuses the same heuristics
+ * the local receipt scanner uses; free, offline, and does NOT re-OCR (it takes the rows
+ * `recognizeRows` already produced). Shared by the iOS share extension and the app so
+ * both agree on "is this a receipt".
+ *
+ * A receipt requires ALL of: a real grand-TOTAL line (TOTAL/JUMLAH/AMOUNT DUE, not a
+ * change/tender line), a resolvable total > 0, at least TWO priced line items, and a
+ * vendor name at the top. The grand-TOTAL-line requirement is the discriminator — a
+ * payment screen or a transaction list has no "TOTAL RM x" line, so it returns null.
+ */
+export function extractReceiptFromRows(rows: string[]): ReceiptDetection | null {
+  // The grand-total line is what separates a receipt from a payment screen / history list.
+  const hasTotalLine = rows.some((row) => TOTAL_RE.test(row) && !NOT_TOTAL_RE.test(row));
+  if (!hasTotalLine) return null;
+
+  const items = findItems(rows);
+  if (items.length < 2) return null; // a receipt has an itemised list, not a single price
+
+  const vendor = findVendor(rows);
+  if (!vendor) return null; // a shop name at the top
+
+  const total = findTotal(rows, items, findKeywordAmount(rows, TAX_RE));
+  if (!(total > 0)) return null;
+
+  return { vendor, total, itemCount: items.length };
+}
+
 // ─── Entry points ───────────────────────────────────────────
 
 /**

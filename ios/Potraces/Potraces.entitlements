@@ -8,5 +8,14 @@
     <array>
       <string>Default</string>
     </array>
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+      <string>applinks:jejakbaki.my</string>
+      <string>applinks:www.jejakbaki.my</string>
+    </array>
+    <key>com.apple.security.application-groups</key>
+    <array>
+      <string>group.com.potraces.app</string>
+    </array>
   </dict>
 </plist>

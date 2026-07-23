@@ -31,6 +31,7 @@ import QuickLogSetup from '../screens/personal/QuickLogSetup';
 import BackupRestore from '../screens/shared/BackupRestore';
 import AccountScreen from '../screens/shared/AccountScreen';
 import Notifications from '../screens/shared/Notifications';
+import NotificationDetail from '../screens/shared/NotificationDetail';
 import Onboarding from '../screens/shared/Onboarding';
 import WalletManagement from '../screens/personal/WalletManagement';
 import ImportFromStatement from '../screens/personal/ImportFromStatement';
@@ -66,6 +67,8 @@ import StallSessionSetup from '../screens/stall/SessionSetup';
 import StallCloseSession from '../screens/stall/CloseSession';
 import StallSessionSummary from '../screens/stall/SessionSummary';
 import StallProducts from '../screens/stall/StallProducts';
+import StallTransactions from '../screens/stall/StallTransactions';
+import StallCosts from '../screens/stall/StallCosts';
 import StallPreOrders from '../screens/stall/PreOrders';
 import FreelancerClientDetail from '../screens/business/freelancer/ClientDetail';
 import FreelancerAddPayment from '../screens/business/freelancer/AddPayment';
@@ -92,6 +95,7 @@ import MixedAddCost from '../screens/business/mixed/AddCost';
 import MixedStreamHistory from '../screens/business/mixed/StreamHistory';
 import MixedReports from '../screens/business/mixed/MixedReports';
 import NoteEditor from '../screens/notes/NoteEditor';
+import { flushPendingReceiptReview } from '../services/shareToLog';
 
 const Stack = createNativeStackNavigator();
 
@@ -266,7 +270,7 @@ const RootNavigator: React.FC = () => {
   };
 
   return (
-    <NavigationContainer ref={navigationRef} theme={navTheme}>
+    <NavigationContainer ref={navigationRef} theme={navTheme} onReady={flushPendingReceiptReview}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
@@ -393,6 +397,11 @@ const RootNavigator: React.FC = () => {
           name="Notifications"
           component={Notifications}
           options={makeBackHeader(C, mode, 'Notifications')}
+        />
+        <Stack.Screen
+          name="NotificationDetail"
+          component={NotificationDetail}
+          options={makeBackHeader(C, mode, 'Notification')}
         />
         <Stack.Screen
           name="AccountOverview"
@@ -551,6 +560,16 @@ const RootNavigator: React.FC = () => {
           name="StallProducts"
           component={StallProducts}
           options={makeBackHeader(C, mode, 'Products')}
+        />
+        <Stack.Screen
+          name="StallTransactions"
+          component={StallTransactions}
+          options={makeBackHeader(C, mode, 'Transactions')}
+        />
+        <Stack.Screen
+          name="StallCosts"
+          component={StallCosts}
+          options={makeBackHeader(C, mode, 'Costs')}
         />
         <Stack.Screen
           name="StallPreOrders"

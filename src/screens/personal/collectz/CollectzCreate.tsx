@@ -14,7 +14,6 @@ import {
   Alert,
   Platform,
   BackHandler,
-  Share,
   Image,
   useWindowDimensions,
 } from 'react-native';
@@ -49,7 +48,6 @@ import {
   getSessionWithRoster,
   uploadClubImage,
   uploadQrImage,
-  buildWhatsappAnnouncement,
   notifySession,
 } from '../../../services/collectzService';
 import { parseCollectzAnnouncement } from '../../../services/collectzParser';
@@ -58,6 +56,7 @@ import { clubIconsForCategory, presetClubIcon, CLUB_PRESET_PREFIX } from '../../
 import { isMapsLink } from '../../../utils/mapLink';
 import { parseAmountLoose } from '../../../utils/parseAmountLoose';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
+import CollectzCreatedModal from '../../../components/collectz/CollectzCreatedModal';
 import { useNeu } from '../../../components/common/neu';
 import PageScrollView from '../../../components/common/PageScrollView';
 import NeuButton from '../../../components/common/NeuButton';
@@ -117,6 +116,7 @@ const CollectzCreate: React.FC = () => {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<CategoryKey | null>(null);
   const [eventAt, setEventAt] = useState<Date | null>(null);
+  const [eventEnd, setEventEnd] = useState<Date | null>(null);
   const [venue, setVenue] = useState('');
   const [mapsUrl, setMapsUrl] = useState('');
   // Organizer contact (all optional): social handles + WhatsApp group link.
@@ -162,8 +162,13 @@ const CollectzCreate: React.FC = () => {
   const [pasteText, setPasteText] = useState('');
   const [parsing, setParsing] = useState(false);
 
+  // ── "Session created" confirmation (summary + code/link to copy) ──
+  const [createdSession, setCreatedSession] = useState<
+    { session: CollectzSession; activeCount: number; rosterCount: number } | null
+  >(null);
+
   // ── Date/time picker ──
-  const [picker, setPicker] = useState<{ field: 'event' | 'payBy'; mode: 'date' | 'time' } | null>(null);
+  const [picker, setPicker] = useState<{ field: 'event' | 'eventEnd' | 'payBy'; mode: 'date' | 'time' } | null>(null);
 
   // ── Note fields (details / rules) — gold keyboard-done FAB while focused ──
   const [multilineFocused, setMultilineFocused] = useState(false);
@@ -202,11 +207,13 @@ const CollectzCreate: React.FC = () => {
           return isNaN(d.getTime()) ? null : d;
         };
         const ev = toDate(s.event_at);
+        const evEnd = toDate(s.event_end);
         const pb = toDate(s.pay_by);
         original.current = isEdit ? s : null;
         setTitle(s.title);
         setCategory((s.category as CategoryKey | null) ?? null);
         setEventAt(isEdit ? ev : (ev ? shift(s.event_at) : null));
+        setEventEnd(isEdit ? evEnd : (evEnd ? shift(s.event_end) : null));
         setVenue(s.venue ?? '');
         setMapsUrl(s.maps_url ?? '');
         setGroupUrl(s.group_url ?? '');
@@ -315,16 +322,36 @@ const CollectzCreate: React.FC = () => {
   }, [capMode, teamCount]);
 
   // ── Date/time picking ──
-  const pickerValue = picker ? (picker.field === 'event' ? eventAt : payBy) ?? new Date() : new Date();
+  const pickerValue = picker
+    ? (picker.field === 'event' ? eventAt : picker.field === 'eventEnd' ? (eventEnd ?? eventAt) : payBy) ?? new Date()
+    : new Date();
+
+  // End is time-only in the UI: anchor its time-of-day to the START's calendar
+  // day, and if that lands at/before the start it's an after-midnight end
+  // (e.g. an 11pm–1am game), so roll it to the next day.
+  const anchorEnd = (start: Date | null, h: number, m: number): Date => {
+    const base = start ? new Date(start) : new Date();
+    base.setHours(h, m, 0, 0);
+    if (start && base.getTime() <= start.getTime()) base.setDate(base.getDate() + 1);
+    return base;
+  };
 
   const applyPicked = (date: Date) => {
     if (!picker) return;
+    if (picker.field === 'eventEnd') {
+      setEventEnd(anchorEnd(eventAt, date.getHours(), date.getMinutes()));
+      return;
+    }
     const current = picker.field === 'event' ? eventAt : payBy;
     const next = current ? new Date(current) : new Date();
     if (picker.mode === 'date') next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
     else next.setHours(date.getHours(), date.getMinutes(), 0, 0);
-    if (picker.field === 'event') setEventAt(next);
-    else setPayBy(next);
+    if (picker.field === 'event') {
+      setEventAt(next);
+      // Keep the end on the same night as the (edited) start — otherwise it stays
+      // stuck on whatever day it was first set, and the window reads backwards.
+      setEventEnd((prev) => (prev ? anchorEnd(next, prev.getHours(), prev.getMinutes()) : prev));
+    } else setPayBy(next);
   };
 
   const onPickerChange = (event: DateTimePickerEvent, date?: Date) => {
@@ -475,6 +502,7 @@ const CollectzCreate: React.FC = () => {
   const changeSummary = (next: {
     venue: string | null;
     event_at: string | null;
+    event_end: string | null;
     pay_by: string | null;
     max_participants: number | null;
     team_count: number | null;
@@ -487,7 +515,7 @@ const CollectzCreate: React.FC = () => {
     if (!s) return null;
     const parts: string[] = [];
     if ((s.venue ?? '') !== (next.venue ?? '')) parts.push(`${t.collectz.changeVenue.replace('{v}', next.venue ?? '—')}`);
-    if (!sameInstant(s.event_at, next.event_at)) parts.push(t.collectz.changeTime);
+    if (!sameInstant(s.event_at, next.event_at) || !sameInstant(s.event_end, next.event_end)) parts.push(t.collectz.changeTime);
     if (!sameInstant(s.pay_by, next.pay_by)) parts.push(t.collectz.changePayBy);
     // Capacity changes were invisible to participants — now they're reported too.
     if ((s.max_participants ?? null) !== (next.max_participants ?? null)) {
@@ -546,9 +574,19 @@ const CollectzCreate: React.FC = () => {
     try {
       const d = await parseCollectzAnnouncement(pasteText);
       if (d.title) setTitle(d.title);
+      if (d.category) setCategory(d.category);
+      let evAt: Date | null = null;
       if (d.event_at) {
         const dt = new Date(d.event_at);
-        if (!isNaN(dt.getTime())) setEventAt(dt);
+        if (!isNaN(dt.getTime())) { evAt = dt; setEventAt(dt); }
+      }
+      if (d.event_end) {
+        const dt = new Date(d.event_end);
+        // Normalize like the picker: anchor the end's time to the start's day and
+        // roll past midnight if it lands at/before the start. The model often
+        // forgets the +1 day on "9pm-1am", which would otherwise render a
+        // backwards range on the detail screen AND in the WhatsApp blast.
+        if (!isNaN(dt.getTime())) setEventEnd(evAt ? anchorEnd(evAt, dt.getHours(), dt.getMinutes()) : dt);
       }
       if (d.venue) setVenue(d.venue);
       if (d.details_text) setDetails(d.details_text);
@@ -560,8 +598,25 @@ const CollectzCreate: React.FC = () => {
         const dt = new Date(d.pay_by);
         if (!isNaN(dt.getTime())) setPayBy(dt);
       }
+      // Numbered TEAM blocks → set the "teams" capacity so the roster keeps its
+      // structure (4 teams × 5), and each player lands in their block.
+      const teamed = d.team_count != null && d.team_size != null;
+      if (teamed) {
+        setCapMode('teams');
+        setTeamCount(d.team_count!);
+        setTeamSize(d.team_size!);
+      }
       if (d.roster.length > 0) {
-        setRoster(d.roster.map((r) => ({ key: nextKey(), name: r.name, slot: r.slot, amount: '', team: null })));
+        setRoster(
+          d.roster.map((r) => ({
+            key: nextKey(),
+            name: r.name,
+            slot: r.slot,
+            amount: '',
+            // Only active players hold a team slot (matches doSave + reserve rule).
+            team: teamed && r.slot === 'active' ? (r.team ?? null) : null,
+          })),
+        );
       }
       setPasteOpen(false);
       setPasteText('');
@@ -596,13 +651,16 @@ const CollectzCreate: React.FC = () => {
           title: title.trim(),
           category,
           event_at: eventAt ? eventAt.toISOString() : null,
+          event_end: eventEnd ? eventEnd.toISOString() : null,
           venue: venue.trim() || null,
           maps_url: mapsUrl.trim() || null,
           ...contactPayload,
           details_text: details.trim() || null,
           rules_text: rules.trim() || null,
           scheme,
-          total_amount: scheme === 'equal' ? parseAmount(totalAmount) : null,
+          // Persisted for ALL schemes: for 'equal' it's the split base, otherwise
+          // the informational court/venue cost (never fed into share math).
+          total_amount: parseAmount(totalAmount),
           default_share: scheme === 'flat' ? parseAmount(shareAmount) : null,
           currency,
           pay_by: payBy ? payBy.toISOString() : null,
@@ -663,13 +721,16 @@ const CollectzCreate: React.FC = () => {
         title: title.trim(),
         category,
         event_at: eventAt ? eventAt.toISOString() : null,
+        event_end: eventEnd ? eventEnd.toISOString() : null,
         venue: venue.trim() || null,
         maps_url: mapsUrl.trim() || null,
         ...contactPayload,
         details_text: details.trim() || null,
         rules_text: rules.trim() || null,
         scheme,
-        total_amount: scheme === 'equal' ? parseAmount(totalAmount) : null,
+        // Persisted for ALL schemes: for 'equal' it's the split base, otherwise
+        // the informational court/venue cost (never fed into share math).
+        total_amount: parseAmount(totalAmount),
         default_share: scheme === 'flat' ? parseAmount(shareAmount) : null,
         currency,
         pay_by: payBy ? payBy.toISOString() : null,
@@ -714,11 +775,13 @@ const CollectzCreate: React.FC = () => {
         });
       }
       successNotification();
-      navigation.replace('CollectzDetail', { sessionId: session.id });
-      // Straight into the share sheet — the announcement carries the join link.
-      Share.share({
-        message: buildWhatsappAnnouncement(session, rows.filter((r) => r.slot === 'active').length),
-      }).catch(() => {});
+      // Confirmation first (was: navigate + auto-open the share sheet). The modal
+      // shows a summary + the code/link to copy, and owns "Share" + "View session".
+      setCreatedSession({
+        session,
+        activeCount: rows.filter((r) => r.slot === 'active').length,
+        rosterCount: rows.length,
+      });
     } catch (err) {
       errorNotification();
       // Keep the friendly copy in production, but append the real reason in dev —
@@ -729,7 +792,7 @@ const CollectzCreate: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [saving, isEdit, editSessionId, title, category, eventAt, venue, mapsUrl, socialHandles, groupUrl, details, rules, scheme, totalAmount, shareAmount, currency, payBy, qrPayload, qrImageUri, qrImagePath, imagePreset, imageUpload, oldImagePath, removedIds, roster, notifyChanges, capacityMax, capMode, teamCount, teamSize, teamNames, navigation, showToast, t]);
+  }, [saving, isEdit, editSessionId, title, category, eventAt, eventEnd, venue, mapsUrl, socialHandles, groupUrl, details, rules, scheme, totalAmount, shareAmount, currency, payBy, qrPayload, qrImageUri, qrImagePath, imagePreset, imageUpload, oldImagePath, removedIds, roster, notifyChanges, capacityMax, capMode, teamCount, teamSize, teamNames, navigation, showToast, t]);
 
   const handleSave = () => {
     if (!title.trim()) {
@@ -849,6 +912,25 @@ const CollectzCreate: React.FC = () => {
 
         {renderWhenRow(t.collectz.fieldEventAt, eventAt, 'event')}
 
+        {/* End time (optional) — turns the display into a range ("9:00 – 11:00 PM").
+            Time-only; the date follows the start. */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>{t.collectz.fieldEventEnd}</Text>
+          <View style={styles.whenRow}>
+            <Pressable style={styles.whenBtn} onPress={() => { selectionChanged(); setPicker({ field: 'eventEnd', mode: 'time' }); }}>
+              <Feather name="clock" size={15} color={C.textSecondary} />
+              <Text style={[styles.whenText, !eventEnd && styles.whenTextDim]}>
+                {eventEnd ? fmtTime(eventEnd.toISOString()) : t.collectz.pickTime}
+              </Text>
+            </Pressable>
+            {eventEnd && (
+              <Pressable onPress={() => setEventEnd(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel={t.common.clear}>
+                <Feather name="x-circle" size={18} color={C.textMuted} />
+              </Pressable>
+            )}
+          </View>
+        </View>
+
         {/* Venue */}
         <View style={[styles.fieldCard, neuF.raisedSoft]}>
           <Text style={styles.fieldCardLabel}>{t.collectz.fieldVenue}</Text>
@@ -960,19 +1042,22 @@ const CollectzCreate: React.FC = () => {
             />
           </View>
         )}
-        {scheme === 'equal' && (
-          <View style={[styles.fieldCard, neuF.raisedSoft]}>
-            <Text style={styles.fieldCardLabel}>{t.collectz.fieldTotalAmount.replace('{currency}', currency)}</Text>
-            <TextInput
-              style={styles.fieldCardInput}
-              value={totalAmount}
-              onChangeText={setTotalAmount}
-              placeholder="0.00"
-              placeholderTextColor={withAlpha(C.textMuted, 0.55)}
-              keyboardType="decimal-pad"
-            />
-          </View>
-        )}
+        {/* Total / court cost — always available. For "equal" it's the number that
+            gets divided; for flat/custom it's the informational venue/court cost
+            (e.g. "Harga Court: RM180") so it's never lost. */}
+        <View style={[styles.fieldCard, neuF.raisedSoft]}>
+          <Text style={styles.fieldCardLabel}>
+            {(scheme === 'equal' ? t.collectz.fieldTotalAmount : t.collectz.fieldCourtCost).replace('{currency}', currency)}
+          </Text>
+          <TextInput
+            style={styles.fieldCardInput}
+            value={totalAmount}
+            onChangeText={setTotalAmount}
+            placeholder="0.00"
+            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+            keyboardType="decimal-pad"
+          />
+        </View>
 
         {/* Currency is NOT chosen here — it follows the app currency (Settings).
             Editing an existing session keeps whatever it was created with. */}
@@ -1290,6 +1375,20 @@ const CollectzCreate: React.FC = () => {
 
       {/* Gold keyboard-done FAB — floats above the keyboard while a note field is focused */}
       <KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />
+
+      {/* "Session created" confirmation — summary + tap-to-copy code/link. Opening
+          the session (button or backdrop) replaces this screen with the detail. */}
+      <CollectzCreatedModal
+        visible={!!createdSession}
+        session={createdSession?.session ?? null}
+        activeCount={createdSession?.activeCount ?? 0}
+        rosterCount={createdSession?.rosterCount ?? 0}
+        onOpen={() => {
+          const id = createdSession?.session.id;
+          setCreatedSession(null);
+          if (id) navigation.replace('CollectzDetail', { sessionId: id });
+        }}
+      />
     </View>
   );
 };

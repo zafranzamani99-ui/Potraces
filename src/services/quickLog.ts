@@ -11,6 +11,7 @@ import { usePersonalStore } from '../store/personalStore';
 import { useWalletStore } from '../store/walletStore';
 import { useCategoryStore } from '../store/categoryStore';
 import { useLearningStore } from '../store/learningStore';
+import { usePaymentDedupeStore } from '../store/paymentDedupeStore';
 import { guessMerchantCategory } from './merchantCategoryGuess';
 import { nowMYT } from '../utils/datetime';
 import { CALM } from '../constants';
@@ -23,6 +24,11 @@ export interface QuickLogParams {
   wallet?: string;   // payment method — wallet id or name (TNG, Maybank, Cash…)
   date?: Date;
   note?: string;
+  /** Provenance tag for the transaction. Defaults to 'manual' (Shortcut path). */
+  inputMethod?: import('../types').Transaction['inputMethod'];
+  /** Cross-path dedupe key (e.g. a payment refId). If already logged within the
+   *  dedupe window, logQuickExpense returns null instead of double-logging. */
+  dedupeKey?: string;
 }
 
 export interface QuickLogResult {
@@ -141,6 +147,22 @@ export function logQuickExpense(params: QuickLogParams): QuickLogResult | null {
   const amount = Math.round((params.amount + Number.EPSILON) * 100) / 100;
   if (!(amount > 0)) return null;
 
+  // Cross-path dedupe: the same payment can arrive by two log paths (a shared
+  // screenshot and an auto-log). Drop a repeat ONLY while the earlier transaction
+  // still exists, so the wallet is never deducted twice — but if the user deleted
+  // that transaction and re-shares the same screenshot, re-logging is allowed.
+  if (params.dedupeKey) {
+    const dedupe = usePaymentDedupeStore.getState();
+    if (dedupe.has(params.dedupeKey)) {
+      const prevTxId = dedupe.txIdFor(params.dedupeKey);
+      const stillExists = prevTxId
+        ? usePersonalStore.getState().transactions.some((t) => t.id === prevTxId)
+        : false;
+      if (stillExists) return null; // genuine duplicate — earlier log is still there
+      dedupe.remove(params.dedupeKey); // stale key (deleted txn / legacy) → allow this log
+    }
+  }
+
   const type = params.type === 'income' ? 'income' : 'expense';
   // Apple Pay Auto Log arrives with category 'other' + the merchant in `note`.
   // Before accepting 'other', guess the closest category: learned patterns →
@@ -176,7 +198,7 @@ export function logQuickExpense(params: QuickLogParams): QuickLogResult | null {
     type,
     mode: 'personal',
     walletId,
-    inputMethod: 'manual',
+    inputMethod: params.inputMethod ?? 'manual',
   });
   if (!txId) return null;
 
@@ -185,6 +207,10 @@ export function logQuickExpense(params: QuickLogParams): QuickLogResult | null {
     if (type === 'expense') useWalletStore.getState().deductFromWallet(walletId, amount);
     else useWalletStore.getState().addToWallet(walletId, amount);
   }
+
+  // Record the dedupe key + the transaction it produced (so a later repeat is only
+  // blocked while this transaction still exists). Only after a successful log.
+  if (params.dedupeKey) usePaymentDedupeStore.getState().add(params.dedupeKey, txId);
 
   return { txId, walletId, walletName: wallet?.name, amount, type, categoryName };
 }

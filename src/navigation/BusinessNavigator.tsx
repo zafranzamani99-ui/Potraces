@@ -28,6 +28,7 @@ import StallDashboard from '../screens/stall/Dashboard';
 import SellScreen from '../screens/stall/SellScreen';
 import SessionHistory from '../screens/stall/SessionHistory';
 import RegularCustomers from '../screens/stall/RegularCustomers';
+import StallManage from '../screens/stall/StallManage';
 
 // Notes
 import NotesHome from '../screens/notes/NotesHome';
@@ -78,6 +79,7 @@ const ICON_MAP: Record<string, keyof typeof Feather.glyphMap> = {
   StallSell: 'shopping-bag',
   StallHistory: 'calendar',
   StallRegulars: 'heart',
+  StallManage: 'sliders',
   Clients: 'users',
   FreelancerHome: 'home',
   FreelancerClients: 'users',
@@ -134,6 +136,7 @@ const ManageTab = makeHeaderBiz(SellerManage, (t) => t.tabs.manage);
 const HistoryTab = makeHeaderBiz(SessionHistory, (t) => t.tabs.history);
 const SellTab = makeHeaderBiz(SellScreen, (t) => t.tabs.sell);
 const RegularsTab = makeHeaderBiz(RegularCustomers, (t) => t.tabs.regulars);
+const StallManageTab = makeHeaderBiz(StallManage, (t) => t.tabs.manage);
 const FreelancerClientsTab = makeHeaderBiz(FreelancerClientList, (t) => t.tabs.clients);
 const NotesTab = makeHeaderBiz(NotesHome, (t) => t.tabs.notes);
 const SettingsTab = makeHeaderBiz(Settings, (t) => t.tabs.settings);
@@ -167,7 +170,7 @@ function nativeTabsFor(incomeType: string | null | undefined, t: any): NativeTab
         { name: 'StallHistory', comp: HistoryTab, title: t.tabs.history, sf: 'calendar' },
         { name: 'StallSell', comp: SellTab, title: t.tabs.sell, sf: 'bag', filled: 'bag.fill' },
         { name: 'StallRegulars', comp: RegularsTab, title: t.tabs.regulars, sf: 'heart', filled: 'heart.fill' },
-        { name: 'Settings', comp: SettingsTab, title: t.tabs.settings, sf: 'gearshape', filled: 'gearshape.fill' },
+        { name: 'StallManage', comp: StallManageTab, title: t.tabs.manage, sf: 'slider.horizontal.3' },
       ];
     case 'freelance':
       return [
@@ -267,7 +270,7 @@ const JsBusinessNavigator: React.FC = () => {
             <Tab.Screen name="StallHistory" component={SessionHistory} options={{ title: t.tabs.history }} />
             <Tab.Screen name="StallSell" component={SellScreen} options={{ title: t.tabs.sell }} />
             <Tab.Screen name="StallRegulars" component={RegularCustomers} options={{ title: t.tabs.regulars }} />
-            <Tab.Screen name="Settings" component={Settings} options={{ title: t.tabs.settings }} />
+            <Tab.Screen name="StallManage" component={StallManage} options={{ title: t.tabs.manage }} />
           </>
         );
 

@@ -22,6 +22,7 @@ import PaymentQrCard from '../../components/settings/PaymentQrCard';
 import SubscriptionCard from '../../components/settings/SubscriptionCard';
 import UnitManager from '../../components/common/UnitManager';
 import StallUnitManager from '../../components/business/StallUnitManager';
+import StallCategoryManager from '../../components/business/StallCategoryManager';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import StallResetSheet from '../../components/business/StallResetSheet';
 import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
@@ -58,6 +59,7 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
   const [ready, setReady] = useState(false);
   const [unitManagerVisible, setUnitManagerVisible] = useState(false);
   const [stallUnitManagerVisible, setStallUnitManagerVisible] = useState(false);
+  const [stallCategoryManagerVisible, setStallCategoryManagerVisible] = useState(false);
   const [resetSheetVisible, setResetSheetVisible] = useState(false);
   const scrollRef = useRef<any>(null);
   const sectionY = useRef<Record<string, number>>({});
@@ -81,6 +83,23 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
 
   useEffect(() => {
     if (!scrollTo || !ready) return;
+    // Unit deep-link (from the product form's "manage units in settings") →
+    // open the right unit manager directly instead of just scrolling. Deferred a
+    // tick (so it isn't a synchronous setState in the effect body) but NOT cleaned
+    // up: setParams(undefined) below re-runs this effect, and a clearTimeout cleanup
+    // would cancel the open before it fired.
+    if (scrollTo === 'units') {
+      navigation.setParams({ scrollTo: undefined } as never);
+      const openUnits = incomeType === 'stall' ? setStallUnitManagerVisible : setUnitManagerVisible;
+      setTimeout(() => openUnits(true), 0);
+      return;
+    }
+    // Stall category deep-link (from the product form's "manage categories in settings").
+    if (scrollTo === 'stallcats') {
+      navigation.setParams({ scrollTo: undefined } as never);
+      setTimeout(() => setStallCategoryManagerVisible(true), 0);
+      return;
+    }
     // Category deep-links now land on the dedicated screen — forward.
     if (scrollTo === 'categories') {
       navigation.setParams({ scrollTo: undefined } as never);
@@ -94,7 +113,7 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
       navigation.setParams({ scrollTo: undefined } as never);
     }, 100);
     return () => clearTimeout(timer);
-  }, [scrollTo, ready, navigation]);
+  }, [scrollTo, ready, navigation, incomeType]);
 
   useEffect(() => {
     if (!section) return;
@@ -311,6 +330,15 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 />
               )}
 
+              {ready && incomeType === 'stall' && (
+                <SettingRow
+                  icon="i/pricetags"
+                  chipColor="#9A6400"
+                  label={t.settings.manageCategoriesRow}
+                  onPress={() => { lightTap(); setStallCategoryManagerVisible(true); }}
+                />
+              )}
+
               {!isProductBusiness && (
                 <View onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>
                   {/* One entry for all four managers — its own screen. */}
@@ -374,6 +402,13 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
           <StallUnitManager
             visible
             onClose={() => setStallUnitManagerVisible(false)}
+          />
+        )}
+
+        {ready && stallCategoryManagerVisible && (
+          <StallCategoryManager
+            visible
+            onClose={() => setStallCategoryManagerVisible(false)}
           />
         )}
       </ScrollView>

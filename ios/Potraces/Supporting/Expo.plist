@@ -4,6 +4,8 @@
   <dict>
     <key>EXUpdatesCheckOnLaunch</key>
     <string>ALWAYS</string>
+    <key>EXUpdatesEnableBsdiffPatchSupport</key>
+    <true/>
     <key>EXUpdatesEnabled</key>
     <true/>
     <key>EXUpdatesLaunchWaitMs</key>
@@ -12,7 +14,5 @@
     <string>1.0.0</string>
     <key>EXUpdatesURL</key>
     <string>https://u.expo.dev/48e7d14d-4320-467b-a02a-72d41a4d33d9</string>
-    <key>EXUpdatesEnableBsdiffPatchSupport</key>
-    <true/>
   </dict>
 </plist>

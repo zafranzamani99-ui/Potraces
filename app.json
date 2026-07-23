@@ -26,7 +26,19 @@
         "applinks:www.jejakbaki.my"
       ],
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "AppGroup": "group.com.potraces.app",
+        "NSCameraUsageDescription": "Potraces needs the camera to scan receipts and your DuitNow QR standee.",
+        "NSPhotoLibraryUsageDescription": "Potraces needs access to your photos to scan receipts.",
+        "NSContactsUsageDescription": "Potraces needs access to contacts for splitting expenses.",
+        "NSMicrophoneUsageDescription": "Potraces uses the microphone so you can speak entries to Echo.",
+        "NSSpeechRecognitionUsageDescription": "Potraces uses speech recognition to show your words live as you speak.",
+        "NSFaceIDUsageDescription": "Potraces uses Face ID to unlock the app and keep your money data private.",
+        "NSLocationWhenInUseUsageDescription": "Location access is required to accept card payments.",
+        "NSLocalNetworkUsageDescription": "This app uses the local WiFi network to connect to supported card readers.",
+        "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to supported card readers.",
+        "NSBluetoothPeripheralUsageDescription": "Bluetooth access is required in order to connect to supported bluetooth card readers.",
+        "NSUserTrackingUsageDescription": "Allow this app to collect app-related data that can be used for tracking you or your device."
       },
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
@@ -57,8 +69,10 @@
         ]
       },
       "entitlements": {
-        "com.apple.developer.proximity-reader.payment.acceptance": true,
-        "aps-environment": "production"
+        "aps-environment": "production",
+        "com.apple.security.application-groups": [
+          "group.com.potraces.app"
+        ]
       }
     },
     "android": {
@@ -91,6 +105,28 @@
           "category": [
             "BROWSABLE",
             "DEFAULT"
+          ]
+        },
+        {
+          "action": "SEND",
+          "category": [
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "image/*"
+            }
+          ]
+        },
+        {
+          "action": "SEND_MULTIPLE",
+          "category": [
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "image/*"
+            }
           ]
         }
       ]

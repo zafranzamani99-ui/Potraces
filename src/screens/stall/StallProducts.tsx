@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,22 +8,38 @@ import {
   Pressable,
   Alert,
   Keyboard,
+  Switch,
+  Modal,
 } from 'react-native';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
+import ReAnimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing as ReEasing,
+  runOnJS,
+} from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { newId } from '../../utils/id';
+import { lightTap } from '../../services/haptics';
 import NewstInput, { newstOutline } from '../../components/business/NewstInput';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
 import FloatingModal from '../../components/common/FloatingModal';
+
+// Expanding search (copied from SellScreen) — collapsed circle width + the web
+// pattern's ease curve. Reanimated keeps the width tween on the UI thread.
+const SEARCH_COLLAPSED = 40;
+const SEARCH_EASING = ReEasing.bezier(0.16, 1, 0.3, 1);
 
 const StallProducts: React.FC = () => {
   const C = useCalm();
@@ -31,18 +47,22 @@ const StallProducts: React.FC = () => {
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const neu = useNeu(undefined, { faintDark: true });
-  const { products, addProduct, updateProduct, deleteProduct, roundCashTo5, setRoundCashTo5, units } = useStallStore();
+  const { products, addProduct, updateProduct, deleteProduct, roundCashTo5, setRoundCashTo5, units, categories } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
+  const navigation = useNavigation<any>();
 
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [showUnitPicker, setShowUnitPicker] = useState(false);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [defaultQty, setDefaultQty] = useState('');
   const [cost, setCost] = useState('');
   const [unit, setUnit] = useState('');
+  const [category, setCategory] = useState('');
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const [modifiers, setModifiers] = useState<{ key: string; label: string; delta: string }[]>([]);
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -72,17 +92,118 @@ const StallProducts: React.FC = () => {
 
   const activeCount = useMemo(() => products.filter((p) => p.isActive).length, [products]);
 
+  // Map a category NAME → its Feather icon (for the selector + list headers).
+  const categoryIcon = useMemo(() => {
+    const m = new Map<string, string>();
+    categories.forEach((c) => m.set(c.name.toLowerCase(), c.icon));
+    return m;
+  }, [categories]);
+
+  // ── Browse row (copied from SellScreen): category dropdown + expanding search ──
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [catDropdownOpen, setCatDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [browseRowWidth, setBrowseRowWidth] = useState(0);
+  const searchWidth = useSharedValue(SEARCH_COLLAPSED);
+  const searchAnimStyle = useAnimatedStyle(() => ({ width: searchWidth.value }));
+  // Category button opacity tracks the search width — it fades back in DURING
+  // the collapse instead of waiting for the animation's end callback (~0.4s
+  // of empty row), and fades out while expanding.
+  const catBtnAnimStyle = useAnimatedStyle(() => ({
+    opacity: 1 - Math.min(Math.max((searchWidth.value - SEARCH_COLLAPSED) / 80, 0), 1),
+  }));
+  const searchInputRef = useRef<TextInput>(null);
+
+  // Category options — the exact product category list from Settings, in order.
+  const categoryPills = useMemo(
+    () => (categories || []).map((c) => ({ value: c.name.toLowerCase(), label: c.name, icon: c.icon })),
+    [categories],
+  );
+
+  // Selection may outlive its category (renamed/deleted) — fall back to 'all'.
+  const effectiveCategory = categoryPills.some((p) => p.value === selectedCategory) ? selectedCategory : 'all';
+  const selectedPill = categoryPills.find((p) => p.value === effectiveCategory);
+  const selectedCatLabel = effectiveCategory === 'all' ? t.stall.allCategories : (selectedPill?.label ?? t.stall.allCategories);
+  const selectedCatIcon = (effectiveCategory === 'all' ? 'layers' : (selectedPill?.icon ?? 'layers')) as keyof typeof Feather.glyphMap;
+
+  const openCatDropdown = useCallback(() => {
+    lightTap();
+    setCatDropdownOpen(true);
+  }, []);
+
+  const expandSearch = useCallback(() => {
+    setSearchOpen(true);
+    lightTap();
+    searchWidth.value = withTiming(
+      Math.max(browseRowWidth - SPACING.sm, SEARCH_COLLAPSED),
+      { duration: 380, easing: SEARCH_EASING },
+    );
+    setTimeout(() => searchInputRef.current?.focus(), 80);
+  }, [searchWidth, browseRowWidth]);
+
+  const collapseSearch = useCallback(() => {
+    Keyboard.dismiss();
+    searchWidth.value = withTiming(
+      SEARCH_COLLAPSED,
+      { duration: 380, easing: SEARCH_EASING },
+      (finished) => {
+        'worklet';
+        if (finished) runOnJS(setSearchOpen)(false);
+      },
+    );
+  }, [searchWidth]);
+
+  // Keep an open search snapped to the row's real width (rotation / resize).
+  const handleBrowseRowLayout = useCallback(
+    (e: { nativeEvent: { layout: { width: number } } }) => {
+      const w = e.nativeEvent.layout.width;
+      setBrowseRowWidth(w);
+      if (searchOpen) searchWidth.value = w - SPACING.sm;
+    },
+    [searchOpen, searchWidth],
+  );
+
+  // Filtered products — category first, then the search query
+  const filteredProducts = useMemo(() => {
+    let list = products;
+    if (effectiveCategory !== 'all') {
+      list = list.filter((p) => p.category?.trim().toLowerCase() === effectiveCategory);
+    }
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase();
+    return list.filter((p) => p.name.toLowerCase().includes(q));
+  }, [products, effectiveCategory, searchQuery]);
+
+  // Products grouped by category for the list; '' (uncategorized) sorts last.
+  const grouped = useMemo(() => {
+    const map = new Map<string, typeof products>();
+    for (const p of filteredProducts) {
+      const key = p.category?.trim() || '';
+      const arr = map.get(key);
+      if (arr) arr.push(p); else map.set(key, [p]);
+    }
+    const keys = Array.from(map.keys()).sort((a, b) => {
+      if (a === '') return 1;
+      if (b === '') return -1;
+      return a.localeCompare(b);
+    });
+    return keys.map((k) => ({ category: k, items: map.get(k)! }));
+  }, [filteredProducts]);
+
   const resetForm = useCallback(() => {
     setName('');
     setPrice('');
     setDefaultQty('');
     setCost('');
     setUnit('');
+    setCategory('');
     setImageUrl(undefined);
     setModifiers([]);
     setEditingId(null);
     setShowDetails(false);
     setShowUnitPicker(false);
+    setShowCategoryPicker(false);
     setShowForm(false);
   }, []);
 
@@ -96,18 +217,19 @@ const StallProducts: React.FC = () => {
     const parsedCost = parseFloat(cost);
     const unitCost = !isNaN(parsedCost) && parsedCost > 0 ? parsedCost : undefined;
     const unitVal = unit.trim() || undefined;
+    const categoryVal = category.trim() || undefined;
     const cleanMods = modifiers
       .filter((m) => m.label.trim())
       .map((m) => ({ id: newId(), label: m.label.trim(), priceDelta: parseFloat(m.delta) || 0 }));
     const modsPayload = cleanMods.length ? cleanMods : undefined;
 
     if (editingId) {
-      updateProduct(editingId, { name: trimmedName, price: parsedPrice, defaultStartQty, unitCost, unit: unitVal, imageUrl, modifiers: modsPayload });
+      updateProduct(editingId, { name: trimmedName, price: parsedPrice, defaultStartQty, unitCost, unit: unitVal, category: categoryVal, imageUrl, modifiers: modsPayload });
     } else {
-      addProduct({ name: trimmedName, price: parsedPrice, isActive: true, defaultStartQty, unitCost, unit: unitVal, imageUrl, modifiers: modsPayload });
+      addProduct({ name: trimmedName, price: parsedPrice, isActive: true, defaultStartQty, unitCost, unit: unitVal, category: categoryVal, imageUrl, modifiers: modsPayload });
     }
     resetForm();
-  }, [name, price, defaultQty, cost, unit, imageUrl, modifiers, editingId, updateProduct, addProduct, resetForm]);
+  }, [name, price, defaultQty, cost, unit, category, imageUrl, modifiers, editingId, updateProduct, addProduct, resetForm]);
 
   const handleEdit = useCallback((id: string) => {
     const product = products.find((p) => p.id === id);
@@ -118,19 +240,48 @@ const StallProducts: React.FC = () => {
     setDefaultQty(product.defaultStartQty ? String(product.defaultStartQty) : '');
     setCost(product.unitCost ? String(product.unitCost) : '');
     setUnit(product.unit || '');
+    setCategory(product.category || '');
     setImageUrl(product.imageUrl);
     setModifiers((product.modifiers || []).map((m) => ({ key: `m${modKeyRef.current++}`, label: m.label, delta: m.priceDelta ? String(m.priceDelta) : '' })));
     setShowForm(true);
   }, [products]);
 
-  const handleToggleActive = useCallback((id: string, currentlyActive: boolean) => {
-    updateProduct(id, { isActive: !currentlyActive });
-  }, [updateProduct]);
-
   const handleDelete = useCallback((id: string) => {
-    deleteProduct(id);
-    setEditingId((prev) => prev === id ? null : prev);
-  }, [deleteProduct]);
+    const product = products.find((p) => p.id === id);
+    Alert.alert(
+      t.stall.deleteConfirmTitle,
+      t.stall.deleteConfirmMsg.replace('{name}', product?.name || ''),
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.stall.deleteProduct,
+          style: 'destructive',
+          onPress: () => {
+            deleteProduct(id);
+            resetForm();
+          },
+        },
+      ],
+    );
+  }, [products, deleteProduct, resetForm, t]);
+
+  // ─── Product-detail modal (read view; opened by tapping a tile) ──
+  const detailProduct = useMemo(
+    () => (detailId ? products.find((p) => p.id === detailId) || null : null),
+    [detailId, products],
+  );
+
+  const toggleDetailActive = useCallback(() => {
+    if (!detailProduct) return;
+    updateProduct(detailProduct.id, { isActive: !detailProduct.isActive });
+  }, [detailProduct, updateProduct]);
+
+  // Edit from the detail view → same modal, just switch content to the form (no
+  // second RN Modal, so closing the form can't bounce back to the detail view).
+  const openEditFromDetail = useCallback(() => {
+    const id = detailId;
+    if (id) { setDetailId(null); handleEdit(id); }
+  }, [detailId, handleEdit]);
 
   // Two-tone title like seller — the noun ("product"/"produk") is bronze wherever
   // it sits in the phrase, so BM word order ("produk baharu") colours correctly.
@@ -158,12 +309,139 @@ const StallProducts: React.FC = () => {
         {/* Add / Edit product — floating (centered) modal, keyboard-aware so a
             focused field is never hidden behind the keyboard. */}
         <FloatingModal
-          visible={showForm}
-          onClose={resetForm}
+          visible={showForm || !!detailProduct}
+          onClose={() => { setShowUnitPicker(false); setShowCategoryPicker(false); setDetailId(null); resetForm(); }}
           entrance="fade"
           showDragHandle={false}
-          maxWidth={520}
+          maxWidth={showForm ? 520 : 480}
+          overlay={showUnitPicker ? (
+            // Dim backdrop that closes ONLY the picker (not the whole form). The inner
+            // card stops taps from bubbling, so tapping the card never dismisses.
+            <Pressable
+              style={styles.unitModalOverlay}
+              onPress={() => setShowUnitPicker(false)}
+              accessibilityRole="button"
+              accessibilityLabel={t.common.close}
+            >
+              <Pressable style={[styles.unitModalContent, neu.raisedModal]} onStartShouldSetResponder={() => true}>
+                <View style={styles.unitPickerHeader}>
+                  <Text style={styles.unitPickerTitle}>{t.stall.selectUnit}</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowUnitPicker(false)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.common.close}
+                  >
+                    <Feather name="x" size={20} color={C.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView
+                  style={[styles.unitPickerList, styles.unitPickerListBleed]}
+                  contentContainerStyle={styles.unitPickerListContent}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  {units.map((u) => {
+                    const selected = unit === u;
+                    return (
+                      <TouchableOpacity
+                        key={u}
+                        style={[styles.unitPickerItem, selected ? styles.unitPickerItemSelected : neu.raised]}
+                        activeOpacity={0.7}
+                        onPress={() => { setUnit(selected ? '' : u); setShowUnitPicker(false); }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={u}
+                      >
+                        <View style={[styles.unitPickerIcon, selected && styles.unitPickerIconSelected]}>
+                          <Feather name="box" size={16} color={selected ? C.onAccent : C.bronze} />
+                        </View>
+                        <Text style={[styles.unitPickerItemText, selected && styles.unitPickerItemTextSelected]}>{u}</Text>
+                        {selected && <Feather name="check" size={16} color={C.bronze} style={{ marginLeft: 'auto' }} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {/* Manage units in settings — matches seller mode. Closes the sheet
+                      and jumps to Settings (stall → "Manage units"). */}
+                  <TouchableOpacity
+                    style={styles.unitManageBtn}
+                    activeOpacity={0.7}
+                    onPress={() => { setShowUnitPicker(false); setShowForm(false); navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'units' }); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.stall.manageUnitsInSettings}
+                  >
+                    <Feather name="settings" size={14} color={C.bronze} />
+                    <Text style={styles.unitManageText}>{t.stall.manageUnitsInSettings}</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </Pressable>
+            </Pressable>
+          ) : showCategoryPicker ? (
+            // Category picker — identical to the unit picker; each row has an icon.
+            <Pressable
+              style={styles.unitModalOverlay}
+              onPress={() => setShowCategoryPicker(false)}
+              accessibilityRole="button"
+              accessibilityLabel={t.common.close}
+            >
+              <Pressable style={[styles.unitModalContent, neu.raisedModal]} onStartShouldSetResponder={() => true}>
+                <View style={styles.unitPickerHeader}>
+                  <Text style={styles.unitPickerTitle}>{t.stall.selectCategory}</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowCategoryPicker(false)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.common.close}
+                  >
+                    <Feather name="x" size={20} color={C.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView
+                  style={[styles.unitPickerList, styles.unitPickerListBleed]}
+                  contentContainerStyle={styles.unitPickerListContent}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  {categories.map((c) => {
+                    const selected = category.trim().toLowerCase() === c.name.toLowerCase();
+                    return (
+                      <TouchableOpacity
+                        key={c.name}
+                        style={[styles.unitPickerItem, selected ? styles.unitPickerItemSelected : neu.raised]}
+                        activeOpacity={0.7}
+                        onPress={() => { setCategory(selected ? '' : c.name); setShowCategoryPicker(false); }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={c.name}
+                      >
+                        <View style={[styles.unitPickerIcon, selected && styles.unitPickerIconSelected]}>
+                          <Feather name={c.icon as keyof typeof Feather.glyphMap} size={16} color={selected ? C.onAccent : C.bronze} />
+                        </View>
+                        <Text style={[styles.unitPickerItemText, selected && styles.unitPickerItemTextSelected]}>{c.name}</Text>
+                        {selected && <Feather name="check" size={16} color={C.bronze} style={{ marginLeft: 'auto' }} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {/* Manage categories in settings — jumps to Settings → "Manage categories". */}
+                  <TouchableOpacity
+                    style={styles.unitManageBtn}
+                    activeOpacity={0.7}
+                    onPress={() => { setShowCategoryPicker(false); setShowForm(false); navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'stallcats' }); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.stall.manageCategoriesInSettings}
+                  >
+                    <Feather name="settings" size={14} color={C.bronze} />
+                    <Text style={styles.unitManageText}>{t.stall.manageCategoriesInSettings}</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </Pressable>
+            </Pressable>
+          ) : null}
         >
+          {/* One modal, two views: the add/edit FORM or the product DETAIL. Merging
+              them (vs two stacked RN Modals) means closing the form never bounces back
+              to detail — iOS can't cleanly dismiss one modal and keep another. */}
+          {showForm && (
           <KeyboardAwareScrollView
             style={styles.sheetKAS}
             contentContainerStyle={styles.sheetScroll}
@@ -214,6 +492,13 @@ const StallProducts: React.FC = () => {
                     <Feather name="camera" size={18} color={C.bronze} />
                   )}
                 </Pressable>
+                {!imageUrl && (
+                  // "+" badge on the empty camera icon (matches the CommitmentForm
+                  // photo picker). pointerEvents none → taps fall through to the tile.
+                  <View style={styles.inlinePhotoPlus} pointerEvents="none">
+                    <Feather name="plus" size={9} color={C.onAccent} />
+                  </View>
+                )}
                 {imageUrl && (
                   <Pressable
                     style={styles.inlinePhotoRemove}
@@ -230,11 +515,31 @@ const StallProducts: React.FC = () => {
                 label={t.stall.productNameLabel}
                 value={name}
                 onChangeText={setName}
-                autoFocus
+                autoFocus={!editingId}
                 accessibilityLabel="Product name"
                 style={styles.nameField}
               />
             </View>
+
+            {/* Category selector — opens the floating category picker (identical to
+                the unit picker; each category carries an icon). Groups the list. */}
+            <Pressable
+              style={[styles.categorySelector, neu.raised]}
+              onPress={() => { Keyboard.dismiss(); setShowCategoryPicker(true); }}
+              accessibilityRole="button"
+              accessibilityLabel={t.stall.categoryLabel}
+            >
+              <Text style={styles.unitSelectorLabel} numberOfLines={1}>{t.stall.categoryLabel}</Text>
+              <View style={styles.unitSelectorValue}>
+                {!!category && categoryIcon.has(category.toLowerCase()) && (
+                  <Feather name={categoryIcon.get(category.toLowerCase()) as keyof typeof Feather.glyphMap} size={16} color={C.bronze} style={{ marginRight: SPACING.xs }} />
+                )}
+                <Text style={[styles.unitSelectorText, !category && styles.unitSelectorPlaceholder]} numberOfLines={1}>
+                  {category || t.stall.categoryPlaceholder}
+                </Text>
+                <Feather name="chevron-down" size={16} color={C.textMuted} />
+              </View>
+            </Pressable>
 
             {/* Selling price + your cost — two columns */}
             <View style={styles.twoColRow}>
@@ -275,7 +580,7 @@ const StallProducts: React.FC = () => {
                 </View>
               </Pressable>
               <NewstInput
-                label={t.stall.defaultStockLabel}
+                label={t.stall.defaultPerSession}
                 value={defaultQty}
                 onChangeText={(v) => setDefaultQty(v.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
@@ -359,53 +664,132 @@ const StallProducts: React.FC = () => {
                 />
               </View>
             </View>
-          </KeyboardAwareScrollView>
 
-          {/* Unit picker — rendered IN-CARD, NOT a second RN <Modal>. iOS presents
-              only one modal at a time, so a stacked FloatingModal never appeared and
-              the dropdown read as "un-tappable". This overlay lives inside the open
-              form modal → one responder tree → taps always land. */}
-          {showUnitPicker && (
-            <View style={styles.unitPickerOverlay}>
-              <View style={styles.unitPickerHeader}>
-                <Text style={styles.unitPickerTitle}>{t.stall.selectUnit}</Text>
-                <TouchableOpacity
-                  onPress={() => setShowUnitPicker(false)}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.common.close}
-                >
-                  <Feather name="x" size={20} color={C.textSecondary} />
-                </TouchableOpacity>
-              </View>
-              <KeyboardAwareScrollView
-                style={styles.unitPickerList}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
+            {/* Delete — a word/link UNDER the cancel/update buttons (edit mode). */}
+            {editingId && (
+              <TouchableOpacity
+                style={styles.deleteLink}
+                onPress={() => handleDelete(editingId)}
+                accessibilityRole="button"
+                accessibilityLabel={t.stall.deleteProduct}
               >
-                {units.map((u) => {
-                  const selected = unit === u;
-                  return (
-                    <TouchableOpacity
-                      key={u}
-                      style={[styles.unitPickerItem, selected && styles.unitPickerItemSelected]}
-                      activeOpacity={0.7}
-                      onPress={() => { setUnit(selected ? '' : u); setShowUnitPicker(false); }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={u}
-                    >
-                      <View style={[styles.unitPickerIcon, selected && styles.unitPickerIconSelected]}>
-                        <Feather name="box" size={16} color={selected ? C.onAccent : C.bronze} />
-                      </View>
-                      <Text style={[styles.unitPickerItemText, selected && styles.unitPickerItemTextSelected]}>{u}</Text>
-                      {selected && <Feather name="check" size={16} color={C.bronze} style={{ marginLeft: 'auto' }} />}
-                    </TouchableOpacity>
-                  );
-                })}
-              </KeyboardAwareScrollView>
-            </View>
+                <Text style={styles.deleteLinkText}>{t.stall.deleteProduct}</Text>
+              </TouchableOpacity>
+            )}
+          </KeyboardAwareScrollView>
           )}
+
+          {/* Product detail — read view in the SAME modal, opened by tapping a tile. */}
+          {!showForm && detailProduct ? (() => {
+            const p = detailProduct;
+            const hasCost = p.unitCost != null && p.unitCost > 0;
+            const profit = hasCost ? p.price - (p.unitCost as number) : 0;
+            const margin = hasCost && p.price > 0 ? Math.round((profit / p.price) * 100) : 0;
+            const catIc = p.category ? categoryIcon.get(p.category.toLowerCase()) : undefined;
+            return (
+              <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailBody} showsVerticalScrollIndicator={false}>
+                <View style={styles.detailHeader}>
+                  <View style={styles.tileThumbWrap}>
+                    {p.imageUrl ? (
+                      <View style={styles.tileThumbClip}>
+                        <Image source={{ uri: p.imageUrl }} style={styles.tileThumbImg} contentFit="cover" />
+                      </View>
+                    ) : (
+                      <View style={styles.tileThumbPlaceholder}>
+                        <Text style={styles.tileThumbLetter}>{p.name.charAt(0).toUpperCase()}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.detailHeaderText}>
+                    <Text style={styles.detailName} numberOfLines={2}>{p.name}</Text>
+                    {!!p.category && (
+                      <View style={styles.detailCatRow}>
+                        {catIc && <Feather name={catIc as keyof typeof Feather.glyphMap} size={12} color={C.textMuted} style={{ marginRight: 4 }} />}
+                        <Text style={styles.detailCatText}>{p.category}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Pressable
+                    onPress={() => setDetailId(null)}
+                    style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.common.close}
+                  >
+                    <Feather name="x" size={16} color={C.textMuted} />
+                  </Pressable>
+                </View>
+
+                <View style={[styles.detailInfoCard, neu.raisedSoft]}>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailRowLabel}>{t.stall.priceLabel}</Text>
+                    <Text style={styles.detailRowValue}>{currency} {p.price.toFixed(2)}{p.unit ? `/${p.unit}` : ''}</Text>
+                  </View>
+                  {hasCost && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailRowLabel}>{t.stall.costEachLabel}</Text>
+                      <Text style={styles.detailRowValue}>{currency} {(p.unitCost as number).toFixed(2)}</Text>
+                    </View>
+                  )}
+                  {hasCost && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailRowLabel}>{t.stall.youKeep}</Text>
+                      <Text style={[styles.detailRowValue, styles.detailKeepValue]}>{currency} {profit.toFixed(2)} · {margin}%</Text>
+                    </View>
+                  )}
+                  {!!p.defaultStartQty && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailRowLabel}>{t.stall.defaultPerSession}</Text>
+                      <Text style={styles.detailRowValue}>{p.defaultStartQty}{p.unit ? ' ' + p.unit : ''}</Text>
+                    </View>
+                  )}
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailRowLabel}>{t.stall.soldLabel}</Text>
+                    <Text style={styles.detailRowValue}>{p.totalSold}</Text>
+                  </View>
+                </View>
+
+                {/* Quick options (modifiers), if any */}
+                {!!p.modifiers?.length && (
+                  <View style={styles.detailModsSection}>
+                    <Text style={styles.detailModsLabel}>{t.stall.quickOptionsLabel}</Text>
+                    <View style={styles.detailModsWrap}>
+                      {p.modifiers.map((m) => (
+                        <View key={m.id} style={styles.detailModChip}>
+                          <Text style={styles.detailModChipText}>{m.label}</Text>
+                          {!!m.priceDelta && (
+                            <Text style={styles.detailModChipDelta}>
+                              {m.priceDelta > 0 ? '+' : '−'}{currency} {Math.abs(m.priceDelta).toFixed(2)}
+                            </Text>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Active toggle — RN Switch, matching personal mode */}
+                <View style={styles.detailToggleRow}>
+                  <Text style={styles.detailToggleLabel}>{t.stall.showOnSell}</Text>
+                  <Switch
+                    value={p.isActive}
+                    onValueChange={toggleDetailActive}
+                    trackColor={{ false: C.border, true: C.bronze }}
+                    thumbColor={C.surface}
+                    accessibilityLabel={t.stall.showOnSell}
+                  />
+                </View>
+
+                <NeuButton
+                  icon="edit-2"
+                  label={t.stall.editBtn}
+                  color={C.bronze}
+                  onPress={openEditFromDetail}
+                  style={{ marginTop: SPACING.sm }}
+                />
+              </ScrollView>
+            );
+          })() : null}
         </FloatingModal>
 
         {/* Add button — always visible; opens the product sheet */}
@@ -420,6 +804,7 @@ const StallProducts: React.FC = () => {
             setDefaultQty('');
             setCost('');
             setUnit('');
+            setCategory('');
             setImageUrl(undefined);
             setModifiers([]);
             setShowDetails(false);
@@ -429,71 +814,126 @@ const StallProducts: React.FC = () => {
           style={{ marginBottom: SPACING['2xl'] }}
         />
 
-        {/* Product list */}
+        {/* Browse row (copied from Sell): category dropdown + expanding search */}
+        {products.length > 0 && (
+          <View style={styles.browseRow} onLayout={handleBrowseRowLayout}>
+            <View style={styles.catDropdownWrap}>
+              {/* Always mounted — opacity tracks the search width, so it fades
+                  in while the bar shrinks rather than after it. Untouchable
+                  while the search owns the row. */}
+              <ReAnimated.View style={catBtnAnimStyle} pointerEvents={searchOpen ? 'none' : 'auto'}>
+                <TouchableOpacity
+                  style={[styles.catDropdownBtn, neu.raised]}
+                  onPress={openCatDropdown}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.stall.selectCategory}
+                >
+                  <Feather name={selectedCatIcon} size={14} color={C.bronze} />
+                  <Text style={styles.catDropdownText} numberOfLines={1}>{selectedCatLabel}</Text>
+                  <Feather name="chevron-down" size={16} color={C.textMuted} />
+                </TouchableOpacity>
+              </ReAnimated.View>
+            </View>
+
+            {/* Expanding search — shadow on the OUTER view, clip on the INNER
+                one (iOS masksToBounds would slice the view's own shadow). */}
+            <ReAnimated.View style={[styles.searchWrap, neu.raised, searchAnimStyle]}>
+              <View style={styles.searchClip}>
+                {searchOpen ? (
+                  <>
+                    <Feather name="search" size={16} color={C.textSecondary} />
+                    <TextInput
+                      ref={searchInputRef}
+                      style={styles.searchInput}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      onBlur={() => { if (!searchQuery) collapseSearch(); }}
+                      placeholder="Search products..."
+                      placeholderTextColor={C.neutral}
+                      returnKeyType="search"
+                      onSubmitEditing={Keyboard.dismiss}
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={withAlpha(C.accent, 0.25)}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Feather name="x" size={16} color={C.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.searchCollapsedBtn}
+                    onPress={expandSearch}
+                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Search products"
+                  >
+                    <Feather name="search" size={16} color={C.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </ReAnimated.View>
+          </View>
+        )}
+
+        {/* Product list — grouped by category, Storefront-tile neu cards */}
         {products.length > 0 && (
           <View style={styles.listSection}>
-            {products.map((product) => (
-              <View key={product.id} style={[styles.productRow, !product.isActive && styles.productRowInactive]}>
-                <TouchableOpacity
-                  style={styles.toggleButton}
-                  onPress={() => handleToggleActive(product.id, product.isActive)}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: product.isActive }}
-                  accessibilityLabel={`${product.name} is ${product.isActive ? 'active' : 'inactive'}`}
-                >
-                  <Feather
-                    name={product.isActive ? 'check-circle' : 'circle'}
-                    size={20}
-                    color={product.isActive ? C.bronze : C.neutral}
-                  />
-                </TouchableOpacity>
-
-                {product.imageUrl && (
-                  <Image
-                    source={{ uri: product.imageUrl }}
-                    style={[styles.rowThumb, !product.isActive && { opacity: 0.4 }]}
-                    contentFit="cover"
-                  />
-                )}
-
-                <View style={styles.productInfo}>
-                  <Text
-                    style={[
-                      styles.productName,
-                      !product.isActive && styles.productNameInactive,
-                    ]}
-                  >
-                    {product.name}
-                  </Text>
-                  <Text style={styles.productPrice}>
-                    {currency} {product.price.toFixed(2)}
-                    {product.unitCost ? ` · ${t.stall.costEach.replace('{currency}', currency).replace('{amount}', product.unitCost.toFixed(2))}` : ''}
-                    {product.defaultStartQty ? ` · ${t.stall.bringsStock.replace('{n}', String(product.defaultStartQty))}${product.unit ? ' ' + product.unit : ''}` : ''}
-                    {product.totalSold > 0 ? ` · ${t.stall.soldSuffix.replace('{n}', String(product.totalSold))}` : ''}
-                  </Text>
+            {grouped.map(({ category: cat, items }) => (
+              <View key={cat || '__uncat'} style={styles.catGroup}>
+                <View style={styles.catHeaderRow}>
+                  {!!cat && categoryIcon.has(cat.toLowerCase()) && (
+                    <Feather name={categoryIcon.get(cat.toLowerCase()) as keyof typeof Feather.glyphMap} size={13} color={C.textMuted} style={{ marginRight: SPACING.xs }} />
+                  )}
+                  <Text style={styles.catHeader}>{cat || t.stall.uncategorized}</Text>
                 </View>
+                {items.map((product) => {
+                  return (
+                    <TouchableOpacity
+                      key={product.id}
+                      style={[styles.tile, neu.raisedSoft, !product.isActive && styles.tileInactive]}
+                      activeOpacity={0.7}
+                      onPress={() => setDetailId(product.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={product.name}
+                      accessibilityHint={t.stall.tapForDetail}
+                    >
+                      {/* Thumbnail / letter placeholder. Seam rule: the overflow clip
+                          lives on the inner view, never on the neu-shadowed tile. */}
+                      <View style={styles.tileThumbWrap}>
+                        {product.imageUrl ? (
+                          <View style={styles.tileThumbClip}>
+                            <Image source={{ uri: product.imageUrl }} style={styles.tileThumbImg} contentFit="cover" />
+                          </View>
+                        ) : (
+                          <View style={styles.tileThumbPlaceholder}>
+                            <Text style={styles.tileThumbLetter}>{product.name.charAt(0).toUpperCase()}</Text>
+                          </View>
+                        )}
+                      </View>
 
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => handleEdit(product.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit ${product.name}`}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Feather name="edit-2" size={16} color={C.textSecondary} />
-                </TouchableOpacity>
+                      {/* Middle: name + price only (fuller info lives in the detail modal) */}
+                      <View style={styles.tileInfo}>
+                        <Text style={styles.tileName} numberOfLines={1}>{product.name}</Text>
+                        <Text style={styles.tilePriceLine} numberOfLines={1}>
+                          {currency} {product.price.toFixed(2)}{product.unit ? `/${product.unit}` : ''}
+                        </Text>
+                      </View>
 
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleDelete(product.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Delete ${product.name}`}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Feather name="trash-2" size={16} color={C.neutral} />
-                </TouchableOpacity>
+                      {/* Whole tile is tappable → opens the product-detail modal. */}
+                      <Feather name="chevron-right" size={20} color={C.textMuted} />
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             ))}
+            {grouped.length === 0 && (
+              <Text style={styles.filterEmpty}>
+                {searchQuery.trim() ? `no products match "${searchQuery}"` : t.stall.emptyCategory}
+              </Text>
+            )}
           </View>
         )}
 
@@ -525,6 +965,66 @@ const StallProducts: React.FC = () => {
           <Feather name={roundCashTo5 ? 'check-square' : 'square'} size={22} color={roundCashTo5 ? C.bronze : C.textSecondary} />
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Category dropdown list — centered floating modal (copied from Sell). */}
+      <Modal
+        visible={catDropdownOpen}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setCatDropdownOpen(false)}
+      >
+        <Pressable style={styles.catDropdownOverlay} onPress={() => setCatDropdownOpen(false)}>
+          <View
+            style={[styles.catDropdownCard, neu.raisedModal]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.catDropdownHeader}>
+              <Text style={styles.catDropdownTitle}>{t.stall.selectCategory}</Text>
+              <TouchableOpacity
+                onPress={() => setCatDropdownOpen(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.common.close}
+              >
+                <Feather name="x" size={20} color={C.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.catDropdownList} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <TouchableOpacity
+                style={styles.catDropdownItem}
+                onPress={() => { lightTap(); setSelectedCategory('all'); setCatDropdownOpen(false); }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: effectiveCategory === 'all' }}
+              >
+                <Feather name="layers" size={14} color={effectiveCategory === 'all' ? C.bronze : C.textSecondary} />
+                <Text style={[styles.catDropdownItemText, effectiveCategory === 'all' && styles.catDropdownItemTextActive]}>
+                  {t.stall.allCategories}
+                </Text>
+                {effectiveCategory === 'all' && <Feather name="check" size={14} color={C.bronze} style={{ marginLeft: 'auto' }} />}
+              </TouchableOpacity>
+              {categoryPills.map((pill) => {
+                const active = effectiveCategory === pill.value;
+                return (
+                  <TouchableOpacity
+                    key={pill.value}
+                    style={styles.catDropdownItem}
+                    onPress={() => { lightTap(); setSelectedCategory(pill.value); setCatDropdownOpen(false); }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Feather name={pill.icon as keyof typeof Feather.glyphMap} size={14} color={active ? C.bronze : C.textSecondary} />
+                    <Text style={[styles.catDropdownItemText, active && styles.catDropdownItemTextActive]} numberOfLines={1}>
+                      {pill.label}
+                    </Text>
+                    {active && <Feather name="check" size={14} color={C.bronze} style={{ marginLeft: 'auto' }} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -548,6 +1048,118 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     ...TYPE.muted,
     color: C.textSecondary,
     marginBottom: SPACING['3xl'],
+  },
+
+  // ─── Browse row: category dropdown + expanding search (copied from Sell) ───
+  browseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+    width: '100%',
+  },
+  catDropdownWrap: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: SPACING.sm,
+    alignItems: 'flex-start',
+  },
+  catDropdownBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 40,
+    maxWidth: '100%',
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.background,
+  },
+  catDropdownText: {
+    flexShrink: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  catDropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  catDropdownCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: C.background,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.12),
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+  },
+  catDropdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
+  catDropdownTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  catDropdownList: {
+    maxHeight: 360,
+    flexGrow: 0,
+  },
+  catDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    minHeight: 44,
+  },
+  catDropdownItemText: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+  },
+  catDropdownItemTextActive: {
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  // Outer shell: background + neu shadow only — no overflow (iOS masksToBounds
+  // would clip the view's OWN shadow). The inner view does the clipping.
+  searchWrap: {
+    height: 40,
+    borderRadius: RADIUS.full,
+  },
+  searchClip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    gap: SPACING.xs,
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+  },
+  searchCollapsedBtn: {
+    width: 40,
+    height: 40,
+    marginHorizontal: -12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    padding: 0,
+  },
+  filterEmpty: {
+    ...TYPE.muted,
+    textAlign: 'center',
+    paddingVertical: SPACING['2xl'],
   },
 
   // ─── Form ──────────────────────────────────────────────────
@@ -641,6 +1253,219 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   listSection: {
     gap: 0,
   },
+
+  // ─── Category groups + Storefront tiles ─────────────────────
+  catGroup: {
+    marginBottom: SPACING.xl,
+  },
+  catHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+    marginLeft: SPACING.xs,
+  },
+  catHeader: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: C.textMuted,
+  },
+  // Neu Card: C.background surface comes from neu.raisedSoft; NO border, NO overflow
+  // here (the thumbnail clip lives on its own inner view — the seam rule).
+  tile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    minHeight: 64,
+  },
+  tileInactive: {
+    opacity: 0.45,
+  },
+  tileThumbWrap: {
+    width: 56,
+    height: 56,
+  },
+  tileThumbClip: {
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+  },
+  tileThumbImg: {
+    width: '100%',
+    height: '100%',
+  },
+  tileThumbPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(C.bronze, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileThumbLetter: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+  },
+  tileInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  tileName: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  // Price: a bit bigger + darker than the old muted line (per owner).
+  tilePriceLine: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'],
+    marginTop: 2,
+  },
+  // Delete link — a word under the cancel/update buttons in the edit form.
+  deleteLink: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.xs,
+    minHeight: 44,
+  },
+  deleteLinkText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.neutral,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // ─── Product detail modal ───────────────────────────────────
+  // Plain ScrollView inside the modal card → flexGrow:0/flexShrink:1 (CLAUDE.md).
+  detailScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  detailBody: {
+    padding: SPACING.xl,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  detailHeaderText: {
+    flex: 1,
+  },
+  detailName: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: -0.2,
+  },
+  detailCatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+  },
+  detailCatText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+  },
+  detailInfoCard: {
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xs,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm + 2,
+    gap: SPACING.md,
+  },
+  detailRowLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+  },
+  detailRowValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    fontVariant: ['tabular-nums'],
+  },
+  detailKeepValue: {
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  detailToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.md,
+    minHeight: 44,
+  },
+  // Quick options (modifiers) in the detail modal
+  detailModsSection: {
+    marginTop: SPACING.lg,
+  },
+  detailModsLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: C.textMuted,
+    marginBottom: SPACING.sm,
+  },
+  detailModsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+  },
+  detailModChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.bronze, 0.1),
+  },
+  detailModChipText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  detailModChipDelta: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontVariant: ['tabular-nums'],
+  },
+  detailToggleLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // ─── Category selector (in the add/edit form) ───────────────
+  categorySelector: {
+    minHeight: 56,
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
+    paddingHorizontal: SPACING.lg,
+    justifyContent: 'center',
+    gap: 2,
+    marginBottom: SPACING.md,
+  },
+
   productRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -732,8 +1557,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
     letterSpacing: 0.1,
-    marginTop: -SPACING.sm,
-    marginBottom: SPACING.lg,
+    // ── Hand-tune the two header gaps here ──────────────────────
+    // Both vertical gaps around "add what you sell" live on THIS style.
+    // marginTop  = space between the "new product" title and this line.
+    //   (was -SPACING.sm / -8, which pulled them together)
+    // marginBottom = space between this line and the first field row.
+    marginTop: SPACING.sm,     // ← title ↔ description gap  (SPACING.sm = 8)
+    marginBottom: SPACING.xl,  // ← description ↔ fields gap (SPACING.xl = 24)
   },
   modalCloseBtn: {
     width: 32,
@@ -793,6 +1623,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.bronze,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // "+" badge on the empty photo tile (bottom-right, ringed by the card bg)
+  inlinePhotoPlus: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: C.bronze,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.background,
   },
   rowThumb: {
     width: 40,
@@ -883,11 +1727,25 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   confirmCol: {
     flex: 2,
   },
-  // ─── Unit picker (in-card overlay over the form) ────────────
-  unitPickerOverlay: {
+  // ─── Unit picker (floats over the form via FloatingModal overlay slot) ──
+  // Dim full-screen backdrop; tap closes ONLY the picker. Matches seller mode.
+  unitModalOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: C.background,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  // Onyx dialog card floating over a dim scrim: neu.raisedModal (spread at the call
+  // site) supplies the C.background surface + a single soft neutral drop — the neu
+  // kit's dialog fragment, no white halo. Border per the floating-modal-outline rule.
+  unitModalContent: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: RADIUS.xl,
     padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.12),
   },
   unitPickerHeader: {
     flexDirection: 'row',
@@ -904,17 +1762,30 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexGrow: 0,
     maxHeight: 360,
   },
+  // Shape-3 seam fix: bleed the scroll viewport past the neu rows so its clip can't
+  // shear the boxShadow; content padding puts the rows back (see the onyx seam rule).
+  unitPickerListBleed: {
+    marginHorizontal: -SPACING.lg,
+  },
+  unitPickerListContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  // Onyx option row: neu.raised (unselected, spread at call site) / bronze fill
+  // (selected). Base surface comes from the neu fragment — no bg here.
   unitPickerItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
     paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
     minHeight: 48,
+    marginBottom: SPACING.sm,
   },
   unitPickerItemSelected: {
-    backgroundColor: withAlpha(C.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.12),
   },
   unitPickerIcon: {
     width: 32,
@@ -933,6 +1804,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   unitPickerItemTextSelected: {
     fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+  },
+  // "manage units in settings" footer row (list footer, matches seller mode) —
+  // divider line above it via borderTop, exactly like seller's unitModalManageBtn.
+  unitManageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.md,
+    minHeight: 44,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  unitManageText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
   },
 });

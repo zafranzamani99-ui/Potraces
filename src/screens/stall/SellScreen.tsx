@@ -11,7 +11,16 @@ import {
   Pressable,
   Keyboard,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import ReAnimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing as ReEasing,
+} from 'react-native-reanimated';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,9 +48,19 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CART_COLLAPSED_WIDTH = SCREEN_WIDTH * 0.30;
 const CART_EXPANDED_WIDTH = SCREEN_WIDTH * 0.88;
 
+// Expanding search — collapsed circle width + the web pattern's ease curve.
+// Animated with Reanimated so the width tween runs on the UI thread (60/120Hz)
+// instead of the JS thread (which is why the JS-driver version felt like 30Hz).
+const SEARCH_COLLAPSED = 40;
+const SEARCH_EASING = ReEasing.bezier(0.16, 1, 0.3, 1);
+
 interface CartItem {
+  // Unique cart line: productId + '|' + (modifier label || ''). Lets the same
+  // product appear as separate lines per chosen option.
+  lineKey: string;
   productId: string;
   productName: string;
+  modifierLabel?: string;
   unitPrice: number;
   quantity: number;
 }
@@ -54,10 +73,18 @@ const SellScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const t = useT();
+
+  // Responsive register grid — 2 columns on phones, 3 on small tablets,
+  // 4 on iPad. Recalculates on rotation / Stage Manager resize.
+  const { width: windowWidth } = useWindowDimensions();
+  const gridColumns = windowWidth >= 1000 ? 4 : windowWidth >= 700 ? 3 : 2;
+  // Widths leave room for the SPACING.md column gap so 2 tiles reliably fit one row
+  // (47.8% was exactly half → the gap tipped the 2nd tile onto its own row).
+  const productTileWidth = gridColumns === 4 ? '23%' : gridColumns === 3 ? '31%' : '47%';
   const {
     products, getActiveSession, addSale, quickSale, addCustomSale,
     updateSale, removeSale, restockProduct, setSessionDefaultPayment, addProduct,
-    regularCustomers, recordVisit, loyalty, setClearance,
+    regularCustomers, recordVisit, loyalty, setClearance, categories,
   } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const { showToast } = useToast();
@@ -87,6 +114,25 @@ const SellScreen: React.FC = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // Category filter pills ('all' | lowercase category name from Settings)
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  // Expanding search — collapsed 40px circle, expands to the full browse-row
+  // width on focus (same curve as the web pattern: cubic-bezier(0.16,1,0.3,1)).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [browseRowWidth, setBrowseRowWidth] = useState(0);
+  // Category selector (replaces the horizontal pills) → a centered floating modal.
+  const [catDropdownOpen, setCatDropdownOpen] = useState(false);
+  const searchWidth = useSharedValue(SEARCH_COLLAPSED);
+  const searchAnimStyle = useAnimatedStyle(() => ({ width: searchWidth.value }));
+  // Category button opacity tracks the search width — it fades back in DURING
+  // the collapse instead of waiting for the animation's end callback (~0.4s
+  // of empty row), and fades out while expanding.
+  const catBtnAnimStyle = useAnimatedStyle(() => ({
+    opacity: 1 - Math.min(Math.max((searchWidth.value - SEARCH_COLLAPSED) / 80, 0), 1),
+  }));
+  const searchInputRef = useRef<TextInput>(null);
 
   // Discount state
   const [discountValue, setDiscountValue] = useState('');
@@ -160,12 +206,37 @@ const SellScreen: React.FC = () => {
     return map;
   }, [session]);
 
-  // Filtered products
+  // Category pills — the exact product category list from Settings
+  // (StallCategoryManager), in its custom order. Uncategorized products are
+  // still reachable under "all"; there is no "Other" bucket.
+  const categoryPills = useMemo(
+    () => (categories || []).map((c) => ({ value: c.name.toLowerCase(), label: c.name, icon: c.icon })),
+    [categories],
+  );
+
+  // Selection may outlive its category (renamed/deleted elsewhere) — fall back to 'all'.
+  const effectiveCategory = categoryPills.some((p) => p.value === selectedCategory) ? selectedCategory : 'all';
+
+  // Selected-category label + icon for the dropdown button.
+  const selectedPill = categoryPills.find((p) => p.value === effectiveCategory);
+  const selectedCatLabel = effectiveCategory === 'all' ? t.stall.allCategories : (selectedPill?.label ?? t.stall.allCategories);
+  const selectedCatIcon = (effectiveCategory === 'all' ? 'layers' : (selectedPill?.icon ?? 'layers')) as keyof typeof Feather.glyphMap;
+
+  const openCatDropdown = useCallback(() => {
+    lightTap();
+    setCatDropdownOpen(true);
+  }, []);
+
+  // Filtered products — category first, then the search query
   const filteredProducts = useMemo(() => {
-    if (!searchQuery.trim()) return activeProducts;
+    let list = activeProducts;
+    if (effectiveCategory !== 'all') {
+      list = list.filter((p) => p.category?.trim().toLowerCase() === effectiveCategory);
+    }
+    if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase();
-    return activeProducts.filter((p) => p.name.toLowerCase().includes(q));
-  }, [activeProducts, searchQuery]);
+    return list.filter((p) => p.name.toLowerCase().includes(q));
+  }, [activeProducts, effectiveCategory, searchQuery]);
 
   // ── Cart animation ──
   const collapseCart = useCallback(() => {
@@ -193,9 +264,39 @@ const SellScreen: React.FC = () => {
     else expandCart();
   }, [cartExpanded, collapseCart, expandCart]);
 
+  // ── Expanding search (web pattern: width tween, ease-out-expo style) ──
+  const expandSearch = useCallback(() => {
+    setSearchOpen(true);
+    lightTap();
+    searchWidth.value = withTiming(
+      (browseRowWidth || windowWidth - SPACING.lg * 2) - SPACING.sm,
+      { duration: 380, easing: SEARCH_EASING },
+    );
+    setTimeout(() => searchInputRef.current?.focus(), 80);
+  }, [searchWidth, browseRowWidth, windowWidth]);
+
+  const collapseSearch = useCallback(() => {
+    Keyboard.dismiss();
+    // Flip searchOpen NOW (not in the animation callback) so the category button
+    // comes back in sync with the shrink instead of ~0.5s late.
+    setSearchOpen(false);
+    searchWidth.value = withTiming(SEARCH_COLLAPSED, { duration: 380, easing: SEARCH_EASING });
+  }, [searchWidth]);
+
+  // Track the browse row's real width (cart panel / rotation / iPad resize).
+  // While the search is open, keep it snapped to the live row width.
+  const handleBrowseRowLayout = useCallback(
+    (e: { nativeEvent: { layout: { width: number } } }) => {
+      const w = e.nativeEvent.layout.width;
+      setBrowseRowWidth(w);
+      if (searchOpen) searchWidth.value = w - SPACING.sm;
+    },
+    [searchOpen, searchWidth],
+  );
+
   // ── Cart helpers ──
   const addToCart = useCallback(
-    (productId: string) => {
+    (productId: string, modifier?: StallModifier | null) => {
       if (!session) return;
       const product = activeProducts.find((p) => p.id === productId);
       if (!product) return;
@@ -203,21 +304,24 @@ const SellScreen: React.FC = () => {
       const snap = snapshotMap[productId];
       if (snap && snap.startQty > 0 && snap.remainingQty <= 0) return;
 
+      const modLabel = modifier?.label;
+      const lineKey = productId + '|' + (modLabel || '');
+      const displayName = modifier ? `${product.name} (${modifier.label})` : product.name;
+      const unitPrice = Math.max(0, Math.round((priceOf(product) + (modifier?.priceDelta || 0)) * 100) / 100);
+
       setCart((prev) => {
-        const existing = prev.find((i) => i.productId === productId);
-        const currentQty = existing ? existing.quantity : 0;
+        // Stock cap counts ALL lines of this product (across option variants).
+        const productQtyInCart = prev.reduce((s, i) => (i.productId === productId ? s + i.quantity : s), 0);
         const maxQty = snap && snap.startQty > 0 ? snap.remainingQty : Infinity;
+        if (productQtyInCart >= maxQty) return prev;
 
-        if (currentQty >= maxQty) return prev;
-
+        const existing = prev.find((i) => i.lineKey === lineKey);
         if (existing) {
-          return prev.map((i) =>
-            i.productId === productId ? { ...i, quantity: i.quantity + 1 } : i
-          );
+          return prev.map((i) => (i.lineKey === lineKey ? { ...i, quantity: i.quantity + 1 } : i));
         }
         return [
           ...prev,
-          { productId, productName: product.name, unitPrice: priceOf(product), quantity: 1 },
+          { lineKey, productId, productName: displayName, modifierLabel: modLabel, unitPrice, quantity: 1 },
         ];
       });
     },
@@ -225,24 +329,25 @@ const SellScreen: React.FC = () => {
   );
 
   const updateQuantity = useCallback(
-    (productId: string, quantity: number) => {
-      if (quantity <= 0) {
-        setCart((prev) => prev.filter((i) => i.productId !== productId));
-        return;
-      }
-      const snap = snapshotMap[productId];
-      const maxQty = snap && snap.startQty > 0 ? snap.remainingQty : Infinity;
-      if (quantity > maxQty) return;
-
-      setCart((prev) =>
-        prev.map((i) => (i.productId === productId ? { ...i, quantity } : i))
-      );
+    (lineKey: string, quantity: number) => {
+      setCart((prev) => {
+        const item = prev.find((i) => i.lineKey === lineKey);
+        if (!item) return prev;
+        if (quantity <= 0) return prev.filter((i) => i.lineKey !== lineKey);
+        const snap = snapshotMap[item.productId];
+        if (snap && snap.startQty > 0) {
+          // Cap across all lines of the same product (option variants share stock).
+          const otherQty = prev.reduce((s, i) => (i.productId === item.productId && i.lineKey !== lineKey ? s + i.quantity : s), 0);
+          if (quantity + otherQty > snap.remainingQty) return prev;
+        }
+        return prev.map((i) => (i.lineKey === lineKey ? { ...i, quantity } : i));
+      });
     },
     [snapshotMap],
   );
 
-  const removeFromCart = useCallback((productId: string) => {
-    setCart((prev) => prev.filter((i) => i.productId !== productId));
+  const removeFromCart = useCallback((lineKey: string) => {
+    setCart((prev) => prev.filter((i) => i.lineKey !== lineKey));
   }, []);
 
   // Record ONE visit per serving (not per item), and fire the loyalty toast on a milestone.
@@ -273,7 +378,7 @@ const SellScreen: React.FC = () => {
 
   const cartQuantityMap = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const item of cart) map[item.productId] = item.quantity;
+    for (const item of cart) map[item.productId] = (map[item.productId] || 0) + item.quantity;
     return map;
   }, [cart]);
 
@@ -362,9 +467,14 @@ const SellScreen: React.FC = () => {
     [quickSale, removeSale, showToast, currency, t, servingCustomerId, recordServingVisit, priceOf],
   );
 
-  // ── Sell a product with a chosen modifier (immediate sale) ──
+  // ── Chosen a modifier: cart mode → add to cart; quick mode → immediate sale ──
   const handleModifierSale = useCallback(
     (product: StallProduct, modifier: StallModifier | null) => {
+      setModifierProduct(null);
+      if (mode === 'cart') {
+        addToCart(product.id, modifier);
+        return;
+      }
       const unit = Math.max(0, Math.round((priceOf(product) + (modifier?.priceDelta || 0)) * 100) / 100);
       const name = modifier ? `${product.name} (${modifier.label})` : product.name;
       const id = addSale({
@@ -376,7 +486,6 @@ const SellScreen: React.FC = () => {
         paymentMethod: defaultPayment,
         regularCustomerId: servingCustomerId || undefined,
       });
-      setModifierProduct(null);
       if (!id) return;
       successNotification();
       recordServingVisit();
@@ -385,7 +494,7 @@ const SellScreen: React.FC = () => {
         onPress: () => removeSale(id),
       });
     },
-    [addSale, priceOf, defaultPayment, servingCustomerId, recordServingVisit, removeSale, showToast, currency, t],
+    [mode, addToCart, addSale, priceOf, defaultPayment, servingCustomerId, recordServingVisit, removeSale, showToast, currency, t],
   );
   const guardedModifierSale = useSubmitGuard(handleModifierSale);
 
@@ -515,6 +624,140 @@ const SellScreen: React.FC = () => {
   }, [restockTarget, restockAmount, restockProduct, showToast]);
   const guardedConfirmRestock = useSubmitGuard(handleConfirmRestock);
 
+  // ─── POS toolbar — register controls only. The money hero lives on Home;
+  // here the only count is how many sales sit on the ledger. Shared by the
+  // main selling UI and the no-products empty state. ───
+  const toolbar = (
+    <View style={styles.sessionHeader}>
+      <View style={styles.headerInner}>
+        {/* Register tools: mode + ledger + clearance + custom amount */}
+        <View style={styles.controlsRow}>
+          {/* Quick / Cart mode toggle */}
+          <View style={styles.modeToggle}>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'quick' && styles.modeBtnActive]}
+              onPress={() => {
+                lightTap();
+                if (cart.length > 0) { showToast(t.stall.cartBusySwitch, 'info'); return; }
+                setMode('quick');
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: mode === 'quick' }}
+              accessibilityLabel={t.stall.quickMode}
+            >
+              <Feather name="zap" size={14} color={mode === 'quick' ? C.onAccent : C.textSecondary} />
+              <Text style={[styles.modeBtnText, mode === 'quick' && styles.modeBtnTextActive]}>{t.stall.quickMode}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'cart' && styles.modeBtnActive]}
+              onPress={() => { lightTap(); setMode('cart'); }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: mode === 'cart' }}
+              accessibilityLabel={t.stall.cartMode}
+            >
+              <Feather name="shopping-cart" size={14} color={mode === 'cart' ? C.onAccent : C.textSecondary} />
+              <Text style={[styles.modeBtnText, mode === 'cart' && styles.modeBtnTextActive]}>{t.stall.cartMode}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.controlsRight}>
+            {/* Ledger — today's sales (view / edit / void) */}
+            <TouchableOpacity
+              style={[styles.ledgerBtn, neu.raised]}
+              onPress={() => setLedgerVisible(true)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${session?.sales.length ?? 0} sales. Tap to view and edit.`}
+            >
+              <Feather name="list" size={14} color={C.bronze} />
+              <Text style={styles.ledgerBtnText}>{session?.sales.length ?? 0}</Text>
+            </TouchableOpacity>
+            {clearance > 0 ? (
+              <TouchableOpacity
+                style={styles.clearancePillOn}
+                onPress={openClearance}
+                accessibilityRole="button"
+                accessibilityLabel={`Clearance ${clearance} percent off`}
+              >
+                <Feather name="tag" size={14} color={C.onAccent} />
+                <Text style={styles.clearancePillText}>{t.stall.clearanceOnShort.replace('{n}', String(clearance))}</Text>
+              </TouchableOpacity>
+            ) : (
+              <NeuIconButton
+                size={40}
+                radius={13}
+                onPress={openClearance}
+                accessibilityLabel={t.stall.clearanceTitle}
+              >
+                <Feather name="tag" size={17} color={C.textSecondary} />
+              </NeuIconButton>
+            )}
+            <NeuIconButton
+              size={40}
+              radius={13}
+              onPress={openCustom}
+              accessibilityLabel={t.stall.customSaleTitle}
+            >
+              <Feather name="hash" size={19} color={C.textSecondary} />
+            </NeuIconButton>
+          </View>
+        </View>
+
+        {/* This sale: default payment (quick mode) + who's buying */}
+        <View style={styles.contextRow}>
+          {mode === 'quick' && (
+            <TouchableOpacity
+              style={[neu.raised, styles.payDefaultPill]}
+              onPress={toggleDefaultPayment}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Default payment ${defaultPayment === 'cash' ? t.stall.cashPrefix : t.stall.qrPrefix}. Tap to switch.`}
+            >
+              <Feather name={defaultPayment === 'cash' ? 'dollar-sign' : 'smartphone'} size={13} color={C.bronze} />
+              <Text style={styles.payDefaultText}>{defaultPayment === 'cash' ? t.stall.cashPrefix : t.stall.qrPrefix}</Text>
+              <Feather name="repeat" size={11} color={C.textSecondary} />
+            </TouchableOpacity>
+          )}
+
+          {/* Serving a regular (optional attribution) */}
+          {servingCustomer ? (
+            <TouchableOpacity
+              style={styles.servingChip}
+              activeOpacity={0.7}
+              onPress={() => { setCustomerSearch(''); setCustomerPickerVisible(true); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${t.stall.servingCustomer}: ${servingCustomer.name}. Tap to change.`}
+            >
+              <Feather name="user" size={13} color={C.bronze} />
+              <Text style={styles.servingText} numberOfLines={1}>
+                {t.stall.servingCustomer}: {servingCustomer.name}
+              </Text>
+              <TouchableOpacity
+                onPress={() => selectCustomer(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.stall.clearCustomer}
+              >
+                <Feather name="x" size={14} color={C.bronze} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.addCustomerChip}
+              onPress={() => { setCustomerSearch(''); setCustomerPickerVisible(true); }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t.stall.addCustomerChip}
+            >
+              <Feather name="user-plus" size={13} color={C.bronze} />
+              <Text style={styles.addCustomerText}>{t.stall.addCustomerChip}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+
   // ─── No active session ──────────────────────────────────────
   if (!session) {
     return (
@@ -534,15 +777,7 @@ const SellScreen: React.FC = () => {
   if (activeProducts.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.sessionHeader}>
-          <Text style={styles.sessionTotal}>
-            {currency} {session.totalRevenue.toFixed(0)}
-          </Text>
-          <Text style={styles.sessionSplit}>
-            cash {currency} {session.totalCash.toFixed(0)} {'  \u00B7  '}
-            qr {currency} {session.totalQR.toFixed(0)}
-          </Text>
-        </View>
+        {toolbar}
         <View style={styles.emptyContainer}>
           <Feather name="package" size={40} color={C.border} />
           <Text style={styles.emptyTitle}>add your products first</Text>
@@ -563,147 +798,8 @@ const SellScreen: React.FC = () => {
   // ─── Main selling UI ────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
-      {/* Session total — full width, sticky top */}
-      <View style={styles.sessionHeader}>
-        <View style={styles.sessionHeaderRow}>
-          <View>
-            <Text
-              style={styles.sessionTotal}
-              accessibilityLabel={`Session total ${currency} ${session.totalRevenue.toFixed(2)}`}
-            >
-              {currency} {session.totalRevenue.toFixed(0)}
-            </Text>
-            <Text style={styles.sessionSplit}>
-              cash {currency} {session.totalCash.toFixed(0)} {'  \u00B7  '}
-              qr {currency} {session.totalQR.toFixed(0)}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.saleCountPill}
-            onPress={() => setLedgerVisible(true)}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={`${session.sales.length} sales. Tap to view and edit.`}
-          >
-            <Feather name="list" size={13} color={C.bronze} />
-            <Text style={styles.saleCountText}>
-              {session.sales.length} {session.sales.length === 1 ? t.stall.saleLabel : t.stall.salesLabel}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.controlsRow}>
-          {/* Quick / Cart mode toggle */}
-          <View style={styles.modeToggle}>
-            <TouchableOpacity
-              style={[styles.modeBtn, neu.raised, mode === 'quick' && styles.modeBtnActive]}
-              onPress={() => {
-                lightTap();
-                if (cart.length > 0) { showToast(t.stall.cartBusySwitch, 'info'); return; }
-                setMode('quick');
-              }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: mode === 'quick' }}
-              accessibilityLabel={t.stall.quickMode}
-            >
-              <Feather name="zap" size={13} color={mode === 'quick' ? C.onAccent : C.textSecondary} />
-              <Text style={[styles.modeBtnText, mode === 'quick' && styles.modeBtnTextActive]}>{t.stall.quickMode}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeBtn, neu.raised, mode === 'cart' && styles.modeBtnActive]}
-              onPress={() => { lightTap(); setMode('cart'); }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: mode === 'cart' }}
-              accessibilityLabel={t.stall.cartMode}
-            >
-              <Feather name="shopping-cart" size={13} color={mode === 'cart' ? C.onAccent : C.textSecondary} />
-              <Text style={[styles.modeBtnText, mode === 'cart' && styles.modeBtnTextActive]}>{t.stall.cartMode}</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.controlsRight}>
-            {mode === 'quick' && (
-              <TouchableOpacity
-                style={[neu.raised, styles.payDefaultPill]}
-                onPress={toggleDefaultPayment}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={`Default payment ${defaultPayment === 'cash' ? t.stall.cashPrefix : t.stall.qrPrefix}. Tap to switch.`}
-              >
-                <Feather name={defaultPayment === 'cash' ? 'dollar-sign' : 'smartphone'} size={13} color={C.bronze} />
-                <Text style={styles.payDefaultText}>{defaultPayment === 'cash' ? t.stall.cashPrefix : t.stall.qrPrefix}</Text>
-                <Feather name="repeat" size={11} color={C.textSecondary} />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={clearance > 0 ? styles.clearancePillOn : [styles.headerIconBtn, neu.raised]}
-              onPress={openClearance}
-              accessibilityRole="button"
-              accessibilityLabel={clearance > 0 ? `Clearance ${clearance} percent off` : t.stall.clearanceTitle}
-            >
-              {clearance > 0 ? (
-                <>
-                  <Feather name="tag" size={13} color={C.onAccent} />
-                  <Text style={styles.clearancePillText}>{t.stall.clearanceOnShort.replace('{n}', String(clearance))}</Text>
-                </>
-              ) : (
-                <Feather name="tag" size={16} color={C.textSecondary} />
-              )}
-            </TouchableOpacity>
-            <NeuIconButton
-              size={36}
-              radius={12}
-              onPress={openCustom}
-              accessibilityLabel={t.stall.customSaleTitle}
-            >
-              <Feather name="hash" size={18} color={C.textSecondary} />
-            </NeuIconButton>
-            <NeuIconButton
-              size={36}
-              radius={12}
-              onPress={() => navigation.getParent()?.navigate('StallProducts')}
-              accessibilityLabel={t.stall.manageProducts}
-            >
-              <Feather name="package" size={18} color={C.textSecondary} />
-            </NeuIconButton>
-          </View>
-        </View>
-
-        {/* Serving a regular (optional attribution) */}
-        {servingCustomer ? (
-          <TouchableOpacity
-            style={styles.servingChip}
-            activeOpacity={0.7}
-            onPress={() => { setCustomerSearch(''); setCustomerPickerVisible(true); }}
-            accessibilityRole="button"
-            accessibilityLabel={`${t.stall.servingCustomer}: ${servingCustomer.name}. Tap to change.`}
-          >
-            <Feather name="user" size={13} color={C.bronze} />
-            <Text style={styles.servingText} numberOfLines={1}>
-              {t.stall.servingCustomer}: {servingCustomer.name}
-            </Text>
-            <TouchableOpacity
-              onPress={() => selectCustomer(null)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={t.stall.clearCustomer}
-            >
-              <Feather name="x" size={14} color={C.bronze} />
-            </TouchableOpacity>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.addCustomerChip}
-            onPress={() => { setCustomerSearch(''); setCustomerPickerVisible(true); }}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={t.stall.addCustomerChip}
-          >
-            <Feather name="user-plus" size={13} color={C.textSecondary} />
-            <Text style={styles.addCustomerText}>{t.stall.addCustomerChip}</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      {/* Register toolbar (shared element defined above) */}
+      {toolbar}
 
       {/* Row layout: Products | Cart */}
       <View style={styles.content}>
@@ -720,27 +816,71 @@ const SellScreen: React.FC = () => {
             </TouchableOpacity>
           )}
 
-          {/* Search */}
-          <View style={[styles.searchContainer, newstOutline(C, focusedField === 'search')]}>
-            <Feather name="search" size={20} color={C.textSecondary} />
-            <TextInput
-              style={styles.searchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onFocus={() => setFocusedField('search')}
-              onBlur={() => setFocusedField((f) => (f === 'search' ? null : f))}
-              placeholder="Search products..."
-              placeholderTextColor={C.neutral}
-              returnKeyType="search"
-              onSubmitEditing={Keyboard.dismiss}
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={withAlpha(C.accent, 0.25)}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Feather name="x" size={20} color={C.textSecondary} />
+          {/* Browse: category pills + expanding search */}
+          <View style={styles.browseRow} onLayout={handleBrowseRowLayout}>
+            {/* Category dropdown (replaces the horizontal pills) — the picker list
+                opens anchored under this button (see the Modal below). */}
+            <View style={styles.catDropdownWrap}>
+              {/* Always mounted — opacity tracks the search width, so it fades
+                  in while the bar shrinks rather than after it. Untouchable
+                  while the search owns the row. */}
+              <ReAnimated.View style={catBtnAnimStyle} pointerEvents={searchOpen ? 'none' : 'auto'}>
+              <TouchableOpacity
+                style={[styles.catDropdownBtn, neu.raised]}
+                onPress={openCatDropdown}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.stall.selectCategory}
+              >
+                <Feather name={selectedCatIcon} size={14} color={C.bronze} />
+                <Text style={styles.catDropdownText} numberOfLines={1}>{selectedCatLabel}</Text>
+                <Feather name="chevron-down" size={16} color={C.textMuted} />
               </TouchableOpacity>
-            )}
+              </ReAnimated.View>
+            </View>
+
+            {/* Expanding search — 40px circle → full row width on focus.
+                Web pattern translated: width tween, cubic-bezier(0.16,1,0.3,1).
+                Shadow lives on the OUTER view, the clip on the INNER one —
+                overflow:hidden on the shadowed view itself makes iOS
+                masksToBounds slice the view's own shadow (neu horizontal error). */}
+            <ReAnimated.View style={[styles.searchWrap, neu.raised, searchAnimStyle]}>
+              <View style={styles.searchClip}>
+                {searchOpen ? (
+                  <>
+                    <Feather name="search" size={16} color={C.textSecondary} />
+                    <TextInput
+                      ref={searchInputRef}
+                      style={styles.searchInput}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      onBlur={() => { if (!searchQuery) collapseSearch(); }}
+                      placeholder="Search products..."
+                      placeholderTextColor={C.neutral}
+                      returnKeyType="search"
+                      onSubmitEditing={Keyboard.dismiss}
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={withAlpha(C.accent, 0.25)}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Feather name="x" size={16} color={C.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.searchCollapsedBtn}
+                    onPress={expandSearch}
+                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Search products"
+                  >
+                    <Feather name="search" size={16} color={C.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </ReAnimated.View>
           </View>
 
           {/* Product grid */}
@@ -758,13 +898,12 @@ const SellScreen: React.FC = () => {
               const inCartQty = cartQuantityMap[product.id] || 0;
 
               return (
-                <View key={product.id} style={styles.productCardWrapper}>
+                <View key={product.id} style={[styles.productCardWrapper, { width: productTileWidth }]}>
                   <TouchableOpacity
                     style={[
                       styles.productButton,
                       neu.raised,
                       mode === 'cart' && inCartQty > 0 && styles.productInCart,
-                      isSoldOut && styles.productOutOfStock,
                     ]}
                     onPress={() => handleTilePress(product)}
                     onLongPress={() => { lightTap(); setRestockAmount(''); setRestockTarget({ id: product.id, name: product.name }); }}
@@ -775,12 +914,43 @@ const SellScreen: React.FC = () => {
                     accessibilityHint={isSoldOut ? 'This product is sold out' : (product.modifiers && product.modifiers.length > 0) ? 'Tap to choose an option. Long-press to restock.' : mode === 'quick' ? 'Tap to sell one. Long-press to restock.' : 'Tap to add to cart. Long-press to restock.'}
                     accessibilityRole="button"
                   >
+                    {/* Seam rule: the neu shadow stays on productButton (no overflow);
+                        the image's rounded clip lives on this inner view. */}
+                    <View style={styles.productClip}>
+                    {!!product.imageUrl && (
+                      <>
+                        <Image
+                          source={{ uri: product.imageUrl }}
+                          style={[styles.productImageBg, { opacity: isDark ? 0.65 : 0.85 }]}
+                          contentFit="cover"
+                          transition={150}
+                        />
+                        {/* Scrim: solid card tone behind the (left-aligned) text →
+                            fades to reveal the photo on the right. Keeps text crisp
+                            in both modes (light mode washed out without it). */}
+                        <LinearGradient
+                          // Light mode washes out, so back the text harder there (and a
+                          // faint overall veil); dark mode already reads well — leave it.
+                          colors={isDark
+                            ? [withAlpha(C.background, 0.55), withAlpha(C.background, 0)]
+                            : [withAlpha(C.background, 0.82), withAlpha(C.background, 0.12)]}
+                          start={{ x: 0, y: 0.5 }}
+                          end={{ x: 1, y: 0.5 }}
+                          style={StyleSheet.absoluteFill}
+                          pointerEvents="none"
+                        />
+                      </>
+                    )}
+                    {/* Sold-out: a uniform card-tone veil washes the photo (and the
+                        whole card body) back so the text + SOLD OUT badge stay crisp.
+                        Sits under productInner, so the text is never dimmed. */}
+                    {isSoldOut && <View style={styles.soldOutVeil} pointerEvents="none" />}
                     <View style={styles.productInner}>
-                      <Text style={styles.productName} numberOfLines={2}>
+                      <Text style={styles.productName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.6}>
                         {product.name}
                       </Text>
                       <View style={styles.priceLine}>
-                        <Text style={styles.productPrice}>
+                        <Text style={[styles.productPrice, isSoldOut && styles.productPriceSoldOut]}>
                           {currency} {priceOf(product).toFixed(2)}
                         </Text>
                         {clearance > 0 && (
@@ -803,8 +973,12 @@ const SellScreen: React.FC = () => {
                         </View>
                       )}
                       {isSoldOut && (
-                        <Text style={styles.soldOutLabel}>sold out</Text>
+                        <View style={styles.soldOutBadge}>
+                          <Feather name="slash" size={10} color={C.textSecondary} />
+                          <Text style={styles.soldOutBadgeText}>sold out</Text>
+                        </View>
                       )}
+                    </View>
                     </View>
                   </TouchableOpacity>
                   {mode === 'cart' && inCartQty > 0 && (
@@ -815,6 +989,12 @@ const SellScreen: React.FC = () => {
                 </View>
               );
             })}
+
+            {filteredProducts.length === 0 && searchQuery.length === 0 && effectiveCategory !== 'all' && (
+              <View style={styles.noResults}>
+                <Text style={styles.noResultsText}>{t.stall.emptyCategory}</Text>
+              </View>
+            )}
 
             {filteredProducts.length === 0 && searchQuery.length > 0 && (
               <View style={styles.noResults}>
@@ -868,12 +1048,12 @@ const SellScreen: React.FC = () => {
                 cart.map((item) =>
                   cartExpanded ? (
                     // ── Expanded view ──
-                    <View key={item.productId} style={styles.cartItemExpanded}>
+                    <View key={item.lineKey} style={styles.cartItemExpanded}>
                       <View style={styles.cartItemExpandedTop}>
                         <Text style={styles.cartItemNameExpanded} numberOfLines={1}>
                           {item.productName}
                         </Text>
-                        <TouchableOpacity onPress={() => removeFromCart(item.productId)}>
+                        <TouchableOpacity onPress={() => removeFromCart(item.lineKey)}>
                           <Feather name="trash-2" size={18} color={C.neutral} />
                         </TouchableOpacity>
                       </View>
@@ -884,14 +1064,14 @@ const SellScreen: React.FC = () => {
                         <View style={styles.quantityControlsExpanded}>
                           <TouchableOpacity
                             style={styles.quantityButtonExpanded}
-                            onPress={() => updateQuantity(item.productId, item.quantity - 1)}
+                            onPress={() => updateQuantity(item.lineKey, item.quantity - 1)}
                           >
                             <Feather name="minus" size={16} color={C.textPrimary} />
                           </TouchableOpacity>
                           <Text style={styles.quantityTextExpanded}>{item.quantity}</Text>
                           <TouchableOpacity
                             style={styles.quantityButtonExpanded}
-                            onPress={() => updateQuantity(item.productId, item.quantity + 1)}
+                            onPress={() => updateQuantity(item.lineKey, item.quantity + 1)}
                           >
                             <Feather name="plus" size={16} color={C.textPrimary} />
                           </TouchableOpacity>
@@ -903,7 +1083,7 @@ const SellScreen: React.FC = () => {
                     </View>
                   ) : (
                     // ── Collapsed view ──
-                    <View key={item.productId} style={styles.cartItem}>
+                    <View key={item.lineKey} style={styles.cartItem}>
                       <View style={styles.cartItemInfo}>
                         <Text style={styles.cartItemName} numberOfLines={1}>
                           {item.productName}
@@ -915,14 +1095,14 @@ const SellScreen: React.FC = () => {
                       <View style={styles.quantityControls}>
                         <TouchableOpacity
                           style={styles.quantityButton}
-                          onPress={() => updateQuantity(item.productId, item.quantity - 1)}
+                          onPress={() => updateQuantity(item.lineKey, item.quantity - 1)}
                         >
                           <Feather name="minus" size={16} color={C.textPrimary} />
                         </TouchableOpacity>
                         <Text style={styles.quantityText}>{item.quantity}</Text>
                         <TouchableOpacity
                           style={styles.quantityButton}
-                          onPress={() => updateQuantity(item.productId, item.quantity + 1)}
+                          onPress={() => updateQuantity(item.lineKey, item.quantity + 1)}
                         >
                           <Feather name="plus" size={16} color={C.textPrimary} />
                         </TouchableOpacity>
@@ -931,7 +1111,7 @@ const SellScreen: React.FC = () => {
                         <Text style={styles.cartItemTotalText}>
                           {currency} {(item.unitPrice * item.quantity).toFixed(2)}
                         </Text>
-                        <TouchableOpacity onPress={() => removeFromCart(item.productId)}>
+                        <TouchableOpacity onPress={() => removeFromCart(item.lineKey)}>
                           <Feather name="trash-2" size={16} color={C.neutral} />
                         </TouchableOpacity>
                       </View>
@@ -1528,6 +1708,66 @@ const SellScreen: React.FC = () => {
         onSkip={() => qrSheet?.onComplete()}
         onClose={() => setQrSheet(null)}
       />
+
+      {/* Category dropdown list — anchored under the dropdown button. */}
+      <Modal
+        visible={catDropdownOpen}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setCatDropdownOpen(false)}
+      >
+        <Pressable style={styles.catDropdownOverlay} onPress={() => setCatDropdownOpen(false)}>
+          <View
+            style={[styles.catDropdownCard, neu.raisedModal]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.catDropdownHeader}>
+              <Text style={styles.catDropdownTitle}>{t.stall.selectCategory}</Text>
+              <TouchableOpacity
+                onPress={() => setCatDropdownOpen(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.common.close}
+              >
+                <Feather name="x" size={20} color={C.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.catDropdownList} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <TouchableOpacity
+                style={styles.catDropdownItem}
+                onPress={() => { lightTap(); setSelectedCategory('all'); setCatDropdownOpen(false); }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: effectiveCategory === 'all' }}
+              >
+                <Feather name="layers" size={14} color={effectiveCategory === 'all' ? C.bronze : C.textSecondary} />
+                <Text style={[styles.catDropdownItemText, effectiveCategory === 'all' && styles.catDropdownItemTextActive]}>
+                  {t.stall.allCategories}
+                </Text>
+                {effectiveCategory === 'all' && <Feather name="check" size={14} color={C.bronze} style={{ marginLeft: 'auto' }} />}
+              </TouchableOpacity>
+              {categoryPills.map((pill) => {
+                const active = effectiveCategory === pill.value;
+                return (
+                  <TouchableOpacity
+                    key={pill.value}
+                    style={styles.catDropdownItem}
+                    onPress={() => { lightTap(); setSelectedCategory(pill.value); setCatDropdownOpen(false); }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Feather name={pill.icon as keyof typeof Feather.glyphMap} size={14} color={active ? C.bronze : C.textSecondary} />
+                    <Text style={[styles.catDropdownItemText, active && styles.catDropdownItemTextActive]} numberOfLines={1}>
+                      {pill.label}
+                    </Text>
+                    {active && <Feather name="check" size={14} color={C.bronze} style={{ marginLeft: 'auto' }} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1538,41 +1778,36 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
   },
 
-  // ─── Session header ────────────────────────────────────
+  // ─── POS toolbar header ────────────────────────────────
+  // Register-only: no money here — Home owns the hero total. Screen-tone
+  // surface + hairline so the neu controls blend; 40px tap rhythm throughout.
   sessionHeader: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
-    backgroundColor: withAlpha(C.bronze, 0.04),
+    paddingTop: SPACING.xs,
+    // A bit more room under the controls so the hairline sits lower (owner).
+    paddingBottom: SPACING.xl,
+    backgroundColor: C.background,
     borderBottomWidth: 1,
-    borderBottomColor: withAlpha(C.bronze, 0.12),
+    borderBottomColor: C.border,
   },
-  sessionHeaderRow: {
+  headerInner: {
+    width: '100%',
+    maxWidth: 1040,
+    alignSelf: 'center',
+  },
+  ledgerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 6,
+    paddingHorizontal: SPACING.md,
+    height: 40,
+    borderRadius: RADIUS.full,
   },
-  sessionTotal: {
-    fontSize: TYPOGRAPHY.size['2xl'],
+  ledgerBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  sessionSplit: {
-    ...TYPE.muted,
-    marginTop: 2,
-    fontVariant: ['tabular-nums'],
-  },
-  sessionSaleCount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.bronze,
-    backgroundColor: withAlpha(C.bronze, 0.10),
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: RADIUS.full,
-    overflow: 'hidden',
   },
 
   // ─── Content row ───────────────────────────────────────
@@ -1596,40 +1831,185 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.lg,
   },
 
-  // Search
-  searchContainer: {
+  // Browse row: category pills + expanding search
+  browseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    // A little gap above (below the hairline); the grid's paddingTop handles the
+    // gap below (and the badge clearance).
+    marginTop: SPACING.md,
     marginBottom: SPACING.md,
+    width: '100%',
+    maxWidth: 1040,
+    alignSelf: 'center',
+  },
+  pillsClip: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: SPACING.sm,
+    // Undo the content's vertical shadow-slack so the row still reads 40 tall;
+    // the horizontal ScrollView itself clips during the search squash.
+    marginVertical: -12,
+  },
+  pillsContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.sm,
+    // Neu-seam fix (docs/neu-vertical-error.md): pad INSIDE the clip container
+    // so the pills' top/bottom shadows fade out before the ScrollView's bounds
+    // instead of being sliced into hard edges.
+    paddingVertical: 12,
+  },
+  catPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 40,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+  },
+  catPillActive: {
+    backgroundColor: C.bronze,
+    ...SHADOWS.xs,
+  },
+  catPillText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  catPillTextActive: {
+    color: C.onAccent,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  // ─── Category dropdown (button + anchored list) ─────────────
+  catDropdownWrap: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: SPACING.sm,
+    alignItems: 'flex-start',
+  },
+  catDropdownBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 40,
+    maxWidth: '100%',
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.background,
+  },
+  catDropdownText: {
+    flexShrink: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  catDropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  catDropdownCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: C.background,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: withAlpha(C.textPrimary, 0.12),
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+  },
+  catDropdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
+  catDropdownTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  catDropdownList: {
+    maxHeight: 360,
+    flexGrow: 0,
+  },
+  catDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    minHeight: 44,
+  },
+  catDropdownItemText: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+  },
+  catDropdownItemTextActive: {
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  // Outer shell: background + neu shadow only. No overflow here — on iOS,
+  // overflow:hidden (masksToBounds) would clip this view's OWN shadow.
+  searchWrap: {
+    height: 40,
+    borderRadius: RADIUS.full,
+  },
+  // Inner clip: rounds + clips the input while the width animates.
+  searchClip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    gap: SPACING.xs,
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+  },
+  searchCollapsedBtn: {
+    width: 40,
+    height: 40,
+    marginHorizontal: -12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
+    padding: 0,
   },
 
   // Product grid
   productsScroll: {
     flex: 1,
+    // Shape-3 seam fix (neu onyx vertical error): bleed the scroll viewport out so
+    // its clip sits OUTSIDE the edge cards; the grid's paddingHorizontal puts the
+    // cards back. Otherwise the leftmost card's neu shadow gets sheared into a line.
+    marginHorizontal: -SPACING.md,
   },
   productsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.md,
+    // Small COLUMN gap so 2 tiles still fit one row in cart mode's narrow products
+    // area (the cart panel takes 30%); keep a comfortable ROW gap between rows.
+    columnGap: SPACING.sm,
+    rowGap: SPACING.md,
+    // Top room so the top-row cards' in-cart badge (top:-4) isn't clipped by the
+    // scroll's top edge (the "invisible line"), and cards sit a touch lower.
+    paddingTop: SPACING.md,
+    // Puts the cards back after the scroll bleed (see productsScroll) — same visual
+    // position, but now the edge cards' neu shadows have room and don't seam.
+    paddingHorizontal: SPACING.md,
     paddingBottom: SPACING['3xl'],
-    maxWidth: 680,
+    maxWidth: 1040,
     width: '100%',
     alignSelf: 'center' as const,
   },
   productCardWrapper: {
-    width: '47.5%',
     aspectRatio: 1,
     overflow: 'visible',
   },
@@ -1641,24 +2021,52 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   productInCart: {
     backgroundColor: withAlpha(C.bronze, 0.04),
   },
+  // Inner clip — rounds the image to the card corners WITHOUT clipping the neu
+  // shadow (which lives on productButton). See the onyx seam rule.
+  productClip: {
+    flex: 1,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+  },
+  // Product photo as a faint watermark behind the text. Moderate transparency; a
+  // plain/white background largely melts into the card (esp. light mode).
+  // Opacity is set inline per theme (light 0.85 / dark 0.65).
+  productImageBg: {
+    ...StyleSheet.absoluteFillObject,
+  },
   productInner: {
     flex: 1,
     padding: SPACING.lg,
     justifyContent: 'space-between',
   },
-  productOutOfStock: {
-    opacity: 0.35,
+  // Sold-out wash — a uniform card-tone veil over the photo/body. Replaces the old
+  // blanket opacity:0.35 (which faded the text too, killing readability).
+  soldOutVeil: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: withAlpha(C.background, 0.55),
+  },
+  productPriceSoldOut: {
+    color: C.textMuted,
+    textDecorationLine: 'line-through',
   },
   productName: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     marginBottom: SPACING.sm,
+    // Card-tone halo so the text stays legible over the photo (light glow in light
+    // mode, dark in dark) — lets the image stay bright without hurting readability.
+    textShadowColor: withAlpha(C.background, 0.9),
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
   productPrice: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.medium,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.bronze,
+    textShadowColor: withAlpha(C.background, 0.9),
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
   productStock: {
     flexDirection: 'row',
@@ -1671,11 +2079,25 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
-  soldOutLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.neutral,
+  soldOutBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    borderRadius: RADIUS.sm,
+    backgroundColor: withAlpha(C.textPrimary, 0.08),
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.16),
     marginTop: SPACING.xs,
+  },
+  soldOutBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textSecondary,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   cartBadge: {
     position: 'absolute',
@@ -2040,36 +2462,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
   },
 
-  // ─── Header: sale-count pill + controls row ────────────
-  saleCountPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.bronze, 0.10),
-    minHeight: 32,
-  },
-  saleCountText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.bronze,
-    fontVariant: ['tabular-nums'],
-  },
+  // ─── Header: controls + this-sale context ─────────────
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: SPACING.sm,
     gap: SPACING.sm,
   },
+  // True segmented control: quiet pillBg track, bronze active segment with the
+  // xs "floating pill" shadow. No raised shadow on the inactive segment.
   modeToggle: {
     flexDirection: 'row',
-    backgroundColor: C.background,
+    backgroundColor: C.pillBg,
     borderRadius: RADIUS.full,
-    padding: 2,
-    gap: 4,
+    padding: 3,
   },
   modeBtn: {
     flexDirection: 'row',
@@ -2078,11 +2484,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    minHeight: 32,
-    backgroundColor: withAlpha(C.textPrimary, 0.03),
+    minHeight: 40,
   },
   modeBtnActive: {
     backgroundColor: C.bronze,
+    ...SHADOWS.xs,
   },
   modeBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -2097,6 +2503,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
   },
+  contextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
   payDefaultPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2105,26 +2517,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
     backgroundColor: withAlpha(C.bronze, 0.06),
-    minHeight: 36,
+    minHeight: 40,
   },
   payDefaultText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
   },
-  headerIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(C.textPrimary, 0.03),
-  },
   clearancePillOn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    height: 36,
+    height: 40,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
     backgroundColor: C.bronze,
@@ -2431,13 +2835,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.onAccent,
   },
 
-  // ─── Serving customer chip ─────────────────────────────
+  // ─── Serving customer chip (sits in contextRow) ────────
   servingChip: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: SPACING.xs,
-    marginTop: SPACING.sm,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
@@ -2445,6 +2848,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderWidth: 1,
     borderColor: withAlpha(C.bronze, 0.3),
     maxWidth: '100%',
+    minHeight: 40,
+    flexShrink: 1,
   },
   servingText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -2457,13 +2862,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: SPACING.xs,
-    marginTop: SPACING.sm,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
     borderWidth: 1,
     borderColor: C.border,
-    minHeight: 30,
+    minHeight: 40,
   },
   addCustomerText: {
     fontSize: TYPOGRAPHY.size.sm,

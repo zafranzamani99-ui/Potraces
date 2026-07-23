@@ -10,7 +10,7 @@ import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsSt
 import { useAuthStore } from '../../store/authStore';
 import { signOut, supabaseBusiness } from '../../services/supabase';
 import { syncAll, clearProfileCache } from '../../services/sellerSync';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
 import { useT } from '../../i18n';
@@ -255,7 +255,7 @@ const SellerManage: React.FC = () => {
       onRequestClose={() => setSetupModalVisible(false)}
     >
       <Pressable style={styles.confirmOverlay} onPress={() => setSetupModalVisible(false)}>
-        <View style={styles.confirmCard} onStartShouldSetResponder={() => true}>
+        <View style={[styles.confirmCard, neuF.raisedModal]} onStartShouldSetResponder={() => true}>
           <Text style={styles.confirmTitle}>{t.sellerManage.changeSetupConfirmTitle}</Text>
           {!!incomeType && (
             <Text style={styles.confirmCurrent} numberOfLines={1}>{incomeType}</Text>
@@ -420,13 +420,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   confirmCard: {
-    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     width: '100%',
     maxWidth: 380,
     alignSelf: 'center',
-    ...SHADOWS.lg,
+    // Onyx dialog: neu.raisedModal (spread at call site) = C.background surface +
+    // soft neutral drop; border per the floating-modal-outline rule.
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.12),
   },
   confirmTitle: {
     fontSize: TYPOGRAPHY.size.lg,
