@@ -75,6 +75,24 @@ let _unsubAutoSync: (() => void) | null = null;
 let _unsubSubSched: (() => void) | null = null;
 let _lastForegroundSync = 0;
 
+// Pull active broadcasts from the announcements table into the local inbox.
+// Idempotent (mergeBroadcasts dedupes by id), so it's safe to call on launch and
+// again whenever a broadcast push arrives or is tapped — that's how a broadcast
+// sent while the app is running still lands in the bell.
+async function refreshBroadcasts() {
+  try {
+    const { data } = await supabasePersonal
+      .from('announcements')
+      .select('id,title,body,created_at')
+      .eq('active', true)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data && data.length) useNotificationStore.getState().mergeBroadcasts(data as BroadcastRow[]);
+  } catch {
+    /* best-effort */
+  }
+}
+
 function App() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -440,19 +458,19 @@ function App() {
     const recvSub = Notifications.addNotificationReceivedListener((n) => {
       const data = n.request.content.data as { type?: string } | undefined;
       if (data?.type === 'quick_log') { run(); return; }
-      // Persist other foreground pushes into the in-app inbox. Broadcasts also
-      // arrive via the announcements fetch, so skip them here to avoid a dupe row.
-      if (data?.type !== 'broadcast') {
-        const c = n.request.content;
-        useNotificationStore.getState().addNotification({
-          id: n.request.identifier || `push-${Date.now()}`,
-          type: 'push',
-          title: c.title || '',
-          body: c.body || '',
-          createdAt: Date.now(),
-          data: (data as Record<string, unknown>) ?? undefined,
-        });
-      }
+      // Broadcast arriving while the app is open → pull it from the announcements
+      // table into the inbox (same id as the launch fetch, so no duplicate).
+      if (data?.type === 'broadcast') { refreshBroadcasts(); return; }
+      // Persist any other foreground push into the in-app inbox.
+      const c = n.request.content;
+      useNotificationStore.getState().addNotification({
+        id: n.request.identifier || `push-${Date.now()}`,
+        type: 'push',
+        title: c.title || '',
+        body: c.body || '',
+        createdAt: Date.now(),
+        data: (data as Record<string, unknown>) ?? undefined,
+      });
     });
     // Primary live-update: realtime INSERT events on the inbox — works even
     // when notifications are denied and no AppState transition fires.
@@ -592,6 +610,16 @@ function App() {
       handledId = id;
       const data = response.notification.request.content.data as
         { type?: string; orderId?: string; sessionId?: string } | undefined;
+      if (data?.type === 'broadcast') {
+        // Broadcast tap → pull it into the inbox, then open the Notifications screen.
+        refreshBroadcasts();
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            (navigationRef as any).navigate('Notifications');
+          }
+        }, delay);
+        return;
+      }
       if (data?.type === 'echo_checkin') {
         // Daily check-in reminder → Echo chat, where the check-in greeting
         // (today's tally + rhythm note) fires on open.
@@ -699,18 +727,7 @@ function App() {
     // Notification inbox: auto-clear read items >60 days, then pull active
     // broadcasts (best-effort; RLS returns nothing when not signed in).
     useNotificationStore.getState().pruneOlderThan(60 * 24 * 60 * 60 * 1000);
-    supabasePersonal
-      .from('announcements')
-      .select('id,title,body,created_at')
-      .eq('active', true)
-      .order('created_at', { ascending: false })
-      .limit(50)
-      .then(
-        ({ data }) => {
-          if (data && data.length) useNotificationStore.getState().mergeBroadcasts(data as BroadcastRow[]);
-        },
-        () => {},
-      );
+    refreshBroadcasts();
   }, []);
 
   if (update?.required) {
