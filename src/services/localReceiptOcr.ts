@@ -307,6 +307,16 @@ async function runOcr(imagePath: string): Promise<ParsedReceiptText> {
   return { rows, rawText: rows.join('\n') };
 }
 
+/**
+ * OCR an image to its reconstructed text ROWS (the input `parsePaymentScreenshot`
+ * expects). Thin public wrapper over the shared `runOcr` so Share-to-Log reuses
+ * the exact same ML Kit read + row reconstruction the receipt paths use. Guard
+ * with `isLocalOcrAvailable()` first — throws when the native module is absent.
+ */
+export async function recognizeRows(imagePath: string): Promise<string[]> {
+  return (await runOcr(imagePath)).rows;
+}
+
 // ─── Entry points ───────────────────────────────────────────
 
 /**

@@ -761,7 +761,7 @@ export interface Transaction {
   frequencyContext?: 'isolated' | 'clustered';
   emotionalFlag?: boolean;
   rawInput?: string;
-  inputMethod?: 'manual' | 'text' | 'photo' | 'voice';
+  inputMethod?: 'manual' | 'text' | 'photo' | 'voice' | 'share';
   confidence?: 'high' | 'low';
   createdAt: Date;
   updatedAt: Date;

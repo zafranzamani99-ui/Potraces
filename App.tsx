@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform, Appearance } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform, Appearance, NativeModules, NativeEventEmitter } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -22,6 +22,7 @@ import { useSettingsStore, clearBusinessLocalData } from './src/store/settingsSt
 import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
+import { logPaymentFromShare } from './src/services/shareToLog';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
 import { refreshQuickLogConfigured } from './src/services/quickLogKey';
 import './src/services/quickLogCategories'; // side-effect: keeps the Shortcut's live category list fresh
@@ -545,6 +546,23 @@ function App() {
         return;
       }
 
+      // Share-to-Log: the iOS share extension fires potraces://share?payload={image,text,url}.
+      // Hand the shared screenshot to the offline-first OCR→parse→log pipeline (which
+      // fires its own "Logged RM…" / "couldn't read" local notification). Personal mode
+      // first so it works from business / cold start. Must be before the isAdd guard.
+      if (head === 'share') {
+        if (useAppStore.getState().mode !== 'personal') {
+          useAppStore.getState().setMode('personal');
+        }
+        try {
+          const payload = JSON.parse(params.payload ?? '{}') as { image?: string | null };
+          void logPaymentFromShare(payload.image ?? null);
+        } catch {
+          void logPaymentFromShare(null);
+        }
+        return;
+      }
+
       const isAdd = ['add', 'quick-add', 'quickadd', 'add-income', 'add-expense', 'income', 'log'].includes(head);
       if (!isAdd) return;
 
@@ -601,6 +619,25 @@ function App() {
     return () => sub.remove();
   }, []);
 
+  // Android Share-to-Log bridge. expo-share-extension is iOS-only; on Android the
+  // native ShareModule catches a SEND image/* intent, copies it to cache, and
+  // exposes it two ways (mirrors Linking's getInitialURL vs 'url' event): a cold
+  // start reads getInitialShare(), a warm share arrives on the PotracesShareImage
+  // event (MainActivity is singleTask → onNewIntent). Both feed the same pipeline.
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const mod = (NativeModules as any).PotracesShare;
+    if (!mod) return;
+    mod.getInitialShare?.()
+      .then((uri: string | null) => { if (uri) void logPaymentFromShare(uri); })
+      .catch(() => {});
+    const emitter = new NativeEventEmitter(mod);
+    const sub = emitter.addListener('PotracesShareImage', (uri: string) => {
+      if (uri) void logPaymentFromShare(uri);
+    });
+    return () => sub.remove();
+  }, []);
+
   // Push notification tap → navigate (order / quick-log / collectz)
   React.useEffect(() => {
     let handledId: string | null = null;
@@ -631,15 +668,22 @@ function App() {
         }, delay);
         return;
       }
-      if (data?.type === 'quick_log') {
+      if (data?.type === 'quick_log' || data?.type === 'share_logged') {
         // Switch to personal mode (RootNavigator re-renders to PersonalNavigator)
         // and open the full transactions list, where the new entry is visible.
+        // Share-to-Log's "Logged RM…" notification tap lands here too.
         useAppStore.getState().setMode('personal');
         setTimeout(() => {
           if (navigationRef.isReady()) {
             (navigationRef as any).navigate('TransactionsList');
           }
         }, delay);
+        return;
+      }
+      if (data?.type === 'share_failed') {
+        // Share-to-Log couldn't read the screenshot → open Quick Add for manual entry.
+        useAppStore.getState().setMode('personal');
+        setTimeout(() => openQuickAdd('expense'), delay);
         return;
       }
       if ((data?.type === 'new_order' || data?.type === 'payment_received') && data.orderId) {

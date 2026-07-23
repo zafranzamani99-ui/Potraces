@@ -58,7 +58,10 @@
       },
       "entitlements": {
         "com.apple.developer.proximity-reader.payment.acceptance": true,
-        "aps-environment": "production"
+        "aps-environment": "production",
+        "com.apple.security.application-groups": [
+          "group.com.potraces.app"
+        ]
       }
     },
     "android": {
@@ -91,6 +94,28 @@
           "category": [
             "BROWSABLE",
             "DEFAULT"
+          ]
+        },
+        {
+          "action": "SEND",
+          "category": [
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "image/*"
+            }
+          ]
+        },
+        {
+          "action": "SEND_MULTIPLE",
+          "category": [
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "image/*"
+            }
           ]
         }
       ]

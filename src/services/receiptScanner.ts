@@ -35,7 +35,7 @@ export class ScanBusyError extends Error {
  * scans from the document scanner. Uses base64 output directly from the
  * manipulator to avoid file-system URI issues; falls back to raw on failure.
  */
-async function prepareImage(uri: string): Promise<string> {
+export async function prepareImage(uri: string): Promise<string> {
   try {
     const result = await manipulateAsync(
       uri,
