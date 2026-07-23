@@ -24,7 +24,7 @@ import { useSellerStore } from '../../store/sellerStore';
 import { lightTap } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 
-const DEFAULT_UNITS = ['balang', 'tin', 'bekas', 'pack', 'piece', 'kotak', 'biji', 'keping'];
+export const DEFAULT_UNITS = ['balang', 'tin', 'bekas', 'pack', 'piece', 'kotak', 'biji', 'keping'];
 
 interface UnitManagerProps {
   visible: boolean;

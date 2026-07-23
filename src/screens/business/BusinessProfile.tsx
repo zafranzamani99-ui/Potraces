@@ -3,91 +3,234 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   Image,
-  Keyboard,
-  Platform,
   Modal,
   Pressable,
+  Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { LinearGradient } from 'expo-linear-gradient';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Clipboard from 'expo-clipboard';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
-import { useSettingsStore, type BusinessProfile as BizProfile } from '../../store/settingsStore';
+import PaywallModal from '../../components/common/PaywallModal';
+import { useNeu } from '../../components/common/neu';
+import NewstInput from '../../components/business/NewstInput';
+import BusinessCard, {
+  CARD_COLORS,
+  CARD_FONTS,
+  CARD_LAYOUTS,
+  LOGO_SHAPES,
+  DEFAULT_CARD_COLOR,
+  useBusinessCardFonts,
+  type CardLayoutKey,
+} from '../../components/business/BusinessCard';
+import { useSettingsStore, type BusinessProfile as BizProfile, type BusinessBankDetails } from '../../store/settingsStore';
+import { usePremiumStore } from '../../store/premiumStore';
 import { shareCapturedView } from '../../services/receiptImageExport';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
-import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 
-type FieldKey = Exclude<keyof BizProfile, 'logoUri' | 'cardColor' | 'cardFont'>;
+type FieldKey = Exclude<keyof BizProfile, 'logoUri' | 'cardColor' | 'cardFont' | 'cardStyle' | 'logoShape'>;
 
-// Curated, professional card accent colours — all dark/muted so white text reads
-// cleanly on them. First is the app's olive (default).
-const CARD_COLORS = ['#4F5104', '#1F2937', '#0F3D3E', '#3B2F63', '#7C2D12', '#14532D', '#1E3A5F', '#3F3F46'];
+/**
+ * Schematic mini-preview of a card layout for the picker — a flat wireframe in
+ * the selected colour, not a re-drawn card. Selected state = bronze ring.
+ */
+const LayoutThumb: React.FC<{ layout: CardLayoutKey; color: string; selected: boolean; C: ReturnType<typeof useCalm> }> = ({
+  layout,
+  color,
+  selected,
+  C,
+}) => {
+  const lineGrey = { backgroundColor: withAlpha(C.textPrimary, 0.18) };
+  const lineWhite = { backgroundColor: 'rgba(255,255,255,0.75)' };
+  return (
+    <View style={[thumb.box, { borderColor: selected ? C.bronze : C.border }, selected && thumb.boxSelected]}>
+      {layout === 'band' && (
+        <>
+          <View style={[thumb.band, { backgroundColor: color }]}>
+            <View style={thumb.dotWhite} />
+            <View style={[thumb.line, thumb.w60, lineWhite]} />
+          </View>
+          <View style={thumb.pad}>
+            <View style={[thumb.line, thumb.w80, lineGrey]} />
+            <View style={[thumb.line, thumb.w55, lineGrey]} />
+          </View>
+        </>
+      )}
+      {layout === 'split' && (
+        <View style={thumb.row}>
+          <View style={[thumb.split, { backgroundColor: color }]}>
+            <View style={thumb.dotWhite} />
+          </View>
+          <View style={[thumb.pad, { flex: 1 }]}>
+            <View style={[thumb.line, thumb.w80, { backgroundColor: withAlpha(C.textPrimary, 0.5) }]} />
+            <View style={[thumb.line, thumb.w60, lineGrey]} />
+            <View style={[thumb.line, thumb.w60, lineGrey]} />
+          </View>
+        </View>
+      )}
+      {layout === 'minimal' && (
+        <View style={thumb.pad}>
+          <View style={[thumb.line, thumb.w80, { backgroundColor: withAlpha(C.textPrimary, 0.55) }]} />
+          <View style={[thumb.accentRule, { backgroundColor: color }]} />
+          <View style={[thumb.line, thumb.w60, lineGrey]} />
+          <View style={[thumb.line, thumb.w55, lineGrey]} />
+        </View>
+      )}
+      {layout === 'solid' && (
+        <View style={[thumb.fill, { backgroundColor: color }]}>
+          <View style={thumb.dotWhite} />
+          <View style={[thumb.line, thumb.w80, lineWhite]} />
+          <View style={[thumb.line, thumb.w60, lineWhite]} />
+          <View style={[thumb.line, thumb.w55, lineWhite]} />
+        </View>
+      )}
+    </View>
+  );
+};
 
-// Professional system-font choices (graceful fallback to system if unavailable —
-// no bundled font files, so no native rebuild needed).
-const CARD_FONTS: { key: string; label: string; family?: string }[] = [
-  { key: 'modern', label: 'Modern', family: undefined },
-  { key: 'classic', label: 'Classic', family: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }) },
-  { key: 'light', label: 'Light', family: Platform.select({ ios: 'HelveticaNeue-Light', android: 'sans-serif-light', default: undefined }) },
-];
-
-/** Darken a hex colour by multiplying each channel (for the gradient's low stop). */
-function darken(hex: string, f = 0.72): string {
-  const m = hex.replace('#', '');
-  const full = m.length === 3 ? m.split('').map((c) => c + c).join('') : m;
-  const n = parseInt(full, 16);
-  if (Number.isNaN(n)) return hex;
-  const r = Math.round(((n >> 16) & 255) * f);
-  const g = Math.round(((n >> 8) & 255) * f);
-  const b = Math.round((n & 255) * f);
-  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
-}
-
-/** Word-initials for the logo fallback (up to 2 letters). */
-function initialsOf(name: string): string {
-  return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
-}
+/** Styles for LayoutThumb — fixed sizes (it's a wireframe, not theme-typed). */
+const thumb = StyleSheet.create({
+  box: {
+    width: 58,
+    height: 72,
+    borderRadius: RADIUS.md,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+  },
+  boxSelected: { borderWidth: 2 },
+  band: {
+    height: 34,
+    padding: 7,
+    gap: 4,
+  },
+  fill: {
+    flex: 1,
+    padding: 7,
+    gap: 4,
+  },
+  split: {
+    width: 22,
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+  row: { flexDirection: 'row', flex: 1 },
+  pad: { padding: 7, gap: 5 },
+  dotWhite: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  line: { height: 3, borderRadius: 2 },
+  accentRule: { width: 12, height: 3, borderRadius: 2 },
+  w80: { width: '80%' },
+  w60: { width: '60%' },
+  w55: { width: '55%' },
+});
 
 /**
  * Business Profile — the shop's premium "business card". Edits
  * settingsStore.businessProfile (business-only; survives sign-out, wiped by
- * Delete Account). Live-saves each field; tap the edit icon on the card to open
- * a floating modal that recolours / re-fonts it. The card is always light and is
- * captured to a PNG to share (WhatsApp etc.).
+ * Delete Account). Live-saves each field; the pencil on the card opens a
+ * bottom sheet that restyles it (layout / colour / font / logo shape). The
+ * card itself is rendered by BusinessCard (always light) and captured to a
+ * PNG to share (WhatsApp etc.).
  */
 const BusinessProfile: React.FC = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const C = useCalm();
-  const isDark = useIsDark();
   const t = useT();
+  const neu = useNeu(undefined, { faintDark: true });
   const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const cardRef = useRef<View>(null);
+  const { height: winHeight } = useWindowDimensions();
+  // Bottom sheet never covers the whole screen — the live card stays visible.
+  const sheetMaxHeight = Math.min(winHeight * 0.78, 620);
   const [styleModalVisible, setStyleModalVisible] = useState(false);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const [bankCopied, setBankCopied] = useState(false);
 
   const profile = useSettingsStore((s) => s.businessProfile);
   const setBusinessProfile = useSettingsStore((s) => s.setBusinessProfile);
+  const profiles = useSettingsStore((s) => s.businessProfiles);
+  const activeProfileId = useSettingsStore((s) => s.activeBusinessProfileId);
+  const addProfile = useSettingsStore((s) => s.addBusinessProfile);
+  const selectProfile = useSettingsStore((s) => s.setActiveBusinessProfile);
+  const deleteProfile = useSettingsStore((s) => s.deleteBusinessProfile);
+  const canCreateProfile = usePremiumStore((s) => s.canCreateBusinessProfile);
+  // Bank-transfer details are SHARED across the account (not per-profile).
+  const bankDetails = useSettingsStore((s) => s.businessBankDetails);
+  const setBankDetails = useSettingsStore((s) => s.setBusinessBankDetails);
+
+  const bankFields: { key: keyof BusinessBankDetails; label: string; keyboardType?: 'default' | 'phone-pad'; autoCapitalize?: 'none' | 'words' | 'characters' }[] = [
+    { key: 'bankName', label: t.businessProfile.bankName, autoCapitalize: 'words' },
+    { key: 'accountNumber', label: t.businessProfile.accountNumber, keyboardType: 'phone-pad' },
+    { key: 'accountHolder', label: t.businessProfile.accountHolder, autoCapitalize: 'words' },
+    { key: 'duitnowId', label: t.businessProfile.duitnowId },
+  ];
+
+  const copyBank = useCallback(async () => {
+    lightTap();
+    const lines = bankFields
+      .map((f) => (bankDetails[f.key].trim() ? `${f.label}: ${bankDetails[f.key].trim()}` : null))
+      .filter(Boolean);
+    if (lines.length === 0) {
+      showToast(t.businessProfile.bankEmpty, 'error');
+      return;
+    }
+    await Clipboard.setStringAsync(lines.join('\n'));
+    // Inline "Copied" feedback (icon → check, label → Copied) like Collectz — no toast.
+    setBankCopied(true);
+    setTimeout(() => setBankCopied(false), 1400);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankDetails, showToast, t]);
+
+  // Add is tier-gated (free 1 / pro 2 / premium 4). Over the cap → paywall.
+  const handleAddProfile = useCallback(() => {
+    lightTap();
+    if (!canCreateProfile(profiles.length)) { setPaywallVisible(true); return; }
+    addProfile();
+  }, [canCreateProfile, profiles.length, addProfile]);
+
+  const confirmDelete = useCallback(() => {
+    if (profiles.length <= 1) return;
+    Alert.alert(t.businessProfile.removeProfile, t.businessProfile.removeProfileMsg, [
+      { text: t.common.cancel, style: 'cancel' },
+      {
+        text: t.common.delete,
+        style: 'destructive',
+        onPress: () => { lightTap(); deleteProfile(activeProfileId); },
+      },
+    ]);
+  }, [profiles.length, activeProfileId, deleteProfile, t]);
 
   useEffect(() => {
     navigation.setOptions({ title: t.businessProfile.title });
   }, [navigation, t]);
 
-  const headerColor = profile.cardColor || CARD_COLORS[0];
-  const fontFamily = CARD_FONTS.find((f) => f.key === profile.cardFont)?.family;
-  const activeFontKey = profile.cardFont || CARD_FONTS[0].key;
+  // Load the card's font families once for this screen (card + font picker rows).
+  useBusinessCardFonts();
+
+  // Selected customisation (mirrors BusinessCard's own fallbacks).
+  const selectedColor = profile.cardColor || DEFAULT_CARD_COLOR;
+  const activeFontKey = profile.cardFont || 'system';
+  const activeLayout = (profile.cardStyle || 'band') as CardLayoutKey;
+  const activeShape = profile.logoShape || 'rounded';
 
   const pickLogo = useCallback(async () => {
     lightTap();
@@ -127,26 +270,17 @@ const BusinessProfile: React.FC = () => {
     setTimeout(() => pickLogo(), 120);
   }, [pickLogo]);
 
-  const fields: { key: FieldKey; label: string; placeholder: string; keyboardType?: 'default' | 'phone-pad' | 'email-address'; multiline?: boolean; autoCapitalize?: 'none' | 'words' | 'sentences' }[] = [
-    { key: 'shopName', label: t.businessProfile.shopName, placeholder: t.businessProfile.shopNamePlaceholder, autoCapitalize: 'words' },
-    { key: 'ownerName', label: t.businessProfile.ownerName, placeholder: t.businessProfile.ownerNamePlaceholder, autoCapitalize: 'words' },
-    { key: 'whatsapp', label: t.businessProfile.whatsapp, placeholder: t.businessProfile.whatsappPlaceholder, keyboardType: 'phone-pad' },
-    { key: 'address', label: t.businessProfile.address, placeholder: t.businessProfile.addressPlaceholder, multiline: true },
-    { key: 'email', label: t.businessProfile.email, placeholder: t.businessProfile.emailPlaceholder, keyboardType: 'email-address', autoCapitalize: 'none' },
-    { key: 'hours', label: t.businessProfile.hours, placeholder: t.businessProfile.hoursPlaceholder },
-    { key: 'ssm', label: t.businessProfile.ssm, placeholder: t.businessProfile.ssmPlaceholder },
+  const fields: { key: FieldKey; label: string; keyboardType?: 'default' | 'phone-pad' | 'email-address'; multiline?: boolean; autoCapitalize?: 'none' | 'words' | 'sentences' }[] = [
+    { key: 'shopName', label: t.businessProfile.shopName, autoCapitalize: 'words' },
+    { key: 'ownerName', label: t.businessProfile.ownerName, autoCapitalize: 'words' },
+    { key: 'whatsapp', label: t.businessProfile.whatsapp, keyboardType: 'phone-pad' },
+    { key: 'address', label: t.businessProfile.address, multiline: true },
+    { key: 'email', label: t.businessProfile.email, keyboardType: 'email-address', autoCapitalize: 'none' },
+    { key: 'hours', label: t.businessProfile.hours },
+    { key: 'ssm', label: t.businessProfile.ssm },
   ];
 
   const hasAny = fields.some((f) => profile[f.key]?.trim()) || !!profile.logoUri;
-  const initials = initialsOf(profile.shopName);
-
-  const cardRows = ([
-    { icon: 'phone' as const, value: profile.whatsapp },
-    { icon: 'map-pin' as const, value: profile.address },
-    { icon: 'mail' as const, value: profile.email },
-    { icon: 'clock' as const, value: profile.hours },
-    { icon: 'hash' as const, value: profile.ssm },
-  ]).filter((r) => r.value?.trim());
 
   const shareCard = useCallback(async () => {
     lightTap();
@@ -159,75 +293,74 @@ const BusinessProfile: React.FC = () => {
         fileBaseName: profile.shopName || 'business-card',
         dialogTitle: t.businessProfile.shareCard,
       });
-    } catch {
+    } catch (e) {
+      console.warn('[BusinessProfile] share card failed:', e);
       showToast(t.businessProfile.shareFailed, 'error');
     }
   }, [hasAny, profile.shopName, showToast, t]);
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
-      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bottomOffset={80}
+      >
+          {/* ── Profile switcher — the shop's saved "faces" ── */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.profilesRow}
+            contentContainerStyle={styles.profilesRowContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {profiles.map((p) => {
+              const selected = p.id === activeProfileId;
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  onPress={() => { lightTap(); selectProfile(p.id); }}
+                  style={[styles.profileChip, neu.raised, selected && styles.profileChipActive]}
+                  activeOpacity={0.8}
+                >
+                  {selected && <Feather name="check" size={13} color={C.onAccent} />}
+                  <Text
+                    style={[styles.profileChipText, selected && styles.profileChipTextActive]}
+                    numberOfLines={1}
+                  >
+                    {p.shopName?.trim() || t.businessProfile.untitled}
+                  </Text>
+                  {selected && <Text style={styles.defaultTag}>{t.businessProfile.defaultBadge}</Text>}
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity
+              onPress={handleAddProfile}
+              style={[styles.profileAdd, neu.raised]}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={t.businessProfile.newProfile}
+            >
+              <Feather name="plus" size={16} color={C.bronze} />
+              <Text style={styles.profileAddText}>{t.businessProfile.newProfile}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+
           {/* ── Shareable business card + floating edit button ── */}
           <View style={styles.cardContainer}>
-            <View ref={cardRef} collapsable={false} style={CARD.card}>
-              <LinearGradient
-                colors={[headerColor, darken(headerColor)]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={CARD.header}
-              >
-                {profile.logoUri ? (
-                  <Image source={{ uri: profile.logoUri }} style={CARD.logo} resizeMode="cover" />
-                ) : (
-                  <View style={CARD.logoFallback}>
-                    {initials ? (
-                      <Text style={[CARD.initials, fontFamily ? { fontFamily } : null]}>{initials}</Text>
-                    ) : (
-                      <Feather name="shopping-bag" size={22} color={CALM.onAccent} />
-                    )}
-                  </View>
-                )}
-                <View style={{ flex: 1 }}>
-                  <Text style={[CARD.shop, fontFamily ? { fontFamily } : null, !profile.shopName && CARD.shopMuted]} numberOfLines={2}>
-                    {profile.shopName || t.businessProfile.shopNamePlaceholder}
-                  </Text>
-                  {!!profile.ownerName && (
-                    <Text style={[CARD.owner, fontFamily ? { fontFamily } : null]} numberOfLines={1}>{profile.ownerName}</Text>
-                  )}
-                </View>
-              </LinearGradient>
-
-              {cardRows.length > 0 && (
-                <View style={CARD.body}>
-                  {cardRows.map((r) => (
-                    <View key={r.icon} style={CARD.row}>
-                      <View style={[CARD.rowChip, { backgroundColor: withAlpha(headerColor, 0.1) }]}>
-                        <Feather name={r.icon} size={14} color={headerColor} />
-                      </View>
-                      <Text style={CARD.rowText} numberOfLines={2}>{r.value}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {!hasAny && (
-                <View style={CARD.body}>
-                  <Text style={CARD.hint}>{t.businessProfile.cardHint}</Text>
-                </View>
-              )}
-
-              <View style={[CARD.footerBar, { backgroundColor: headerColor }]} />
+            <View ref={cardRef} collapsable={false}>
+              <BusinessCard
+                profile={profile}
+                shopPlaceholder={t.businessProfile.shopNamePlaceholder}
+                emptyHint={t.businessProfile.cardHint}
+              />
             </View>
 
             {/* Edit button — sibling of the captured card, so it's NOT in the shared image */}
             <TouchableOpacity
-              style={styles.editBtn}
+              style={[styles.editBtn, { backgroundColor: C.bronze }]}
               onPress={() => { lightTap(); setStyleModalVisible(true); }}
               activeOpacity={0.8}
               accessibilityRole="button"
@@ -243,218 +376,236 @@ const BusinessProfile: React.FC = () => {
             <Button
               title={t.businessProfile.shareCard}
               onPress={shareCard}
-              variant="outline"
+              variant="primary"
+              accentColor={C.bronze}
               icon="share-2"
               fullWidth
+              disabled={!hasAny}
             />
+            {profiles.length > 1 && (
+              <TouchableOpacity
+                onPress={confirmDelete}
+                style={styles.removeProfile}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.businessProfile.removeProfile}
+              >
+                <Feather name="trash-2" size={13} color={C.neutral} />
+                <Text style={styles.removeProfileText}>{t.businessProfile.removeProfile}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <Text style={styles.subtitle}>{t.businessProfile.subtitle}</Text>
 
-          {/* ── Editable fields ── */}
-          <Card style={styles.formCard}>
-            {fields.map((f, i) => (
-              <View key={f.key} style={[styles.field, i > 0 && styles.fieldDivider]}>
-                <Text style={styles.fieldLabel}>{f.label}</Text>
-                <TextInput
-                  value={profile[f.key]}
-                  onChangeText={(v) => setBusinessProfile({ [f.key]: v } as Partial<BizProfile>)}
-                  placeholder={f.placeholder}
-                  placeholderTextColor={C.textMuted}
-                  style={[styles.fieldInput, f.multiline && styles.fieldInputMultiline]}
-                  keyboardType={f.keyboardType ?? 'default'}
-                  autoCapitalize={f.autoCapitalize ?? 'sentences'}
-                  multiline={f.multiline}
-                  returnKeyType={f.multiline ? 'default' : 'done'}
-                  onSubmitEditing={f.multiline ? undefined : Keyboard.dismiss}
-                  keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={withAlpha(C.accent, 0.25)}
-                />
-              </View>
-            ))}
-          </Card>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          {/* ── Editable fields (Newst Input — the business-mode standard) ── */}
+          {fields.map((f) => (
+            <NewstInput
+              key={f.key}
+              label={f.label}
+              value={profile[f.key]}
+              onChangeText={(v) => setBusinessProfile({ [f.key]: v } as Partial<BizProfile>)}
+              keyboardType={f.keyboardType}
+              autoCapitalize={f.autoCapitalize}
+              multiline={f.multiline}
+              style={styles.fieldSpacing}
+            />
+          ))}
 
-      {/* ── Card-style floating modal (colour + font) ── */}
+          {/* ── Payment details (bank transfer) — shared, screen-only, copyable ── */}
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionHeader}>{t.businessProfile.paymentSection}</Text>
+            <TouchableOpacity
+              onPress={copyBank}
+              style={[styles.copyBtn, bankCopied && styles.copyBtnActive]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t.businessProfile.copyPayment}
+            >
+              <Feather name={bankCopied ? 'check' : 'copy'} size={14} color={C.bronze} />
+              <Text style={styles.copyBtnText}>{bankCopied ? t.common.copied : t.businessProfile.copyPayment}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.sectionHint}>{t.businessProfile.paymentHint}</Text>
+          {bankFields.map((f) => (
+            <NewstInput
+              key={f.key}
+              label={f.label}
+              value={bankDetails[f.key]}
+              onChangeText={(v) => setBankDetails({ [f.key]: v } as Partial<BusinessBankDetails>)}
+              keyboardType={f.keyboardType}
+              autoCapitalize={f.autoCapitalize}
+              style={styles.fieldSpacing}
+            />
+          ))}
+      </KeyboardAwareScrollView>
+
+      {/* ── Card-style bottom sheet (layout / colour / font / logo) ── */}
       <Modal
         visible={styleModalVisible}
         transparent
         statusBarTranslucent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setStyleModalVisible(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setStyleModalVisible(false)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t.businessProfile.customise}</Text>
+        <Pressable style={styles.sheetOverlay} onPress={() => setStyleModalVisible(false)}>
+          <Pressable
+            style={[styles.sheet, { maxHeight: sheetMaxHeight, paddingBottom: insets.bottom + SPACING.md }]}
+            onPress={() => {}}
+          >
+            <View style={styles.grabber} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>{t.businessProfile.customise}</Text>
               <TouchableOpacity
                 onPress={() => setStyleModalVisible(false)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 accessibilityRole="button"
                 accessibilityLabel={t.common.close}
               >
-                <Feather name="x" size={22} color={C.textSecondary} />
+                <Feather name="x" size={20} color={C.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            {/* Logo */}
-            <Text style={styles.styleLabel}>{t.businessProfile.logo}</Text>
-            <View style={styles.logoRow}>
-              {profile.logoUri ? (
-                <Image source={{ uri: profile.logoUri }} style={styles.logoThumb} resizeMode="cover" />
-              ) : (
-                <View style={[styles.logoThumb, styles.logoThumbEmpty]}>
-                  <Feather name="image" size={20} color={C.textMuted} />
-                </View>
-              )}
-              <View style={styles.logoActions}>
-                <TouchableOpacity onPress={handleLogoPress} style={styles.logoBtn} activeOpacity={0.7}>
-                  <Feather name="upload" size={15} color={C.accent} />
-                  <Text style={styles.logoBtnText}>{profile.logoUri ? t.businessProfile.changeLogo : t.businessProfile.addLogo}</Text>
-                </TouchableOpacity>
-                {!!profile.logoUri && (
-                  <TouchableOpacity onPress={removeLogo} style={styles.logoRemove} activeOpacity={0.7}>
-                    <Feather name="trash-2" size={14} color={C.neutral} />
-                    <Text style={styles.logoRemoveText}>{t.businessProfile.removeLogo}</Text>
-                  </TouchableOpacity>
-                )}
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Layout */}
+              <Text style={styles.styleLabel}>{t.businessProfile.layout}</Text>
+              <View style={styles.thumbRow}>
+                {CARD_LAYOUTS.map((l) => {
+                  const selected = activeLayout === l.key;
+                  return (
+                    <TouchableOpacity
+                      key={l.key}
+                      onPress={() => { lightTap(); setBusinessProfile({ cardStyle: l.key }); }}
+                      style={styles.thumbItem}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.businessProfile[l.labelKey]}
+                    >
+                      <LayoutThumb layout={l.key} color={selectedColor} selected={selected} C={C} />
+                      <Text style={[styles.thumbCaption, selected && styles.thumbCaptionActive]} numberOfLines={1}>
+                        {t.businessProfile[l.labelKey]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            </View>
 
-            <View style={styles.styleDivider} />
+              <View style={styles.styleDivider} />
 
-            <Text style={styles.styleLabel}>{t.businessProfile.colour}</Text>
-            <View style={styles.swatchRow}>
-              {CARD_COLORS.map((c) => {
-                const selected = headerColor === c;
-                return (
-                  <TouchableOpacity
-                    key={c}
-                    onPress={() => { lightTap(); setBusinessProfile({ cardColor: c }); }}
-                    style={[styles.swatch, { backgroundColor: c }, selected && styles.swatchSelected]}
-                    activeOpacity={0.8}
-                  >
-                    {selected && <Feather name="check" size={16} color="#FFFFFF" />}
+              {/* Colour */}
+              <Text style={styles.styleLabel}>{t.businessProfile.colour}</Text>
+              <View style={styles.swatchRow}>
+                {CARD_COLORS.map((c) => {
+                  const selected = selectedColor === c;
+                  return (
+                    <TouchableOpacity
+                      key={c}
+                      onPress={() => { lightTap(); setBusinessProfile({ cardColor: c }); }}
+                      style={[styles.swatch, { backgroundColor: c }, selected && styles.swatchSelected]}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={c}
+                    >
+                      {selected && <Feather name="check" size={15} color="#FFFFFF" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.styleDivider} />
+
+              {/* Font */}
+              <Text style={styles.styleLabel}>{t.businessProfile.font}</Text>
+              <View style={styles.fontList}>
+                {CARD_FONTS.map((f, i) => {
+                  const selected = activeFontKey === f.key;
+                  const face = f.bold ?? f.regular;
+                  return (
+                    <TouchableOpacity
+                      key={f.key}
+                      onPress={() => { lightTap(); setBusinessProfile({ cardFont: f.key === 'system' ? '' : f.key }); }}
+                      style={[styles.fontListRow, i > 0 && styles.fontListRowBorder, selected && styles.fontListRowSelected]}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={f.label}
+                    >
+                      <Text style={[styles.fontSample, face ? { fontFamily: face } : styles.fontSampleSystem]}>Ag</Text>
+                      <Text style={[styles.fontName, f.regular ? { fontFamily: f.regular } : null]}>{f.label}</Text>
+                      {selected && <Feather name="check" size={16} color={C.bronze} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.styleDivider} />
+
+              {/* Logo */}
+              <Text style={styles.styleLabel}>{t.businessProfile.logoShape}</Text>
+              <View style={styles.shapeRow}>
+                {LOGO_SHAPES.map((s) => {
+                  const selected = activeShape === s.key;
+                  return (
+                    <TouchableOpacity
+                      key={s.key}
+                      onPress={() => { lightTap(); setBusinessProfile({ logoShape: s.key === 'rounded' ? '' : s.key }); }}
+                      style={[styles.shapeBtn, selected && styles.shapeBtnSelected]}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.businessProfile[s.labelKey]}
+                    >
+                      {s.key === 'none' ? (
+                        <Feather name="eye-off" size={16} color={selected ? C.bronze : C.textSecondary} />
+                      ) : (
+                        <View
+                          style={[
+                            styles.shapeGlyph,
+                            s.key === 'circle' && styles.shapeGlyphCircle,
+                            s.key === 'square' && styles.shapeGlyphSquare,
+                            selected && { borderColor: C.bronze },
+                          ]}
+                        />
+                      )}
+                      <Text style={[styles.shapeCaption, selected && styles.shapeCaptionActive]} numberOfLines={1}>
+                        {t.businessProfile[s.labelKey]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View style={styles.logoRow}>
+                {profile.logoUri ? (
+                  <Image source={{ uri: profile.logoUri }} style={styles.logoThumb} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.logoThumb, styles.logoThumbEmpty]}>
+                    <Feather name="image" size={20} color={C.textMuted} />
+                  </View>
+                )}
+                <View style={styles.logoActions}>
+                  <TouchableOpacity onPress={handleLogoPress} style={styles.logoBtn} activeOpacity={0.7}>
+                    <Feather name="upload" size={15} color={C.bronze} />
+                    <Text style={styles.logoBtnText}>{profile.logoUri ? t.businessProfile.changeLogo : t.businessProfile.addLogo}</Text>
                   </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.styleDivider} />
-
-            <Text style={styles.styleLabel}>{t.businessProfile.font}</Text>
-            <View style={styles.fontRow}>
-              {CARD_FONTS.map((f) => {
-                const selected = activeFontKey === f.key;
-                return (
-                  <TouchableOpacity
-                    key={f.key}
-                    onPress={() => { lightTap(); setBusinessProfile({ cardFont: f.key }); }}
-                    style={[styles.fontPill, selected && styles.fontPillSelected]}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.fontPillText, f.family ? { fontFamily: f.family } : null, selected && styles.fontPillTextSelected]}>
-                      {f.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                  {!!profile.logoUri && (
+                    <TouchableOpacity onPress={removeLogo} style={styles.logoRemove} activeOpacity={0.7}>
+                      <Feather name="trash-2" size={14} color={C.neutral} />
+                      <Text style={styles.logoRemoveText}>{t.businessProfile.removeLogo}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
+
+      <PaywallModal
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+        feature="businessProfile"
+      />
     </View>
   );
 };
-
-// Always-light business-card styles (theme-independent so the shared image looks
-// the same regardless of the user's dark/light setting).
-const CARD = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: RADIUS.xl,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: CALM.border,
-  },
-  header: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  logo: {
-    width: 60,
-    height: 60,
-    borderRadius: RADIUS.lg,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.6)',
-  },
-  logoFallback: {
-    width: 60,
-    height: 60,
-    borderRadius: RADIUS.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-  },
-  initials: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.onAccent,
-  },
-  shop: {
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.onAccent,
-    letterSpacing: 0.2,
-  },
-  shopMuted: {
-    color: 'rgba(255,255,255,0.6)',
-  },
-  owner: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: 'rgba(255,255,255,0.9)',
-    marginTop: 3,
-  },
-  body: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    gap: SPACING.md,
-    backgroundColor: '#FFFFFF',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  rowChip: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
-  },
-  hint: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
-    lineHeight: 20,
-  },
-  footerBar: {
-    height: 6,
-    width: '100%',
-  },
-});
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
@@ -463,6 +614,74 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.lg,
+  },
+  profilesRow: {
+    flexGrow: 0,
+    marginBottom: SPACING.md,
+  },
+  profilesRowContent: {
+    gap: SPACING.sm,
+    // Vertical room so the horizontal scroller doesn't slice the neu shadow
+    // into a faint line on device; xs of side room lifts the edge chips too.
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    alignItems: 'center',
+  },
+  profileChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
+    maxWidth: 200,
+  },
+  defaultTag: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.onAccent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  profileChipActive: {
+    backgroundColor: C.bronze,
+  },
+  profileChipText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  profileChipTextActive: {
+    color: C.onAccent,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  profileAdd: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
+  },
+  profileAddText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+  },
+  removeProfile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.xs,
+  },
+  removeProfileText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.neutral,
   },
   cardContainer: {
     position: 'relative',
@@ -512,7 +731,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   logoBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
+    color: C.bronze,
   },
   logoRemove: {
     flexDirection: 'row',
@@ -532,55 +751,72 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.sm,
     marginLeft: SPACING.xs,
   },
-  formCard: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.xs,
+  fieldSpacing: {
+    marginBottom: SPACING.md,
   },
-  field: {
-    paddingVertical: SPACING.md,
-  },
-  fieldDivider: {
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-  },
-  fieldLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: SPACING.lg,
     marginBottom: SPACING.xs,
   },
-  fieldInput: {
+  sectionHeader: {
     fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
-    paddingVertical: SPACING.xs,
   },
-  fieldInputMultiline: {
-    minHeight: 44,
-    textAlignVertical: 'top',
+  sectionHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    lineHeight: 18,
+    marginBottom: SPACING.md,
+  },
+  copyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.full,
+  },
+  copyBtnActive: {
+    backgroundColor: withAlpha(C.bronze, 0.12),
+  },
+  copyBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
   },
 
-  // ── Card-style modal ──
-  modalOverlay: {
+  // ── Card-style bottom sheet ──
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING.xl,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
   },
-  modalCard: {
-    width: '100%',
-    maxWidth: 400,
+  sheet: {
     backgroundColor: C.background,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.sm,
   },
-  modalHeader: {
+  grabber: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.border,
+    marginBottom: SPACING.sm,
+  },
+  sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: SPACING.lg,
   },
-  modalTitle: {
+  sheetTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
@@ -593,15 +829,32 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: SPACING.md,
   },
+  thumbRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  thumbItem: {
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  thumbCaption: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  thumbCaptionActive: {
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.bold,
+  },
   swatchRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.md,
+    gap: SPACING.sm,
   },
   swatch: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -615,29 +868,80 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.border,
     marginVertical: SPACING.lg,
   },
-  fontRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  fontPill: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
+  fontList: {
+    borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: C.border,
+    overflow: 'hidden',
   },
-  fontPillSelected: {
-    borderColor: C.accent,
-    backgroundColor: withAlpha(C.accent, 0.1),
+  fontListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 13,
   },
-  fontPillText: {
+  fontListRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  fontListRowSelected: {
+    backgroundColor: withAlpha(C.bronze, 0.08),
+  },
+  fontSample: {
+    width: 28,
+    fontSize: 17,
+    color: C.textPrimary,
+    textAlign: 'center',
+  },
+  fontSampleSystem: {
+    fontWeight: '700',
+  },
+  fontName: {
+    flex: 1,
     fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+  },
+  shapeRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  shapeBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: C.border,
+    minHeight: 56,
+  },
+  shapeBtnSelected: {
+    borderColor: C.bronze,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+  },
+  shapeGlyph: {
+    width: 18,
+    height: 18,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: C.textSecondary,
+  },
+  shapeGlyphCircle: {
+    borderRadius: 9,
+  },
+  shapeGlyphSquare: {
+    borderRadius: 2,
+  },
+  shapeCaption: {
+    fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
   },
-  fontPillTextSelected: {
-    color: C.accent,
+  shapeCaptionActive: {
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 });

@@ -211,6 +211,8 @@ const makeStyles = (C: typeof import('../../constants').CALM) =>
       maxHeight: '85%',
       backgroundColor: C.background,
       borderRadius: RADIUS.xl,
+      borderWidth: 1,
+      borderColor: withAlpha(C.textPrimary, 0.12),
       overflow: 'hidden',
     },
     handleHit: {

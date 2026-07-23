@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
+import { newId } from '../utils/id';
 import { usePersonalStore } from './personalStore';
 import { useBusinessStore } from './businessStore';
 import { useDebtStore } from './debtStore';
@@ -80,12 +81,7 @@ export async function clearBusinessLocalData(): Promise<void> {
     _deletedCostIds: [],
     _deletedCostCategoryIds: [],
   });
-  useStallStore.setState({
-    sessions: [],
-    activeSessionId: null,
-    products: [],
-    regularCustomers: [],
-  });
+  useStallStore.getState().resetStallData();
   useFreelancerStore.setState({ clients: [] });
   usePartTimeStore.setState({ jobDetails: { jobName: '', setupComplete: false } });
   useOnTheRoadStore.setState({
@@ -149,8 +145,12 @@ export interface BusinessProfile {
   logoUri: string;
   /** Card accent colour (hex). Empty → app default. */
   cardColor: string;
-  /** Card font key (see CARD_FONTS in BusinessProfile). Empty → default. */
+  /** Card font key (see CARD_FONTS in BusinessCard). Empty → system default. */
   cardFont: string;
+  /** Card layout key (see CARD_LAYOUTS in BusinessCard). Empty → 'band'. */
+  cardStyle: string;
+  /** Logo chip shape key (see LOGO_SHAPES in BusinessCard). Empty → 'rounded'. */
+  logoShape: string;
 }
 
 export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
@@ -164,7 +164,44 @@ export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
   logoUri: '',
   cardColor: '',
   cardFont: '',
+  cardStyle: '',
+  logoShape: '',
 };
+
+/**
+ * Bank-transfer payment details — SHARED across the account (one set, NOT
+ * per-profile, like businessPaymentQrs). Screen-only reference the seller can
+ * quick-copy to a customer; never rendered on the shareable card.
+ */
+export interface BusinessBankDetails {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  duitnowId: string;
+}
+
+export const EMPTY_BUSINESS_BANK_DETAILS: BusinessBankDetails = {
+  bankName: '',
+  accountNumber: '',
+  accountHolder: '',
+  duitnowId: '',
+};
+
+/**
+ * A saved business profile = one "face" of the shop (name/logo/contact) the
+ * owner can switch between. It is INFORMATIONAL only — all profiles share the
+ * one account's books, money and QRs. Real separation = a separate account.
+ */
+export interface SavedBusinessProfile extends BusinessProfile {
+  id: string;
+}
+
+/** Fixed id of the single profile every existing install already has. */
+export const DEFAULT_PROFILE_ID = 'default';
+
+/** The `businessProfile` mirror stays a plain BusinessProfile (no id) so every
+ *  existing consumer of it is untouched. */
+const stripProfileId = ({ id, ...rest }: SavedBusinessProfile): BusinessProfile => rest;
 
 /**
  * Default pinned Quick Actions (Dashboard inline rows), in order. Keys match
@@ -216,6 +253,11 @@ interface SettingsState {
   paymentQrs: PaymentQr[];
   businessPaymentQrs: PaymentQr[];
   businessProfile: BusinessProfile;
+  /** All saved shop "faces"; the active one is mirrored into businessProfile. */
+  businessProfiles: SavedBusinessProfile[];
+  activeBusinessProfileId: string;
+  /** Shared bank-transfer details (one per account, not per-profile). */
+  businessBankDetails: BusinessBankDetails;
   customPaymentMethods: CategoryOption[];
   paymentMethodOverrides: Record<string, Partial<CategoryOption> & { hidden?: boolean }>;
   /** Ordered keys of the tiles pinned to the Dashboard's inline Quick Actions rows. */
@@ -329,6 +371,13 @@ interface SettingsState {
   updatePaymentQrLabel: (index: number, label: string, mode?: 'personal' | 'business') => void;
   getPaymentQrs: (mode: 'personal' | 'business') => PaymentQr[];
   setBusinessProfile: (patch: Partial<BusinessProfile>) => void;
+  /** Add a new blank profile and switch to it. */
+  addBusinessProfile: () => void;
+  /** Make a saved profile the active one shown everywhere. */
+  setActiveBusinessProfile: (id: string) => void;
+  /** Remove a saved profile (no-op on the last one). */
+  deleteBusinessProfile: (id: string) => void;
+  setBusinessBankDetails: (patch: Partial<BusinessBankDetails>) => void;
   setHasCompletedOnboarding: (value: boolean) => void;
   setGettingStartedDismissed: (value: boolean) => void;
   dismissHint: (id: string) => void;
@@ -555,6 +604,9 @@ export const useSettingsStore = create<SettingsState>()(
       paymentQrs: [],
       businessPaymentQrs: [],
       businessProfile: { ...EMPTY_BUSINESS_PROFILE },
+      businessProfiles: [{ id: DEFAULT_PROFILE_ID, ...EMPTY_BUSINESS_PROFILE }],
+      activeBusinessProfileId: DEFAULT_PROFILE_ID,
+      businessBankDetails: { ...EMPTY_BUSINESS_BANK_DETAILS },
       customPaymentMethods: [],
       paymentMethodOverrides: {},
       hasCompletedOnboarding: false,
@@ -678,7 +730,40 @@ export const useSettingsStore = create<SettingsState>()(
         return mode === 'business' ? s.businessPaymentQrs : s.paymentQrs;
       },
       setBusinessProfile: (patch) =>
-        set((s) => ({ businessProfile: { ...s.businessProfile, ...patch } })),
+        set((s) => ({
+          businessProfile: { ...s.businessProfile, ...patch },
+          businessProfiles: s.businessProfiles.map((p) =>
+            p.id === s.activeBusinessProfileId ? { ...p, ...patch } : p,
+          ),
+        })),
+      addBusinessProfile: () => {
+        const id = newId();
+        set((s) => ({
+          businessProfiles: [...s.businessProfiles, { id, ...EMPTY_BUSINESS_PROFILE }],
+          activeBusinessProfileId: id,
+          businessProfile: { ...EMPTY_BUSINESS_PROFILE },
+        }));
+      },
+      setActiveBusinessProfile: (id) =>
+        set((s) => {
+          const found = s.businessProfiles.find((p) => p.id === id);
+          return found
+            ? { activeBusinessProfileId: id, businessProfile: stripProfileId(found) }
+            : {};
+        }),
+      deleteBusinessProfile: (id) =>
+        set((s) => {
+          if (s.businessProfiles.length <= 1) return {};
+          const businessProfiles = s.businessProfiles.filter((p) => p.id !== id);
+          if (id !== s.activeBusinessProfileId) return { businessProfiles };
+          return {
+            businessProfiles,
+            activeBusinessProfileId: businessProfiles[0].id,
+            businessProfile: stripProfileId(businessProfiles[0]),
+          };
+        }),
+      setBusinessBankDetails: (patch) =>
+        set((s) => ({ businessBankDetails: { ...s.businessBankDetails, ...patch } })),
       setHasCompletedOnboarding: (hasCompletedOnboarding) => set({ hasCompletedOnboarding }),
       setGettingStartedDismissed: (gettingStartedDismissed) => set({ gettingStartedDismissed }),
       setBiometricLockEnabled: (biometricLockEnabled) => set({ biometricLockEnabled }),
@@ -781,12 +866,7 @@ export const useSettingsStore = create<SettingsState>()(
           recurringCosts: [],
         });
 
-        useStallStore.setState({
-          sessions: [],
-          activeSessionId: null,
-          products: [],
-          regularCustomers: [],
-        });
+        useStallStore.getState().resetStallData();
 
         useFreelancerStore.setState({ clients: [] });
         usePartTimeStore.setState({ jobDetails: { jobName: '', setupComplete: false } });
@@ -845,6 +925,9 @@ export const useSettingsStore = create<SettingsState>()(
           defaultMode: 'personal',
           businessPaymentQrs: [],
           businessProfile: { ...EMPTY_BUSINESS_PROFILE },
+          businessProfiles: [{ id: DEFAULT_PROFILE_ID, ...EMPTY_BUSINESS_PROFILE }],
+          activeBusinessProfileId: DEFAULT_PROFILE_ID,
+          businessBankDetails: { ...EMPTY_BUSINESS_BANK_DETAILS },
         });
       },
     }),
@@ -876,6 +959,42 @@ export const useSettingsStore = create<SettingsState>()(
         // Ensure businessProfile exists (added after some installs shipped)
         if (!state.businessProfile) {
           state.businessProfile = { ...EMPTY_BUSINESS_PROFILE };
+        }
+        // Ensure bank details exist (added 2026-07-23)
+        if (!state.businessBankDetails) {
+          state.businessBankDetails = { ...EMPTY_BUSINESS_BANK_DETAILS };
+        }
+        // Seed the multi-profile list from the single legacy profile (added
+        // 2026-07-23). Existing installs get one profile = their current card.
+        if (!Array.isArray(state.businessProfiles) || state.businessProfiles.length === 0) {
+          state.businessProfiles = [
+            { id: DEFAULT_PROFILE_ID, ...(state.businessProfile ?? EMPTY_BUSINESS_PROFILE) },
+          ];
+          state.activeBusinessProfileId = DEFAULT_PROFILE_ID;
+        }
+        // Backfill card-style fields (added 2026-07-22) and remap retired font
+        // keys from the old 3-option picker: modern/light → system default,
+        // classic → serif. Existing installs keep their colour choice.
+        state.businessProfiles = state.businessProfiles.map((p) => ({
+          ...p,
+          cardStyle: p.cardStyle ?? '',
+          logoShape: p.logoShape ?? '',
+          cardFont:
+            p.cardFont === 'classic'
+              ? 'serif'
+              : p.cardFont === 'modern' || p.cardFont === 'light'
+                ? ''
+                : (p.cardFont ?? ''),
+        }));
+        // Keep the active mirror in sync with the list (list is source of record).
+        {
+          const active = state.businessProfiles.find((p) => p.id === state.activeBusinessProfileId);
+          if (active) {
+            state.businessProfile = stripProfileId(active);
+          } else {
+            state.activeBusinessProfileId = state.businessProfiles[0].id;
+            state.businessProfile = stripProfileId(state.businessProfiles[0]);
+          }
         }
         // Ensure businessPaymentQrs exists
         if (!state.businessPaymentQrs) {

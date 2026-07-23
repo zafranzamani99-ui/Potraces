@@ -95,6 +95,7 @@ export const usePremiumStore = create<PremiumState>()(
       canCreateSavingsAccount: (currentCount: number) => canCreate(get().tier, 'maxSavingsAccounts', currentCount),
       canCreateGoal: (currentCount: number) => canCreate(get().tier, 'maxGoals', currentCount),
       canCreateSharedSub: (currentCount: number) => canCreate(get().tier, 'maxSharedSubs', currentCount),
+      canCreateBusinessProfile: (currentCount: number) => canCreate(get().tier, 'maxBusinessProfiles', currentCount),
 
       // ── Metered gates (reset the monthly window first) ──
       canScanReceipt: () => {

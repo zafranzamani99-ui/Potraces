@@ -18,11 +18,16 @@ import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useStallStore } from '../../store/stallStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
+import { useWalletStore } from '../../store/walletStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallSession } from '../../utils/explainStallSession';
 import { RootStackParamList } from '../../types';
 import { useT } from '../../i18n';
 import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
+import WalletPicker from '../../components/common/WalletPicker';
+import { newstOutline } from '../../components/business/NewstInput';
+import { useNeu } from '../../components/common/neu';
+import NeuButton from '../../components/common/NeuButton';
 
 type SessionSummaryRoute = RouteProp<RootStackParamList, 'StallSessionSummary'>;
 
@@ -31,12 +36,14 @@ const SessionSummary: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
   const route = useRoute<SessionSummaryRoute>();
   const { sessionId } = route.params;
 
   const { sessions, getSessionSummary, getLifetimeStats, getSessionEconomics, markSessionTransferred } = useStallStore();
   const addTransfer = useBusinessStore((s) => s.addTransfer);
   const addTransferIncome = usePersonalStore((s) => s.addTransferIncome);
+  const wallets = useWalletStore((s) => s.wallets);
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
@@ -44,7 +51,16 @@ const SessionSummary: React.FC = () => {
   const [transferAmount, setTransferAmount] = useState('');
   const [transferDone, setTransferDone] = useState(false);
   const [transferSkipped, setTransferSkipped] = useState(false);
+  const [walletId, setWalletId] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  // Destination wallet for the transfer — defaults to the user's default wallet.
+  const defaultWalletId = useMemo(
+    () => wallets.find((w) => w.isDefault)?.id ?? wallets[0]?.id ?? null,
+    [wallets]
+  );
+  const effectiveWalletId = walletId ?? defaultWalletId;
 
   // Find the session
   const session = useMemo(
@@ -81,15 +97,17 @@ const SessionSummary: React.FC = () => {
     };
   }, [closedCount, lifetimeStats, summary]);
 
-  // Pre-fill transfer amount with session came-in total
+  // Pre-fill transfer amount with what you KEPT (revenue − goods cost − expenses),
+  // not the gross came-in — gross still holds the float you seeded + COGS to restock.
+  // When no costs are set, kept === revenue, so this matches the old behaviour.
   useEffect(() => {
     if (session && summary.totalRevenue > 0 && !session.transferredToPersonal) {
-      setTransferAmount(summary.totalRevenue.toFixed(2));
+      setTransferAmount(Math.max(0, econ.kept).toFixed(2));
     }
     if (session?.transferredToPersonal) {
       setTransferDone(true);
     }
-  }, [session, summary.totalRevenue]);
+  }, [session, summary.totalRevenue, econ.kept]);
 
   // Handle transfer to personal
   const handleTransfer = () => {
@@ -105,6 +123,9 @@ const SessionSummary: React.FC = () => {
       toMode: 'personal' as const,
       note: `stall: ${session.name || format(session.startedAt, 'dd MMM')}`,
       date: new Date(),
+      // Credit the chosen personal wallet. addTransferIncome owns the wallet
+      // adjustment (single-owner); the transfer- id keeps it out of income math.
+      ...(effectiveWalletId ? { walletId: effectiveWalletId } : {}),
     };
     addTransfer(transfer);
     addTransferIncome(transfer);
@@ -231,7 +252,7 @@ const SessionSummary: React.FC = () => {
         </View>
 
         {/* Cash / QR split */}
-        <View style={styles.splitRow}>
+        <View style={[styles.splitRow, neu.raisedSoft]}>
           <View style={styles.splitItem}>
             <Feather name="dollar-sign" size={16} color={C.textSecondary} style={{ marginBottom: 4 }} />
             <Text style={styles.splitLabel}>{t.stall.cashLabelCaps}</Text>
@@ -272,7 +293,7 @@ const SessionSummary: React.FC = () => {
 
         {/* What you kept — only when costs were entered */}
         {econ.hasCosts && (
-          <View style={styles.keptCard}>
+          <View style={[styles.keptCard, neu.raisedSoft, { backgroundColor: withAlpha(C.bronze, 0.04) }]}>
             <Text style={styles.sectionLabel}>{t.stall.keptHeading}</Text>
             <View style={styles.keptRow}>
               <Text style={styles.keptRowLabel}>{t.stall.cameInRow}</Text>
@@ -299,7 +320,7 @@ const SessionSummary: React.FC = () => {
 
         {/* Cash box reconciliation — only when the box was counted */}
         {econ.hasCounted && (
-          <View style={styles.reconcileCard}>
+          <View style={[styles.reconcileCard, neu.raisedSoft]}>
             <Text style={styles.sectionLabel}>{t.stall.cashBoxHeading}</Text>
             <View style={styles.reconcileRow}>
               <Text style={styles.reconcileLabel}>{t.stall.expectedLabel}</Text>
@@ -358,7 +379,7 @@ const SessionSummary: React.FC = () => {
 
         {/* Comparison to average came-in */}
         {comparison && (
-          <View style={styles.comparisonCard}>
+          <View style={[styles.comparisonCard, neu.raisedSoft]}>
             <Text style={styles.comparisonText}>
               {t.stall.cameInVsAverage
                 .replace('{curr}', currency)
@@ -378,17 +399,27 @@ const SessionSummary: React.FC = () => {
 
         {/* Note */}
         {session.note && (
-          <View style={styles.noteCard}>
+          <View style={[styles.noteCard, neu.raisedSoft]}>
             <Text style={styles.noteText}>{session.note}</Text>
           </View>
         )}
 
         {/* Transfer bridge */}
         {showTransferBridge && (
-          <View style={styles.transferCard}>
+          <View style={[styles.transferCard, neu.raisedSoft, { backgroundColor: withAlpha(C.bronze, 0.04) }]}>
             <Text style={styles.transferLabel}>{t.stall.transferToPersonal}</Text>
             <Text style={styles.transferHint}>{t.stall.transferHint}</Text>
-            <View style={styles.transferRow}>
+            {wallets.length > 0 && (
+              <WalletPicker
+                wallets={wallets}
+                selectedId={effectiveWalletId}
+                onSelect={setWalletId}
+                label={t.stall.transferWalletLabel}
+                faintNeu
+                onyxTrigger
+              />
+            )}
+            <View style={[styles.transferRow, newstOutline(C, focusedField === 'transfer')]}>
               <Text style={styles.transferCurrency}>{currency}</Text>
               <TextInput
                 style={styles.transferInput}
@@ -396,20 +427,20 @@ const SessionSummary: React.FC = () => {
                 onChangeText={setTransferAmount}
                 keyboardType="decimal-pad"
                 selectTextOnFocus
+                onFocus={() => setFocusedField('transfer')}
+                onBlur={() => setFocusedField((f) => (f === 'transfer' ? null : f))}
                 accessibilityLabel="Transfer amount"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
-            <TouchableOpacity
-              style={styles.transferButton}
+            <NeuButton
+              icon="arrow-up-right"
+              label={t.stall.transferButton}
+              color={C.bronze}
               onPress={guardedTransfer}
-              activeOpacity={0.8}
-              accessibilityRole="button"
               accessibilityLabel="Transfer to personal wallet"
-            >
-              <Text style={styles.transferButtonText}>{t.stall.transferButton}</Text>
-            </TouchableOpacity>
+            />
             <TouchableOpacity
               style={styles.skipLink}
               onPress={handleSkipTransfer}
@@ -434,7 +465,7 @@ const SessionSummary: React.FC = () => {
 
         {/* WhatsApp share */}
         <TouchableOpacity
-          style={styles.shareButton}
+          style={[styles.shareButton, neu.raisedSoft]}
           onPress={handleShare}
           activeOpacity={0.7}
           accessibilityRole="button"
@@ -445,15 +476,13 @@ const SessionSummary: React.FC = () => {
         </TouchableOpacity>
 
         {/* Done button */}
-        <TouchableOpacity
-          style={styles.doneButton}
+        <NeuButton
+          icon="check"
+          label={t.stall.done}
+          color={C.bronze}
           onPress={() => navigation.goBack()}
-          activeOpacity={0.8}
-          accessibilityRole="button"
           accessibilityLabel="Done, return to stall dashboard"
-        >
-          <Text style={styles.doneButtonText}>{t.stall.done}</Text>
-        </TouchableOpacity>
+        />
       </ScrollView>
     </View>
   );
@@ -514,9 +543,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ─── Cash / QR split ────────────────────────────────────────
   splitRow: {
     flexDirection: 'row',
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     marginBottom: SPACING['3xl'],
@@ -604,9 +631,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ─── Cash reconciliation card ────────────────────────────────
   reconcileCard: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     marginBottom: SPACING['2xl'],
@@ -689,9 +714,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ─── Comparison ──────────────────────────────────────────────
   comparisonCard: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.lg,
     marginBottom: SPACING.xl,
@@ -722,9 +745,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ─── Note ────────────────────────────────────────────────────
   noteCard: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.lg,
     marginBottom: SPACING.xl,
@@ -757,6 +778,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
     marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.md,
   },
   transferCurrency: {
     fontSize: TYPOGRAPHY.size.xl,
@@ -769,26 +791,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     letterSpacing: C === CALM_DARK ? 0.2 : 0,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: RADIUS.md,
     paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
     fontVariant: ['tabular-nums'],
-  },
-  transferButton: {
-    backgroundColor: C.bronze,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  transferButtonText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
   },
   skipLink: {
     alignItems: 'center',
@@ -826,7 +830,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderWidth: 1,
     borderColor: C.bronze,
     borderRadius: RADIUS.lg,
@@ -838,19 +842,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
-  },
-  doneButton: {
-    backgroundColor: C.bronze,
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  doneButtonText: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
   },
 
   // ─── Empty state ─────────────────────────────────────────────

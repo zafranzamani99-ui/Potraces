@@ -29,6 +29,8 @@ interface ButtonProps {
   loading?: boolean;
   fullWidth?: boolean;
   haptic?: boolean;
+  /** Override the accent (olive) for non-personal modes, e.g. business bronze. */
+  accentColor?: string;
   gradient?: any; // kept for API compat, ignored
   style?: ViewStyle;
   textStyle?: TextStyle;
@@ -117,6 +119,7 @@ const Button: React.FC<ButtonProps> = ({
   loading = false,
   fullWidth = false,
   haptic = true,
+  accentColor,
   style,
   textStyle,
   accessibilityLabel,
@@ -125,7 +128,13 @@ const Button: React.FC<ButtonProps> = ({
   const C = useCalm();
   const VARIANT_CONFIG = useMemo(() => makeVariantConfig(C), [C]);
   const opacityAnim = useRef(new Animated.Value(1)).current;
-  const variantCfg = VARIANT_CONFIG[variant];
+  const variantCfg = useMemo(() => {
+    const base = VARIANT_CONFIG[variant];
+    if (!accentColor) return base;
+    // Repaint only the accent-driven variants (the olive → business bronze swap).
+    if (base.filled) return { ...base, bg: accentColor, border: accentColor };
+    return { ...base, text: accentColor, border: accentColor };
+  }, [VARIANT_CONFIG, variant, accentColor]);
   const sizeCfg = SIZE_CONFIG[size];
   const isDisabled = disabled || loading;
 
@@ -163,7 +172,7 @@ const Button: React.FC<ButtonProps> = ({
   };
 
   const labelColor = variantCfg.filled ? C.onAccent : variantCfg.text;
-  const indicatorColor = variantCfg.filled ? C.onAccent : C.accent;
+  const indicatorColor = variantCfg.filled ? C.onAccent : (accentColor ?? C.accent);
 
   const renderIcon = () => {
     if (loading || !icon) return null;

@@ -16,6 +16,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useNeu } from '../../components/common/neu';
 import { useT } from '../../i18n';
 import { StallSession, SessionCondition } from '../../types';
 
@@ -32,6 +33,7 @@ const SessionHistory: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { sessions, getLifetimeStats, getSessionSummary } = useStallStore();
@@ -79,7 +81,7 @@ const SessionHistory: React.FC = () => {
 
       return (
         <TouchableOpacity
-          style={styles.sessionCard}
+          style={[styles.sessionCard, neu.raisedSoft]}
           onPress={() => handleSessionPress(item.id)}
           activeOpacity={0.85}
           accessibilityLabel={`Session ${displayName}, total came in ${currency} ${item.totalRevenue.toFixed(2)}, ${summary.saleCount} sales`}
@@ -153,14 +155,14 @@ const SessionHistory: React.FC = () => {
         {/* Lifetime stats -- only show if 3+ sessions */}
         {closedSessions.length >= 3 && (
           <View style={styles.lifetimeRow}>
-            <View style={styles.lifetimeStat}>
+            <View style={[styles.lifetimeStat, neu.raised]}>
               <View style={[styles.statIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
                 <Feather name="activity" size={14} color={C.accent} />
               </View>
               <Text style={styles.lifetimeNumber}>{lifetimeStats.totalSessions}</Text>
               <Text style={styles.lifetimeLabel}>{t.stallHistory.sessions}</Text>
             </View>
-            <View style={styles.lifetimeStat}>
+            <View style={[styles.lifetimeStat, neu.raised]}>
               <View style={[styles.statIcon, { backgroundColor: withAlpha(C.bronze, 0.12) }]}>
                 <Feather name="dollar-sign" size={14} color={C.bronze} />
               </View>
@@ -169,7 +171,7 @@ const SessionHistory: React.FC = () => {
               </Text>
               <Text style={styles.lifetimeLabel}>{t.stallHistory.lifetimeCameIn}</Text>
             </View>
-            <View style={styles.lifetimeStat}>
+            <View style={[styles.lifetimeStat, neu.raised]}>
               <View style={[styles.statIcon, { backgroundColor: withAlpha(C.gold, 0.12) }]}>
                 <Feather name="trending-up" size={14} color={C.gold} />
               </View>
@@ -254,10 +256,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   lifetimeStat: {
     flex: 1,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
   },
@@ -290,10 +290,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ─── Session card ──────────────────────────────────────
   sessionCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
     padding: SPACING.lg,
     gap: SPACING.md,
   },

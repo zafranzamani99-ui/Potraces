@@ -17,6 +17,9 @@ import { useT } from '../../i18n';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { lightTap } from '../../services/haptics';
+import NewstInput, { newstOutline } from '../../components/business/NewstInput';
+import { useNeu } from '../../components/common/neu';
+import NeuButton from '../../components/common/NeuButton';
 
 interface ProductSetupItem {
   productId: string;
@@ -31,11 +34,14 @@ const SessionSetup: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
-  const { products, startSession, getLastSetup, setStartingFloat, getPreOrderStock, preOrders } = useStallStore();
+  const neu = useNeu(undefined, { faintDark: true });
+  const { products, startSession, getRecentSpots, setStartingFloat, getPreOrderStock, preOrders } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState('');
+  const [whereInput, setWhereInput] = useState('');
   const [floatInput, setFloatInput] = useState('');
 
   // Build editable product list from active products
@@ -74,11 +80,12 @@ const SessionSetup: React.FC = () => {
     );
   };
 
-  // One-tap "repeat last session" — restores the same products + starting stock
-  const lastSetup = useMemo(() => getLastSetup(), [getLastSetup, products]);
-  const applyLastSetup = () => {
-    if (!lastSetup) return;
-    const qtyMap = new Map(lastSetup.map((s) => [s.productId, s.startQty]));
+  // One-tap "recent spots" — refill name + where + products from a past session.
+  const recentSpots = useMemo(() => getRecentSpots(3), [getRecentSpots, products]);
+  const applySpot = (spot: { name?: string; where?: string; setup: { productId: string; startQty: number }[] }) => {
+    setSessionName(spot.name || '');
+    setWhereInput(spot.where || '');
+    const qtyMap = new Map(spot.setup.map((s) => [s.productId, s.startQty]));
     setProductSetup((prev) =>
       prev.map((item) => {
         const q = qtyMap.get(item.productId);
@@ -123,14 +130,16 @@ const SessionSetup: React.FC = () => {
     }));
 
     const name = sessionName.trim() || undefined;
-    startSession(name, setup.length > 0 ? setup : undefined);
+    const where = whereInput.trim() || undefined;
+    startSession(name, setup.length > 0 ? setup : undefined, where);
     applyFloat();
     navigation.goBack();
   };
 
   const handleSkipSetup = () => {
     const name = sessionName.trim() || undefined;
-    startSession(name);
+    const where = whereInput.trim() || undefined;
+    startSession(name, undefined, where);
     applyFloat();
     navigation.goBack();
   };
@@ -146,74 +155,71 @@ const SessionSetup: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Feather name="arrow-left" size={24} color={C.textPrimary} />
-          </TouchableOpacity>
-        </View>
+        {/* Nav header already shows the "New Session" title + back button. */}
 
-        <Text style={styles.heading}>{t.stall.newSession}</Text>
-
-        {/* Repeat last session — one tap restores products + starting stock */}
-        {lastSetup && (
-          <TouchableOpacity
-            style={styles.repeatButton}
-            onPress={applyLastSetup}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={`${t.stall.repeatLastSession}. ${t.stall.repeatLastHint}`}
-          >
-            <Feather name="rotate-ccw" size={18} color={C.bronze} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.repeatTitle}>{t.stall.repeatLastSession}</Text>
-              <Text style={styles.repeatHint}>{t.stall.repeatLastHint}</Text>
-            </View>
-          </TouchableOpacity>
+        {/* Recent spots — one tap refills name + where + products from a past session */}
+        {recentSpots.length > 0 && (
+          <View style={styles.recentSection}>
+            <Text style={styles.recentHeading}>{t.stall.recentSpotsHeading}</Text>
+            {recentSpots.map((spot, i) => {
+              const title = spot.name?.trim() || spot.where?.trim() || t.stall.recentSpotFallback;
+              const subParts: string[] = [];
+              if (spot.where?.trim() && spot.where.trim() !== title) subParts.push(spot.where.trim());
+              if (spot.setup.length > 0) subParts.push(t.stall.spotProductsCount.replace('{n}', String(spot.setup.length)));
+              const subtitle = subParts.join(' · ');
+              return (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.spotRow, neu.raisedSoft]}
+                  onPress={() => applySpot(spot)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
+                >
+                  <Feather name="rotate-ccw" size={18} color={C.bronze} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.spotTitle}>{title}</Text>
+                    {subtitle ? <Text style={styles.spotSub}>{subtitle}</Text> : null}
+                  </View>
+                  <Feather name="chevron-right" size={18} color={C.textMuted} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         )}
 
         {/* Session name input */}
         <View style={styles.inputSection}>
-          <Text style={styles.inputLabel}>{t.stall.sessionNameLabel}</Text>
-          <TextInput
-            style={styles.textInput}
+          <NewstInput
+            label={t.stall.sessionNameLabel}
             value={sessionName}
             onChangeText={setSessionName}
-            placeholder={t.stall.sessionNamePlaceholder}
-            placeholderTextColor={C.neutral}
-            returnKeyType="done"
             accessibilityLabel="Session name, optional"
             accessibilityHint="Enter a name for this selling session"
-            keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={withAlpha(C.accent, 0.25)}
+          />
+        </View>
+
+        {/* Where (the spot) input */}
+        <View style={styles.inputSection}>
+          <NewstInput
+            label={t.stall.whereLabel}
+            value={whereInput}
+            onChangeText={setWhereInput}
+            accessibilityLabel="Where you're selling, optional"
           />
         </View>
 
         {/* Starting cash float (optional) */}
         <View style={styles.inputSection}>
-          <Text style={styles.inputLabel}>{t.stall.floatLabel}</Text>
-          <View style={styles.floatRow}>
-            <Text style={styles.floatCurrency}>{currency}</Text>
-            <TextInput
-              style={styles.floatInput}
-              value={floatInput}
-              onChangeText={(v) => setFloatInput(v.replace(/[^0-9.]/g, ''))}
-              placeholder={t.stall.floatPlaceholder}
-              placeholderTextColor={C.neutral}
-              keyboardType="decimal-pad"
-              returnKeyType="done"
-              accessibilityLabel="Starting cash float, optional"
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={withAlpha(C.accent, 0.25)}
-            />
-          </View>
-          <Text style={styles.floatHint}>{t.stall.floatHint}</Text>
+          <NewstInput
+            label={t.stall.floatLabel}
+            value={floatInput}
+            onChangeText={(v) => setFloatInput(v.replace(/[^0-9.]/g, ''))}
+            prefix={currency}
+            hint={t.stall.floatHint}
+            keyboardType="decimal-pad"
+            accessibilityLabel="Starting cash float, optional"
+          />
         </View>
 
         {/* Pre-order stock planner */}
@@ -241,7 +247,7 @@ const SessionSetup: React.FC = () => {
               </Text>
             </View>
             {productSetup.map((item) => (
-              <View key={item.productId} style={[styles.productRow, item.included && styles.productRowIncluded]}>
+              <View key={item.productId} style={[styles.productRow, neu.raisedSoft, item.included && styles.productRowIncluded]}>
                 <TouchableOpacity
                   style={styles.productToggleArea}
                   onPress={() => toggleProduct(item.productId)}
@@ -277,7 +283,9 @@ const SessionSetup: React.FC = () => {
 
                 {item.included && (
                   <TextInput
-                    style={styles.qtyInput}
+                    style={[styles.qtyInput, newstOutline(C, focusedField === 'qty-' + item.productId)]}
+                    onFocus={() => setFocusedField('qty-' + item.productId)}
+                    onBlur={() => setFocusedField((f) => (f === 'qty-' + item.productId ? null : f))}
                     value={item.startQty}
                     onChangeText={(val) => setQuantity(item.productId, val)}
                     placeholder={t.stall.qtyPlaceholder}
@@ -296,24 +304,33 @@ const SessionSetup: React.FC = () => {
         )}
 
         {activeProducts.length === 0 && (
-          <View style={styles.noProducts}>
-            <Feather name="package" size={24} color={C.neutral} />
+          <TouchableOpacity
+            style={[styles.noProducts, neu.raised]}
+            onPress={() => navigation.navigate('StallProducts')}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={t.stall.setupProductsCta}
+          >
+            <Feather name="package" size={24} color={C.bronze} />
             <Text style={styles.noProductsText}>
               {t.stall.noProductsMsg}
             </Text>
-          </View>
+            <View style={styles.setupProductsRow}>
+              <Feather name="plus" size={16} color={C.bronze} />
+              <Text style={styles.setupProductsText}>{t.stall.setupProductsCta}</Text>
+            </View>
+          </TouchableOpacity>
         )}
 
         {/* Start selling button */}
-        <TouchableOpacity
-          style={styles.startButton}
+        <NeuButton
+          icon="arrow-right"
+          label={t.stall.startSelling}
+          color={C.bronze}
           onPress={handleStartSelling}
-          activeOpacity={0.8}
-          accessibilityRole="button"
           accessibilityLabel="Start selling session"
-        >
-          <Text style={styles.startButtonText}>{t.stall.startSelling}</Text>
-        </TouchableOpacity>
+          style={{ marginBottom: SPACING.lg }}
+        />
 
         {/* Skip setup link */}
         <TouchableOpacity
@@ -345,45 +362,31 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '100%',
     alignSelf: 'center' as const,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heading: {
-    fontSize: TYPOGRAPHY.size['3xl'],
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-    marginBottom: SPACING['3xl'],
-  },
-
   // ─── Repeat last session ─────────────────────────────────────
-  repeatButton: {
+  recentSection: {
+    marginBottom: SPACING['2xl'],
+  },
+  recentHeading: {
+    ...TYPE.label,
+    marginBottom: SPACING.sm,
+  },
+  spotRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    backgroundColor: withAlpha(C.bronze, 0.06),
-    borderWidth: 1,
-    borderColor: withAlpha(C.bronze, 0.3),
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING['2xl'],
+    marginBottom: SPACING.sm,
     minHeight: 56,
   },
-  repeatTitle: {
+  spotTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.bronze,
+    color: C.textPrimary,
   },
-  repeatHint: {
+  spotSub: {
     ...TYPE.muted,
     marginTop: 2,
   },
@@ -395,44 +398,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   inputLabel: {
     ...TYPE.label,
     marginBottom: SPACING.sm,
-  },
-  textInput: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    minHeight: 48,
-  },
-  floatRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    minHeight: 48,
-  },
-  floatCurrency: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-  },
-  floatInput: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  floatHint: {
-    ...TYPE.muted,
-    marginTop: SPACING.sm,
   },
 
   // ─── Pre-order stock planner ─────────────────────────────────
@@ -489,9 +454,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   productRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
@@ -499,7 +462,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     minHeight: 56,
   },
   productRowIncluded: {
-    borderColor: withAlpha(C.bronze, 0.2),
     backgroundColor: withAlpha(C.bronze, 0.03),
   },
   productToggleArea: {
@@ -552,30 +514,31 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   noProducts: {
     alignItems: 'center',
-    paddingVertical: SPACING['4xl'],
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING['2xl'],
+    paddingHorizontal: SPACING.lg,
     gap: SPACING.md,
+    marginBottom: SPACING.xl,
   },
   noProductsText: {
     ...TYPE.insight,
     color: C.textSecondary,
     textAlign: 'center',
   },
+  setupProductsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+  },
+  setupProductsText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+  },
 
   // ─── Actions ─────────────────────────────────────────────────
-  startButton: {
-    backgroundColor: C.bronze,
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-    marginBottom: SPACING.lg,
-  },
-  startButtonText: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
   skipLink: {
     alignItems: 'center',
     paddingVertical: SPACING.md,

@@ -20,6 +20,9 @@ const roundTo5 = (n: number) => Math.round(n * 20) / 20;
 const roundCash = (amount: number, method: 'cash' | 'qr' | 'card', roundCashTo5: boolean) =>
   method === 'cash' && roundCashTo5 ? roundTo5(amount) : roundMoney(amount);
 
+/** Starter product units for a fresh install (stall-owned, separate from seller). */
+const STALL_DEFAULT_UNITS = ['pcs', 'pack', 'plate', 'cup', 'bottle', 'kg'];
+
 export const useStallStore = create<StallState>()(
   persist(
     (set, get) => ({
@@ -30,9 +33,38 @@ export const useStallStore = create<StallState>()(
       loyalty: { everyN: 0, reward: '' },
       preOrders: [],
       roundCashTo5: false,
+      units: [...STALL_DEFAULT_UNITS],
+
+      // ─── Data reset (delete stall data for this business setup) ──
+      // Scoped, local wipe. persist middleware rewrites 'stall-storage' on set.
+      resetStallData: (scope = 'all') => {
+        set(() => {
+          switch (scope) {
+            case 'history':
+              return { sessions: [], activeSessionId: null };
+            case 'products':
+              return { products: [] };
+            case 'customers':
+              return { regularCustomers: [], loyalty: { everyN: 0, reward: '' } };
+            case 'preorders':
+              return { preOrders: [] };
+            case 'all':
+            default:
+              return {
+                sessions: [],
+                activeSessionId: null,
+                products: [],
+                regularCustomers: [],
+                loyalty: { everyN: 0, reward: '' },
+                preOrders: [],
+                roundCashTo5: false,
+              };
+          }
+        });
+      },
 
       // ─── Session Actions ──────────────────────────────────
-      startSession: (name?, productSetup?) => {
+      startSession: (name?, productSetup?, where?) => {
         const id = newId();
         const prevActiveId = get().activeSessionId;
         if (prevActiveId) {
@@ -65,6 +97,7 @@ export const useStallStore = create<StallState>()(
         const session: StallSession = {
           id,
           name,
+          where,
           startedAt: new Date(),
           isActive: true,
           sales: [],
@@ -162,6 +195,18 @@ export const useStallStore = create<StallState>()(
 
       setRoundCashTo5: (on) => set(() => ({ roundCashTo5: on })),
 
+      // ─── Product units (stall-owned) ──────────────────────
+      addUnit: (u) =>
+        set((state) => {
+          const clean = u.trim().toLowerCase();
+          const current = state.units || [];
+          if (!clean || current.includes(clean)) return state;
+          return { units: [...current, clean] };
+        }),
+
+      removeUnit: (u) =>
+        set((state) => ({ units: (state.units || []).filter((x) => x !== u) })),
+
       getLastSetup: () => {
         const closed = get().sessions.filter((s) => !s.isActive && s.closedAt);
         if (closed.length === 0) return null;
@@ -175,6 +220,34 @@ export const useStallStore = create<StallState>()(
           .filter((ps) => activeIds.has(ps.productId) && ps.startQty > 0)
           .map((ps) => ({ productId: ps.productId, startQty: ps.startQty }));
         return setup.length > 0 ? setup : null;
+      },
+
+      getRecentSpots: (limit = 3) => {
+        // Most-recent-first closed sessions, deduped by name+where so each spot
+        // appears once, each with the products it brought (still-active only).
+        const closed = get()
+          .sessions.filter((s) => !s.isActive && s.closedAt)
+          .sort((a, b) => {
+            const ad = a.closedAt ? new Date(a.closedAt).getTime() : 0;
+            const bd = b.closedAt ? new Date(b.closedAt).getTime() : 0;
+            return bd - ad;
+          });
+        const activeIds = new Set(get().products.filter((p) => p.isActive).map((p) => p.id));
+        const seen = new Set<string>();
+        const spots: { name?: string; where?: string; setup: { productId: string; startQty: number }[] }[] = [];
+        for (const s of closed) {
+          const key = `${s.name || ''}|${s.where || ''}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const setup = s.productsSnapshot
+            .filter((ps) => activeIds.has(ps.productId) && ps.startQty > 0)
+            .map((ps) => ({ productId: ps.productId, startQty: ps.startQty }));
+          // Skip an empty preset: no label AND no products to restore.
+          if (!s.name && !s.where && setup.length === 0) continue;
+          spots.push({ name: s.name, where: s.where, setup });
+          if (spots.length >= limit) break;
+        }
+        return spots;
       },
 
       // ─── Optional cashbox layer (Phase 2) ─────────────────
@@ -774,9 +847,12 @@ export const useStallStore = create<StallState>()(
           collectedAt: p.collectedAt instanceof Date ? p.collectedAt.toISOString() : p.collectedAt,
         })),
         roundCashTo5: state.roundCashTo5,
+        units: state.units,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          // Existing installs (persisted before units existed) get the starter set.
+          if (!state.units || state.units.length === 0) state.units = [...STALL_DEFAULT_UNITS];
           const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
           state.sessions = state.sessions.map((s: any) => ({
             ...s,

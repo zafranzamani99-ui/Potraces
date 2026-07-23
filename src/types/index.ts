@@ -88,6 +88,8 @@ export type Transfer = {
   toMode: 'business' | 'personal';
   note?: string;
   linkedBusinessTxId?: string;
+  /** Destination personal wallet — when set, addTransferIncome credits it. */
+  walletId?: string;
   date: Date;
 };
 
@@ -393,6 +395,10 @@ export interface StallProduct {
   defaultStartQty?: number;
   /** Optional cost per unit — feeds the optional "kept" (net) calculation. */
   unitCost?: number;
+  /** Optional unit of measurement (pcs, pack, kg…) for stock + price. */
+  unit?: string;
+  /** Optional product photo — local device URI (stall is local-only, no upload). */
+  imageUrl?: string;
   /** Optional quick modifiers shown as a second tap when selling. */
   modifiers?: StallModifier[];
   createdAt: Date;
@@ -433,6 +439,8 @@ export interface StallSale {
 export interface StallSession {
   id: string;
   name?: string;
+  /** Where the seller set up (the spot/market). Optional; powers "recent spots". */
+  where?: string;
   startedAt: Date;
   closedAt?: Date;
   isActive: boolean;
@@ -511,6 +519,9 @@ export interface StallPreOrder {
   collectedSessionId?: string;
 }
 
+/** Scope of a stall-data delete. 'all' wipes the whole stall setup. */
+export type StallResetScope = 'all' | 'history' | 'products' | 'customers' | 'preorders';
+
 export interface StallState {
   sessions: StallSession[];
   activeSessionId: string | null;
@@ -520,9 +531,11 @@ export interface StallState {
   preOrders: StallPreOrder[];
   /** Round cash sale totals to the nearest 5 sen (Malaysian cash rounding). */
   roundCashTo5: boolean;
+  /** Stall-owned product units (separate from seller's units). Managed in Business Settings. */
+  units: string[];
 
   // Session actions
-  startSession: (name?: string, productSetup?: { productId: string; startQty: number }[]) => string;
+  startSession: (name?: string, productSetup?: { productId: string; startQty: number }[], where?: string) => string;
   closeSession: (condition?: SessionCondition, note?: string) => void;
   getActiveSession: () => StallSession | null;
   setSessionDefaultPayment: (method: StallDefaultPayment) => void;
@@ -531,6 +544,8 @@ export interface StallState {
   setClearance: (percent: number) => void;
   /** Previous closed session's stock setup, for one-tap "repeat last session". Null if none. */
   getLastSetup: () => { productId: string; startQty: number }[] | null;
+  /** Recent distinct sessions (by name+where) to one-tap re-start a spot with its products. */
+  getRecentSpots: (limit?: number) => { name?: string; where?: string; setup: { productId: string; startQty: number }[] }[];
   // Optional cashbox layer (Phase 2) — all skippable
   setStartingFloat: (amount: number | undefined) => void;
   setCountedCash: (amount: number | undefined) => void;
@@ -572,6 +587,12 @@ export interface StallState {
 
   // Stall settings / polish
   setRoundCashTo5: (on: boolean) => void;
+  /** Add a product unit (trimmed + lowercased + deduped; empty ignored). */
+  addUnit: (u: string) => void;
+  /** Remove a product unit. */
+  removeUnit: (u: string) => void;
+  /** Delete stall data for this business setup, scoped. Local only. */
+  resetStallData: (scope?: StallResetScope) => void;
 
   // Derived data
   getSessionSummary: (sessionId: string) => {
@@ -1548,6 +1569,7 @@ export interface PremiumState {
   canCreateSavingsAccount: (currentCount: number) => boolean;
   canCreateGoal: (currentCount: number) => boolean;
   canCreateSharedSub: (currentCount: number) => boolean;
+  canCreateBusinessProfile: (currentCount: number) => boolean;
   // Metered gates
   canScanReceipt: () => boolean;
   getRemainingScans: () => number;

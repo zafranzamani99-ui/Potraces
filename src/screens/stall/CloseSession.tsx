@@ -18,12 +18,17 @@ import { SessionCondition } from '../../types';
 import { useT } from '../../i18n';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
+import NewstInput, { newstOutline } from '../../components/business/NewstInput';
+import { useNeu } from '../../components/common/neu';
+import NeuIconButton from '../../components/common/NeuIconButton';
+import NeuButton from '../../components/common/NeuButton';
 
 const CloseSession: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
   const CONDITIONS: { value: SessionCondition; label: string; icon: string }[] = [
     { value: 'good', label: t.stall.conditionGood, icon: 'sun' },
     { value: 'slow', label: t.stall.conditionSlow, icon: 'moon' },
@@ -49,6 +54,7 @@ const CloseSession: React.FC = () => {
   const [countedStr, setCountedStr] = useState(activeSession?.countedCash != null ? String(activeSession.countedCash) : '');
   const [expenseName, setExpenseName] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   // Session summary
   const summary = useMemo(() => {
@@ -132,15 +138,14 @@ const CloseSession: React.FC = () => {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity
+          <NeuIconButton
+            size={44}
+            radius={14}
             onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            accessibilityRole="button"
             accessibilityLabel="Go back"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Feather name="arrow-left" size={24} color={C.textPrimary} />
-          </TouchableOpacity>
+            <Feather name="arrow-left" size={22} color={C.textPrimary} />
+          </NeuIconButton>
         </View>
 
         <Text style={styles.heading}>{t.stall.closeSessionHeading}</Text>
@@ -204,46 +209,30 @@ const CloseSession: React.FC = () => {
           <Text style={styles.inputLabel}>{t.stall.cashBoxHeading}</Text>
           <Text style={styles.sectionHint}>{t.stall.cashBoxHint}</Text>
 
-          <View style={styles.amountFieldRow}>
-            <Text style={styles.amountFieldLabel}>{t.stall.floatLabel}</Text>
-            <View style={styles.amountInputWrap}>
-              <Text style={styles.amountCurrency}>{currency}</Text>
-              <TextInput
-                style={styles.amountInput}
-                value={floatStr}
-                onChangeText={(v) => setFloatStr(v.replace(/[^0-9.]/g, ''))}
-                placeholder={t.stall.floatPlaceholder}
-                placeholderTextColor={C.neutral}
-                keyboardType="decimal-pad"
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
-                accessibilityLabel="Starting cash float, optional"
-              />
-            </View>
-          </View>
+          <NewstInput
+            label={t.stall.floatLabel}
+            value={floatStr}
+            onChangeText={(v) => setFloatStr(v.replace(/[^0-9.]/g, ''))}
+            prefix={currency}
+            keyboardType="decimal-pad"
+            accessibilityLabel="Starting cash float, optional"
+            style={styles.cashField}
+          />
 
           <View style={styles.cashLineRow}>
             <Text style={styles.cashLineLabel}>{t.stall.expectedInBox}</Text>
             <Text style={styles.cashLineValue}>{currency} {expectedCash.toFixed(2)}</Text>
           </View>
 
-          <View style={styles.amountFieldRow}>
-            <Text style={styles.amountFieldLabel}>{t.stall.countedLabel}</Text>
-            <View style={styles.amountInputWrap}>
-              <Text style={styles.amountCurrency}>{currency}</Text>
-              <TextInput
-                style={styles.amountInput}
-                value={countedStr}
-                onChangeText={(v) => setCountedStr(v.replace(/[^0-9.]/g, ''))}
-                placeholder={t.stall.countCashPlaceholder}
-                placeholderTextColor={C.neutral}
-                keyboardType="decimal-pad"
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
-                accessibilityLabel="Counted cash, optional"
-              />
-            </View>
-          </View>
+          <NewstInput
+            label={t.stall.countedLabel}
+            value={countedStr}
+            onChangeText={(v) => setCountedStr(v.replace(/[^0-9.]/g, ''))}
+            prefix={currency}
+            keyboardType="decimal-pad"
+            accessibilityLabel="Counted cash, optional"
+            style={styles.cashField}
+          />
 
           {hasCounted && (
             <View style={styles.diffPill}>
@@ -285,21 +274,25 @@ const CloseSession: React.FC = () => {
 
           <View style={styles.expenseAddRow}>
             <TextInput
-              style={styles.expenseNameInput}
+              style={[styles.expenseNameInput, newstOutline(C, focusedField === 'expenseName')]}
               value={expenseName}
               onChangeText={setExpenseName}
+              onFocus={() => setFocusedField('expenseName')}
+              onBlur={() => setFocusedField((f) => (f === 'expenseName' ? null : f))}
               placeholder={t.stall.expenseNamePlaceholder}
               placeholderTextColor={C.neutral}
               keyboardAppearance={isDark ? 'dark' : 'light'}
               selectionColor={withAlpha(C.accent, 0.25)}
               accessibilityLabel="What the cost was for"
             />
-            <View style={styles.expenseAmountWrap}>
+            <View style={[styles.expenseAmountWrap, newstOutline(C, focusedField === 'expenseAmount')]}>
               <Text style={styles.amountCurrency}>{currency}</Text>
               <TextInput
                 style={styles.expenseAmountInput}
                 value={expenseAmount}
                 onChangeText={(v) => setExpenseAmount(v.replace(/[^0-9.]/g, ''))}
+                onFocus={() => setFocusedField('expenseAmount')}
+                onBlur={() => setFocusedField((f) => (f === 'expenseAmount' ? null : f))}
                 placeholder={t.stall.expenseAmountPlaceholder}
                 placeholderTextColor={C.neutral}
                 keyboardType="decimal-pad"
@@ -310,14 +303,14 @@ const CloseSession: React.FC = () => {
                 accessibilityLabel="Cost amount"
               />
             </View>
-            <TouchableOpacity
-              style={styles.expenseAddBtn}
+            <NeuIconButton
+              size={48}
+              radius={14}
               onPress={guardedAddExpense}
-              accessibilityRole="button"
               accessibilityLabel={t.stall.addExpenseBtn}
             >
-              <Feather name="plus" size={18} color={C.onAccent} />
-            </TouchableOpacity>
+              <Feather name="plus" size={18} color={C.bronze} />
+            </NeuIconButton>
           </View>
         </View>
 
@@ -362,6 +355,7 @@ const CloseSession: React.FC = () => {
                   key={cond.value}
                   style={[
                     styles.conditionPill,
+                    neu.raised,
                     isSelected && styles.conditionPillSelected,
                   ]}
                   onPress={() =>
@@ -377,7 +371,7 @@ const CloseSession: React.FC = () => {
                   <Feather
                     name={cond.icon as keyof typeof Feather.glyphMap}
                     size={16}
-                    color={isSelected ? C.bronze : C.textSecondary}
+                    color={isSelected ? C.onAccent : C.textSecondary}
                   />
                   <Text
                     style={[
@@ -395,33 +389,24 @@ const CloseSession: React.FC = () => {
 
         {/* Note input */}
         <View style={styles.noteSection}>
-          <Text style={styles.inputLabel}>{t.stall.noteLabel}</Text>
-          <TextInput
-            style={styles.noteInput}
+          <NewstInput
+            label={t.stall.noteLabel}
             value={note}
             onChangeText={setNote}
-            placeholder={t.stall.notePlaceholder}
-            placeholderTextColor={C.neutral}
             multiline
-            numberOfLines={3}
-            textAlignVertical="top"
             accessibilityLabel="Session note, optional"
             accessibilityHint="Add a note about this selling session"
-            keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
 
         {/* Close session button */}
-        <TouchableOpacity
-          style={styles.closeButton}
+        <NeuButton
+          icon="check"
+          label={t.stall.closeSessionButton}
+          color={C.bronze}
           onPress={guardedClose}
-          activeOpacity={0.8}
-          accessibilityRole="button"
           accessibilityLabel="Close this selling session"
-        >
-          <Text style={styles.closeButtonText}>{t.stall.closeSessionButton}</Text>
-        </TouchableOpacity>
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -446,12 +431,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: SPACING.xl,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   heading: {
     fontSize: TYPOGRAPHY.size['3xl'],
@@ -520,42 +499,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: -SPACING.xs,
     marginBottom: SPACING.md,
   },
-  amountFieldRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.md,
+  cashField: {
     marginBottom: SPACING.sm,
-  },
-  amountFieldLabel: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textSecondary,
-    flex: 1,
-  },
-  amountInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    minWidth: 140,
-    minHeight: 48,
   },
   amountCurrency: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
-  },
-  amountInput: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-    textAlign: 'right',
   },
   cashLineRow: {
     flexDirection: 'row',
@@ -646,14 +596,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
-  expenseAddBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.md,
-    backgroundColor: C.bronze,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   netCard: {
     backgroundColor: withAlpha(C.bronze, 0.04),
     borderWidth: 1,
@@ -721,17 +663,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: C.surface,
-    borderWidth: 1.5,
-    borderColor: C.border,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     minHeight: 44,
   },
   conditionPillSelected: {
-    borderColor: C.bronze,
-    backgroundColor: withAlpha(C.bronze, 0.10),
+    backgroundColor: C.bronze,
   },
   conditionText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -739,38 +678,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   conditionTextSelected: {
-    color: C.bronze,
+    color: C.onAccent,
+    fontWeight: TYPOGRAPHY.weight.bold,
   },
 
   // ─── Note ────────────────────────────────────────────────────
   noteSection: {
     marginBottom: SPACING['3xl'],
-  },
-  noteInput: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    minHeight: 88,
-  },
-
-  // ─── Actions ─────────────────────────────────────────────────
-  closeButton: {
-    backgroundColor: C.bronze,
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  closeButtonText: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
   },
 
   // ─── Empty state ─────────────────────────────────────────────

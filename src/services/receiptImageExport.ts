@@ -11,12 +11,16 @@ export async function shareCapturedView(
   opts: { fileBaseName?: string; dialogTitle?: string } = {},
 ): Promise<void> {
   const { fileBaseName = 'card', dialogTitle = 'Share' } = opts;
-  const uri = await captureRef(viewRef, {
-    format: 'png',
-    quality: 1,
-    result: 'tmpfile',
-    useRenderInContext: true,
-  });
+  // Let the view finish painting — on the New Architecture (Fabric) the very
+  // first captureRef can come back blank or throw if fired on the same frame.
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  let uri: string;
+  try {
+    uri = await captureRef(viewRef, { format: 'png', quality: 1, result: 'tmpfile', useRenderInContext: true });
+  } catch {
+    // Some Fabric devices fail with renderInContext — retry with the default snapshot.
+    uri = await captureRef(viewRef, { format: 'png', quality: 1, result: 'tmpfile' });
+  }
   const safeName = fileBaseName.replace(/[^a-z0-9_-]+/gi, '_').slice(0, 40) || 'card';
   const destUri = `${FileSystem.cacheDirectory}${safeName}_${Date.now()}.png`;
   await FileSystem.copyAsync({ from: uri, to: destUri });

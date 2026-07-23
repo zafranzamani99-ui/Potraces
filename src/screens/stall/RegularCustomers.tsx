@@ -18,6 +18,10 @@ import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '.
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { RegularCustomer } from '../../types';
+import NewstInput, { newstOutline } from '../../components/business/NewstInput';
+import { useNeu } from '../../components/common/neu';
+import NeuIconButton from '../../components/common/NeuIconButton';
+import NeuButton from '../../components/common/NeuButton';
 
 const RegularCustomers: React.FC = () => {
   const C = useCalm();
@@ -25,6 +29,7 @@ const RegularCustomers: React.FC = () => {
   const isDark = useIsDark();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
   const {
     regularCustomers,
     addRegularCustomer,
@@ -37,6 +42,7 @@ const RegularCustomers: React.FC = () => {
   // ─── State ─────────────────────────────────────────────
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   // Loyalty config (optional)
   const [loyaltyEvery, setLoyaltyEvery] = useState(loyalty.everyN ? String(loyalty.everyN) : '');
@@ -153,38 +159,24 @@ const RegularCustomers: React.FC = () => {
 
       if (isEditing) {
         return (
-          <View style={styles.customerCard}>
+          <View style={[styles.customerCard, neu.raisedSoft]}>
             <View style={styles.editForm}>
-              <TextInput
-                style={styles.editInput}
+              <NewstInput
+                label={t.stallRegulars.name}
                 value={editName}
                 onChangeText={setEditName}
-                placeholder={t.stallRegulars.name}
-                placeholderTextColor={C.textSecondary}
                 autoFocus
                 accessibilityLabel="Customer name"
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
               />
-              <TextInput
-                style={styles.editInput}
+              <NewstInput
+                label={t.stallRegulars.usualOrderOptional}
                 value={editUsualOrder}
                 onChangeText={setEditUsualOrder}
-                placeholder={t.stallRegulars.usualOrderOptional}
-                placeholderTextColor={C.textSecondary}
-                accessibilityLabel="Usual order"
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
               />
-              <TextInput
-                style={styles.editInput}
+              <NewstInput
+                label={t.stallRegulars.noteOptional}
                 value={editNote}
                 onChangeText={setEditNote}
-                placeholder={t.stallRegulars.noteOptional}
-                placeholderTextColor={C.textSecondary}
-                accessibilityLabel="Note about this customer"
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <View style={styles.editActions}>
@@ -227,7 +219,7 @@ const RegularCustomers: React.FC = () => {
 
       return (
         <TouchableOpacity
-          style={styles.customerCard}
+          style={[styles.customerCard, neu.raisedSoft]}
           onPress={() => handleStartEdit(item)}
           activeOpacity={0.85}
           accessibilityLabel={`${item.name}${item.usualOrder ? `, usually orders ${item.usualOrder}` : ''}, ${item.visitCount} visits`}
@@ -279,7 +271,7 @@ const RegularCustomers: React.FC = () => {
         </TouchableOpacity>
       );
     },
-    [editingId, editName, editUsualOrder, editNote, handleStartEdit, handleSaveEdit, handleCancelEdit, handleDelete, loyalty],
+    [editingId, editName, editUsualOrder, editNote, handleStartEdit, handleSaveEdit, handleCancelEdit, handleDelete, loyalty, neu],
   );
 
   // ─── Header with add form ─────────────────────────────
@@ -293,79 +285,62 @@ const RegularCustomers: React.FC = () => {
               {t.stallRegulars.subtitle}{regularCustomers.length > 0 ? ` \u00B7 ${regularCustomers.length}` : ''}
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.addToggle}
+          <NeuIconButton
+            size={44}
+            radius={14}
             onPress={handleToggleAdd}
             accessibilityLabel={showAddForm ? 'Close add form' : 'Add new regular'}
-            accessibilityRole="button"
           >
             <Feather
               name={showAddForm ? 'x' : 'plus'}
               size={20}
               color={C.bronze}
             />
-          </TouchableOpacity>
+          </NeuIconButton>
         </View>
 
         {/* Inline add form */}
         {showAddForm && (
-          <View style={styles.addForm}>
-            <TextInput
-              style={styles.addInput}
+          <View style={[styles.addForm, neu.raisedSoft]}>
+            <NewstInput
+              label={t.stallRegulars.name}
               value={newName}
               onChangeText={setNewName}
-              placeholder={t.stallRegulars.name}
-              placeholderTextColor={C.textSecondary}
               autoFocus
-              accessibilityLabel={t.stallRegulars.name}
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={withAlpha(C.accent, 0.25)}
             />
-            <TextInput
-              style={styles.addInput}
+            <NewstInput
+              label={t.stallRegulars.usualOrderOptional}
               value={newUsualOrder}
               onChangeText={setNewUsualOrder}
-              placeholder={t.stallRegulars.usualOrderPlaceholder}
-              placeholderTextColor={C.textSecondary}
-              accessibilityLabel="Usual order, optional"
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={withAlpha(C.accent, 0.25)}
             />
-            <TextInput
-              style={styles.addInput}
+            <NewstInput
+              label={t.stallRegulars.noteOptional}
               value={newNote}
               onChangeText={setNewNote}
-              placeholder="note (optional)"
-              placeholderTextColor={C.textSecondary}
-              accessibilityLabel="Note, optional"
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={withAlpha(C.accent, 0.25)}
             />
-            <TouchableOpacity
-              style={[
-                styles.addSaveButton,
-                !newName.trim() && styles.addSaveButtonDisabled,
-              ]}
+            <NeuButton
+              icon="check"
+              label={t.stallRegulars.save}
+              color={C.bronze}
               onPress={handleAdd}
               disabled={!newName.trim()}
               accessibilityLabel="Save new regular customer"
-              accessibilityRole="button"
-            >
-              <Text style={styles.addSaveText}>{t.stallRegulars.save}</Text>
-            </TouchableOpacity>
+            />
           </View>
         )}
 
         {/* Loyalty config (optional) */}
-        <View style={styles.loyaltyCard}>
+        <View style={[styles.loyaltyCard, neu.raisedSoft]}>
           <Text style={styles.loyaltyHeading}>{t.stall.loyaltyHeading}</Text>
           <Text style={styles.loyaltyHint}>{t.stall.loyaltyHint}</Text>
           <View style={styles.loyaltyRow}>
             <Text style={styles.loyaltyWord}>{t.stall.loyaltyEvery}</Text>
             <TextInput
-              style={styles.loyaltyEveryInput}
+              style={[styles.loyaltyEveryInput, newstOutline(C, focusedField === 'loyaltyEvery')]}
               value={loyaltyEvery}
               onChangeText={(v) => { const c = v.replace(/[^0-9]/g, ''); setLoyaltyEvery(c); commitLoyalty(c, loyaltyReward); }}
+              onFocus={() => setFocusedField('loyaltyEvery')}
+              onBlur={() => setFocusedField(null)}
               placeholder="10"
               placeholderTextColor={C.neutral}
               keyboardType="number-pad"
@@ -376,9 +351,11 @@ const RegularCustomers: React.FC = () => {
             <Text style={styles.loyaltyWord}>{t.stall.loyaltyVisitsWord}</Text>
           </View>
           <TextInput
-            style={styles.loyaltyRewardInput}
+            style={[styles.loyaltyRewardInput, newstOutline(C, focusedField === 'loyaltyReward')]}
             value={loyaltyReward}
             onChangeText={(v) => { setLoyaltyReward(v); commitLoyalty(loyaltyEvery, v); }}
+            onFocus={() => setFocusedField('loyaltyReward')}
+            onBlur={() => setFocusedField(null)}
             placeholder={t.stall.loyaltyRewardPlaceholder}
             placeholderTextColor={C.neutral}
             accessibilityLabel="Loyalty reward"
@@ -388,7 +365,7 @@ const RegularCustomers: React.FC = () => {
         </View>
       </View>
     );
-  }, [showAddForm, newName, newUsualOrder, newNote, handleToggleAdd, handleAdd, loyaltyEvery, loyaltyReward, commitLoyalty, isDark, C]);
+  }, [showAddForm, newName, newUsualOrder, newNote, handleToggleAdd, handleAdd, loyaltyEvery, loyaltyReward, commitLoyalty, isDark, C, focusedField, neu]);
 
   const renderEmpty = useCallback(() => {
     return (
@@ -411,7 +388,7 @@ const RegularCustomers: React.FC = () => {
           renderItem={renderCustomer}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={renderHeader()}
           ListEmptyComponent={renderEmpty}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -436,9 +413,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ─── Loyalty config + progress ─────────────────────────
   loyaltyCard: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginTop: SPACING.md,
@@ -523,60 +498,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     ...TYPE.muted,
     marginTop: SPACING.xs,
   },
-  addToggle: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.surface,
-  },
 
   // ─── Add form ──────────────────────────────────────────
   addForm: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.bronze,
     padding: SPACING.lg,
     gap: SPACING.md,
     marginBottom: SPACING.sm,
   },
-  addInput: {
-    ...TYPE.insight,
-    color: C.textPrimary,
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
-    minHeight: 44,
-  },
-  addSaveButton: {
-    backgroundColor: C.bronze,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44,
-  },
-  addSaveButtonDisabled: {
-    opacity: 0.4,
-  },
-  addSaveText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
 
   // ─── Customer card ────────────────────────────────────
   customerCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
     padding: SPACING.lg,
     flexDirection: 'row',
     alignItems: 'center',
@@ -632,16 +567,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   editForm: {
     flex: 1,
     gap: SPACING.md,
-  },
-  editInput: {
-    ...TYPE.insight,
-    color: C.textPrimary,
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
-    minHeight: 44,
   },
   editActions: {
     flexDirection: 'row',

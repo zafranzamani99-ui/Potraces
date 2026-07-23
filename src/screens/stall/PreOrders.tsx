@@ -20,6 +20,10 @@ import { useT } from '../../i18n';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 import { StallPreOrder, StallProduct } from '../../types';
+import NewstInput, { newstOutline } from '../../components/business/NewstInput';
+import { useNeu } from '../../components/common/neu';
+import NeuIconButton from '../../components/common/NeuIconButton';
+import NeuButton from '../../components/common/NeuButton';
 
 interface FormItem {
   key: string;
@@ -34,6 +38,7 @@ const StallPreOrders: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
   const navigation = useNavigation<any>();
   const {
     preOrders, products, addPreOrder, updatePreOrder, deletePreOrder, collectPreOrder, getActiveSession,
@@ -57,6 +62,7 @@ const StallPreOrders: React.FC = () => {
   const [isPaid, setIsPaid] = useState(false);
   const [payMethod, setPayMethod] = useState<'cash' | 'qr'>('cash');
   const [items, setItems] = useState<FormItem[]>([]);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const keyRef = useRef(0);
   const nextKey = () => `it${keyRef.current++}`;
 
@@ -177,7 +183,7 @@ const StallPreOrders: React.FC = () => {
   const renderCard = (po: StallPreOrder, isCollected: boolean) => {
     const expanded = expandedId === po.id;
     return (
-      <View key={po.id} style={[styles.card, isCollected && styles.cardCollected]}>
+      <View key={po.id} style={[styles.card, neu.raisedSoft, isCollected && styles.cardCollected]}>
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => !isCollected && setExpandedId(expanded ? null : po.id)}
@@ -211,16 +217,21 @@ const StallPreOrders: React.FC = () => {
 
         {expanded && !isCollected && (
           <View style={styles.cardActions}>
-            <TouchableOpacity style={styles.collectBtn} onPress={() => handleCollect(po.id)} accessibilityLabel={t.stall.preOrderCollect}>
-              <Feather name="check-circle" size={16} color={C.onAccent} />
-              <Text style={styles.collectBtnText}>{t.stall.preOrderCollect}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => handleEdit(po)} accessibilityLabel={t.stall.preOrderEdit}>
-              <Feather name="edit-2" size={15} color={C.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => handleCancel(po)} accessibilityLabel={t.stall.preOrderCancelOrder}>
-              <Feather name="trash-2" size={15} color={C.bronze} />
-            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <NeuButton
+                icon="check-circle"
+                label={t.stall.preOrderCollect}
+                color={C.bronze}
+                onPress={() => handleCollect(po.id)}
+                accessibilityLabel={t.stall.preOrderCollect}
+              />
+            </View>
+            <NeuIconButton size={44} radius={14} onPress={() => handleEdit(po)} accessibilityLabel={t.stall.preOrderEdit}>
+              <Feather name="edit-2" size={20} color={C.textSecondary} />
+            </NeuIconButton>
+            <NeuIconButton size={44} radius={14} onPress={() => handleCancel(po)} accessibilityLabel={t.stall.preOrderCancelOrder}>
+              <Feather name="trash-2" size={20} color={C.bronze} />
+            </NeuIconButton>
           </View>
         )}
       </View>
@@ -245,47 +256,35 @@ const StallPreOrders: React.FC = () => {
                 {t.stall.preOrdersSub}{pending.length > 0 ? ` · ${t.stall.nToCollect.replace('{n}', String(pending.length))}` : ''}
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.addToggle}
+            <NeuIconButton
+              size={44}
+              radius={14}
               onPress={() => (showForm ? resetForm() : openAdd())}
-              accessibilityRole="button"
               accessibilityLabel={showForm ? t.common.cancel : t.stall.preOrderAdd}
             >
               <Feather name={showForm ? 'x' : 'plus'} size={20} color={C.bronze} />
-            </TouchableOpacity>
+            </NeuIconButton>
           </View>
 
           {/* Add / edit form */}
           {showForm && (
-            <View style={styles.form}>
-              <TextInput
-                style={styles.input}
+            <View style={[styles.form, neu.raisedSoft]}>
+              <NewstInput
+                label={t.stall.preOrderName}
                 value={name}
                 onChangeText={setName}
-                placeholder={t.stall.preOrderName}
-                placeholderTextColor={C.neutral}
                 autoFocus
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
               />
-              <TextInput
-                style={styles.input}
+              <NewstInput
+                label={t.stall.preOrderPhone}
                 value={phone}
                 onChangeText={setPhone}
-                placeholder={t.stall.preOrderPhone}
-                placeholderTextColor={C.neutral}
                 keyboardType="phone-pad"
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
               />
-              <TextInput
-                style={styles.input}
+              <NewstInput
+                label={t.stall.collectTimeLabel}
                 value={collectAt}
                 onChangeText={setCollectAt}
-                placeholder={t.stall.preOrderCollectAt}
-                placeholderTextColor={C.neutral}
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               {/* Quick-add product chips */}
@@ -310,13 +309,15 @@ const StallPreOrders: React.FC = () => {
                   {items.map((it) => (
                     <View key={it.key} style={styles.itemRow}>
                       <TextInput
-                        style={styles.itemName}
+                        style={[styles.itemName, newstOutline(C, focusedField === 'itemName-' + it.key)]}
                         value={it.name}
                         onChangeText={(v) => updateItem(it.key, { name: v })}
                         placeholder={t.stall.preOrderItemName}
                         placeholderTextColor={C.neutral}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
                         selectionColor={withAlpha(C.accent, 0.25)}
+                        onFocus={() => setFocusedField('itemName-' + it.key)}
+                        onBlur={() => setFocusedField((f) => (f === 'itemName-' + it.key ? null : f))}
                       />
                       <View style={styles.qtyStepper}>
                         <TouchableOpacity style={styles.qtyBtn} onPress={() => updateItem(it.key, { qty: String(Math.max(1, (parseInt(it.qty, 10) || 1) - 1)) })}>
@@ -328,7 +329,7 @@ const StallPreOrders: React.FC = () => {
                         </TouchableOpacity>
                       </View>
                       <TextInput
-                        style={styles.itemPrice}
+                        style={[styles.itemPrice, newstOutline(C, focusedField === 'itemPrice-' + it.key)]}
                         value={it.price}
                         onChangeText={(v) => updateItem(it.key, { price: v.replace(/[^0-9.]/g, '') })}
                         placeholder="0.00"
@@ -336,6 +337,8 @@ const StallPreOrders: React.FC = () => {
                         keyboardType="decimal-pad"
                         keyboardAppearance={isDark ? 'dark' : 'light'}
                         selectionColor={withAlpha(C.accent, 0.25)}
+                        onFocus={() => setFocusedField('itemPrice-' + it.key)}
+                        onBlur={() => setFocusedField((f) => (f === 'itemPrice-' + it.key ? null : f))}
                       />
                       <TouchableOpacity onPress={() => removeItem(it.key)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Remove item">
                         <Feather name="x" size={16} color={C.neutral} />
@@ -356,35 +359,31 @@ const StallPreOrders: React.FC = () => {
                   <Text style={styles.paidText}>{t.stall.preOrderPaid}</Text>
                 </TouchableOpacity>
                 <View style={styles.methodToggle}>
-                  <TouchableOpacity style={[styles.methodBtn, payMethod === 'cash' && styles.methodActive]} onPress={() => setPayMethod('cash')}>
+                  <TouchableOpacity style={[styles.methodBtn, neu.raised, payMethod === 'cash' && styles.methodActive]} onPress={() => setPayMethod('cash')}>
                     <Text style={[styles.methodText, payMethod === 'cash' && styles.methodTextActive]}>{t.stall.cashPrefix}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.methodBtn, payMethod === 'qr' && styles.methodActive]} onPress={() => setPayMethod('qr')}>
+                  <TouchableOpacity style={[styles.methodBtn, neu.raised, payMethod === 'qr' && styles.methodActive]} onPress={() => setPayMethod('qr')}>
                     <Text style={[styles.methodText, payMethod === 'qr' && styles.methodTextActive]}>{t.stall.qrPrefix}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
-              <TextInput
-                style={styles.input}
+              <NewstInput
+                label={t.stall.preOrderNotePlaceholder}
                 value={note}
                 onChangeText={setNote}
-                placeholder={t.stall.preOrderNotePlaceholder}
-                placeholderTextColor={C.neutral}
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <View style={styles.formFooter}>
                 <Text style={styles.formTotalText}>{t.stall.preOrderTotalLabel}: {currency} {formTotal.toFixed(2)}</Text>
-                <TouchableOpacity
-                  style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
+                <NeuButton
+                  icon="check"
+                  label={t.stall.preOrderSave}
+                  color={C.bronze}
                   onPress={handleSave}
                   disabled={!canSave}
                   accessibilityLabel={t.stall.preOrderSave}
-                >
-                  <Text style={styles.saveBtnText}>{t.stall.preOrderSave}</Text>
-                </TouchableOpacity>
+                />
               </View>
             </View>
           )}
@@ -442,22 +441,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   subheading: { ...TYPE.muted, color: C.textSecondary, marginTop: SPACING.xs },
-  addToggle: {
-    width: 44, height: 44, borderRadius: RADIUS.full,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: withAlpha(C.bronze, 0.10),
-  },
 
   // Form
   form: {
-    backgroundColor: C.surface,
-    borderWidth: 1, borderColor: C.border, borderRadius: RADIUS.lg,
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
     padding: SPACING.lg, marginBottom: SPACING.xl, gap: SPACING.md,
-  },
-  input: {
-    backgroundColor: C.background, borderWidth: 1, borderColor: C.border,
-    borderRadius: RADIUS.md, paddingVertical: SPACING.md, paddingHorizontal: SPACING.lg,
-    fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, minHeight: 48,
   },
   fieldLabel: { ...TYPE.muted, color: C.textSecondary },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
@@ -495,23 +484,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   paidToggle: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   paidText: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
   methodToggle: {
-    flexDirection: 'row', borderWidth: 1, borderColor: C.border, borderRadius: RADIUS.md, overflow: 'hidden',
+    flexDirection: 'row', gap: SPACING.xs,
   },
-  methodBtn: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, minHeight: 32, justifyContent: 'center' },
+  methodBtn: {
+    paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, minHeight: 32,
+    alignItems: 'center', justifyContent: 'center',
+    borderRadius: RADIUS.full, backgroundColor: withAlpha(C.textPrimary, 0.03),
+  },
   methodActive: { backgroundColor: C.bronze },
   methodText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textSecondary },
-  methodTextActive: { color: C.onAccent },
-  formFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.xs },
+  methodTextActive: { color: C.onAccent, fontWeight: TYPOGRAPHY.weight.bold },
+  formFooter: { gap: SPACING.md, marginTop: SPACING.xs },
   formTotalText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary, fontVariant: ['tabular-nums'] },
-  saveBtn: { backgroundColor: C.bronze, borderRadius: RADIUS.md, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl, minHeight: 44, justifyContent: 'center' },
-  saveBtnDisabled: { backgroundColor: C.border },
-  saveBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.onAccent },
 
   // Sections + cards
   section: { marginTop: SPACING.lg, gap: SPACING.sm },
   sectionLabel: { ...TYPE.label, marginBottom: SPACING.xs },
   card: {
-    backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg, padding: SPACING.lg,
   },
   cardCollected: { opacity: 0.55 },
@@ -527,15 +517,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   cardBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.md },
   cardTotal: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, fontVariant: ['tabular-nums'] },
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.lg, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: C.border },
-  collectBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
-    backgroundColor: C.bronze, borderRadius: RADIUS.md, paddingVertical: SPACING.md, minHeight: 44,
-  },
-  collectBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.onAccent },
-  secondaryBtn: {
-    width: 44, height: 44, borderRadius: RADIUS.md, borderWidth: 1, borderColor: C.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
 
   // Empty
   empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING['4xl'], gap: SPACING.md },

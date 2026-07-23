@@ -31,6 +31,9 @@ import { useNetInfo } from '@react-native-community/netinfo';
 import TapToPaySheet from '../../components/common/TapToPaySheet';
 import { tapToPayAvailable } from '../../services/tapToPay';
 import QrPaySheet from '../../components/common/QrPaySheet';
+import NewstInput, { newstOutline } from '../../components/business/NewstInput';
+import { useNeu } from '../../components/common/neu';
+import NeuIconButton from '../../components/common/NeuIconButton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CART_COLLAPSED_WIDTH = SCREEN_WIDTH * 0.30;
@@ -47,6 +50,7 @@ const SellScreen: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const t = useT();
@@ -82,6 +86,7 @@ const SellScreen: React.FC = () => {
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   // Discount state
   const [discountValue, setDiscountValue] = useState('');
@@ -591,7 +596,7 @@ const SellScreen: React.FC = () => {
           {/* Quick / Cart mode toggle */}
           <View style={styles.modeToggle}>
             <TouchableOpacity
-              style={[styles.modeBtn, mode === 'quick' && styles.modeBtnActive]}
+              style={[styles.modeBtn, neu.raised, mode === 'quick' && styles.modeBtnActive]}
               onPress={() => {
                 lightTap();
                 if (cart.length > 0) { showToast(t.stall.cartBusySwitch, 'info'); return; }
@@ -605,7 +610,7 @@ const SellScreen: React.FC = () => {
               <Text style={[styles.modeBtnText, mode === 'quick' && styles.modeBtnTextActive]}>{t.stall.quickMode}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.modeBtn, mode === 'cart' && styles.modeBtnActive]}
+              style={[styles.modeBtn, neu.raised, mode === 'cart' && styles.modeBtnActive]}
               onPress={() => { lightTap(); setMode('cart'); }}
               accessibilityRole="button"
               accessibilityState={{ selected: mode === 'cart' }}
@@ -619,7 +624,7 @@ const SellScreen: React.FC = () => {
           <View style={styles.controlsRight}>
             {mode === 'quick' && (
               <TouchableOpacity
-                style={styles.payDefaultPill}
+                style={[neu.raised, styles.payDefaultPill]}
                 onPress={toggleDefaultPayment}
                 activeOpacity={0.7}
                 accessibilityRole="button"
@@ -631,7 +636,7 @@ const SellScreen: React.FC = () => {
               </TouchableOpacity>
             )}
             <TouchableOpacity
-              style={clearance > 0 ? styles.clearancePillOn : styles.headerIconBtn}
+              style={clearance > 0 ? styles.clearancePillOn : [styles.headerIconBtn, neu.raised]}
               onPress={openClearance}
               accessibilityRole="button"
               accessibilityLabel={clearance > 0 ? `Clearance ${clearance} percent off` : t.stall.clearanceTitle}
@@ -645,22 +650,22 @@ const SellScreen: React.FC = () => {
                 <Feather name="tag" size={16} color={C.textSecondary} />
               )}
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.headerIconBtn}
+            <NeuIconButton
+              size={36}
+              radius={12}
               onPress={openCustom}
-              accessibilityRole="button"
               accessibilityLabel={t.stall.customSaleTitle}
             >
-              <Feather name="hash" size={16} color={C.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.headerIconBtn}
+              <Feather name="hash" size={18} color={C.textSecondary} />
+            </NeuIconButton>
+            <NeuIconButton
+              size={36}
+              radius={12}
               onPress={() => navigation.getParent()?.navigate('StallProducts')}
-              accessibilityRole="button"
               accessibilityLabel={t.stall.manageProducts}
             >
-              <Feather name="package" size={16} color={C.textSecondary} />
-            </TouchableOpacity>
+              <Feather name="package" size={18} color={C.textSecondary} />
+            </NeuIconButton>
           </View>
         </View>
 
@@ -716,12 +721,14 @@ const SellScreen: React.FC = () => {
           )}
 
           {/* Search */}
-          <View style={styles.searchContainer}>
+          <View style={[styles.searchContainer, newstOutline(C, focusedField === 'search')]}>
             <Feather name="search" size={20} color={C.textSecondary} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
+              onFocus={() => setFocusedField('search')}
+              onBlur={() => setFocusedField((f) => (f === 'search' ? null : f))}
               placeholder="Search products..."
               placeholderTextColor={C.neutral}
               returnKeyType="search"
@@ -755,6 +762,7 @@ const SellScreen: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.productButton,
+                      neu.raised,
                       mode === 'cart' && inCartQty > 0 && styles.productInCart,
                       isSoldOut && styles.productOutOfStock,
                     ]}
@@ -989,9 +997,11 @@ const SellScreen: React.FC = () => {
                   </View>
                 </View>
                 <TextInput
-                  style={styles.discountInput}
+                  style={[styles.discountInput, newstOutline(C, focusedField === 'discount')]}
                   value={discountValue}
                   onChangeText={setDiscountValue}
+                  onFocus={() => setFocusedField('discount')}
+                  onBlur={() => setFocusedField((f) => (f === 'discount' ? null : f))}
                   placeholder={discountType === 'percentage' ? '0%' : '0.00'}
                   placeholderTextColor={C.neutral}
                   keyboardType="decimal-pad"
@@ -1039,7 +1049,7 @@ const SellScreen: React.FC = () => {
             {/* Payment buttons — Cash / QR */}
             <View style={styles.paymentRow}>
               <TouchableOpacity
-                style={styles.cashButton}
+                style={[styles.cashButton, neu.raised]}
                 onPress={() => guardedCheckout('cash')}
                 activeOpacity={0.85}
                 disabled={cart.length === 0}
@@ -1053,7 +1063,7 @@ const SellScreen: React.FC = () => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.qrButton, cart.length === 0 && styles.qrButtonDisabled]}
+                style={[neu.raisedSoft, styles.qrButton, cart.length === 0 && styles.qrButtonDisabled]}
                 onPress={guardedOpenQrCheckout}
                 activeOpacity={0.85}
                 disabled={cart.length === 0}
@@ -1070,7 +1080,7 @@ const SellScreen: React.FC = () => {
                   Offline: stays visible but muted; tapping explains why. */}
               {cardConfigured && (
                 <TouchableOpacity
-                  style={[styles.cashButton, cardOffline && { opacity: 0.5 }]}
+                  style={[styles.cashButton, neu.raised, cardOffline && { opacity: 0.5 }]}
                   onPress={openCardCheckout}
                   activeOpacity={0.85}
                   disabled={cart.length === 0}
@@ -1219,12 +1229,14 @@ const SellScreen: React.FC = () => {
           >
             <View style={styles.centerCard} onStartShouldSetResponder={() => true}>
               <Text style={styles.centerTitle}>{t.stall.customSaleTitle}</Text>
-              <View style={styles.customAmountRow}>
+              <View style={[styles.customAmountRow, newstOutline(C, focusedField === 'customAmount')]}>
                 <Text style={styles.customCurrency}>{currency}</Text>
                 <TextInput
                   style={styles.customAmountInput}
                   value={customAmount}
                   onChangeText={setCustomAmount}
+                  onFocus={() => setFocusedField('customAmount')}
+                  onBlur={() => setFocusedField((f) => (f === 'customAmount' ? null : f))}
                   placeholder="0.00"
                   placeholderTextColor={C.neutral}
                   keyboardType="decimal-pad"
@@ -1233,25 +1245,21 @@ const SellScreen: React.FC = () => {
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
               </View>
-              <TextInput
-                style={styles.customLabelInput}
+              <NewstInput
+                label={t.stall.customFieldLabel}
                 value={customLabel}
                 onChangeText={setCustomLabel}
-                placeholder={t.stall.customLabelPlaceholder}
-                placeholderTextColor={C.neutral}
-                selectionColor={withAlpha(C.accent, 0.25)}
-                keyboardAppearance={isDark ? 'dark' : 'light'}
               />
               <View style={styles.customPayRow}>
                 <TouchableOpacity
-                  style={[styles.customPayBtn, customMethod === 'cash' && styles.customPayActive]}
+                  style={[styles.customPayBtn, neu.raised, customMethod === 'cash' && styles.customPayActive]}
                   onPress={() => setCustomMethod('cash')}
                 >
                   <Feather name="dollar-sign" size={15} color={customMethod === 'cash' ? C.onAccent : C.textSecondary} />
                   <Text style={[styles.customPayText, customMethod === 'cash' && { color: C.onAccent }]}>{t.stall.cashPrefix}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.customPayBtn, customMethod === 'qr' && styles.customPayActive]}
+                  style={[styles.customPayBtn, neu.raised, customMethod === 'qr' && styles.customPayActive]}
                   onPress={() => setCustomMethod('qr')}
                 >
                   <Feather name="smartphone" size={15} color={customMethod === 'qr' ? C.onAccent : C.textSecondary} />
@@ -1259,7 +1267,7 @@ const SellScreen: React.FC = () => {
                 </TouchableOpacity>
                 {cardConfigured && (
                   <TouchableOpacity
-                    style={[styles.customPayBtn, customMethod === 'card' && styles.customPayActive]}
+                    style={[styles.customPayBtn, neu.raised, customMethod === 'card' && styles.customPayActive]}
                     onPress={() => setCustomMethod('card')}
                   >
                     <Feather name="wifi" size={15} color={customMethod === 'card' ? C.onAccent : C.textSecondary} />
@@ -1279,10 +1287,10 @@ const SellScreen: React.FC = () => {
                 </TouchableOpacity>
               )}
               <View style={styles.centerBtns}>
-                <TouchableOpacity style={[styles.centerBtn, styles.centerCancelBtn]} onPress={() => { Keyboard.dismiss(); setCustomVisible(false); }}>
+                <TouchableOpacity style={[styles.centerBtn, neu.raised, styles.centerCancelBtn]} onPress={() => { Keyboard.dismiss(); setCustomVisible(false); }}>
                   <Text style={styles.centerCancelText}>{t.common.cancel}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.centerBtn, styles.centerPrimaryBtn]} onPress={guardedConfirmCustom}>
+                <TouchableOpacity style={[styles.centerBtn, neu.raisedSoft, styles.centerPrimaryBtn]} onPress={guardedConfirmCustom}>
                   <Text style={styles.centerPrimaryText}>{t.stall.addSaleBtn}</Text>
                 </TouchableOpacity>
               </View>
@@ -1308,12 +1316,14 @@ const SellScreen: React.FC = () => {
             <View style={styles.centerCard} onStartShouldSetResponder={() => true}>
               <Text style={styles.centerTitle}>{t.stall.restockTitle}</Text>
               {!!restockTarget && <Text style={styles.restockName} numberOfLines={1}>{restockTarget.name}</Text>}
-              <View style={styles.customAmountRow}>
+              <View style={[styles.customAmountRow, newstOutline(C, focusedField === 'restock')]}>
                 <Feather name="package" size={18} color={C.textSecondary} />
                 <TextInput
                   style={styles.customAmountInput}
                   value={restockAmount}
                   onChangeText={(v) => setRestockAmount(v.replace(/[^0-9]/g, ''))}
+                  onFocus={() => setFocusedField('restock')}
+                  onBlur={() => setFocusedField((f) => (f === 'restock' ? null : f))}
                   placeholder={t.stall.restockPlaceholder}
                   placeholderTextColor={C.neutral}
                   keyboardType="number-pad"
@@ -1323,10 +1333,10 @@ const SellScreen: React.FC = () => {
                 />
               </View>
               <View style={styles.centerBtns}>
-                <TouchableOpacity style={[styles.centerBtn, styles.centerCancelBtn]} onPress={() => { Keyboard.dismiss(); setRestockTarget(null); }}>
+                <TouchableOpacity style={[styles.centerBtn, neu.raised, styles.centerCancelBtn]} onPress={() => { Keyboard.dismiss(); setRestockTarget(null); }}>
                   <Text style={styles.centerCancelText}>{t.common.cancel}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.centerBtn, styles.centerPrimaryBtn]} onPress={guardedConfirmRestock}>
+                <TouchableOpacity style={[styles.centerBtn, neu.raisedSoft, styles.centerPrimaryBtn]} onPress={guardedConfirmRestock}>
                   <Text style={styles.centerPrimaryText}>{t.stall.restockBtn}</Text>
                 </TouchableOpacity>
               </View>
@@ -1353,12 +1363,14 @@ const SellScreen: React.FC = () => {
               <View style={styles.sheetHandle} />
               <Text style={styles.sheetTitle}>{t.stall.pickCustomerTitle}</Text>
 
-              <View style={styles.customerSearchRow}>
+              <View style={[styles.customerSearchRow, newstOutline(C, focusedField === 'customerSearch')]}>
                 <Feather name="search" size={16} color={C.textSecondary} />
                 <TextInput
                   style={styles.customerSearchInput}
                   value={customerSearch}
                   onChangeText={setCustomerSearch}
+                  onFocus={() => setFocusedField('customerSearch')}
+                  onBlur={() => setFocusedField((f) => (f === 'customerSearch' ? null : f))}
                   placeholder={t.stall.searchRegulars}
                   placeholderTextColor={C.neutral}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -1422,12 +1434,14 @@ const SellScreen: React.FC = () => {
           <KeyboardAvoidingView behavior="padding" style={styles.centerKav} pointerEvents="box-none">
             <View style={styles.centerCard} onStartShouldSetResponder={() => true}>
               <Text style={styles.centerTitle}>{t.stall.clearanceTitle}</Text>
-              <View style={styles.customAmountRow}>
+              <View style={[styles.customAmountRow, newstOutline(C, focusedField === 'clearance')]}>
                 <Feather name="tag" size={18} color={C.textSecondary} />
                 <TextInput
                   style={styles.customAmountInput}
                   value={clearanceInput}
                   onChangeText={(v) => setClearanceInput(v.replace(/[^0-9]/g, ''))}
+                  onFocus={() => setFocusedField('clearance')}
+                  onBlur={() => setFocusedField((f) => (f === 'clearance' ? null : f))}
                   placeholder={t.stall.clearancePlaceholder}
                   placeholderTextColor={C.neutral}
                   keyboardType="number-pad"
@@ -1438,10 +1452,10 @@ const SellScreen: React.FC = () => {
                 <Text style={styles.customCurrency}>%</Text>
               </View>
               <View style={styles.centerBtns}>
-                <TouchableOpacity style={[styles.centerBtn, styles.centerCancelBtn]} onPress={clearClearance}>
+                <TouchableOpacity style={[styles.centerBtn, neu.raised, styles.centerCancelBtn]} onPress={clearClearance}>
                   <Text style={styles.centerCancelText}>{t.stall.clearanceClear}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.centerBtn, styles.centerPrimaryBtn]} onPress={applyClearance}>
+                <TouchableOpacity style={[styles.centerBtn, neu.raisedSoft, styles.centerPrimaryBtn]} onPress={applyClearance}>
                   <Text style={styles.centerPrimaryText}>{t.stall.clearanceApply}</Text>
                 </TouchableOpacity>
               </View>
@@ -1621,14 +1635,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   productButton: {
     flex: 1,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C.border,
   },
   productInCart: {
-    borderColor: withAlpha(C.bronze, 0.3),
     backgroundColor: withAlpha(C.bronze, 0.04),
   },
   productInner: {
@@ -1697,7 +1707,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ─── Cart panel ────────────────────────────────────────
   cartSection: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderLeftWidth: 1,
     borderLeftColor: C.border,
   },
@@ -1966,10 +1976,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.sm,
     minHeight: 52,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
   },
   cashButtonText: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -2060,9 +2068,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: C.background,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: C.border,
     padding: 2,
+    gap: 4,
   },
   modeBtn: {
     flexDirection: 'row',
@@ -2072,6 +2079,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
     minHeight: 32,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
   },
   modeBtnActive: {
     backgroundColor: C.bronze,
@@ -2096,8 +2104,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: withAlpha(C.bronze, 0.3),
     backgroundColor: withAlpha(C.bronze, 0.06),
     minHeight: 36,
   },
@@ -2112,9 +2118,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.surface,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
   },
   clearancePillOn: {
     flexDirection: 'row',
@@ -2180,11 +2184,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheetCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
     paddingBottom: SPACING['2xl'],
@@ -2324,10 +2326,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   centerCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     padding: SPACING.xl,
     width: '100%',
     maxWidth: 400,
@@ -2369,16 +2369,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
     padding: 0,
   },
-  customLabelInput: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-  },
   customPayRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
@@ -2391,9 +2381,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.sm,
     minHeight: 48,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.background,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
   },
   customPayActive: {
     backgroundColor: C.bronze,
@@ -2428,8 +2416,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   centerCancelBtn: {
     backgroundColor: C.background,
-    borderWidth: 1,
-    borderColor: C.border,
   },
   centerPrimaryBtn: {
     backgroundColor: C.bronze,

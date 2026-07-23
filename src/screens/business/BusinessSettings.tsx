@@ -21,7 +21,9 @@ import NeuGroup from '../../components/common/NeuGroup';
 import PaymentQrCard from '../../components/settings/PaymentQrCard';
 import SubscriptionCard from '../../components/settings/SubscriptionCard';
 import UnitManager from '../../components/common/UnitManager';
+import StallUnitManager from '../../components/business/StallUnitManager';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import StallResetSheet from '../../components/business/StallResetSheet';
 import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
@@ -55,6 +57,8 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
 
   const [ready, setReady] = useState(false);
   const [unitManagerVisible, setUnitManagerVisible] = useState(false);
+  const [stallUnitManagerVisible, setStallUnitManagerVisible] = useState(false);
+  const [resetSheetVisible, setResetSheetVisible] = useState(false);
   const scrollRef = useRef<any>(null);
   const sectionY = useRef<Record<string, number>>({});
 
@@ -260,6 +264,16 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 label={t.settings.signOut}
                 onPress={handleSignOut}
               />
+              {/* Scoped, safer delete of just this sub-mode's data — offered above
+                  the all-business wipe so it's found first. Stall only for now. */}
+              {incomeType === 'stall' && (
+                <SettingRow
+                  icon="i/trash-outline"
+                  chipColor="#B5705A"
+                  label={t.stall.deleteDataTitle}
+                  onPress={() => { lightTap(); setResetSheetVisible(true); }}
+                />
+              )}
               <SettingRow
                 icon="m/broom"
                 chipColor="#B5705A"
@@ -293,7 +307,7 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                   icon="i/cube-outline"
                   chipColor="#9A6400"
                   label={t.settings.manageUnits}
-                  onPress={() => { lightTap(); setUnitManagerVisible(true); }}
+                  onPress={() => { lightTap(); incomeType === 'stall' ? setStallUnitManagerVisible(true) : setUnitManagerVisible(true); }}
                 />
               )}
 
@@ -355,7 +369,19 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
             onClose={() => setUnitManagerVisible(false)}
           />
         )}
+
+        {ready && stallUnitManagerVisible && (
+          <StallUnitManager
+            visible
+            onClose={() => setStallUnitManagerVisible(false)}
+          />
+        )}
       </ScrollView>
+      <StallResetSheet
+        visible={resetSheetVisible}
+        onClose={() => setResetSheetVisible(false)}
+        onDeleted={() => showToast(t.stall.deleteDataDone, 'success')}
+      />
       <ModalToastHost />
     </View>
   );

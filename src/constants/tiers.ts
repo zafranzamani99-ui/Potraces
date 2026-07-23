@@ -21,6 +21,8 @@ export interface TierLimits {
   maxSavingsAccounts: number;
   maxGoals: number;
   maxSharedSubs: number;
+  /** Business "shop face" profiles (informational; all share one account's books). */
+  maxBusinessProfiles: number;
   maxActivePlaybooks: number;
   maxSavedPlaybooks: number;
   /** Collectz session CREATIONS per calendar week. Joining someone's session
@@ -54,6 +56,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxBudgets: 5, maxSavingsAccounts: 3, maxGoals: 3, maxSharedSubs: 3,
     maxActivePlaybooks: 2, maxSavedPlaybooks: 5,
     maxCollectzSessionsPerWeek: 2,
+    maxBusinessProfiles: 1,
     maxScansPerMonth: 15, maxAiCallsPerMonth: 30,
     chatSavedBubbles: 50, chatMemoryBubbles: 15, chatTxnDetail: 30,
     exportData: true, googleDocsSync: false,
@@ -64,6 +67,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxBudgets: 10, maxSavingsAccounts: 6, maxGoals: 6, maxSharedSubs: 6,
     maxActivePlaybooks: 2, maxSavedPlaybooks: Infinity,
     maxCollectzSessionsPerWeek: 4, // owner 2026-07-22: Basic 4/week; Pro+ unlimited
+    maxBusinessProfiles: 1,
     maxScansPerMonth: 75, maxAiCallsPerMonth: 300,
     chatSavedBubbles: 150, chatMemoryBubbles: 30, chatTxnDetail: 100,
     exportData: true, googleDocsSync: false,
@@ -74,6 +78,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxBudgets: Infinity, maxSavingsAccounts: Infinity, maxGoals: Infinity, maxSharedSubs: Infinity,
     maxActivePlaybooks: 2, maxSavedPlaybooks: Infinity,
     maxCollectzSessionsPerWeek: Infinity,
+    maxBusinessProfiles: 2,
     maxScansPerMonth: 150, maxAiCallsPerMonth: 800,
     chatSavedBubbles: 600, chatMemoryBubbles: 45, chatTxnDetail: 500,
     exportData: true, googleDocsSync: true,
@@ -84,6 +89,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxBudgets: Infinity, maxSavingsAccounts: Infinity, maxGoals: Infinity, maxSharedSubs: Infinity,
     maxActivePlaybooks: 2, maxSavedPlaybooks: Infinity,
     maxCollectzSessionsPerWeek: Infinity,
+    maxBusinessProfiles: 4,
     maxScansPerMonth: 300, maxAiCallsPerMonth: 1500,
     chatSavedBubbles: 3000, chatMemoryBubbles: 90, chatTxnDetail: 500,
     exportData: true, googleDocsSync: true,
@@ -101,6 +107,7 @@ export function tierAtLeast(tier: PremiumTier, min: PremiumTier): boolean {
 type CountKey =
   | 'maxWallets' | 'maxWalletsPerType' | 'maxBudgets' | 'maxSavingsAccounts'
   | 'maxGoals' | 'maxSharedSubs' | 'maxActivePlaybooks' | 'maxSavedPlaybooks'
+  | 'maxBusinessProfiles'
   | 'maxScansPerMonth' | 'maxAiCallsPerMonth' | 'maxCollectzSessionsPerWeek';
 
 export function limitFor(tier: PremiumTier, key: CountKey): number {

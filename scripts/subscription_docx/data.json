@@ -148,6 +148,16 @@
     "notes": "tiers.ts:54,64,74,84. Concurrent count cap, no reset."
    },
    {
+    "key": "maxBusinessProfiles",
+    "plainLabel": "Business shop profiles (informational shop 'faces')",
+    "unit": "shop profiles",
+    "free": "1",
+    "basic": "1",
+    "pro": "2",
+    "premium": "4",
+    "notes": "tiers.ts (maxBusinessProfiles). Concurrent count cap, no reset. Informational only -- all profiles share ONE account's books, money and QR; real data separation = a separate account. Gated at the add-profile button in BusinessProfile.tsx via premiumStore.canCreateBusinessProfile."
+   },
+   {
     "key": "maxActivePlaybooks",
     "plainLabel": "Active playbooks",
     "unit": "active playbooks",

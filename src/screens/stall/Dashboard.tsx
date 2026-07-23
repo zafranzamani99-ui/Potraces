@@ -22,6 +22,8 @@ import { lightTap } from '../../services/haptics';
 import GlassModeToggle from '../../components/common/GlassModeToggle';
 import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
 import OfflineBanner from '../../components/common/OfflineBanner';
+import { useNeu } from '../../components/common/neu';
+import NeuButton from '../../components/common/NeuButton';
 
 // ─── Animation helper ────────────────────────────────────────
 function useFadeSlide(delay: number) {
@@ -54,6 +56,7 @@ const StallDashboard: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true });
   const {
     sessions,
     activeSessionId,
@@ -73,7 +76,7 @@ const StallDashboard: React.FC = () => {
 
   const renderPreOrdersLink = () => (
     <TouchableOpacity
-      style={styles.preOrderRow}
+      style={[styles.preOrderRow, neu.raisedSoft]}
       onPress={() => navigation.getParent()?.navigate('StallPreOrders')}
       activeOpacity={0.7}
       accessibilityRole="button"
@@ -251,7 +254,7 @@ const StallDashboard: React.FC = () => {
           {/* Pause + close */}
           <View style={styles.actionRow}>
             <TouchableOpacity
-              style={styles.pauseButton}
+              style={[styles.pauseButton, neu.raised]}
               onPress={() => { lightTap(); activeSession.paused ? resumeSession() : pauseSession(); }}
               accessibilityRole="button"
               accessibilityLabel={activeSession.paused ? t.stall.resumeSession : t.stall.pauseSession}
@@ -261,7 +264,7 @@ const StallDashboard: React.FC = () => {
               <Text style={styles.pauseText}>{activeSession.paused ? t.stall.resumeSession : t.stall.pauseSession}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.closeSessionButton}
+              style={[styles.closeSessionButton, neu.raised]}
               onPress={() => navigation.getParent()?.navigate('StallCloseSession')}
               accessibilityRole="button"
               accessibilityLabel="Close current selling session"
@@ -300,17 +303,14 @@ const StallDashboard: React.FC = () => {
         </Animated.View>
 
         {/* Start selling button */}
-        <Animated.View style={ctaAnim}>
-          <TouchableOpacity
-            style={styles.startButton}
+        <Animated.View style={[ctaAnim, { marginBottom: SPACING['3xl'] }]}>
+          <NeuButton
+            icon="play"
+            label={t.stallDashboard.startSelling}
+            color={C.bronze}
             onPress={() => navigation.getParent()?.navigate('StallSessionSetup')}
-            activeOpacity={0.8}
-            accessibilityRole="button"
             accessibilityLabel="Start a new selling session"
-          >
-            <Feather name="play" size={20} color={C.onAccent} />
-            <Text style={styles.startButtonText}>{t.stallDashboard.startSelling}</Text>
-          </TouchableOpacity>
+          />
         </Animated.View>
 
         {/* Pre-orders */}
@@ -323,7 +323,7 @@ const StallDashboard: React.FC = () => {
           <Animated.View style={[styles.lifetimeSection, statsAnim]}>
             <Text style={styles.sectionLabel}>{t.stallDashboard.lifetime}</Text>
             <View style={styles.lifetimeGrid}>
-              <View style={styles.lifetimeStat}>
+              <View style={[styles.lifetimeStat, neu.raised]}>
                 <View style={[styles.statIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
                   <Feather name="activity" size={16} color={C.accent} />
                 </View>
@@ -332,7 +332,7 @@ const StallDashboard: React.FC = () => {
                 </Text>
                 <Text style={styles.lifetimeLabel}>{t.stallDashboard.sessions}</Text>
               </View>
-              <View style={styles.lifetimeStat}>
+              <View style={[styles.lifetimeStat, neu.raised]}>
                 <View style={[styles.statIcon, { backgroundColor: withAlpha(C.bronze, 0.12) }]}>
                   <Feather name="dollar-sign" size={16} color={C.bronze} />
                 </View>
@@ -344,7 +344,7 @@ const StallDashboard: React.FC = () => {
                 </Text>
                 <Text style={styles.lifetimeLabel}>{t.stallDashboard.lifetimeCameIn}</Text>
               </View>
-              <View style={styles.lifetimeStat}>
+              <View style={[styles.lifetimeStat, neu.raised]}>
                 <View style={[styles.statIcon, { backgroundColor: withAlpha(C.gold, 0.12) }]}>
                   <Feather name="trending-up" size={16} color={C.gold} />
                 </View>
@@ -413,23 +413,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     marginBottom: SPACING['3xl'],
   },
-  startButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: C.bronze,
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.lg,
-    minHeight: 52,
-    marginBottom: SPACING['3xl'],
-  },
-  startButtonText: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
-
   // ─── Pre-orders link + action row ──────────────────────────
   preOrderWrap: {
     marginBottom: SPACING.xl,
@@ -438,9 +421,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     minHeight: 56,
@@ -487,9 +468,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     minHeight: 48,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.bronze, 0.3),
-    backgroundColor: withAlpha(C.bronze, 0.06),
+    backgroundColor: C.background,
   },
   pauseText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -510,10 +489,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   lifetimeStat: {
     flex: 1,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING.md,
     alignItems: 'center',
@@ -604,10 +581,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: C.surface,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: C.border,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
   },
@@ -663,9 +638,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.md,
     minHeight: 48,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
   },
   closeSessionText: {
     fontSize: TYPOGRAPHY.size.base,
