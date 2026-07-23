@@ -107,6 +107,12 @@ main{flex:1;padding:32px 0 64px}
 .refresh.send[disabled]{opacity:.45;cursor:not-allowed}
 .refresh[disabled]{opacity:.45;cursor:not-allowed}
 
+/* broadcast compose — post an in-app announcement + Expo push to every device */
+.bcast{padding:20px 20px 22px;margin-bottom:22px;background:var(--surface);border:1px solid var(--ink-12);border-radius:var(--radius-lg)}
+.bcast h2{font-size:1.05rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-tight);margin-bottom:4px}
+.bcast .bcast-lead{font-size:.9rem;color:var(--ink-65);line-height:1.5;margin-bottom:16px}
+.bcast .field{margin-bottom:12px}
+
 /* report / waitlist rows — hairline entries (overrides shared .arow flex layout) */
 .arow{display:block;padding:16px 18px;margin-bottom:12px}
 .arow-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px}
@@ -271,6 +277,20 @@ main{flex:1;padding:32px 0 64px}
             <button type="button" id="wlExportBtn" class="refresh">Export CSV</button>
             <button type="button" id="wlRefreshBtn" class="refresh">Refresh</button>
           </div>
+
+          <!-- broadcast: post an in-app announcement + push it to every device -->
+          <div class="bcast">
+            <h2>Broadcast announcement</h2>
+            <p class="bcast-lead">Post an in-app announcement and push it to every device the app is installed on. Everyone gets it — it can't be un-sent.</p>
+            <div class="field">
+              <input id="bcastTitle" type="text" maxlength="120" placeholder="Title" aria-label="Announcement title">
+            </div>
+            <div class="field">
+              <textarea id="bcastBody" maxlength="1000" placeholder="Message…" aria-label="Announcement message"></textarea>
+            </div>
+            <button type="button" id="bcastSendBtn" class="refresh send"><span id="bcastSendLabel">Send broadcast</span></button>
+          </div>
+
           <div id="wlList"></div>
         </div><!-- /waitlistView -->
       </section>
@@ -308,6 +328,7 @@ const listEl=$('list'), statsEl=$('stats'), fStatus=$('fStatus'), fSev=$('fSev')
 const tabFeedback=$('tabFeedback'), tabWaitlist=$('tabWaitlist'), feedbackView=$('feedbackView'), waitlistView=$('waitlistView');
 const wlStatsEl=$('wlStats'), wlListEl=$('wlList'), wlSearch=$('wlSearch'), wlExportBtn=$('wlExportBtn'), wlRefreshBtn=$('wlRefreshBtn');
 const wlSendBtn=$('wlSendBtn'), wlSendCount=$('wlSendCount'), wlSendLabel=$('wlSendLabel');
+const bcastTitle=$('bcastTitle'), bcastBody=$('bcastBody'), bcastSendBtn=$('bcastSendBtn'), bcastSendLabel=$('bcastSendLabel');
 
 let allReports = [];
 let allWaitlist = [], wlLoaded = false;
@@ -558,6 +579,49 @@ async function sendLaunchEmail(){
   }
 }
 
+/* ── broadcast: post an in-app announcement + Expo push to every device ── */
+let bcastSending = false;
+async function sendBroadcast(){
+  if (bcastSending) return;
+  const title = (bcastTitle.value||'').trim();
+  const body  = (bcastBody.value||'').trim();
+  if (!title || !body){ showFlash('Add a title and a message first'); return; }
+  if (!confirm('Send this announcement to everyone with the app? It pushes to every device and can\'t be un-sent.')) return;
+
+  bcastSending = true;
+  bcastSendBtn.disabled = true;
+  bcastSendLabel.textContent = 'Sending…';
+  showFlash('Sending broadcast…');
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session){ showFlash('Sign in again to send'); return; }
+    const res = await fetch(`${SB_URL}/functions/v1/broadcast-send`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SB_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ title, body })
+    });
+    let result = {};
+    try { result = await res.json(); } catch(e){}
+    if (!res.ok){
+      showFlash(result && result.error ? `Could not send: ${result.error}` : `Could not send (${res.status})`);
+      return;
+    }
+    const sent = result.sent || 0;
+    showFlash(`Announcement posted · pushed to ${sent} ${sent===1?'device':'devices'}`);
+    bcastTitle.value = ''; bcastBody.value = ''; // clear on success
+  } catch(e){
+    showFlash('Could not send — check your connection');
+  } finally {
+    bcastSending = false;
+    bcastSendBtn.disabled = false;
+    bcastSendLabel.textContent = 'Send broadcast';
+  }
+}
+
 function renderWaitlist(){
   const q = (wlSearch.value||'').trim().toLowerCase();
   const rows = allWaitlist.filter(r => !q || (r.contact||'').toLowerCase().includes(q));
@@ -594,6 +658,7 @@ wlSearch.addEventListener('input', renderWaitlist);
 wlRefreshBtn.addEventListener('click', loadWaitlist);
 wlExportBtn.addEventListener('click', exportWaitlistCsv);
 wlSendBtn.addEventListener('click', sendLaunchEmail);
+bcastSendBtn.addEventListener('click', sendBroadcast);
 
 /* ── PKCE finish ── */
 async function completePkceIfNeeded(){

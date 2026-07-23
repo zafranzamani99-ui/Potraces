@@ -86,6 +86,7 @@ import BreathingRoom from '../../components/common/BreathingRoom';
 import FreshStart from '../../components/common/FreshStart';
 import GettingStarted from '../../components/common/GettingStarted';
 import SampleDataBanner from '../../components/common/SampleDataBanner';
+import { useNotificationStore } from '../../store/notificationStore';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import OfflineBanner from '../../components/common/OfflineBanner';
@@ -213,6 +214,7 @@ const PersonalDashboard: React.FC = () => {
   const [refreshing, setRefreshing] = React.useState(false);
   const navigation = useNavigation<any>();
   const isFocused = useIsFocused(); // pauses the strip's ambient ECG on other tabs
+  const unreadCount = useNotificationStore((s) => s.items.filter((n) => !n.read).length);
 
   const categoryMap = useMemo(() => {
     const map = new Map<string, CategoryOption>();
@@ -829,7 +831,27 @@ const PersonalDashboard: React.FC = () => {
           />
         }
       >
-        <GlassModeToggle />
+        <View style={styles.modeRow}>
+          <View style={styles.modeSide} />
+          <GlassModeToggle />
+          <View style={styles.modeSideRight}>
+            <View>
+              <NeuIconButton
+                size={44}
+                radius={14}
+                onPress={() => navigation.navigate('Notifications')}
+                accessibilityLabel={t.notifications.title}
+              >
+                <Feather name="bell" size={22} color={unreadCount > 0 ? C.accent : C.textMuted} />
+              </NeuIconButton>
+              {unreadCount > 0 && (
+                <View pointerEvents="none" style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
         <OfflineBanner />
         {/* Zone 1 — Greeting (small) */}
         <View style={styles.greetingRow}>
@@ -1538,6 +1560,36 @@ const makeStyles = (C: typeof CALM) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       marginBottom: SPACING.lg,
+    },
+    modeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    modeSide: {
+      flex: 1,
+    },
+    modeSideRight: {
+      flex: 1,
+      alignItems: 'flex-end',
+    },
+    notifBadge: {
+      position: 'absolute',
+      top: -3,
+      right: -3,
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      paddingHorizontal: 4,
+      backgroundColor: C.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: C.background,
+    },
+    notifBadgeText: {
+      color: C.onAccent,
+      fontSize: 10,
+      fontWeight: TYPOGRAPHY.weight.bold,
     },
     greetingLeft: {
       flexDirection: 'row',

@@ -24,6 +24,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, subMonths, subDays, isWithinInterval, isToday, isTomorrow, isPast, startOfDay, differenceInDays, format, isSameDay, formatDistanceToNow, isValid } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
+import { useNotificationStore } from '../../store/notificationStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
@@ -70,6 +71,7 @@ const SellerDashboard: React.FC = () => {
   const currency = useSettingsStore((s) => s.currency);
   const paymentQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
   const navigation = useNavigation<any>();
+  const unreadCount = useNotificationStore((s) => s.items.filter((n) => !n.read).length);
   const t = useT();
 
   const now = new Date();
@@ -727,6 +729,21 @@ const SellerDashboard: React.FC = () => {
                 )}
               </>
             )}
+            <View>
+              <NeuIconButton
+                size={44}
+                radius={14}
+                onPress={() => navigation.navigate('Notifications')}
+                accessibilityLabel="Notifications"
+              >
+                <Feather name="bell" size={20} color={unreadCount > 0 ? C.bronze : C.textMuted} />
+              </NeuIconButton>
+              {unreadCount > 0 && (
+                <View pointerEvents="none" style={{ position: 'absolute', top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: C.bronze, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.background }}>
+                  <Text style={{ color: C.onAccent, fontSize: 10, fontWeight: TYPOGRAPHY.weight.bold }}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
+                </View>
+              )}
+            </View>
             <NeuIconButton
               size={44}
               radius={14}

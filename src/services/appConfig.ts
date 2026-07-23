@@ -21,6 +21,10 @@ export interface UpdateStatus {
   required: boolean;
   storeUrl?: string;
   message?: string;
+  // Soft (non-blocking) update: installed < latestVersion but not necessarily
+  // below minVersion. Drives the "Update available" notification, not the gate.
+  updateAvailable?: boolean;
+  latestVersion?: string;
 }
 
 /**
@@ -65,11 +69,17 @@ export async function checkForcedUpdate(): Promise<UpdateStatus> {
     if (!res.ok) return { required: false };
 
     const cfg = (await res.json()) as AppRemoteConfig;
-    if (!cfg?.minVersion) return { required: false };
-    if (compareVersions(installed, cfg.minVersion) >= 0) return { required: false };
-
     const storeUrl = Platform.OS === 'ios' ? cfg.ios?.url : cfg.android?.url;
-    return { required: true, storeUrl, message: cfg.message };
+    const required = !!cfg?.minVersion && compareVersions(installed, cfg.minVersion) < 0;
+    const updateAvailable = !!cfg?.latestVersion && compareVersions(installed, cfg.latestVersion) < 0;
+
+    return {
+      required,
+      storeUrl: required || updateAvailable ? storeUrl : undefined,
+      message: cfg.message,
+      updateAvailable,
+      latestVersion: cfg.latestVersion,
+    };
   } catch {
     return { required: false };
   }

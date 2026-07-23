@@ -51,6 +51,9 @@ import { useTombstoneStore } from './src/store/tombstoneStore';
 import { maybeCheckStorage } from './src/utils/storageMonitor';
 import { configureGoogleSignIn } from './src/services/googleAuth';
 import { checkForcedUpdate, UpdateStatus } from './src/services/appConfig';
+import { useNotificationStore, BroadcastRow } from './src/store/notificationStore';
+import { en } from './src/i18n/en';
+import { ms } from './src/i18n/ms';
 import * as Sentry from '@sentry/react-native';
 
 // Crash + error reporting. The DSN comes from env (EXPO_PUBLIC_SENTRY_DSN) so it
@@ -436,7 +439,20 @@ function App() {
     // landed — drain immediately so the list updates in place.
     const recvSub = Notifications.addNotificationReceivedListener((n) => {
       const data = n.request.content.data as { type?: string } | undefined;
-      if (data?.type === 'quick_log') run();
+      if (data?.type === 'quick_log') { run(); return; }
+      // Persist other foreground pushes into the in-app inbox. Broadcasts also
+      // arrive via the announcements fetch, so skip them here to avoid a dupe row.
+      if (data?.type !== 'broadcast') {
+        const c = n.request.content;
+        useNotificationStore.getState().addNotification({
+          id: n.request.identifier || `push-${Date.now()}`,
+          type: 'push',
+          title: c.title || '',
+          body: c.body || '',
+          createdAt: Date.now(),
+          data: (data as Record<string, unknown>) ?? undefined,
+        });
+      }
     });
     // Primary live-update: realtime INSERT events on the inbox — works even
     // when notifications are denied and no AppState transition fires.
@@ -665,7 +681,36 @@ function App() {
 
   // Forced-update / kill-switch gate — fail-open (see services/appConfig.ts).
   React.useEffect(() => {
-    checkForcedUpdate().then(setUpdate).catch(() => {});
+    checkForcedUpdate().then((u) => {
+      setUpdate(u);
+      // Soft "update available" → an inbox notice (id keyed by version, can't dupe).
+      if (u.updateAvailable && u.latestVersion) {
+        const tr = useSettingsStore.getState().language === 'ms' ? ms : en;
+        useNotificationStore.getState().addNotification({
+          id: `update-${u.latestVersion}`,
+          type: 'update',
+          title: tr.notifications.updateTitle,
+          body: tr.notifications.updateBody,
+          createdAt: Date.now(),
+          data: u.storeUrl ? { storeUrl: u.storeUrl } : undefined,
+        });
+      }
+    }).catch(() => {});
+    // Notification inbox: auto-clear read items >60 days, then pull active
+    // broadcasts (best-effort; RLS returns nothing when not signed in).
+    useNotificationStore.getState().pruneOlderThan(60 * 24 * 60 * 60 * 1000);
+    supabasePersonal
+      .from('announcements')
+      .select('id,title,body,created_at')
+      .eq('active', true)
+      .order('created_at', { ascending: false })
+      .limit(50)
+      .then(
+        ({ data }) => {
+          if (data && data.length) useNotificationStore.getState().mergeBroadcasts(data as BroadcastRow[]);
+        },
+        () => {},
+      );
   }, []);
 
   if (update?.required) {
