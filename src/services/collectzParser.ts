@@ -22,7 +22,11 @@ export interface CollectzParsedDraft {
   total_amount: number | null;
   default_share: number | null;
   pay_by: string | null; // ISO string
-  roster: Array<{ name: string; slot: 'active' | 'reserve' }>;
+  /** Capacity when the roster is split into numbered TEAM blocks (else null). */
+  team_count: number | null;
+  team_size: number | null;
+  /** Every named person; `team` = their 1-based TEAM block (null if not in one). */
+  roster: Array<{ name: string; slot: 'active' | 'reserve'; team: number | null }>;
 }
 
 const VALID_CATEGORIES: CollectzParsedCategory[] = ['sport', 'makan', 'trip', 'gift', 'other'];
@@ -76,13 +80,28 @@ Extract STRICT JSON (no markdown, no commentary) with this exact shape:
   "default_share": number | null,  // The per-PERSON price for scheme "flat".
   "pay_by": string | null,         // ISO 8601 payment deadline if stated ("sebelum jam 6
                                    // ptg" on event day → that date at 18:00 +08:00)
-  "roster": [ { "name": string, "slot": "active" | "reserve" } ]
+  "team_count": number | null,     // Number of TEAM blocks when the roster is split into
+                                   // numbered teams (TEAM 1, TEAM 2 …). null if there are
+                                   // no teams (a single flat name list).
+  "team_size": number | null,      // Players PER team = the highest slot number inside a
+                                   // team block (blocks numbered 1..5 → 5), or an explicit
+                                   // "5 orang satu team". null when team_count is null.
+  "roster": [ { "name": string, "slot": "active" | "reserve", "team": number | null } ]
                                    // Every named person. "Waiting list"/"reserve"/"WL"
                                    // names are slot="reserve". For TEAM lists include
-                                   // every FILLED member across all teams; skip blank
-                                   // numbered slots. Strip leading numbers, emojis, and
-                                   // weird whitespace. Keep display names as written.
+                                   // every FILLED member across all teams and set "team"
+                                   // to their 1-based team number (TEAM 3 → 3); skip blank
+                                   // numbered slots. "team" is null when there are no
+                                   // teams. Strip leading numbers, emojis, and weird
+                                   // whitespace. Keep display names as written.
 }
+
+TEAMS (numbered TEAM blocks — "TEAM 1 … TEAM 2 …"):
+- Count the blocks → team_count. Read the slot numbering inside a block (1., 2., …)
+  → the largest is team_size (usually every block is 1..5 → team_size 5). Use the
+  SAME team_size you divide the per-team price by.
+- Give every named player a "team" equal to their block's number. Empty numbered
+  slots are skipped (no roster entry) but they DO count toward team_size.
 
 PER-TEAM PRICING (important — "RM45 satu team" / "RM45/team" / "bayar ikut team"):
 - This is a price for a WHOLE team, not per person. Convert it to a per-person
@@ -113,16 +132,36 @@ Harga Court : RM180
 - Bayar kt kepala team korang baru bayar kt aku. Aku nak RM 45 kt QR aku
 - Tak terima bayar sorang sorang
 - Sape yang cancel last minit bayar kt team masing masing.
-- Main 7 minit / Seri dua dua kluar / leading stay / King Stay
+Play style
+- Main 7 minit
+- Seri dua dua kluar
+- Dalam masa tujuh minit yang leading stay
+- King Stay
 TEAM 1
 1. Mael
 2.
+3.
+4.
+5.
 TEAM 2
 1. Raja Arep
+2.
+3.
+4.
+5.
 TEAM 3
 1. Kai
+2.
+3.
+4.
+5.
 TEAM 4
+1.
 1. pg aikol
+2.
+3.
+4.
+5.
 """
 output:
 {
@@ -131,16 +170,19 @@ output:
   "event_at": "2026-07-25T21:00:00+08:00",
   "event_end": "2026-07-25T23:00:00+08:00",
   "venue": "MG2 Bangi",
-  "details_text": "Play style: 7 minutes per game, draw = both teams out, leading team stays within the 7 minutes, king stays.",
+  "details_text": "Play style: 7 minutes per game, draw = both teams out, the leading team within the 7 minutes stays, king stays.",
   "rules_text": "RM45 per team (5 per team ≈ RM9 each). Pay your team head first, then the head pays RM45 to the organizer's QR. No individual payments. Last-minute cancellations pay their own team.",
   "scheme": "flat",
   "total_amount": 180,
   "default_share": 9,
   "pay_by": null,
+  "team_count": 4,
+  "team_size": 5,
   "roster": [
-    { "name": "Mael", "slot": "active" },
-    { "name": "Raja Arep", "slot": "active" },
-    { "name": "Kai", "slot": "active" }
+    { "name": "Mael", "slot": "active", "team": 1 },
+    { "name": "Raja Arep", "slot": "active", "team": 2 },
+    { "name": "Kai", "slot": "active", "team": 3 },
+    { "name": "pg aikol", "slot": "active", "team": 4 }
   ]
 }`;
 
@@ -201,6 +243,17 @@ export async function parseCollectzAnnouncement(text: string): Promise<CollectzP
       ? (parsed.scheme as CollectzParsedDraft['scheme'])
       : null;
 
+  // Teams only count when BOTH count and size are sane positive integers — a
+  // half-answer (count without size) can't drive the capacity=teams UI.
+  const posInt = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 1 ? Math.floor(v) : null;
+  let team_count = posInt(parsed.team_count);
+  let team_size = posInt(parsed.team_size);
+  if (team_count == null || team_size == null) {
+    team_count = null;
+    team_size = null;
+  }
+
   return {
     title: parsed.title ?? null,
     category,
@@ -213,10 +266,20 @@ export async function parseCollectzAnnouncement(text: string): Promise<CollectzP
     total_amount: parsed.total_amount ?? null,
     default_share: parsed.default_share ?? null,
     pay_by: parsed.pay_by ?? null,
+    team_count,
+    team_size,
     roster: Array.isArray(parsed.roster)
       ? parsed.roster
           .filter((r) => r && typeof r.name === 'string' && r.name.trim())
-          .map((r) => ({ name: r.name.trim(), slot: r.slot === 'reserve' ? ('reserve' as const) : ('active' as const) }))
+          .map((r) => ({
+            name: r.name.trim(),
+            slot: r.slot === 'reserve' ? ('reserve' as const) : ('active' as const),
+            // Keep only in-range team numbers (1..team_count); anything else → null.
+            team:
+              team_count != null && typeof r.team === 'number' && r.team >= 1 && r.team <= team_count
+                ? Math.floor(r.team)
+                : null,
+          }))
       : [],
   };
 }

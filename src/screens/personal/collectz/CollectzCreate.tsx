@@ -594,8 +594,25 @@ const CollectzCreate: React.FC = () => {
         const dt = new Date(d.pay_by);
         if (!isNaN(dt.getTime())) setPayBy(dt);
       }
+      // Numbered TEAM blocks → set the "teams" capacity so the roster keeps its
+      // structure (4 teams × 5), and each player lands in their block.
+      const teamed = d.team_count != null && d.team_size != null;
+      if (teamed) {
+        setCapMode('teams');
+        setTeamCount(d.team_count!);
+        setTeamSize(d.team_size!);
+      }
       if (d.roster.length > 0) {
-        setRoster(d.roster.map((r) => ({ key: nextKey(), name: r.name, slot: r.slot, amount: '', team: null })));
+        setRoster(
+          d.roster.map((r) => ({
+            key: nextKey(),
+            name: r.name,
+            slot: r.slot,
+            amount: '',
+            // Only active players hold a team slot (matches doSave + reserve rule).
+            team: teamed && r.slot === 'active' ? (r.team ?? null) : null,
+          })),
+        );
       }
       setPasteOpen(false);
       setPasteText('');
