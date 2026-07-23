@@ -54,7 +54,7 @@ import {
 } from '../../../services/collectzService';
 import { presetClubIcon } from '../../../constants/clubIcons';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
-import { fmtDateTime, fmtMoney, fill, teamLabel, SOCIAL_PLATFORMS } from './collectzFormat';
+import { fmtDateTime, fmtEventRange, fmtMoney, fill, teamLabel, SOCIAL_PLATFORMS } from './collectzFormat';
 
 // Leave/unclaim is wired below, but the collectz-join edge function has no
 // 'leave' action yet (its whitelist stops at view/claim/add_self/set_team/
@@ -535,7 +535,7 @@ const CollectzJoin: React.FC = () => {
     );
   }
 
-  const dateLine = fmtDateTime(session.event_at);
+  const dateLine = fmtEventRange(session.event_at, session.event_end);
   const payByLine = session.pay_by ? fill(t.collectz.payByLine, { date: fmtDateTime(session.pay_by) ?? '' }) : null;
   const progress = view.progress;
   const pct =
@@ -652,6 +652,14 @@ const CollectzJoin: React.FC = () => {
         <View style={[styles.textCard, neu.raisedSoft]}>
           <Text style={styles.textCardTitle}>{t.collectz.eventDetails}</Text>
           <Text style={styles.textCardBody}>{session.details_text}</Text>
+        </View>
+      )}
+      {/* Court / venue cost — informational. Skipped for 'equal', where the total
+          is the split base already surfaced in the progress bar. */}
+      {session.total_amount != null && session.scheme !== 'equal' && (
+        <View style={[styles.textCard, neu.raisedSoft]}>
+          <Text style={styles.textCardTitle}>{t.collectz.totalCostLabel}</Text>
+          <Text style={styles.textCardBody}>{fmtMoney(session.total_amount, currency)}</Text>
         </View>
       )}
       {!!session.rules_text && (

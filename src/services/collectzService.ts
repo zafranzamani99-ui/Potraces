@@ -38,6 +38,8 @@ export interface CollectzSession {
   title: string;
   category: string | null;
   event_at: string | null;
+  /** Optional end time — lets screens show a range ("9:00 – 11:00 PM"). */
+  event_end: string | null;
   venue: string | null;
   details_text: string | null;
   rules_text: string | null;
@@ -111,10 +113,12 @@ export interface CollectzJoinView {
     | 'title'
     | 'category'
     | 'event_at'
+    | 'event_end'
     | 'venue'
     | 'details_text'
     | 'rules_text'
     | 'scheme'
+    | 'total_amount'
     | 'currency'
     | 'pay_by'
     | 'status'
@@ -150,6 +154,7 @@ export interface CollectzSessionInput {
   title: string;
   category?: string | null;
   event_at?: string | null;
+  event_end?: string | null;
   venue?: string | null;
   details_text?: string | null;
   rules_text?: string | null;
@@ -209,15 +214,17 @@ function fmtEventTime(iso: string | null): string | null {
 export function buildWhatsappAnnouncement(
   session: Pick<
     CollectzSession,
-    'title' | 'event_at' | 'venue' | 'details_text' | 'rules_text' | 'scheme' | 'total_amount' | 'default_share' | 'currency' | 'pay_by' | 'share_code' | 'maps_url'
+    'title' | 'event_at' | 'event_end' | 'venue' | 'details_text' | 'rules_text' | 'scheme' | 'total_amount' | 'default_share' | 'currency' | 'pay_by' | 'share_code' | 'maps_url'
   >,
   activeCount: number,
 ): string {
   const lines: string[] = [`*${session.title}* 🔥`, ''];
   const date = fmtEventDate(session.event_at ?? null);
-  const time = fmtEventTime(session.event_at ?? null);
+  const startTime = fmtEventTime(session.event_at ?? null);
+  const endTime = fmtEventTime(session.event_end ?? null);
   if (date) lines.push(`📅 ${date}`);
-  if (time) lines.push(`🕰️ ${time}`);
+  // Show the full window when an end time is set ("9:00 PM – 11:00 PM").
+  if (startTime) lines.push(`🕰️ ${endTime ? `${startTime} – ${endTime}` : startTime}`);
   if (session.venue) lines.push(`📍 ${session.venue}`);
   if (session.maps_url) lines.push(`🗺️ ${session.maps_url}`);
   if (session.details_text) lines.push(`🏟️ ${session.details_text}`);
@@ -230,6 +237,11 @@ export function buildWhatsappAnnouncement(
     );
   } else if (session.scheme === 'custom') {
     lines.push(`💸 Check your share in the app`);
+  }
+  // Court / venue cost is informational context — surfaced separately from the
+  // per-person split (which 'equal' already states inline above).
+  if (session.total_amount != null && session.scheme !== 'equal') {
+    lines.push(`🧾 ${session.currency} ${session.total_amount.toFixed(2)} total`);
   }
 
   if (session.pay_by) {
@@ -874,6 +886,7 @@ export async function duplicateSession(sourceId: string): Promise<CollectzSessio
     title: src.title,
     category: src.category,
     event_at: plus7(src.event_at),
+    event_end: plus7(src.event_end),
     venue: src.venue,
     details_text: src.details_text,
     rules_text: src.rules_text,

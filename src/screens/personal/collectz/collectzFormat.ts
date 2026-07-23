@@ -65,6 +65,43 @@ export function fmtDateTime(iso: string | null | undefined): string | null {
   return parts.length ? parts.join(', ') : null;
 }
 
+/**
+ * Event window: "20 Jul 2026, 9:00 PM – 11:00 PM". Falls back to a single
+ * start time (fmtDateTime) when there's no end. If the end lands on a later
+ * calendar day (e.g. an 11 PM – 1 AM game), the end date is shown too so the
+ * range never reads backwards.
+ */
+export function fmtEventRange(
+  startIso: string | null | undefined,
+  endIso: string | null | undefined,
+): string | null {
+  const date = fmtDate(startIso);
+  const startTime = fmtTime(startIso);
+  const endTime = fmtTime(endIso);
+  // No usable end → behave exactly like fmtDateTime(start).
+  if (!endTime) return fmtDateTime(startIso);
+  // No usable start but we have an end → just the end (defensive).
+  if (!startTime) return [date, endTime].filter(Boolean).join(', ') || null;
+
+  const s = new Date(startIso as string);
+  const e = new Date(endIso as string);
+  const sameDay =
+    !isNaN(s.getTime()) &&
+    !isNaN(e.getTime()) &&
+    s.getFullYear() === e.getFullYear() &&
+    s.getMonth() === e.getMonth() &&
+    s.getDate() === e.getDate();
+
+  if (sameDay) {
+    const timePart = `${startTime} – ${endTime}`;
+    return [date, timePart].filter(Boolean).join(', ');
+  }
+  // Crosses midnight (or spans days) — spell out both dates.
+  const startPart = [date, startTime].filter(Boolean).join(', ');
+  const endPart = [fmtDate(endIso), endTime].filter(Boolean).join(', ');
+  return `${startPart} – ${endPart}`;
+}
+
 /** "RM 45.00". */
 export function fmtMoney(amount: number, currency: string): string {
   return `${currency} ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
