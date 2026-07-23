@@ -227,6 +227,7 @@ main{flex:1;padding:32px 0 64px}
         <div class="tablist" role="tablist" aria-label="Admin views">
           <button type="button" id="tabFeedback" class="tab active" role="tab" aria-selected="true">Beta feedback</button>
           <button type="button" id="tabWaitlist" class="tab" role="tab" aria-selected="false">Waitlist</button>
+          <button type="button" id="tabBroadcast" class="tab" role="tab" aria-selected="false">Broadcast</button>
           <a class="tab tab-ops" href="/ops.html" target="_blank" rel="noopener" title="Open the live usage & cost console in a new tab">Usage console<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
         </div>
 
@@ -278,10 +279,16 @@ main{flex:1;padding:32px 0 64px}
             <button type="button" id="wlRefreshBtn" class="refresh">Refresh</button>
           </div>
 
-          <!-- broadcast: post an in-app announcement + push it to every device -->
+          <div id="wlList"></div>
+        </div><!-- /waitlistView -->
+
+        <!-- broadcast view -->
+        <div id="broadcastView" class="hide">
+          <div class="head">
+            <h1>Broadcast</h1>
+            <p class="lead">Post an in-app announcement and push it to every installed device. Everyone gets it — it can't be un-sent.</p>
+          </div>
           <div class="bcast">
-            <h2>Broadcast announcement</h2>
-            <p class="bcast-lead">Post an in-app announcement and push it to every device the app is installed on. Everyone gets it — it can't be un-sent.</p>
             <div class="field">
               <input id="bcastTitle" type="text" maxlength="120" placeholder="Title" aria-label="Announcement title">
             </div>
@@ -290,9 +297,7 @@ main{flex:1;padding:32px 0 64px}
             </div>
             <button type="button" id="bcastSendBtn" class="refresh send"><span id="bcastSendLabel">Send broadcast</span></button>
           </div>
-
-          <div id="wlList"></div>
-        </div><!-- /waitlistView -->
+        </div><!-- /broadcastView -->
       </section>
 
     </div>
@@ -325,7 +330,7 @@ const loadingState=$('loadingState'), signinState=$('signinState'), denyState=$(
 const googleBtn=$('googleBtn'), magicForm=$('magicForm'), magicBtn=$('magicBtn'), magicEmail=$('magicEmail'), signinMsg=$('signinMsg');
 const signoutBtn=$('signoutBtn'), signoutBtn2=$('signoutBtn2'), denyEmail=$('denyEmail');
 const listEl=$('list'), statsEl=$('stats'), fStatus=$('fStatus'), fSev=$('fSev'), fSearch=$('fSearch'), refreshBtn=$('refreshBtn'), flash=$('flash');
-const tabFeedback=$('tabFeedback'), tabWaitlist=$('tabWaitlist'), feedbackView=$('feedbackView'), waitlistView=$('waitlistView');
+const tabFeedback=$('tabFeedback'), tabWaitlist=$('tabWaitlist'), tabBroadcast=$('tabBroadcast'), feedbackView=$('feedbackView'), waitlistView=$('waitlistView'), broadcastView=$('broadcastView');
 const wlStatsEl=$('wlStats'), wlListEl=$('wlList'), wlSearch=$('wlSearch'), wlExportBtn=$('wlExportBtn'), wlRefreshBtn=$('wlRefreshBtn');
 const wlSendBtn=$('wlSendBtn'), wlSendCount=$('wlSendCount'), wlSendLabel=$('wlSendLabel');
 const bcastTitle=$('bcastTitle'), bcastBody=$('bcastBody'), bcastSendBtn=$('bcastSendBtn'), bcastSendLabel=$('bcastSendLabel');
@@ -485,7 +490,7 @@ refreshBtn.addEventListener('click', loadAll);
 
 /* ── view tabs (feedback / waitlist); usage & cost live in ops.html (new tab) ── */
 function switchTab(which){
-  const tabs = { feedback:[tabFeedback,feedbackView], waitlist:[tabWaitlist,waitlistView] };
+  const tabs = { feedback:[tabFeedback,feedbackView], waitlist:[tabWaitlist,waitlistView], broadcast:[tabBroadcast,broadcastView] };
   for (const [k,[btn,view]] of Object.entries(tabs)){
     const on = k===which;
     btn.classList.toggle('active', on);
@@ -654,6 +659,7 @@ function exportWaitlistCsv(){
 
 tabFeedback.addEventListener('click', () => switchTab('feedback'));
 tabWaitlist.addEventListener('click', () => switchTab('waitlist'));
+tabBroadcast.addEventListener('click', () => switchTab('broadcast'));
 wlSearch.addEventListener('input', renderWaitlist);
 wlRefreshBtn.addEventListener('click', loadWaitlist);
 wlExportBtn.addEventListener('click', exportWaitlistCsv);
