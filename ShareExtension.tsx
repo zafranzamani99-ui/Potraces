@@ -26,8 +26,8 @@ export default function ShareExtension({ images, files, text, url }: InitialProp
     return () => clearTimeout(t);
   }, [images, files, text, url]);
 
-  // @ts-expect-error react-native's View type isn't assignable to React 19's stricter
-  // JSX.ElementType here (share-extension entry only). Harmless — renders an empty view.
-  // Remove once react-native's types align with @types/react 19.
+  // @ts-ignore react-native's View type isn't always assignable to React 19's stricter
+  // JSX.ElementType (share-extension entry only). @ts-ignore (not expect-error) so it's a
+  // no-op when the types DO align — otherwise CI flags an "unused" expect-error directive.
   return <View />;
 }

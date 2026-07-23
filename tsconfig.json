@@ -23,6 +23,7 @@
   "exclude": [
     "docs",
     "supabase",
-    "potraces new component design"
+    "potraces new component design",
+    "remotion-promo"
   ]
 }
