@@ -13,7 +13,7 @@ import { supabaseBusiness, supabasePersonal, getAuthSession } from './src/servic
 import { isAuthFlowInFlight } from './src/services/authFlow';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId, clearProfileCache } from './src/services/sellerSync';
 import { useAuthStore } from './src/store/authStore';
-import { registerPushNotifications, registerPersonalDeviceToken, registerAndroidNotificationChannels } from './src/services/pushNotifications';
+import { registerPushNotifications, registerPersonalDeviceToken, registerAndroidNotificationChannels, registerBroadcastDevice } from './src/services/pushNotifications';
 import * as Notifications from 'expo-notifications';
 import { globalShowToast } from './src/context/ToastContext';
 import { useSellerStore } from './src/store/sellerStore';
@@ -804,6 +804,10 @@ function App() {
     // Notification inbox: auto-clear read items >60 days, then pull active
     // broadcasts (best-effort; RLS returns nothing when not signed in).
     useNotificationStore.getState().pruneOlderThan(60 * 24 * 60 * 60 * 1000);
+    // Register this device for admin broadcasts — account-free, so a tester who
+    // never signs in still receives them. Silent (won't cold-prompt); onboarding
+    // owns the permission prompt. Keeps returning users' token fresh each launch.
+    registerBroadcastDevice().catch(() => {});
     refreshBroadcasts();
   }, []);
 

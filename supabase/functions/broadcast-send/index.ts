@@ -66,18 +66,24 @@ Deno.serve(async (req: Request) => {
       .insert({ title, body: message, active: true });
     if (insErr) return json({ error: insErr.message }, 500);
 
-    // 2) Collect every device token, paging past PostgREST's max_rows. Dedupe so
-    //    a device logged into two accounts (same token, two rows) isn't double-pushed.
+    // 2) Collect every device token from BOTH sources, paging past PostgREST's
+    //    max_rows. push_devices is the account-free registry (reaches testers who
+    //    never signed in); device_tokens is the legacy account-scoped set (signed-in
+    //    devices, incl. those registered before this build shipped). Reading both
+    //    avoids a zero-reach gap while push_devices fills up as the app rolls out.
+    //    Dedupe into a Set so a device in both isn't double-pushed.
     const tokens = new Set<string>();
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data: rows, error: selErr } = await admin
-        .from('device_tokens')
-        .select('token')
-        .range(from, from + PAGE_SIZE - 1);
-      if (selErr) break; // best-effort: announcement is saved; a token-read hiccup shouldn't 500
-      const batch = (rows ?? []) as { token: string | null }[];
-      for (const r of batch) if (r.token) tokens.add(r.token);
-      if (batch.length < PAGE_SIZE) break;
+    for (const table of ['push_devices', 'device_tokens']) {
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data: rows, error: selErr } = await admin
+          .from(table)
+          .select('token')
+          .range(from, from + PAGE_SIZE - 1);
+        if (selErr) break; // best-effort: announcement is saved; a token-read hiccup shouldn't 500
+        const batch = (rows ?? []) as { token: string | null }[];
+        for (const r of batch) if (r.token) tokens.add(r.token);
+        if (batch.length < PAGE_SIZE) break;
+      }
     }
 
     // 3) Expo push in chunks of 100. Best-effort: a failed chunk is logged, not fatal.
@@ -88,6 +94,8 @@ Deno.serve(async (req: Request) => {
         title,
         body: message,
         sound: 'default',
+        priority: 'high',      // heads-up delivery; without it FCM may batch/delay
+        channelId: 'broadcast', // else Android drops it on the silent default channel
         data: { type: 'broadcast' },
       }));
       try {

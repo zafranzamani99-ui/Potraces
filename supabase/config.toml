@@ -427,6 +427,13 @@ verify_jwt = false
 [functions.map-preview]
 verify_jwt = false
 
+# Account-free device registration for admin broadcasts. JWT-free: a fresh,
+# never signed-in tester must be able to register its push token so
+# broadcast-send can reach it (device_tokens requires a login; push_devices
+# does not). Validates the Expo token, then upserts with the service role.
+[functions.register-device]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

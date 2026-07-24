@@ -34,6 +34,7 @@ import { useSettingsStore, ThemePreference } from '../../store/settingsStore';
 import { useAppStore } from '../../store/appStore';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
+import { registerBroadcastDevice } from '../../services/pushNotifications';
 import { loadSampleData, SAMPLE_PROFILES, DEFAULT_SAMPLE_BRACKET, type SampleBracket } from '../../utils/sampleData';
 import { SkyBackdrop, FlyingWau } from '../../components/common/WauScene';
 import { useNeu } from '../../components/common/neu';
@@ -871,6 +872,10 @@ const Onboarding: React.FC = () => {
     // Same engine as Settings → Load Sample Data; seeds the chosen persona.
     if (choice === 'demo') loadSampleData(bracket);
     setHasCompletedOnboarding(true);
+    // Ask for notifications now (the earned moment) and register this device for
+    // admin broadcasts — account-free, so it works before any sign-in. This is
+    // the ONE contextual prompt; startup registration stays silent thereafter.
+    registerBroadcastDevice({ promptIfNeeded: true }).catch(() => {});
   }, [setDefaultMode, setMode, setHasCompletedOnboarding]);
 
   const handleNext = useCallback(() => {

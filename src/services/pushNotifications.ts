@@ -33,6 +33,7 @@ export const ANDROID_CHANNELS = {
   subscription: 'bills', // matches subscriptionNotifications.ts existing channel
   qrPaymentReminder: 'qr-payment-reminder',
   collectz: 'collectz',
+  broadcast: 'broadcast',
 } as const;
 
 /**
@@ -76,6 +77,12 @@ export async function registerAndroidNotificationChannels(): Promise<void> {
       }),
       Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.collectz, {
         name: 'Kutipan',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        vibrationPattern: [0, 250, 250, 250],
+      }),
+      Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.broadcast, {
+        name: 'Announcements',
         importance: Notifications.AndroidImportance.HIGH,
         sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
@@ -197,6 +204,43 @@ export async function registerPersonalDeviceToken(
     );
   } catch (e) {
     if (__DEV__) console.warn('[push] Failed to save personal token:', e);
+  }
+}
+
+/**
+ * Account-free broadcast registration. Unlike registerPersonalDeviceToken (which
+ * needs a signed-in personal account and writes device_tokens), this writes the
+ * device's Expo token to push_devices via the register-device edge function —
+ * so an admin broadcast reaches EVERY installed app that allowed notifications,
+ * with no login required. Same permission etiquette: silent unless
+ * promptIfNeeded (onboarding passes true — a contextual, earned prompt).
+ */
+export async function registerBroadcastDevice(
+  opts: { promptIfNeeded?: boolean } = {},
+): Promise<void> {
+  const { promptIfNeeded = false } = opts;
+  if (!Device.isDevice) return;
+
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  let finalStatus = existing;
+  if (existing !== 'granted') {
+    if (!promptIfNeeded) return;
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== 'granted') return;
+
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+  registerAndroidNotificationChannels();
+  try {
+    // JWT-free function — the anon key on supabasePersonal is enough; no session
+    // required, which is the whole point (fresh, never signed-in testers).
+    await supabasePersonal.functions.invoke('register-device', {
+      body: { token: tokenData.data, platform: Platform.OS },
+    });
+  } catch (e) {
+    if (__DEV__) console.warn('[push] Failed to register broadcast device:', e);
   }
 }
 
