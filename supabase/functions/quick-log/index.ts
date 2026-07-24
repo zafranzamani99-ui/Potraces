@@ -160,7 +160,12 @@ Deno.serve(async (req: Request) => {
   if (amount === null) {
     // Raw amount is the diagnostic we need (it's just a number string, no PII).
     console.log(`[quick-log] reject bad-amount: raw=${JSON.stringify(payload.amount)} type=${typeof payload.amount}`);
-    return json({ error: 'bad-amount' }, 400);
+    // Echo the received value back: the Auto Log shortcut's failure notification
+    // prints the response body verbatim, so the user's phone shows exactly what
+    // the shortcut sent. "0" = the iOS "$0" nested Run Shortcut hand-off bug
+    // (automation rebuilt as direct-run fixes it); "" = extraction failed.
+    const got = String(payload.amount ?? '').slice(0, 40);
+    return json({ error: 'bad-amount', got }, 400);
   }
 
   const type = payload.type === 'income' ? 'income' : 'expense';

@@ -14,9 +14,13 @@ automation. DUAL-MODE input (2026-07-22 redesign, competitor-parity):
      by a Text action + Run Shortcut. Detected by the Amount property having no
      value (a plain string has no Amount) → split on "|" as before.
 
-Both paths converge: regex-clean the amount, read the saved key file, POST to
-the quick-log endpoint. HEADLESS (no prompts) — category defaults to 'other';
-the user re-categorises from the confirmation push.
+Both paths converge, then the amount is resolved in up to FOUR layers
+(2026-07-24 rebuild — device evidence: the Amount property arrived digitless
+on current iOS, server echoed got:"", while Merchant survived): regex-clean
+the property → clean an explicit Text-action rendering of the property →
+decimal-pattern match on the transaction's raw text form → Ask once (Number
+keyboard). Category defaults to 'other'; the user re-categorises from the
+confirmation push. Layer 4 means a log is NEVER silently lost again.
 
 Requires `potraces-key.txt` to exist — the Back Tap first log saves it.
 
@@ -45,19 +49,29 @@ def new_uuid() -> str:
 
 U_SPLIT = new_uuid()
 U_AMT_RAW = new_uuid()
-U_AMT = new_uuid()
 U_MERCH = new_uuid()
 U_CARD = new_uuid()
+U_CLEAN1 = new_uuid()
+U_TEXT2 = new_uuid()
+U_CLEAN2 = new_uuid()
+U_RAWTEXT = new_uuid()
+U_MATCH = new_uuid()
+U_MATCH1 = new_uuid()
+U_ASK = new_uuid()
 U_KEY = new_uuid()
 U_RESP = new_uuid()
 U_OK = new_uuid()
 G_RESULT = new_uuid()
 G_MODE = new_uuid()   # transaction-vs-text input discriminator If/Otherwise
+G_AMT1 = new_uuid()   # amount layer 1 (cleaned property) If/Otherwise
+G_AMT2 = new_uuid()   # amount layer 2 (Text-action coercion) If/Otherwise
+G_AMT3 = new_uuid()   # amount layer 3 (decimal match in raw text) If/Otherwise
 
 # The two paths converge into these variables before the POST.
 VAR_RAWAMT = "PotracesRawAmount"
 VAR_MERCHANT = "PotracesMerchant"
 VAR_CARD = "PotracesCard"
+VAR_FINALAMT = "PotracesFinalAmount"
 
 
 def action(identifier, params):
@@ -164,16 +178,83 @@ actions = [
     set_var(VAR_CARD, out_ref(U_CARD, "Item from List")),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_MODE, "WFControlFlowMode": 2}),
 
-    # ── Converged: clean the amount ("RM12.34" / "-$12,34" → "12.34") ────────
-    # Strips currency symbol AND the +/- sign, so the server's amount parser —
-    # which rejects negatives — is always handed a clean positive number.
+    # ── Converged: resolve the amount, LAYERED (2026-07-24 rebuild) ──────────
+    # Device evidence (RM3.80 @ 7-Eleven, server echoed got:""): the Amount
+    # PROPERTY arrives digitless through Set Variable → Replace Text — the
+    # value dies in that coercion on current iOS, while Merchant (a text
+    # property) survives fine. So the amount is resolved in four layers; the
+    # first to produce digits wins, and the last can never fail silently:
+    #   1. regex-clean the property value (the pre-2026-07-24 behavior)
+    #   2. route the property through an explicit Text action first — numbers
+    #      and currency measurements render properly THERE — then clean
+    #   3. decimal-pattern match ([0-9]+[.,][0-9]{2}) on the transaction's raw
+    #      text form — the decimal is REQUIRED, so merchant digits
+    #      ("1274-7-Eleven") can never become a garbage amount
+    #   4. Ask once (Number keyboard) — iOS hid the amount, the user types it.
+    #      The log ALWAYS lands; silent data loss becomes impossible.
     action("is.workflow.actions.text.replace", {
-        "UUID": U_AMT,
+        "UUID": U_CLEAN1,
         "WFInput": token_attachment(var_ref(VAR_RAWAMT)),
         "WFReplaceTextFind": "[^0-9.,]",
         "WFReplaceTextReplace": "",
         "WFReplaceTextRegularExpression": True,
     }),
+    action("is.workflow.actions.conditional", {
+        "GroupingIdentifier": G_AMT1,
+        "WFControlFlowMode": 0,
+        "WFCondition": 100,  # cleaned property has digits → done
+        "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_CLEAN1, "Updated Text"))},
+    }),
+    set_var(VAR_FINALAMT, out_ref(U_CLEAN1, "Updated Text")),
+    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT1, "WFControlFlowMode": 1}),
+    action("is.workflow.actions.gettext", {
+        "UUID": U_TEXT2,
+        "WFTextActionText": token_string([var_ref(VAR_RAWAMT)]),
+    }),
+    action("is.workflow.actions.text.replace", {
+        "UUID": U_CLEAN2,
+        "WFInput": token_attachment(out_ref(U_TEXT2, "Text")),
+        "WFReplaceTextFind": "[^0-9.,]",
+        "WFReplaceTextReplace": "",
+        "WFReplaceTextRegularExpression": True,
+    }),
+    action("is.workflow.actions.conditional", {
+        "GroupingIdentifier": G_AMT2,
+        "WFControlFlowMode": 0,
+        "WFCondition": 100,
+        "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_CLEAN2, "Updated Text"))},
+    }),
+    set_var(VAR_FINALAMT, out_ref(U_CLEAN2, "Updated Text")),
+    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT2, "WFControlFlowMode": 1}),
+    action("is.workflow.actions.gettext", {
+        "UUID": U_RAWTEXT,
+        "WFTextActionText": token_string([shortcut_input()]),
+    }),
+    action("is.workflow.actions.text.match", {
+        "UUID": U_MATCH,
+        "WFMatchText": token_attachment(out_ref(U_RAWTEXT, "Text")),
+        "WFMatchTextPattern": "[0-9]+[.,][0-9]{2}",
+        "WFMatchTextCaseSensitive": False,
+    }),
+    action("is.workflow.actions.conditional", {
+        "GroupingIdentifier": G_AMT3,
+        "WFControlFlowMode": 0,
+        "WFCondition": 100,  # a decimal-looking match exists (empty list → Otherwise)
+        "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_MATCH, "Matches"))},
+    }),
+    {**get_item(U_MATCH, 1), "WFWorkflowActionParameters":
+        {**get_item(U_MATCH, 1)["WFWorkflowActionParameters"], "UUID": U_MATCH1}},
+    set_var(VAR_FINALAMT, out_ref(U_MATCH1, "Item from List")),
+    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT3, "WFControlFlowMode": 1}),
+    action("is.workflow.actions.ask", {
+        "UUID": U_ASK,
+        "WFAskActionPrompt": "Amount (RM)? iOS hid it from Auto Log — type it once.",
+        "WFInputType": "Number",
+    }),
+    set_var(VAR_FINALAMT, out_ref(U_ASK, "Provided Input")),
+    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT3, "WFControlFlowMode": 2}),
+    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT2, "WFControlFlowMode": 2}),
+    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT1, "WFControlFlowMode": 2}),
     # Key from the file the Back Tap flow saved (no picker, no error if missing).
     action("is.workflow.actions.documentpicker.open", {
         "UUID": U_KEY,
@@ -182,7 +263,8 @@ actions = [
         "WFFileErrorIfNotFound": False,
     }),
     # POST — category defaulted to 'other' (headless: can't ask); merchant→note,
-    # card→wallet (server's resolveWallet alias-matches the card name).
+    # card→wallet (server's resolveWallet alias-matches the card name). Amount
+    # is the LAYER-RESOLVED final value (see above), never the raw property.
     action("is.workflow.actions.downloadurl", {
         "UUID": U_RESP,
         "WFURL": ENDPOINT,
@@ -193,7 +275,7 @@ actions = [
             "Value": {
                 "WFDictionaryFieldValueItems": [
                     dict_item("key", [out_ref(U_KEY, "File")]),
-                    dict_item("amount", [out_ref(U_AMT, "Updated Text")]),
+                    dict_item("amount", [var_ref(VAR_FINALAMT)]),
                     dict_item("category", ["other"]),
                     dict_item("wallet", [var_ref(VAR_CARD)]),
                     dict_item("note", [var_ref(VAR_MERCHANT)]),
@@ -215,14 +297,16 @@ actions = [
         "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_OK, "Dictionary Value"))},
     }),
     # Body includes the server's response so failures are diagnosable
-    # (missing-key vs bad-amount vs invalid-key) — same pattern as the Quick
-    # Log shortcut's failure notification. missing-key is the common case: the
-    # key FILE only exists after the FIRST successful Back Tap log, and "set up
-    # Quick Log" alone doesn't create it.
+    # (missing-key vs bad-amount vs invalid-key). Since 2026-07-24 it also
+    # echoes the RAW extraction state — amt = the Amount property as iOS
+    # handed it over, raw = the transaction's text form — so a single
+    # screenshot shows exactly which layer broke. (raw is empty unless the
+    # layer-3 branch ran; Shortcuts renders unrun magic variables as empty.)
     action("is.workflow.actions.notification", {
         "WFNotificationActionBody": token_string([
             "⚠️ Potraces couldn’t auto-log (", out_ref(U_RESP, "Contents of URL"),
-            "). Do ONE Backtap log first — that saves your key — then pay again.",
+            "). Screenshot this for support — amt='", var_ref(VAR_RAWAMT),
+            "' raw='", out_ref(U_RAWTEXT, "Text"), "'. Or do ONE Back Tap log.",
         ]),
     }),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_RESULT, "WFControlFlowMode": 2}),
