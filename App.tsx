@@ -804,12 +804,20 @@ function App() {
     // Notification inbox: auto-clear read items >60 days, then pull active
     // broadcasts (best-effort; RLS returns nothing when not signed in).
     useNotificationStore.getState().pruneOlderThan(60 * 24 * 60 * 60 * 1000);
-    // Register this device for admin broadcasts — account-free, so a tester who
-    // never signs in still receives them. Silent (won't cold-prompt); onboarding
-    // owns the permission prompt. Keeps returning users' token fresh each launch.
-    registerBroadcastDevice().catch(() => {});
     refreshBroadcasts();
   }, []);
+
+  // Ask for notifications + register this device for admin broadcasts once
+  // onboarding is complete. Keyed on the persisted flag (NOT the Onboarding
+  // screen): on a fresh install the first run uses the OLD embedded bundle and
+  // the OTA applies only on the next launch — by then onboarding is already
+  // done, so a prompt fired from Onboarding would never run. This also reaches
+  // testers who onboarded before this shipped. Account-free; stays silent (no
+  // visible prompt) once permission is already granted or denied.
+  const broadcastOnboarded = useSettingsStore((s) => s.hasCompletedOnboarding);
+  React.useEffect(() => {
+    if (broadcastOnboarded) registerBroadcastDevice({ promptIfNeeded: true }).catch(() => {});
+  }, [broadcastOnboarded]);
 
   if (update?.required) {
     return (
