@@ -6,7 +6,9 @@
   roster from the collectz-join edge function (action:'view', anon key), and
   renders event details + per-person payment status. CTAs deep-link back into
   the app (potraces://collectz/{CODE}, universal link as fallback) or send the
-  visitor to the beta page to get the app.
+  visitor to the beta page to get the app. An optional ?r={REF_CODE} invite code
+  rides along untouched: appended to both app links, and staged on the clipboard
+  as POTRACES-REF:{REF}:collectz:{CODE} when an app/beta CTA is tapped.
   Chrome (nav/footer/lang/grain/buttons/panels) is consumed by name from
   /tokens.css + /site.css; only the cz-* session layout lives below.
   No build step, no framework. Dynamic regions must NOT carry .reveal (it
@@ -424,7 +426,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       genericM: 'We couldn’t load this kutipan. Check your connection and try again.',
       date: 'Date', venue: 'Venue', payBy: 'Pay by',
       skill: 'Skill', age: 'Age', gender: 'Gender', booking: 'Booking',
-      skillBeginner: 'Beginner', skillIntermediate: 'Intermediate', skillAdvanced: 'Advanced',
+      skillBeginner: 'Beginner', skillIntermediate: 'Intermediate', skillAdvanced: 'Advanced', skillAny: 'Any level',
       ageBelow18: 'Below 18', age18Above: '18 & above', ageAny: 'No age limit',
       genderMale: 'Male only', genderFemale: 'Female only', genderAny: 'Open to all',
       bookingBooked: 'Booked', bookingLater: 'Will book later',
@@ -449,7 +451,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       genericM: 'Kutipan ni tak dapat load. Check internet kau dan cuba lagi.',
       date: 'Tarikh', venue: 'Tempat', payBy: 'Bayar sebelum',
       skill: 'Kemahiran', age: 'Umur', gender: 'Jantina', booking: 'Tempahan',
-      skillBeginner: 'Permulaan', skillIntermediate: 'Pertengahan', skillAdvanced: 'Mahir',
+      skillBeginner: 'Permulaan', skillIntermediate: 'Pertengahan', skillAdvanced: 'Mahir', skillAny: 'Semua tahap',
       ageBelow18: 'Bawah 18', age18Above: '18 ke atas', ageAny: 'Tiada had umur',
       genderMale: 'Lelaki sahaja', genderFemale: 'Perempuan sahaja', genderAny: 'Terbuka semua',
       bookingBooked: 'Ditempah', bookingLater: 'Tempah kemudian',
@@ -523,6 +525,48 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   }
 
   var CODE = getCode();
+
+  /* Optional invite code (?r=XXXXXX) carried on shared Collectz links — same
+     6-char alphabet as src/services/referrals.ts (A-Z sans I/O, 2-9). */
+  var REF_RE = /^[A-HJ-NP-Z2-9]{6}$/;
+  function getRef(){
+    var raw = '';
+    try { raw = new URLSearchParams(location.search).get('r') || ''; }
+    catch (e) {
+      var q = location.search.match(/[?&]r=([^&#]+)/);
+      raw = q ? q[1] : '';
+    }
+    try { raw = decodeURIComponent(raw); } catch (e) {}
+    raw = String(raw).trim().toUpperCase();
+    return REF_RE.test(raw) ? raw : '';
+  }
+  var REF = getRef();
+
+  /* Stage the referral token on the clipboard so a fresh install can pick the
+     invite up at first boot. Best-effort: the synchronous legacy path goes first
+     (an in-flight navigation can cancel the async API), async as fallback. */
+  function copyRefToken(){
+    if (!REF || !CODE) return;
+    var token = 'POTRACES-REF:' + REF + ':collectz:' + CODE;
+    var ok = false;
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = token;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e) {}
+    if (!ok) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(token).catch(function(){});
+      } catch (e) {}
+    }
+  }
+
   var DATA = null;
 
   function showState(which){
@@ -568,7 +612,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     var payBy = fmtDate(session.pay_by);
     if (payBy) rows += metaRow(s.payBy, esc(payBy));
     /* Player requirements — only the ones the organizer set. */
-    if (session.skill_level) rows += metaRow(s.skill, esc({ beginner: s.skillBeginner, intermediate: s.skillIntermediate, advanced: s.skillAdvanced }[session.skill_level] || session.skill_level));
+    if (session.skill_level) rows += metaRow(s.skill, esc({ beginner: s.skillBeginner, intermediate: s.skillIntermediate, advanced: s.skillAdvanced, any: s.skillAny }[session.skill_level] || session.skill_level));
     if (session.age_req) rows += metaRow(s.age, esc({ below_18: s.ageBelow18, '18_above': s.age18Above, any: s.ageAny }[session.age_req] || session.age_req));
     if (session.gender_req) rows += metaRow(s.gender, esc({ male: s.genderMale, female: s.genderFemale, any: s.genderAny }[session.gender_req] || session.gender_req));
     if (session.booking_status) rows += metaRow(s.booking, esc(session.booking_status === 'booked' ? s.bookingBooked : s.bookingLater));
@@ -683,15 +727,29 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
 
   /* Open in Potraces: try the custom scheme, fall back to the universal link
      (this very URL — Android App Links may still hand it to the app; otherwise
-     the page simply reloads). */
+     the page simply reloads). A valid ?r= invite code is appended to both and
+     staged on the clipboard before leaving. */
   els.open.addEventListener('click', function(){
     if (!CODE) return;
     var enc = encodeURIComponent(CODE);
+    var ref = REF ? '?r=' + encodeURIComponent(REF) : '';
+    copyRefToken();
     var t0 = Date.now();
-    window.location.href = 'potraces://collectz/' + enc;
+    window.location.href = 'potraces://collectz/' + enc + ref;
     setTimeout(function(){
-      if (Date.now() - t0 < 4000) window.location.href = 'https://jejakbaki.my/collectz/' + enc;
+      if (Date.now() - t0 < 4000) window.location.href = 'https://jejakbaki.my/collectz/' + enc + ref;
     }, 1600);
+  });
+
+  /* Get-the-app CTAs: with a valid ?r= invite, stage the referral token before
+     leaving for /beta.html. Without one these stay plain links. */
+  document.querySelectorAll('#czSession a[href="/beta.html"], #czError a[href="/beta.html"]').forEach(function(a){
+    a.addEventListener('click', function(e){
+      if (!REF || !CODE) return;
+      e.preventDefault();
+      copyRefToken();
+      window.location.href = a.getAttribute('href') || '/beta.html';
+    });
   });
 
   /* Re-render dynamic copy when the language flips. */

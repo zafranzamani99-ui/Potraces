@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
 
 interface BottomSheetProps {
   visible: boolean;
@@ -82,6 +83,7 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
+  const { keyboardVisible } = useKeyboardVisible();
   const { height: SCREEN_H } = useWindowDimensions();
 
   const sheetY = useSharedValue(SCREEN_H);
@@ -175,23 +177,28 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
           content area shrink within maxHeight while inner lists scroll. */}
       <View style={styles.content}>{children}</View>
 
-      {/* Pinned bottom close link — the canonical Goals close button. */}
-      <View style={styles.closeZone}>
-        <Pressable
-          style={styles.closeLink}
-          onPress={close}
-          hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
-          accessibilityRole="button"
-          accessibilityLabel={closeLabel}
-        >
-          {({ pressed }: { pressed: boolean }) => (
-            <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
-              <Feather name="x" size={12} color={C.textMuted} />
-              <Text style={styles.closeLinkText}>{closeLabel}</Text>
-            </View>
-          )}
-        </Pressable>
-      </View>
+      {/* Pinned bottom close link — the canonical Goals close button. Hidden
+          while the keyboard is up: it would be crushed against the keys, and
+          the KeyboardDoneFab already owns "finish typing" (drag/backdrop still
+          close the sheet). */}
+      {!keyboardVisible && (
+        <View style={styles.closeZone}>
+          <Pressable
+            style={styles.closeLink}
+            onPress={close}
+            hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
+            accessibilityRole="button"
+            accessibilityLabel={closeLabel}
+          >
+            {({ pressed }: { pressed: boolean }) => (
+              <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
+                <Feather name="x" size={12} color={C.textMuted} />
+                <Text style={styles.closeLinkText}>{closeLabel}</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
+      )}
     </Reanimated.View>
   );
 

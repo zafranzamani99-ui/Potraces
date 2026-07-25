@@ -22,6 +22,15 @@ export interface CollectzParsedDraft {
   total_amount: number | null;
   default_share: number | null;
   pay_by: string | null; // ISO string
+  /** Player requirements (null = not stated / open to all). */
+  skill_level: 'beginner' | 'intermediate' | 'advanced' | 'any' | null;
+  age_req: 'below_18' | '18_above' | 'any' | null;
+  gender_req: 'male' | 'female' | 'any' | null;
+  /** 'booked' when the venue/court is confirmed, 'later' when it isn't yet. */
+  booking_status: 'booked' | 'later' | null;
+  /** Flat-roster capacity — set ONLY when the message signals a closed session
+   *  ("FULL", "20 slot sahaja", "limited to 12"). Teams derive it instead. */
+  max_participants: number | null;
   /** Capacity when the roster is split into numbered TEAM blocks (else null). */
   team_count: number | null;
   team_size: number | null;
@@ -82,6 +91,32 @@ Extract STRICT JSON (no markdown, no commentary) with this exact shape:
   "default_share": number | null,  // The per-PERSON price for scheme "flat".
   "pay_by": string | null,         // ISO 8601 payment deadline if stated ("sebelum jam 6
                                    // ptg" on event day → that date at 18:00 +08:00)
+  "skill_level": "beginner" | "intermediate" | "advanced" | "any" | null,
+                                   // Stated player level: "beginner sahaja" → "beginner",
+                                   // "intermediate and above" → "intermediate", "advanced
+                                   // only" → "advanced". "Open for all level" / "all levels
+                                   // welcome" / "sume level boleh" → "any". null if silent.
+  "age_req": "below_18" | "18_above" | "any" | null,
+                                   // "18+ only" / "dewasa sahaja" → "18_above"; "under 18"
+                                   // / "budak sekolah" → "below_18"; "open to all ages"
+                                   // → "any". null if silent.
+  "gender_req": "male" | "female" | "any" | null,
+                                   // "lelaki sahaja" / "guys only" → "male"; "ladies only"
+                                   // / "perempuan sahaja" / "wanita sahaja" → "female";
+                                   // "mixed" / "open semua" → "any". null if silent.
+  "booking_status": "booked" | "later" | null,
+                                   // "booked" when the venue/court is clearly CONFIRMED:
+                                   // specific court numbers assigned ("No. Court: Court 12
+                                   // and 13"), "dah book", "court booked", "padang dah
+                                   // booked". "later" for "book later", "belum book",
+                                   // "court TBC". null when unclear.
+  "max_participants": number | null,
+                                   // For FLAT rosters (no teams): the player cap ONLY when
+                                   // the message signals a CLOSED session — the word "FULL",
+                                   // "slot full", "limited to 20", "20 slot sahaja", "max 12
+                                   // players". When FULL is stated with a roster, cap =
+                                   // the number of ACTIVE names (waiting list excluded).
+                                   // null when the session looks open or teams are used.
   "team_count": number | null,     // Number of TEAM blocks when the roster is split into
                                    // numbered teams (TEAM 1, TEAM 2 …). null if there are
                                    // no teams (a single flat name list).
@@ -94,8 +129,10 @@ Extract STRICT JSON (no markdown, no commentary) with this exact shape:
                                    // every FILLED member across all teams and set "team"
                                    // to their 1-based team number (TEAM 3 → 3); skip blank
                                    // numbered slots. "team" is null when there are no
-                                   // teams. Strip leading numbers, emojis, and weird
-                                   // whitespace. Keep display names as written.
+                                   // teams. Strip leading numbers, emojis, weird
+                                   // whitespace, AND trailing uncertainty/status notes
+                                   // ("Hajar 50/50" → "Hajar", "adha (maybe)" → "adha",
+                                   // "Ali - tbc" → "Ali"). Keep display names as written.
 }
 
 TEAMS (numbered TEAM blocks — "TEAM 1 … TEAM 2 …"):
@@ -236,6 +273,17 @@ export async function parseCollectzAnnouncement(text: string): Promise<CollectzP
     parsed.scheme && (VALID_SCHEMES as readonly string[]).includes(parsed.scheme)
       ? (parsed.scheme as CollectzParsedDraft['scheme'])
       : null;
+  // New requirement enums get the same untrusted-JSON treatment as category/scheme.
+  const oneOf = <T extends string>(v: unknown, allowed: readonly T[]): T | null =>
+    typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : null;
+  const skill_level = oneOf(parsed.skill_level, ['beginner', 'intermediate', 'advanced', 'any'] as const);
+  const age_req = oneOf(parsed.age_req, ['below_18', '18_above', 'any'] as const);
+  const gender_req = oneOf(parsed.gender_req, ['male', 'female', 'any'] as const);
+  const booking_status = oneOf(parsed.booking_status, ['booked', 'later'] as const);
+  const max_participants =
+    typeof parsed.max_participants === 'number' && Number.isFinite(parsed.max_participants) && parsed.max_participants >= 1
+      ? Math.floor(parsed.max_participants)
+      : null;
 
   // Teams only count when BOTH count and size are sane positive integers — a
   // half-answer (count without size) can't drive the capacity=teams UI.
@@ -260,6 +308,11 @@ export async function parseCollectzAnnouncement(text: string): Promise<CollectzP
     total_amount: parsed.total_amount ?? null,
     default_share: parsed.default_share ?? null,
     pay_by: parsed.pay_by ?? null,
+    skill_level,
+    age_req,
+    gender_req,
+    booking_status,
+    max_participants,
     team_count,
     team_size,
     roster: Array.isArray(parsed.roster)

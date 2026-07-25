@@ -134,7 +134,7 @@ const CollectzCreate: React.FC = () => {
   const [payBy, setPayBy] = useState<Date | null>(null);
   const [rules, setRules] = useState('');
   // Player requirements (all optional — null = open to all / not specified).
-  const [skillLevel, setSkillLevel] = useState<'beginner' | 'intermediate' | 'advanced' | null>(null);
+  const [skillLevel, setSkillLevel] = useState<'beginner' | 'intermediate' | 'advanced' | 'any' | null>(null);
   const [ageReq, setAgeReq] = useState<'below_18' | '18_above' | 'any' | null>(null);
   const [genderReq, setGenderReq] = useState<'male' | 'female' | 'any' | null>(null);
   const [bookingStatus, setBookingStatus] = useState<'booked' | 'later' | null>(null);
@@ -438,6 +438,7 @@ const CollectzCreate: React.FC = () => {
     beginner: t.collectz.reqSkillBeginner,
     intermediate: t.collectz.reqSkillIntermediate,
     advanced: t.collectz.reqSkillAdvanced,
+    any: t.collectz.reqSkillAny,
   };
   const ageLabels: Record<string, string> = {
     below_18: t.collectz.reqAgeBelow18,
@@ -792,6 +793,11 @@ const CollectzCreate: React.FC = () => {
         const dt = new Date(d.pay_by);
         if (!isNaN(dt.getTime())) setPayBy(dt);
       }
+      // Player requirements — only set what the message actually stated.
+      if (d.skill_level) setSkillLevel(d.skill_level);
+      if (d.age_req) setAgeReq(d.age_req);
+      if (d.gender_req) setGenderReq(d.gender_req);
+      if (d.booking_status) setBookingStatus(d.booking_status);
       // Numbered TEAM blocks → set the "teams" capacity so the roster keeps its
       // structure (4 teams × 5), and each player lands in their block.
       const teamed = d.team_count != null && d.team_size != null;
@@ -799,6 +805,10 @@ const CollectzCreate: React.FC = () => {
         setCapMode('teams');
         setTeamCount(d.team_count!);
         setTeamSize(d.team_size!);
+      } else if (d.max_participants != null) {
+        // Flat roster + a closed session ("FULL", "20 slot sahaja") → total cap.
+        setCapMode('total');
+        setMaxPlayers(d.max_participants);
       }
       if (d.roster.length > 0) {
         setRoster(
@@ -1652,7 +1662,9 @@ const CollectzCreate: React.FC = () => {
             onFocus={() => setMultilineFocused(true)}
             onBlur={() => setMultilineFocused(false)}
           />
-          <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} />
+          {!keyboardVisible && (
+            <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} style={{ marginTop: SPACING.md }} />
+          )}
         </View>
       </BottomSheet>
 
@@ -1677,7 +1689,9 @@ const CollectzCreate: React.FC = () => {
             onFocus={() => setMultilineFocused(true)}
             onBlur={() => setMultilineFocused(false)}
           />
-          <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} />
+          {!keyboardVisible && (
+            <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} style={{ marginTop: SPACING.md }} />
+          )}
         </View>
       </BottomSheet>
 
@@ -1723,7 +1737,9 @@ const CollectzCreate: React.FC = () => {
           {!!groupUrl.trim() && !isWhatsappGroupUrl(groupUrl) && (
             <Text style={styles.contactWarn}>{t.collectz.groupLinkInvalid}</Text>
           )}
-          <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} />
+          {!keyboardVisible && (
+            <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} style={{ marginTop: SPACING.md }} />
+          )}
         </ScrollView>
       </BottomSheet>
 
@@ -1788,7 +1804,9 @@ const CollectzCreate: React.FC = () => {
                 : fill(t.collectz.capacityCount, { n: activeFilled, max: capacityMax })}
             </Text>
           )}
-          <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} style={{ marginTop: SPACING.md }} />
+          {!keyboardVisible && (
+            <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} style={{ marginTop: SPACING.md }} />
+          )}
         </ScrollView>
       </BottomSheet>
 
@@ -1831,7 +1849,7 @@ const CollectzCreate: React.FC = () => {
       >
         <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
           {([
-            { label: t.collectz.reqSkill, options: ['beginner', 'intermediate', 'advanced'] as const, labels: skillLabels, value: skillLevel, set: setSkillLevel },
+            { label: t.collectz.reqSkill, options: ['beginner', 'intermediate', 'advanced', 'any'] as const, labels: skillLabels, value: skillLevel, set: setSkillLevel },
             { label: t.collectz.reqAge, options: ['below_18', '18_above', 'any'] as const, labels: ageLabels, value: ageReq, set: setAgeReq },
             { label: t.collectz.reqGender, options: ['male', 'female', 'any'] as const, labels: genderLabels, value: genderReq, set: setGenderReq },
             { label: t.collectz.reqBooking, options: ['booked', 'later'] as const, labels: bookingLabels, value: bookingStatus, set: setBookingStatus },
@@ -1852,7 +1870,9 @@ const CollectzCreate: React.FC = () => {
               </View>
             </View>
           ))}
-          <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} style={{ marginTop: SPACING.md }} />
+          {!keyboardVisible && (
+            <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} style={{ marginTop: SPACING.md }} />
+          )}
         </ScrollView>
       </BottomSheet>
 

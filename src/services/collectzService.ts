@@ -11,6 +11,7 @@
 //     status). Proofs live in the private `collectz-proofs` bucket.
 import { supabasePersonal as supabase } from './supabase';
 import { useSettingsStore } from '../store/settingsStore';
+import { getOrCreateReferralCode } from './referrals';
 import { en } from '../i18n/en';
 import { ms } from '../i18n/ms';
 import { startOfWeek } from 'date-fns';
@@ -55,7 +56,7 @@ export interface CollectzSession {
   /** Google Maps / Waze link for the venue (preview card parses it). */
   maps_url: string | null;
   /** Player requirements (all optional; null = open to all / not specified). */
-  skill_level: 'beginner' | 'intermediate' | 'advanced' | null;
+  skill_level: 'beginner' | 'intermediate' | 'advanced' | 'any' | null;
   age_req: 'below_18' | '18_above' | 'any' | null;
   gender_req: 'male' | 'female' | 'any' | null;
   /** Whether the venue/court is already booked ('booked' | 'later' | null). */
@@ -177,7 +178,7 @@ export interface CollectzSessionInput {
   qr_image_path?: string | null;
   image_path?: string | null;
   maps_url?: string | null;
-  skill_level?: 'beginner' | 'intermediate' | 'advanced' | null;
+  skill_level?: 'beginner' | 'intermediate' | 'advanced' | 'any' | null;
   age_req?: 'below_18' | '18_above' | 'any' | null;
   gender_req?: 'male' | 'female' | 'any' | null;
   booking_status?: 'booked' | 'later' | null;
@@ -196,8 +197,27 @@ const SITE_BASE = 'https://jejakbaki.my/collectz';
 
 // ── Links & announcement ─────────────────────────────────────────────────────
 
+// Shared links carry the organizer's referral code (?r=) so a joiner who then
+// installs Potraces can be attributed back (docs/plans/premium-grants-and-rewards.md).
+// Resolved once per session; a signed-out organizer gets null and the param is
+// simply omitted. Null is NOT latched — a later sign-in still picks the code up.
+let linkReferralCode: string | null = null;
+
+/** Warm (or return) the referral code appended to share links. Screens sharing
+ *  a session call this on mount; the builders below read it synchronously. */
+export async function ensureCollectzLinkReferralCode(): Promise<string | null> {
+  if (linkReferralCode) return linkReferralCode;
+  try {
+    linkReferralCode = await getOrCreateReferralCode();
+  } catch {
+    linkReferralCode = null;
+  }
+  return linkReferralCode;
+}
+
 export function collectzUrl(shareCode: string): string {
-  return `${SITE_BASE}/${encodeURIComponent(shareCode)}`;
+  const base = `${SITE_BASE}/${encodeURIComponent(shareCode)}`;
+  return linkReferralCode ? `${base}?r=${encodeURIComponent(linkReferralCode)}` : base;
 }
 
 function fmtEventDate(iso: string | null): string | null {

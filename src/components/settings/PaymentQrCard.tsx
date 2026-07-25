@@ -16,14 +16,18 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { Feather } from '@expo/vector-icons';
 import { useSettingsStore } from '../../store/settingsStore';
+import { usePremiumStore } from '../../store/premiumStore';
+import { limitFor } from '../../constants/premium';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import Button from '../common/Button';
 import ModalToastHost from '../common/ModalToastHost';
 import NeuButton from '../common/NeuButton';
 import { useNeu } from '../common/neu';
 import { newstOutline } from '../business/NewstInput';
+import PaywallModal from '../common/PaywallModal';
 import QrCaptureModal, { type QrCaptureResult } from '../common/QrCaptureModal';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
@@ -46,6 +50,12 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const [qrLabelFocused, setQrLabelFocused] = useState(false);
+
+  // Tier gate — stored payment QRs per mode: free/basic 2, Pro+ unlimited.
+  const tier = usePremiumStore((s) => s.tier);
+  const canCreatePaymentQr = usePremiumStore((s) => s.canCreatePaymentQr);
+  const maxQrAllowed = limitFor(tier, 'maxPaymentQrs');
+  const [showPaywall, setShowPaywall] = useState(false);
 
   const personalQrs = useSettingsStore((s) => s.paymentQrs) || [];
   const businessQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
@@ -120,9 +130,23 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
 
   const handleScannedQr = useCallback((r: QrCaptureResult) => {
     setScanModalVisible(false);
-    addPaymentQr(r.uri, r.label, mode, { payload: r.payload, network: r.network, merchantName: r.merchantName });
+    addPaymentQr(r.uri, r.label, mode, { payload: r.payload, network: r.network, merchantName: r.merchantName }, maxQrAllowed);
     showToast(t.qrPay.qrSaved, 'success');
-  }, [addPaymentQr, mode, showToast, t]);
+  }, [addPaymentQr, mode, showToast, t, maxQrAllowed]);
+
+  // Share the previewed QR image (both modes — personal + business lists).
+  const handleShareQr = useCallback(async () => {
+    if (qrPreviewIndex === null) return;
+    const qr = paymentQrs[qrPreviewIndex];
+    if (!qr) return;
+    lightTap();
+    try {
+      await Sharing.shareAsync(qr.uri, {
+        mimeType: qr.uri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg',
+        dialogTitle: qr.label,
+      });
+    } catch { /* share cancelled or unavailable */ }
+  }, [qrPreviewIndex, paymentQrs]);
 
   return (
     <View onLayout={onLayout}>
@@ -133,61 +157,78 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
           </View>
           <Text style={[styles.settingLabel, { color: C.textPrimary, marginLeft: 0 }]}>{t.settings.paymentQr}</Text>
         </View>
-        <Text style={[styles.qrSubtitle, { marginTop: SPACING.sm }]}>{t.settings.qrSubtitle}</Text>
+        <Text style={[styles.qrSubtitle, { marginTop: SPACING.sm }]}>
+          {maxQrAllowed === Infinity
+            ? t.settings.qrSubtitleUnlimited
+            : t.settings.qrSubtitle.replace('{n}', String(maxQrAllowed))}
+        </Text>
       </View>
       <View style={[styles.qrSlots, { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.md }]}>
-        {[0, 1].map((idx) => {
-          const qr = paymentQrs[idx];
-          return (
-            <View key={idx} style={styles.qrSlot}>
-              {qr ? (
-                <TouchableOpacity
-                  style={styles.qrSlotFilled}
-                  onPress={() => setQrPreviewIndex(idx)}
-                  onLongPress={() => handleQrLongPress(idx)}
-                  delayLongPress={400}
-                  activeOpacity={0.7}
-                  disabled={qrLoadingIndex !== null}
-                >
-                  <View style={styles.qrSlotIcon}>
-                    {qrLoadingIndex === idx ? (
-                      <ActivityIndicator size="small" color={C.accent} />
-                    ) : (
-                      <Feather name="check-circle" size={20} color={C.accent} />
-                    )}
-                  </View>
-                  <Text style={styles.qrSlotLabel} numberOfLines={1}>
-                    {qrLoadingIndex === idx ? t.settings.qrOpening : qr.label}
-                  </Text>
-                  {qrLoadingIndex !== idx && (
-                    <Feather name="more-vertical" size={16} color={C.textMuted} />
-                  )}
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.qrSlotEmpty}
-                  onPress={() => handlePickQrImage()}
-                  activeOpacity={0.6}
-                  disabled={qrLoadingIndex !== null}
-                >
-                  {qrLoadingIndex === idx ? (
-                    <ActivityIndicator size="small" color={C.accent} />
-                  ) : (
-                    <Feather name="plus" size={22} color={C.accent} />
-                  )}
-                  <Text style={styles.qrSlotAddText}>
-                    {qrLoadingIndex === idx ? t.settings.qrOpening : t.settings.addQrShort}
-                  </Text>
-                </TouchableOpacity>
+        {paymentQrs.map((qr, idx) => (
+          <View key={idx} style={styles.qrSlot}>
+            <TouchableOpacity
+              style={styles.qrSlotFilled}
+              onPress={() => setQrPreviewIndex(idx)}
+              onLongPress={() => handleQrLongPress(idx)}
+              delayLongPress={400}
+              activeOpacity={0.7}
+              disabled={qrLoadingIndex !== null}
+            >
+              <View style={styles.qrSlotIcon}>
+                {qrLoadingIndex === idx ? (
+                  <ActivityIndicator size="small" color={C.accent} />
+                ) : (
+                  <Feather name="check-circle" size={20} color={C.accent} />
+                )}
+              </View>
+              <Text style={styles.qrSlotLabel} numberOfLines={1}>
+                {qrLoadingIndex === idx ? t.settings.qrOpening : qr.label}
+              </Text>
+              {qrLoadingIndex !== idx && (
+                <Feather name="more-vertical" size={16} color={C.textMuted} />
               )}
-            </View>
-          );
-        })}
+            </TouchableOpacity>
+          </View>
+        ))}
+        {/* Add slot — tier-gated (free/basic 2 per mode, Pro+ unlimited).
+            Capped → a locked slot that opens the paywall instead. */}
+        {canCreatePaymentQr(paymentQrs.length) ? (
+          <View style={styles.qrSlot}>
+            <TouchableOpacity
+              style={styles.qrSlotEmpty}
+              onPress={() => handlePickQrImage()}
+              activeOpacity={0.6}
+              disabled={qrLoadingIndex !== null}
+            >
+              {qrLoadingIndex === paymentQrs.length ? (
+                <ActivityIndicator size="small" color={C.accent} />
+              ) : (
+                <Feather name="plus" size={22} color={C.accent} />
+              )}
+              <Text style={styles.qrSlotAddText}>
+                {qrLoadingIndex === paymentQrs.length ? t.settings.qrOpening : t.settings.addQrShort}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.qrSlot}>
+            <TouchableOpacity
+              style={styles.qrSlotEmpty}
+              onPress={() => { lightTap(); setShowPaywall(true); }}
+              activeOpacity={0.6}
+              accessibilityRole="button"
+              accessibilityLabel={t.settings.qrMorePro}
+            >
+              <Feather name="lock" size={20} color={C.accent} />
+              <Text style={styles.qrSlotAddText}>{t.settings.qrMorePro}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
       {/* Scan-standee: BUSINESS ONLY — a printed DuitNow standee is a seller
           thing; personal users add QRs from bank-app screenshots (owner call,
           2026-07-22). */}
-      {mode === 'business' && paymentQrs.length < 2 && (
+      {mode === 'business' && canCreatePaymentQr(paymentQrs.length) && (
         <View style={{ paddingHorizontal: SPACING.lg, paddingBottom: SPACING.sm }}>
           <Button
             title={t.qrPay.scanStandee}
@@ -202,9 +243,13 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
           </Text>
         </View>
       )}
-      <Text style={[styles.qrSubtitle, { marginHorizontal: SPACING.lg, marginTop: SPACING.xs, marginBottom: SPACING.md }]}>
-        {t.qrPay.bankAppNote}
-      </Text>
+      {/* Bank-app alerts note — business only: it's about receiving payments,
+          a seller concern (pairs with the business-only scan-standee). */}
+      {mode === 'business' && (
+        <Text style={[styles.qrSubtitle, { marginHorizontal: SPACING.lg, marginTop: SPACING.xs, marginBottom: SPACING.md }]}>
+          {t.qrPay.bankAppNote}
+        </Text>
+      )}
 
       <QrCaptureModal
         visible={scanModalVisible}
@@ -221,49 +266,47 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
         onRequestClose={() => setQrActionIndex(null)}
       >
         <Pressable style={styles.qrActionOverlay} onPress={() => setQrActionIndex(null)}>
-          <View style={[styles.qrActionSheet, { backgroundColor: C.surface }]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.qrActionSheet, neu.raisedModal]} onStartShouldSetResponder={() => true}>
             <Text style={styles.qrActionTitle}>
               {qrActionIndex !== null ? paymentQrs[qrActionIndex]?.label ?? '' : ''}
             </Text>
 
-            <TouchableOpacity
-              style={styles.qrActionItem}
-              onPress={() => handleQrAction('replace')}
-              activeOpacity={0.6}
-            >
-              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
-                <Feather name="image" size={18} color={C.accent} />
-              </View>
-              <Text style={styles.qrActionText}>{t.settings.qrReplaceImage}</Text>
-              <Feather name="chevron-right" size={16} color={C.textMuted} />
-            </TouchableOpacity>
+            <View style={styles.qrActionItems}>
+              <TouchableOpacity
+                style={[styles.qrActionItem, neu.raised]}
+                onPress={() => handleQrAction('replace')}
+                activeOpacity={0.6}
+              >
+                <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
+                  <Feather name="image" size={18} color={C.accent} />
+                </View>
+                <Text style={styles.qrActionText}>{t.settings.qrReplaceImage}</Text>
+                <Feather name="chevron-right" size={16} color={C.textMuted} />
+              </TouchableOpacity>
 
-            <View style={styles.qrActionDivider} />
+              <TouchableOpacity
+                style={[styles.qrActionItem, neu.raised]}
+                onPress={() => handleQrAction('rename')}
+                activeOpacity={0.6}
+              >
+                <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
+                  <Feather name="edit-2" size={18} color={C.accent} />
+                </View>
+                <Text style={styles.qrActionText}>{t.settings.qrRename}</Text>
+                <Feather name="chevron-right" size={16} color={C.textMuted} />
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.qrActionItem}
-              onPress={() => handleQrAction('rename')}
-              activeOpacity={0.6}
-            >
-              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
-                <Feather name="edit-2" size={18} color={C.accent} />
-              </View>
-              <Text style={styles.qrActionText}>{t.settings.qrRename}</Text>
-              <Feather name="chevron-right" size={16} color={C.textMuted} />
-            </TouchableOpacity>
-
-            <View style={styles.qrActionDivider} />
-
-            <TouchableOpacity
-              style={styles.qrActionItem}
-              onPress={() => handleQrAction('delete')}
-              activeOpacity={0.6}
-            >
-              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.neutral, 0.1) }]}>
-                <Feather name="trash-2" size={18} color={C.neutral} />
-              </View>
-              <Text style={[styles.qrActionText, { color: C.neutral }]}>{t.settings.qrDelete}</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.qrActionItem, neu.raised]}
+                onPress={() => handleQrAction('delete')}
+                activeOpacity={0.6}
+              >
+                <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.neutral, 0.1) }]}>
+                  <Feather name="trash-2" size={18} color={C.neutral} />
+                </View>
+                <Text style={[styles.qrActionText, { color: C.neutral }]}>{t.settings.qrDelete}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </Pressable>
         <ModalToastHost />
@@ -326,7 +369,7 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
                         replacePaymentQr(qrLabelModal.replaceIndex, qrLabelModal.uri, qrLabel, mode);
                         showToast(t.settings.qrUpdated, 'success');
                       } else {
-                        addPaymentQr(qrLabelModal.uri, qrLabel, mode);
+                        addPaymentQr(qrLabelModal.uri, qrLabel, mode, undefined, maxQrAllowed);
                         showToast(t.settings.qrAdded, 'success');
                       }
                     }
@@ -350,14 +393,6 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
         onRequestClose={() => setQrPreviewIndex(null)}
       >
         <View style={styles.qrPreviewOverlay}>
-          <TouchableOpacity
-            style={styles.qrPreviewClose}
-            onPress={() => setQrPreviewIndex(null)}
-            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-          >
-            <Feather name="x" size={28} color="#fff" />
-          </TouchableOpacity>
-
           {qrPreviewIndex !== null && paymentQrs[qrPreviewIndex] && (
             <Text style={styles.qrPreviewLabel}>{paymentQrs[qrPreviewIndex].label}</Text>
           )}
@@ -385,9 +420,38 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
               ))}
             </View>
           )}
+
+          {/* Bottom-center actions — share + close (thumb reach, both modes) */}
+          <View style={[styles.qrPreviewActions, { bottom: insets.bottom + SPACING['2xl'] + 32 }]}>
+            <TouchableOpacity
+              style={styles.qrPreviewActionBtn}
+              onPress={handleShareQr}
+              accessibilityRole="button"
+              accessibilityLabel={t.settings.qrShare}
+            >
+              <Feather name="share-2" size={22} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.qrPreviewActionBtn}
+              onPress={() => setQrPreviewIndex(null)}
+              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.common.close}
+            >
+              <Feather name="x" size={26} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
         <ModalToastHost />
       </Modal>
+
+      {/* Paywall — opens from the locked Add slot when the tier cap is hit. */}
+      <PaywallModal
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        feature="paymentQr"
+        currentUsage={paymentQrs.length}
+      />
     </View>
   );
 };
@@ -415,10 +479,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   qrSlots: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: SPACING.md,
   },
   qrSlot: {
-    flex: 1,
+    // Two per row at any count — 47% (not 48) so two slots + the 16px gap
+    // still fit the row; 48%×2+gap overflows and wraps to one column.
+    flexBasis: '47%',
   },
   qrSlotFilled: {
     flexDirection: 'row',
@@ -463,12 +530,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
+  // Onyx/neu modal card: C.background (never C.surface slab), neu.raisedModal
+  // supplies separation — NO border outline (Onyx rules 1+2).
   qrActionSheet: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: C.border,
   },
   qrActionTitle: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -477,10 +544,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.lg,
     textAlign: 'center',
   },
+  qrActionItems: {
+    gap: SPACING.sm,
+  },
   qrActionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.md,
+    minHeight: 52,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
     gap: SPACING.md,
   },
   qrActionIconBg: {
@@ -495,10 +567,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
-  },
-  qrActionDivider: {
-    height: 1,
-    backgroundColor: C.border,
   },
   qrLabelKav: {
     flex: 1,
@@ -550,21 +618,26 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qrPreviewClose: {
+  qrPreviewActions: {
     position: 'absolute',
-    top: 72,
-    right: SPACING.xl,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.xl,
+    zIndex: 20,
+  },
+  qrPreviewActionBtn: {
     width: 48,
     height: 48,
     borderRadius: 24,
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 20,
   },
   qrPreviewLabel: {
     position: 'absolute',
-    top: 80,
+    top: 120,
     left: 0,
     right: 0,
     textAlign: 'center',
@@ -581,7 +654,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   qrPreviewTabs: {
     position: 'absolute',
-    bottom: 60,
+    bottom: 180,
     left: 0,
     right: 0,
     flexDirection: 'row',

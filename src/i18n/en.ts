@@ -353,7 +353,10 @@ export const en = {
     manageUnits: 'Manage Units',
 
     // QR section
-    qrSubtitle: 'Add up to 2 QR codes. View them from the Dashboard.',
+    qrSubtitle: 'Add up to {n} QR codes. View them from the Dashboard.',
+    qrSubtitleUnlimited: 'Unlimited QR codes. View them from the Dashboard.',
+    qrShare: 'share',
+    qrMorePro: 'more with Pro',
     addQrShort: 'Add QR',
     qrOpening: 'Opening...',
     qrReplaceImage: 'Replace Image',
@@ -411,6 +414,7 @@ export const en = {
     importFromCsv: 'Import from CSV',
     backupsRestore: 'Backups & Restore',
     inviteFriends: 'Invite Friends',
+    redeemCode: 'Redeem Code',
     clearBusinessDataBtn: 'Delete Account',
     deleteAccount: 'Delete Personal Data',
 
@@ -511,10 +515,10 @@ export const en = {
       title: 'Quick Log',
       // Hero block — the screen's headline + value prop (deep-olive branded band).
       heroHeadline: 'Log an expense without opening the app.',
-      heroSub: 'Two ways to do it — Apple Pay logs itself, or a double-tap on the back of your phone.',
+      heroSub: 'Three ways to do it — Apple Pay by itself, a double-tap on the back, or just share a screenshot.',
       chipSet: 'Set up',
       chipNotSet: 'Not set up',
-      // Method picker — two ways to log; the screen shows one flow at a time.
+      // Method rows — three ways to log; each row opens its own flow screen.
       pickLabel: 'Choose your way to log',
       appleName: 'Apple Log',
       appleBadge: 'recommended',
@@ -523,6 +527,20 @@ export const en = {
       backtapName: 'Backtap Log',
       backtapDesc: 'Double-tap the back of your iPhone to log an expense.',
       backtapMeta: '5 steps',
+      shareName: 'Share Log',
+      shareBadge: 'no setup',
+      shareDesc: 'Share any payment screenshot straight to Potraces.',
+      shareMeta: '0 steps',
+      shIntro: 'Nothing to install — the share option ships with the app.',
+      shStep1Title: 'Screenshot the payment',
+      shStep1Body: 'Bank transfer, DuitNow, e-wallet receipt — screenshot it right after you pay.',
+      shStep2Title: 'Share it to Potraces',
+      shStep2Body: 'Open the screenshot (or your banking app) → tap Share → choose Potraces.',
+      shStep3Title: 'We read it for you',
+      shStep3Body: 'The receipt opens in review — items, amounts, and the total are read off the screenshot.',
+      shStep4Title: 'Confirm & save',
+      shStep4Body: "Check the details, tap save — it's logged with the receipt photo attached.",
+      shDone: "That's it — screenshot, share, logged.",
       generate: 'Generate my key',
       regenerate: 'Regenerate key',
       copyKey: 'Copy key',
@@ -2367,6 +2385,11 @@ export const en = {
     withdrawalType: 'Withdraw',
     typeOfUpdate: 'type of update',
     newValueLabel: 'new value',
+    addAmount: 'amount to add',
+    withdrawAmount: 'amount to withdraw',
+    dividendAmount: 'dividend amount',
+    newTotalPreview: 'new total:',
+    withdrawTooMuch: "can't withdraw more than the current value",
     noteOptional: 'note (optional)',
     dividendPlaceholder: 'e.g. ASB annual dividend',
     withdrawalPlaceholder: 'e.g. emergency use',
@@ -2915,6 +2938,9 @@ export const en = {
     businessProfileHeadA: 'One account, ',
     businessProfileHeadEm: 'many',
     businessProfileHeadB: ' shop faces',
+    paymentQrHeadA: 'Every way ',
+    paymentQrHeadEm: 'to get',
+    paymentQrHeadB: ' paid',
 
     // ── Trigger / quota line + per-feature unit words ──
     triggerUsed: '{used} of {limit} free {unit} used',
@@ -2929,6 +2955,7 @@ export const en = {
     unitSharedSubs: 'shared subs',
     unitCollectzSessions: 'collectz per week',
     unitBusinessProfiles: 'shop profiles',
+    unitPaymentQrs: 'QR codes',
 
     // ── Billing toggle + tags ──
     monthly: 'Monthly',
@@ -2940,6 +2967,15 @@ export const en = {
     cancelAnytime: 'cancel anytime',
     perMonth: '/mo',
     monthlyOnly: 'monthly only',
+
+    // ── Purchase result (floating modal) ──
+    purchaseSuccessTitle: "You're {tier} now",
+    purchaseSuccessSub: "Everything's unlocked. Go on — track dulu.",
+    purchaseSuccessCta: 'start tracking',
+    purchaseFailedTitle: "Payment didn't go through",
+    purchaseFailedSub: 'Nothing was charged. Check your payment method and try again.',
+    purchaseRetry: 'try again',
+    purchaseLater: 'maybe later',
 
     // ── Cloud backup promise ──
     cloudBackup: 'Cloud backup',
@@ -3774,6 +3810,8 @@ export const en = {
     removeConfirm: 'will be removed. the linked expense will remain.',
     remove: 'remove',
     lhdnTaxRelief: 'LHDN tax relief',
+    pickMonth: 'pick a month',
+    allMonths: 'all months',
     claimable: 'claimable',
     einvoiceReminder:
       "remember to request e-invoices for claimable purchases — you'll need your IC number at checkout",
@@ -4051,6 +4089,10 @@ export const en = {
     startDemo: 'start with demo data',
     getStarted: "let's go",
     skip: 'skip',
+    // Skippable invite-code step — prefilled when a referral was staged (deep link).
+    inviteTitle: 'have an invite code?',
+    inviteDesc: "a friend's code gives you free Pro days — totally optional.",
+    invitePlaceholder: 'enter code (optional)',
     // Legacy keys retained for any external reader; UI no longer reads them.
     splitSettle: 'split & settle',
     splitSettleDesc: 'split with friends, track who owes what.',
@@ -4816,7 +4858,7 @@ export const en = {
     statusPending: 'pending',
     statusConfirmed: 'confirmed',
     statusRejected: 'rejected',
-    claimed: 'claimed',
+    claimed: 'Verified',
     waitingList: 'Waiting list',
     roster: 'Roster',
     perPerson: '{amount} / person',
@@ -4917,6 +4959,7 @@ export const en = {
     schemeDescCustom: 'Different amount per person',
     secRequirements: 'Player requirements',
     reqSkill: 'Skill level',
+    reqSkillAny: 'Any level',
     reqSkillBeginner: 'Beginner',
     reqSkillIntermediate: 'Intermediate',
     reqSkillAdvanced: 'Advanced',
@@ -5160,6 +5203,60 @@ export const en = {
     joinedAs: 'joined as {name}',
     sessionClosed: 'This session is no longer open.',
     loading: 'Loading…',
+  },
+
+  // Invite friends (referral rewards) + staged-claim toasts + clipboard prompt.
+  rewards: {
+    inviteTitle: 'Invite friends',
+    inviteSubtitle: 'give {days} days of {tier}, get {days} days when they settle in',
+    yourCode: 'your code',
+    copy: 'copy',
+    copied: 'copied!',
+    share: 'share',
+    progressTitle: 'your rewards',
+    joinedPending: '{n} settling in',
+    joinedRewarded: '{n} rewarded',
+    daysEarned: '{days} days earned',
+    capLine: '{used} of {cap} rewards used this year',
+    milestoneLine: 'Collectz milestone: {have} of {needed} qualified joins',
+    milestoneDone: 'Collectz milestone claimed 🎉',
+    friendCodeTitle: "have a friend's code?",
+    friendCodeHint: 'for new accounts, within 14 days of joining',
+    friendCodePlaceholder: 'e.g. 7K4Q9M',
+    apply: 'apply',
+    claimSuccess: 'Invite applied — {days} days of {tier} on us!',
+    claimFailedTitle: "couldn't use that code",
+    reason_invalid_code: "That code doesn't look right — double-check it.",
+    reason_self_referral: "That's your own code — share it with a friend instead.",
+    reason_same_device: "This code can't be used on the same device.",
+    reason_already_referred: 'This account already used an invite code.',
+    reason_account_too_old: 'Invite codes are for new accounts (first 14 days).',
+    reason_auth_required: 'Sign in first, then enter the code.',
+    reason_network: 'No connection — try again in a moment.',
+    // Clipboard token (POTRACES-REF:…) — read once at boot, always confirmed first.
+    clipboardTitle: 'Use this invite code?',
+    clipboardBody: 'Found invite code {code} on your clipboard. Apply it to this account?',
+    clipboardYes: 'apply',
+  },
+
+  // Redeem gift codes (admin-minted). Reasons map the redeem_code RPC contract.
+  redeem: {
+    title: 'Redeem code',
+    subtitle: 'Got a gift code from the Potraces team? Pop it in here.',
+    placeholder: 'e.g. BETA-7K4Q-9M2X',
+    button: 'redeem',
+    successTitle: "you're in!",
+    successBody: '{tier} for {days} days — active until {date}.',
+    failedTitle: "couldn't redeem",
+    reason_invalid_code: "That code doesn't look right — check it and try again.",
+    reason_code_disabled: 'This code has been switched off.',
+    reason_code_expired: 'This code has expired.',
+    reason_code_exhausted: 'This code has been fully used up.',
+    reason_already_redeemed: 'You already redeemed this code.',
+    reason_campaign_already_used: 'You already used a code from this batch.',
+    reason_rate_limited: 'Too many tries — take a breather and try again later.',
+    reason_auth_required: 'Sign in first, then redeem your code.',
+    reason_network: 'No connection — try again in a moment.',
   },
 };
 

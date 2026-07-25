@@ -128,13 +128,14 @@ export function teamLabel(names: string[] | null | undefined, idx: number, fallb
 // fields produce nothing. Icon names are Feather glyphs.
 
 type RequirementSession = {
-  skill_level?: 'beginner' | 'intermediate' | 'advanced' | null;
+  skill_level?: 'beginner' | 'intermediate' | 'advanced' | 'any' | null;
   age_req?: 'below_18' | '18_above' | 'any' | null;
   gender_req?: 'male' | 'female' | 'any' | null;
   booking_status?: 'booked' | 'later' | null;
 };
 
 type RequirementStrings = {
+  reqSkillAny: string;
   reqSkillBeginner: string;
   reqSkillIntermediate: string;
   reqSkillAdvanced: string;
@@ -157,7 +158,7 @@ export function requirementChips(
   if (s.skill_level) {
     items.push({
       icon: 'zap',
-      label: { beginner: t.collectz.reqSkillBeginner, intermediate: t.collectz.reqSkillIntermediate, advanced: t.collectz.reqSkillAdvanced }[s.skill_level],
+      label: { beginner: t.collectz.reqSkillBeginner, intermediate: t.collectz.reqSkillIntermediate, advanced: t.collectz.reqSkillAdvanced, any: t.collectz.reqSkillAny }[s.skill_level],
     });
   }
   if (s.age_req) {
