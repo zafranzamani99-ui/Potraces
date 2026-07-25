@@ -270,7 +270,7 @@ export const useStallStore = create<StallState>()(
             .map((ps) => ({ productId: ps.productId, startQty: ps.startQty }));
           // Skip an empty preset: no label AND no products to restore.
           if (!s.name && !s.where && setup.length === 0) continue;
-          spots.push({ name: s.name, where: s.where, setup });
+          spots.push({ name: s.name, where: s.where, closedAt: s.closedAt, setup });
           if (spots.length >= limit) break;
         }
         return spots;

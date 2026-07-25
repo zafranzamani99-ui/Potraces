@@ -1283,7 +1283,7 @@ const SellScreen: React.FC = () => {
       <Modal
         visible={ledgerVisible}
         transparent
-        animationType="fade"
+        animationType="none"
         statusBarTranslucent
         onRequestClose={() => { setLedgerVisible(false); setEditingSaleId(null); }}
       >
@@ -1397,7 +1397,7 @@ const SellScreen: React.FC = () => {
       <Modal
         visible={customVisible}
         transparent
-        animationType="fade"
+        animationType="none"
         statusBarTranslucent
         onRequestClose={() => setCustomVisible(false)}
       >
@@ -1483,7 +1483,7 @@ const SellScreen: React.FC = () => {
       <Modal
         visible={!!restockTarget}
         transparent
-        animationType="fade"
+        animationType="none"
         statusBarTranslucent
         onRequestClose={() => setRestockTarget(null)}
       >
@@ -1529,7 +1529,7 @@ const SellScreen: React.FC = () => {
       <Modal
         visible={customerPickerVisible}
         transparent
-        animationType="fade"
+        animationType="none"
         statusBarTranslucent
         onRequestClose={() => setCustomerPickerVisible(false)}
       >
@@ -1606,7 +1606,7 @@ const SellScreen: React.FC = () => {
       <Modal
         visible={clearanceVisible}
         transparent
-        animationType="fade"
+        animationType="none"
         statusBarTranslucent
         onRequestClose={() => setClearanceVisible(false)}
       >
@@ -1648,38 +1648,66 @@ const SellScreen: React.FC = () => {
       <Modal
         visible={!!modifierProduct}
         transparent
-        animationType="fade"
+        animationType="none"
         statusBarTranslucent
         onRequestClose={() => setModifierProduct(null)}
       >
         <Pressable style={styles.centerOverlay} onPress={() => setModifierProduct(null)}>
           <View style={styles.centerKav} pointerEvents="box-none">
             <View style={styles.centerCard} onStartShouldSetResponder={() => true}>
-              <Text style={styles.centerTitle}>{modifierProduct?.name}</Text>
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => modifierProduct && guardedModifierSale(modifierProduct, null)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.optionName}>{t.stall.optionNone}</Text>
-                <Text style={styles.optionPrice}>{currency} {modifierProduct ? priceOf(modifierProduct).toFixed(2) : ''}</Text>
-              </TouchableOpacity>
-              {modifierProduct?.modifiers?.map((m) => {
-                const unit = modifierProduct ? Math.round((priceOf(modifierProduct) + m.priceDelta) * 100) / 100 : 0;
-                return (
-                  <TouchableOpacity
-                    key={m.id}
-                    style={styles.optionRow}
-                    onPress={() => modifierProduct && guardedModifierSale(modifierProduct, m)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.optionName}>
-                      {m.label}{m.priceDelta ? ` (${m.priceDelta > 0 ? '+' : ''}${m.priceDelta})` : ''}
-                    </Text>
-                    <Text style={styles.optionPrice}>{currency} {unit.toFixed(2)}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+              {/* Header — product name + close, like the category dropdown */}
+              <View style={styles.modHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.centerTitle}>{modifierProduct?.name}</Text>
+                  <Text style={styles.modSubtitle}>{t.stall.pickOptionTitle}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setModifierProduct(null)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.common.close}
+                >
+                  <Feather name="x" size={16} color={C.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Options as tappable neu rows — label + delta chip, final price right */}
+              <View style={styles.modOptions}>
+                <TouchableOpacity
+                  style={[styles.modOptionRow, neu.raised]}
+                  onPress={() => modifierProduct && guardedModifierSale(modifierProduct, null)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.modOptionName}>{t.stall.optionNone}</Text>
+                  <Text style={styles.modOptionPrice}>{currency} {modifierProduct ? priceOf(modifierProduct).toFixed(2) : ''}</Text>
+                </TouchableOpacity>
+                {modifierProduct?.modifiers?.map((m) => {
+                  const unit = modifierProduct ? Math.round((priceOf(modifierProduct) + m.priceDelta) * 100) / 100 : 0;
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      style={[styles.modOptionRow, neu.raised]}
+                      onPress={() => modifierProduct && guardedModifierSale(modifierProduct, m)}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${m.label}, ${currency} ${unit.toFixed(2)}`}
+                    >
+                      <View style={styles.modOptionLeft}>
+                        <Text style={styles.modOptionName} numberOfLines={1}>{m.label}</Text>
+                        {!!m.priceDelta && (
+                          <View style={styles.modDeltaChip}>
+                            <Text style={styles.modDeltaChipText}>
+                              {m.priceDelta > 0 ? '+' : '−'}{Math.abs(m.priceDelta)}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.modOptionPrice}>{currency} {unit.toFixed(2)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
           </View>
         </Pressable>
@@ -1713,7 +1741,7 @@ const SellScreen: React.FC = () => {
       <Modal
         visible={catDropdownOpen}
         transparent
-        animationType="fade"
+        animationType="none"
         statusBarTranslucent
         onRequestClose={() => setCatDropdownOpen(false)}
       >
@@ -2560,21 +2588,54 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
   },
-  optionRow: {
+  // ─── Modifier chooser ──────────────────────────────────
+  modHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.md,
+  },
+  modSubtitle: {
+    ...TYPE.muted,
+    marginTop: 2,
+  },
+  modOptions: {
+    gap: SPACING.sm,
+  },
+  modOptionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+    minHeight: 52,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.lg,
+    gap: SPACING.md,
   },
-  optionName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
+  modOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
     flex: 1,
+    flexShrink: 1,
   },
-  optionPrice: {
+  modOptionName: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    flexShrink: 1,
+  },
+  modDeltaChip: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.bronze, 0.10),
+  },
+  modDeltaChipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'],
+  },
+  modOptionPrice: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.bronze,
@@ -2591,6 +2652,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
+    // Same modal-card outline rule as centerCard / FloatingModal.
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.12),
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
     paddingBottom: SPACING['2xl'],
@@ -2598,7 +2662,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '100%',
     maxWidth: 560,
     alignSelf: 'center',
-    ...SHADOWS.lg,
   },
   sheetHandle: {
     width: 40,
@@ -2732,11 +2795,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   centerCard: {
     backgroundColor: C.background,
     borderRadius: RADIUS.xl,
+    // The established modal-card rule (same as FloatingModal): scrim supplies
+    // separation, a hairline supplies the outline — no drop shadow.
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.12),
     padding: SPACING.xl,
     width: '100%',
     maxWidth: 400,
     gap: SPACING.md,
-    ...SHADOWS.lg,
   },
   centerTitle: {
     fontSize: TYPOGRAPHY.size.lg,

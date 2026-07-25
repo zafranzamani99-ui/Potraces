@@ -20,7 +20,8 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
+import { collectzCategoryColor } from '../../../constants/collectzColors';
 import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import FAB from '../../../components/common/FAB';
@@ -70,6 +71,7 @@ function extractShareCode(raw: string): string {
 
 const CollectzHome: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const neu = useNeu(undefined, { faintDark: true });
@@ -184,6 +186,17 @@ const CollectzHome: React.FC = () => {
 
   const activeJoined = joined.filter((s) => !isArchived(s));
   const archivedJoined = joined.filter(isArchived);
+  // Attention strip counts — derived from state the cards already use.
+  const statActive = organizing.filter((s) => s.status === 'open').length + activeJoined.length;
+  const statToReview = Object.values(rosters).reduce(
+    (sum, r) => sum + r.filter((p) => p.status === 'pending').length,
+    0,
+  );
+  const statToPay = Object.values(myJoinedRows).filter(
+    (r) => (r.status === 'unpaid' || r.status === 'rejected') && !r.archived_at,
+  ).length;
+  // Empty-state wells have no session category — use the 'other' (olive) tint.
+  const emptyTint = collectzCategoryColor('other', isDark);
 
   const toggleArchive = (s: CollectzSession) => {
     const row = myJoinedRows[s.id];
@@ -231,6 +244,9 @@ const CollectzHome: React.FC = () => {
     const progress = mine ? computeProgress(s, rosters[s.id] ?? []) : null;
     const jprog = !mine ? joinedProgress[s.id] : null;
     const dateLine = fmtEventRange(s.event_at, s.event_end);
+    // Category identity color — settled/cancelled sessions drop it for neutral.
+    const settled = s.status !== 'open';
+    const catColor = settled ? C.neutral : collectzCategoryColor(s.category, isDark);
     const pct =
       progress && progress.target && progress.target > 0
         ? Math.min(progress.confirmed / progress.target, 1)
@@ -243,6 +259,14 @@ const CollectzHome: React.FC = () => {
         : jprog && jprog.active_count > 0
           ? jprog.confirmed_count / jprog.active_count
           : 0;
+    // One money-block shape for both card kinds; only the source differs.
+    const money =
+      mine && progress && progress.activeCount > 0
+        ? { confirmed: progress.confirmed, target: progress.target, n: progress.confirmedCount, m: progress.activeCount, frac: pct }
+        : !mine && jprog && jprog.active_count > 0
+          ? { confirmed: jprog.confirmed_amount, target: jprog.target_amount, n: jprog.confirmed_count, m: jprog.active_count, frac: jpct }
+          : null;
+    const pendingCount = mine ? (rosters[s.id] ?? []).filter((p) => p.status === 'pending').length : 0;
     return (
       <Pressable
         key={s.id}
@@ -252,6 +276,15 @@ const CollectzHome: React.FC = () => {
         accessibilityRole="button"
         accessibilityLabel={s.title}
       >
+        {/* Category tint — inner absolute-fill layer so the neu shadow stays on
+            the card view (a clip on the card would kill the shadow — the neu
+            seam rule). Flat fill, no gradient. */}
+        {!settled && (
+          <View
+            style={[StyleSheet.absoluteFillObject, styles.cardWash, { backgroundColor: withAlpha(catColor, isDark ? 0.12 : 0.07) }]}
+            pointerEvents="none"
+          />
+        )}
         <View style={styles.cardTopRow}>
           {(() => {
             // Show the club icon / photo the organizer picked at create time.
@@ -261,7 +294,7 @@ const CollectzHome: React.FC = () => {
             const uri = !preset && s.image_path ? clubImageUrl(s.image_path) : null;
             if (!preset && !uri) return null;
             return (
-              <View style={styles.clubWell}>
+              <View style={[styles.clubWell, { backgroundColor: withAlpha(catColor, 0.12) }]}>
                 {preset ? (
                   <Text style={styles.clubEmoji}>{preset.emoji}</Text>
                 ) : (
@@ -290,34 +323,33 @@ const CollectzHome: React.FC = () => {
           <Feather name="dollar-sign" size={13} color={C.textMuted} />
           <Text style={styles.cardMeta}>{amountLine(s)}</Text>
         </View>
-        {progress && progress.activeCount > 0 && (
-          <View style={styles.progressWrap}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${Math.round(pct * 100)}%` }]} />
+        {money && (
+          <View style={styles.moneyRow}>
+            <View style={styles.moneyLeft}>
+              <Text style={styles.moneyText}>
+                {money.target != null
+                  ? fill(t.collectz.progressOfTarget, {
+                      confirmed: fmtMoney(money.confirmed, s.currency),
+                      target: fmtMoney(money.target, s.currency),
+                    })
+                  : fmtMoney(money.confirmed, s.currency)}
+              </Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${Math.round(money.frac * 100)}%`, backgroundColor: catColor }]} />
+              </View>
             </View>
-            <Text style={styles.progressText}>
-              {progress.target != null
-                ? `${fill(t.collectz.progressOfTarget, {
-                    confirmed: fmtMoney(progress.confirmed, s.currency),
-                    target: fmtMoney(progress.target, s.currency),
-                  })} · ${fill(t.collectz.confirmedCount, { n: progress.confirmedCount, m: progress.activeCount })}`
-                : fill(t.collectz.confirmedCount, { n: progress.confirmedCount, m: progress.activeCount })}
-            </Text>
+            <View style={styles.moneyCountWrap}>
+              <Text style={[styles.moneyCount, { color: catColor }]}>
+                {money.n}/{money.m}
+              </Text>
+              <Text style={styles.moneyCaption}>{t.collectz.statusConfirmed}</Text>
+            </View>
           </View>
         )}
-        {jprog && jprog.active_count > 0 && (
-          <View style={styles.progressWrap}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${Math.round(jpct * 100)}%` }]} />
-            </View>
-            <Text style={styles.progressText}>
-              {jprog.target_amount != null
-                ? `${fill(t.collectz.progressOfTarget, {
-                    confirmed: fmtMoney(jprog.confirmed_amount, s.currency),
-                    target: fmtMoney(jprog.target_amount, s.currency),
-                  })} · ${fill(t.collectz.confirmedCount, { n: jprog.confirmed_count, m: jprog.active_count })}`
-                : fill(t.collectz.confirmedCount, { n: jprog.confirmed_count, m: jprog.active_count })}
-            </Text>
+        {mine && pendingCount > 0 && (
+          <View style={[styles.pendingBadge, { backgroundColor: withAlpha(C.gold, isDark ? 0.22 : 0.14) }]}>
+            <View style={styles.pendingDot} />
+            <Text style={styles.pendingText}>{fill(t.collectz.homePendingBadge, { n: pendingCount })}</Text>
           </View>
         )}
       </Pressable>
@@ -381,11 +413,35 @@ const CollectzHome: React.FC = () => {
           <ActivityIndicator size="large" color={C.accent} style={styles.loader} />
         ) : (
           <>
+            {/* ── Attention summary ── */}
+            {statActive + statToReview + statToPay > 0 && (
+              <View style={styles.statRow}>
+                {([
+                  { key: 'active', count: statActive, dot: C.accent, label: t.collectz.homeStatActive },
+                  { key: 'review', count: statToReview, dot: C.gold, label: t.collectz.homeStatToReview },
+                  { key: 'pay', count: statToPay, dot: C.overdue, label: t.collectz.homeStatToPay },
+                ] as const).map((tile) => (
+                  <View key={tile.key} style={[styles.statTile, neu.raisedSoft]}>
+                    <View style={styles.statTopRow}>
+                      <View style={[styles.statDot, { backgroundColor: tile.dot }]} />
+                      <Text style={styles.statCount}>{tile.count}</Text>
+                    </View>
+                    <Text style={styles.statLabel}>{tile.label}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* ── I organize ── */}
-            <Text style={styles.sectionTitle}>{t.collectz.homeOrganize}</Text>
+            <View style={styles.sectionHeaderRow}>
+              <View style={[styles.sectionDot, { backgroundColor: C.deepOlive }]} />
+              <Text style={[styles.sectionTitle, styles.sectionTitleInRow]}>{t.collectz.homeOrganize}</Text>
+            </View>
             {organizing.length === 0 ? (
               <View style={[styles.emptyCard, neu.raisedSoft]}>
-                <Feather name="users" size={22} color={C.textMuted} />
+                <View style={[styles.emptyWell, { backgroundColor: withAlpha(emptyTint, 0.12) }]}>
+                  <Feather name="users" size={22} color={emptyTint} />
+                </View>
                 <Text style={styles.emptyTitle}>{t.collectz.homeEmptyOrganizeTitle}</Text>
                 <Text style={styles.emptyBody}>{t.collectz.homeEmptyOrganizeBody}</Text>
               </View>
@@ -394,10 +450,15 @@ const CollectzHome: React.FC = () => {
             )}
 
             {/* ── I joined ── */}
-            <Text style={[styles.sectionTitle, styles.sectionGap]}>{t.collectz.homeJoined}</Text>
+            <View style={[styles.sectionHeaderRow, styles.sectionGap]}>
+              <View style={[styles.sectionDot, { backgroundColor: C.gold }]} />
+              <Text style={[styles.sectionTitle, styles.sectionTitleInRow]}>{t.collectz.homeJoined}</Text>
+            </View>
             {joined.length === 0 ? (
               <View style={[styles.emptyCard, neu.raisedSoft]}>
-                <Feather name="inbox" size={22} color={C.textMuted} />
+                <View style={[styles.emptyWell, { backgroundColor: withAlpha(emptyTint, 0.12) }]}>
+                  <Feather name="inbox" size={22} color={emptyTint} />
+                </View>
                 <Text style={styles.emptyBody}>{t.collectz.homeEmptyJoinedBody}</Text>
               </View>
             ) : (
@@ -476,6 +537,7 @@ const CollectzHome: React.FC = () => {
       <FAB
         onPress={onCreatePress}
         icon="plus"
+        color={C.deepOlive}
         style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md) }}
       />
       <PaywallModal
@@ -501,6 +563,14 @@ const makeStyles = (C: typeof CALM) =>
       letterSpacing: 0.2,
       marginBottom: SPACING.sm,
     },
+    sectionHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.xs,
+      marginBottom: SPACING.sm,
+    },
+    sectionTitleInRow: { marginBottom: 0 },
+    sectionDot: { width: 7, height: 7, borderRadius: RADIUS.full },
     sectionGap: { marginTop: SPACING.xl },
     archivedHeader: {
       flexDirection: 'row',
@@ -524,12 +594,14 @@ const makeStyles = (C: typeof CALM) =>
       marginBottom: SPACING.sm,
       gap: 6,
     },
+    // Matches the card's radius so the category wash doesn't poke past the
+    // rounded corners (the card itself must NOT clip — the neu seam rule).
+    cardWash: { borderRadius: RADIUS.lg },
     cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
     clubWell: {
       width: 40,
       height: 40,
       borderRadius: RADIUS.md,
-      backgroundColor: withAlpha(C.textPrimary, 0.03),
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
@@ -555,21 +627,68 @@ const makeStyles = (C: typeof CALM) =>
     },
     cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     cardMeta: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
-    progressWrap: { gap: 4, marginTop: 2 },
+    statRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
+    statTile: {
+      // surface + elevation from neu.raisedSoft (base C.background)
+      flex: 1,
+      borderRadius: RADIUS.lg,
+      padding: SPACING.md,
+      gap: 2,
+    },
+    statTopRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+    statDot: { width: 7, height: 7, borderRadius: RADIUS.full },
+    statCount: {
+      fontSize: TYPOGRAPHY.size.xl,
+      fontWeight: TYPOGRAPHY.weight.bold,
+      color: C.textPrimary,
+    },
+    statLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
+    moneyRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginTop: 2 },
+    moneyLeft: { flex: 1, gap: 6 },
+    moneyText: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textPrimary,
+    },
+    moneyCountWrap: { alignItems: 'flex-end' },
+    moneyCount: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold },
+    moneyCaption: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
+    pendingBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: 6,
+      borderRadius: RADIUS.full,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 3,
+      marginTop: 2,
+    },
+    pendingDot: { width: 6, height: 6, borderRadius: RADIUS.full, backgroundColor: C.gold },
+    pendingText: {
+      fontSize: TYPOGRAPHY.size.xs,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.gold,
+    },
     progressTrack: {
-      height: 6,
+      height: 8,
       borderRadius: RADIUS.full,
       backgroundColor: C.pillBg,
       overflow: 'hidden',
     },
-    progressFill: { height: 6, borderRadius: RADIUS.full, backgroundColor: C.accent },
-    progressText: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
+    progressFill: { height: 8, borderRadius: RADIUS.full },
     emptyCard: {
       // surface + elevation from neu.raisedSoft (base C.background)
       borderRadius: RADIUS.lg,
       padding: SPACING.xl,
       alignItems: 'center',
       gap: SPACING.sm,
+    },
+    emptyWell: {
+      width: 44,
+      height: 44,
+      borderRadius: RADIUS.full,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     emptyTitle: {
       fontSize: TYPOGRAPHY.size.base,

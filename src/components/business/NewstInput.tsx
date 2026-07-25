@@ -12,8 +12,9 @@ import {
   StyleProp,
   ViewStyle,
 } from 'react-native';
-import { CALM, RADIUS, SPACING, TYPOGRAPHY, TYPE, withAlpha } from '../../constants';
+import { CALM, BIZ, RADIUS, SPACING, TYPOGRAPHY, TYPE, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import InputError from '../common/InputError';
 
 /**
  * The shared Newst outline — the ONE border every business/stall-mode input wears,
@@ -21,12 +22,14 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
  * style array so it overrides any existing border/background.
  * `active` = the highlight condition: focused (plain inputs) or floated (Newst fields).
  * Idle → C.border; active → C.textPrimary (black in light / white in dark).
+ * `error` → BIZ.inputError border + 8% wash (the seller-form validation convention);
+ * it wins over both idle and active so an invalid field never looks merely focused.
  */
-export const newstOutline = (C: typeof CALM, active: boolean) => ({
+export const newstOutline = (C: typeof CALM, active: boolean, error?: boolean) => ({
   borderWidth: 1.5,
-  borderColor: active ? C.textPrimary : C.border,
+  borderColor: error ? BIZ.inputError : active ? C.textPrimary : C.border,
   borderRadius: RADIUS.lg,
-  backgroundColor: 'transparent' as const,
+  backgroundColor: error ? withAlpha(BIZ.inputError, 0.08) : ('transparent' as const),
 });
 
 export interface NewstInputProps {
@@ -37,6 +40,8 @@ export interface NewstInputProps {
   prefix?: string;
   /** Muted helper line below the box. */
   hint?: string;
+  /** Validation message — tints the box (BIZ.inputError) and shows InputError below. */
+  error?: string | null;
   multiline?: boolean;
   keyboardType?: KeyboardTypeOptions;
   autoFocus?: boolean;
@@ -69,6 +74,7 @@ const NewstInput: React.FC<NewstInputProps> = ({
   onSubmitEditing,
   accessibilityLabel,
   accessibilityHint,
+  error,
   style,
 }) => {
   const C = useCalm();
@@ -105,7 +111,7 @@ const NewstInput: React.FC<NewstInputProps> = ({
         style={[
           styles.box,
           multiline && styles.boxMultiline,
-          newstOutline(C, floated),
+          newstOutline(C, floated, !!error),
         ]}
       >
         {prefix != null && floated ? <Text style={styles.prefix}>{prefix}</Text> : null}
@@ -137,7 +143,8 @@ const NewstInput: React.FC<NewstInputProps> = ({
       >
         {label}
       </Animated.Text>
-      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      {hint && !error ? <Text style={styles.hint}>{hint}</Text> : null}
+      <InputError message={error} />
     </View>
   );
 };

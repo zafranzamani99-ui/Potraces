@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "remotion studio",
     "render": "remotion render CollectzPromo out/collectz-promo.mp4",
+    "render:debt": "remotion render DebtPromo out/debt-promo.mp4",
     "render:potraces": "remotion render PotracesPromo out/potraces-promo.mp4",
     "vo": "node scripts/generate-vo.mjs",
     "sfx": "node scripts/generate-sfx.mjs",

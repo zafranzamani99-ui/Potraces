@@ -9,9 +9,10 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Share } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
+import { collectzCategoryColor } from '../../constants/collectzColors';
 import { lightTap, successNotification } from '../../services/haptics';
 import FloatingModal from '../common/FloatingModal';
 import NeuButton from '../common/NeuButton';
@@ -37,6 +38,7 @@ interface Props {
 const CollectzCreatedModal: React.FC<Props> = ({ visible, session, activeCount, rosterCount, onOpen }) => {
   const C = useCalm();
   const t = useT();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const neuF = useNeu(undefined, { faintDark: true }); // cards/wells (Onyx rule 3)
   const neuFull = useNeu(); // full neu — the success icon LIFTS off the surface
@@ -44,6 +46,8 @@ const CollectzCreatedModal: React.FC<Props> = ({ visible, session, activeCount, 
 
   if (!session) return null;
   const url = collectzUrl(session.share_code);
+  // Category identity — the check badge + share CTA wear the session's color.
+  const catColor = collectzCategoryColor(session.category, isDark);
 
   const copy = async (which: 'code' | 'link') => {
     lightTap();
@@ -121,8 +125,8 @@ const CollectzCreatedModal: React.FC<Props> = ({ visible, session, activeCount, 
   return (
     <FloatingModal visible={visible} onClose={onOpen} entrance="fade" showDragHandle={false} maxWidth={440}>
       <View style={styles.wrap}>
-        <View style={[styles.check, neuFull.raised, { backgroundColor: withAlpha(C.positive, 0.14) }]}>
-          <Feather name="check" size={26} color={C.positive} />
+        <View style={[styles.check, neuFull.raised, { backgroundColor: withAlpha(catColor, 0.14) }]}>
+          <Feather name="check" size={26} color={catColor} />
         </View>
         <Text style={styles.title}>{t.collectz.createdTitle}</Text>
         <Text style={styles.name} numberOfLines={2}>{session.title}</Text>
@@ -146,6 +150,7 @@ const CollectzCreatedModal: React.FC<Props> = ({ visible, session, activeCount, 
           icon="share-2"
           label={t.collectz.createdShareCta}
           onPress={shareNow}
+          color={catColor}
           style={{ marginTop: SPACING.sm }}
         />
         <Pressable

@@ -10,9 +10,11 @@ import {
   Pressable,
   Platform,
   Linking,
+  AppState,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import * as LocalAuthentication from 'expo-local-authentication';
+import * as Notifications from 'expo-notifications';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +23,15 @@ import NeuGroup from '../../components/common/NeuGroup';
 import { useNeu } from '../../components/common/neu';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useAppStore } from '../../store/appStore';
+import {
+  registerPushNotifications,
+  unregisterOrderPushToken,
+  registerPersonalDeviceToken,
+  unregisterPersonalDeviceToken,
+  registerBroadcastDevice,
+  unregisterBroadcastDevice,
+} from '../../services/pushNotifications';
 import { isLiveAudioAvailable } from '../../services/liveAudioSource';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha, TERMS_URL, PRIVACY_URL } from '../../constants';
 import { useToast } from '../../context/ToastContext';
@@ -54,10 +65,11 @@ const CURRENCY_OPTIONS = [
 ];
 
 /**
- * Shared, mode-agnostic app/device settings: appearance, currency,
- * notifications, haptics, voice engine, app-lock, privacy, about. Reached from
- * both the Personal and Business hubs via the 'preferences' | 'security' |
- * 'about' sections. Nothing here is personal- or business-specific.
+ * Shared app/device settings: appearance, currency, notifications, haptics,
+ * voice engine, app-lock, privacy, about. Reached from both the Personal and
+ * Business hubs via the 'preferences' | 'security' | 'about' sections. The
+ * notifications row is mode-aware: business shows the web-shop orders toggle,
+ * personal shows the master push toggle.
  */
 const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 'security' | 'about'> }> = ({ section }) => {
   const navigation = useNavigation();
@@ -76,6 +88,9 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
   const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
   const setNotificationsEnabled = useSettingsStore((s) => s.setNotificationsEnabled);
+  const orderNotificationsEnabled = useSettingsStore((s) => s.orderNotificationsEnabled);
+  const setOrderNotificationsEnabled = useSettingsStore((s) => s.setOrderNotificationsEnabled);
+  const mode = useAppStore((s) => s.mode);
   const themePreference = useSettingsStore((s) => s.themePreference);
   const setThemePreference = useSettingsStore((s) => s.setThemePreference);
   const language = useSettingsStore((s) => s.language);
@@ -103,14 +118,80 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
     navigation.setOptions({ title: titles[section] });
   }, [section, navigation, t]);
 
+  // Ask for the OS notification permission. The system dialog only ever shows
+  // ONCE — if the user previously denied, requestPermissionsAsync returns
+  // 'denied' without showing anything, so we point them at the OS Settings
+  // instead of failing silently. Returns true when permission is granted.
+  const ensurePushPermission = useCallback(async (): Promise<boolean> => {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status === 'granted') return true;
+    const req = await Notifications.requestPermissionsAsync();
+    if (req.status === 'granted') return true;
+    if (!req.canAskAgain) {
+      Alert.alert(t.settings.notifPermissionTitle, t.settings.notifPermissionMsg, [
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.settings.openSettings, onPress: () => Linking.openSettings() },
+      ]);
+    }
+    return false;
+  }, [t]);
+
+  // Personal master push toggle: flips the flag AND un/registers this device's
+  // push tokens (personal device_tokens + account-free broadcast push_devices),
+  // so OFF is a real opt-out, not just a foreground-display mute.
   const handleNotificationsToggle = useCallback((value: boolean) => {
     lightTap();
     setNotificationsEnabled(value);
-    showToast(
-      value ? t.settings.notificationsEnabledToast : t.settings.notificationsDisabledToast,
-      'success'
-    );
-  }, [setNotificationsEnabled, showToast, t]);
+    if (value) {
+      ensurePushPermission().then((granted) => {
+        // Not granted (denied just now, or the user went to OS Settings and
+        // didn't enable) — snap the toggle back OFF so it reflects reality.
+        // No "enabled" toast either; the permission alert already explained.
+        if (!granted) { setNotificationsEnabled(false); return; }
+        registerPersonalDeviceToken().catch(() => {});
+        registerBroadcastDevice().catch(() => {});
+        showToast(t.settings.notificationsEnabledToast, 'success');
+      });
+      return;
+    }
+    unregisterPersonalDeviceToken().catch(() => {});
+    unregisterBroadcastDevice().catch(() => {});
+    showToast(t.settings.notificationsDisabledToast, 'success');
+  }, [setNotificationsEnabled, ensurePushPermission, showToast, t]);
+
+  // Business orders toggle: ON (re)writes seller_profiles.push_token (the
+  // new-order DB trigger's target); OFF clears it so the trigger stops firing.
+  const handleOrderNotificationsToggle = useCallback((value: boolean) => {
+    lightTap();
+    setOrderNotificationsEnabled(value);
+    if (value) {
+      ensurePushPermission().then((granted) => {
+        if (!granted) { setOrderNotificationsEnabled(false); return; }
+        registerPushNotifications().catch(() => {});
+        showToast(t.settings.notificationsEnabledToast, 'success');
+      });
+      return;
+    }
+    unregisterOrderPushToken().catch(() => {});
+    showToast(t.settings.notificationsDisabledToast, 'success');
+  }, [setOrderNotificationsEnabled, ensurePushPermission, showToast, t]);
+
+  // Keep both toggles honest about the OS-level switch: if permission is
+  // revoked in the device Settings, snap the in-app toggles OFF the next time
+  // this screen is shown / the app comes back to the foreground.
+  useEffect(() => {
+    const syncWithOs = async () => {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status === 'granted') return;
+      if (useSettingsStore.getState().notificationsEnabled) setNotificationsEnabled(false);
+      if (useSettingsStore.getState().orderNotificationsEnabled) setOrderNotificationsEnabled(false);
+    };
+    syncWithOs();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') syncWithOs();
+    });
+    return () => sub.remove();
+  }, [setNotificationsEnabled, setOrderNotificationsEnabled]);
 
   const handleHapticToggle = useCallback((value: boolean) => {
     setHapticEnabled(value);
@@ -235,20 +316,39 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                 value={currency}
                 onPress={() => { lightTap(); setCurrencyModalVisible(true); }}
               />
-              <SettingRow
-                icon="i/notifications"
-                chipColor="#B2780A"
-                label={t.settings.notifications}
-                sublabel={t.settings.notificationsDesc}
-                rightElement={
-                  <Switch
-                    value={notificationsEnabled}
-                    onValueChange={handleNotificationsToggle}
-                    trackColor={{ false: C.border, true: C.positive }}
-                    thumbColor={C.surface}
-                  />
-                }
-              />
+              {/* Notifications — mode-aware: business gets the web-shop orders
+                  toggle, personal gets the master push toggle. */}
+              {mode === 'business' ? (
+                <SettingRow
+                  icon="i/notifications"
+                  chipColor="#B2780A"
+                  label={t.settings.notifications}
+                  sublabel={t.settings.notificationsDesc}
+                  rightElement={
+                    <Switch
+                      value={orderNotificationsEnabled}
+                      onValueChange={handleOrderNotificationsToggle}
+                      trackColor={{ false: C.border, true: C.positive }}
+                      thumbColor={C.surface}
+                    />
+                  }
+                />
+              ) : (
+                <SettingRow
+                  icon="i/notifications"
+                  chipColor="#B2780A"
+                  label={t.settings.pushNotifications}
+                  sublabel={t.settings.pushNotificationsDesc}
+                  rightElement={
+                    <Switch
+                      value={notificationsEnabled}
+                      onValueChange={handleNotificationsToggle}
+                      trackColor={{ false: C.border, true: C.positive }}
+                      thumbColor={C.surface}
+                    />
+                  }
+                />
+              )}
               <SettingRow
                 icon="m/vibrate"
                 chipColor="#6BA3BE"

@@ -112,6 +112,8 @@ main{flex:1;padding:32px 0 64px}
 .bcast h2{font-size:1.05rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-tight);margin-bottom:4px}
 .bcast .bcast-lead{font-size:.9rem;color:var(--ink-65);line-height:1.5;margin-bottom:16px}
 .bcast .field{margin-bottom:12px}
+.bcast-hist-h{font-size:1.05rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-tight);margin:0 0 4px}
+.bcast-hist-sub{font-size:.9rem;color:var(--ink-65);line-height:1.5;margin:0 0 16px}
 
 /* report / waitlist rows — hairline entries (overrides shared .arow flex layout) */
 .arow{display:block;padding:16px 18px;margin-bottom:12px}
@@ -297,6 +299,9 @@ main{flex:1;padding:32px 0 64px}
             </div>
             <button type="button" id="bcastSendBtn" class="refresh send"><span id="bcastSendLabel">Send broadcast</span></button>
           </div>
+          <h2 class="bcast-hist-h">History</h2>
+          <p class="bcast-hist-sub">Every announcement you've broadcast, newest first.</p>
+          <div id="bcastList"></div>
         </div><!-- /broadcastView -->
       </section>
 
@@ -333,10 +338,11 @@ const listEl=$('list'), statsEl=$('stats'), fStatus=$('fStatus'), fSev=$('fSev')
 const tabFeedback=$('tabFeedback'), tabWaitlist=$('tabWaitlist'), tabBroadcast=$('tabBroadcast'), feedbackView=$('feedbackView'), waitlistView=$('waitlistView'), broadcastView=$('broadcastView');
 const wlStatsEl=$('wlStats'), wlListEl=$('wlList'), wlSearch=$('wlSearch'), wlExportBtn=$('wlExportBtn'), wlRefreshBtn=$('wlRefreshBtn');
 const wlSendBtn=$('wlSendBtn'), wlSendCount=$('wlSendCount'), wlSendLabel=$('wlSendLabel');
-const bcastTitle=$('bcastTitle'), bcastBody=$('bcastBody'), bcastSendBtn=$('bcastSendBtn'), bcastSendLabel=$('bcastSendLabel');
+const bcastTitle=$('bcastTitle'), bcastBody=$('bcastBody'), bcastSendBtn=$('bcastSendBtn'), bcastSendLabel=$('bcastSendLabel'), bcastListEl=$('bcastList');
 
 let allReports = [];
 let allWaitlist = [], wlLoaded = false;
+let allBroadcasts = [], bcastLoaded = false;
 
 const STATUS = [['new','New'],['triaged','Looking into it'],['fixed','Fixed'],['wontfix','Noted'],['dup','Duplicate'],['done','Done']];
 const SEV = { idea:'Idea', minor:'Minor', major:'Annoying', blocker:'Blocks me' };
@@ -374,7 +380,7 @@ magicForm.addEventListener('submit', async (e) => {
   if(error){ setMsg(signinMsg,'Could not send the link. Try again.','warn'); return; }
   setMsg(signinMsg,'Check your email for the sign-in link.','ok'); magicForm.reset();
 });
-async function doSignOut(){ await sb.auth.signOut(); wlLoaded=false; switchTab('feedback'); show(signinState); }
+async function doSignOut(){ await sb.auth.signOut(); wlLoaded=false; bcastLoaded=false; switchTab('feedback'); show(signinState); }
 signoutBtn.addEventListener('click', doSignOut);
 signoutBtn2.addEventListener('click', doSignOut);
 
@@ -498,6 +504,7 @@ function switchTab(which){
     view.classList.toggle('hide', !on);
   }
   if (which==='waitlist' && !wlLoaded) loadWaitlist();
+  if (which==='broadcast' && !bcastLoaded) loadBroadcasts();
 }
 
 async function loadWaitlist(){
@@ -618,6 +625,7 @@ async function sendBroadcast(){
     const sent = result.sent || 0;
     showFlash(`Announcement posted · pushed to ${sent} ${sent===1?'device':'devices'}`);
     bcastTitle.value = ''; bcastBody.value = ''; // clear on success
+    loadBroadcasts(); // the new announcement should appear in history right away
   } catch(e){
     showFlash('Could not send — check your connection');
   } finally {
@@ -625,6 +633,33 @@ async function sendBroadcast(){
     bcastSendBtn.disabled = false;
     bcastSendLabel.textContent = 'Send broadcast';
   }
+}
+
+/* ── broadcast history: every row in `announcements`, newest first ── */
+async function loadBroadcasts(){
+  bcastListEl.innerHTML = `<div class="loading"><div class="spinner" aria-hidden="true"></div><p>Loading history…</p></div>`;
+  const { data, error } = await sb
+    .from('announcements')
+    .select('id, title, body, created_at, active')
+    .order('created_at', { ascending:false });
+  if (error){ bcastListEl.innerHTML = `<div class="empty">Could not load broadcast history.<br><small>${esc(error.message)}</small></div>`; allBroadcasts=[]; return; }
+  allBroadcasts = data || [];
+  bcastLoaded = true;
+  renderBroadcasts();
+}
+
+function renderBroadcasts(){
+  if (allBroadcasts.length === 0){
+    bcastListEl.innerHTML = `<div class="empty">No broadcasts yet.</div>`;
+    return;
+  }
+  bcastListEl.innerHTML = allBroadcasts.map(r => {
+    const state = r.active ? '' : `<span class="ri-chip src">inactive</span>`;
+    return `<article class="arow">
+      <div class="arow-head">${state}<span class="arow-contact">${esc(r.title)}</span><span class="ri-date">${esc(fmtDate(r.created_at))}</span></div>
+      <div class="ri-body">${esc(r.body)}</div>
+    </article>`;
+  }).join('');
 }
 
 function renderWaitlist(){

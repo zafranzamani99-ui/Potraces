@@ -8,7 +8,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // signed-in tester MUST be able to register, which is the whole point:
 // device_tokens requires an account, push_devices does not.
 //
-// Body: { token: string, platform?: 'ios' | 'android' }
+// Body: { token: string, platform?: 'ios' | 'android', remove?: boolean }
+//   remove: true deletes the token instead — the in-app push toggle's opt-out
+//   path (Settings → Preferences → Push notifications).
 // Returns: { ok: true }
 //
 // Setup (operator): supabase functions deploy register-device
@@ -45,6 +47,14 @@ Deno.serve(async (req: Request) => {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+
+  // Opt-out: the in-app push toggle removes this device from the broadcast list.
+  if (payload?.remove === true) {
+    const { error } = await admin.from('push_devices').delete().eq('token', token);
+    if (error) return json({ error: error.message }, 500);
+    return json({ ok: true });
+  }
+
   const { error } = await admin
     .from('push_devices')
     .upsert({ token, platform, updated_at: new Date().toISOString() }, { onConflict: 'token' });

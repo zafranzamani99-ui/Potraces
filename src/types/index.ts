@@ -556,7 +556,7 @@ export interface StallState {
   /** Previous closed session's stock setup, for one-tap "repeat last session". Null if none. */
   getLastSetup: () => { productId: string; startQty: number }[] | null;
   /** Recent distinct sessions (by name+where) to one-tap re-start a spot with its products. */
-  getRecentSpots: (limit?: number) => { name?: string; where?: string; setup: { productId: string; startQty: number }[] }[];
+  getRecentSpots: (limit?: number) => { name?: string; where?: string; closedAt?: Date; setup: { productId: string; startQty: number }[] }[];
   // Optional cashbox layer (Phase 2) — all skippable
   setStartingFloat: (amount: number | undefined) => void;
   setCountedCash: (amount: number | undefined) => void;

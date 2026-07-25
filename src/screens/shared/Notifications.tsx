@@ -1,25 +1,31 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, FlatList, ScrollView, TouchableOpacity, Pressable, Alert, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, { FadeIn } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useNeu } from '../../components/common/neu';
-import { lightTap } from '../../services/haptics';
+import { lightTap, selectionChanged } from '../../services/haptics';
 import EmptyState from '../../components/common/EmptyState';
 import { useNotificationStore, AppNotification } from '../../store/notificationStore';
 import { iconFor, tintFor, relTime, isTransaction } from '../../utils/notificationMeta';
+
+const DELETE_RED = '#E5484D';
 
 const NotificationRow: React.FC<{
   item: AppNotification;
   index: number;
   onPress: (n: AppNotification) => void;
+  onLongPress: (id: string) => void;
   onDelete: (id: string) => void;
-}> = ({ item, index, onPress, onDelete }) => {
+  selectMode: boolean;
+  isSelected: boolean;
+}> = ({ item, index, onPress, onLongPress, onDelete, selectMode, isSelected }) => {
   const C = useCalm();
   const neu = useNeu();
   const t = useT();
@@ -50,8 +56,20 @@ const NotificationRow: React.FC<{
   const tint = tintFor(item, C);
 
   const content = (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => onPress(item)} accessibilityRole="button">
-      <View style={styles.card}>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() => onPress(item)}
+      onLongPress={() => onLongPress(item.id)}
+      delayLongPress={400}
+      accessibilityRole="button"
+      accessibilityState={selectMode ? { checked: isSelected } : undefined}
+    >
+      <View style={[styles.card, isSelected && styles.cardSelected]}>
+        {selectMode && (
+          <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
+            {isSelected && <Feather name="check" size={14} color={C.surface} />}
+          </View>
+        )}
         <View style={[styles.iconWrap, neu.well, { backgroundColor: withAlpha(tint, 0.14) }]}>
           <Feather name={iconFor(item)} size={ICON_SIZE.sm} color={tint} />
         </View>
@@ -72,15 +90,20 @@ const NotificationRow: React.FC<{
       {/* Neu shadow on the UNCLIPPED wrapper — the swipeable clips its children and
           would shear the shadow into a hard seam otherwise (the neu-onyx rule). */}
       <View style={[styles.rowShadow, neu.raisedSoft]}>
-        <ReanimatedSwipeable
-          ref={swipeRef}
-          renderRightActions={renderRightActions}
-          overshootRight={false}
-          friction={1}
-          rightThreshold={40}
-        >
-          {content}
-        </ReanimatedSwipeable>
+        {selectMode ? (
+          // No swipe-to-delete in select mode — taps toggle the checkbox instead.
+          content
+        ) : (
+          <ReanimatedSwipeable
+            ref={swipeRef}
+            renderRightActions={renderRightActions}
+            overshootRight={false}
+            friction={1}
+            rightThreshold={40}
+          >
+            {content}
+          </ReanimatedSwipeable>
+        )}
       </View>
     </Reanimated.View>
   );
@@ -94,6 +117,7 @@ const Notifications: React.FC = () => {
   const t = useT();
   const neu = useNeu(undefined, { faintDark: true }); // Neu Pills (Onyx rule 3)
   const styles = useMemo(() => makeStyles(C), [C]);
+  const insets = useSafeAreaInsets();
 
   const items = useNotificationStore((s) => s.items);
   const hasUnread = useNotificationStore((s) => s.items.some((n) => !n.read));
@@ -102,6 +126,52 @@ const Notifications: React.FC = () => {
   const remove = useNotificationStore((s) => s.remove);
 
   const [filter, setFilter] = useState<NotifFilter>('all');
+
+  // ── Select mode (long-press to enter, tap to toggle — like TransactionsList) ──
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const enterSelectMode = useCallback((firstId: string) => {
+    selectionChanged();
+    setSelectMode(true);
+    setSelectedIds(new Set([firstId]));
+  }, []);
+
+  const toggleSelect = useCallback((id: string) => {
+    lightTap();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      if (next.size === 0) setSelectMode(false);
+      return next;
+    });
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const n = selectedIds.size;
+    Alert.alert(
+      (n > 1 ? t.notifications.deleteNTitlePlural : t.notifications.deleteNTitle).replace('{n}', String(n)),
+      t.notifications.deleteConfirmMsg,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.common.delete,
+          style: 'destructive',
+          onPress: () => {
+            for (const id of selectedIds) remove(id);
+            exitSelectMode();
+          },
+        },
+      ]
+    );
+  }, [selectedIds, remove, exitSelectMode, t]);
 
   // Split into logged transactions vs updates/announcements; the pills filter
   // between them. Each bucket stays newest-first (items are already sorted).
@@ -121,11 +191,19 @@ const Notifications: React.FC = () => {
 
   const onPress = useCallback(
     (n: AppNotification) => {
+      if (selectMode) { toggleSelect(n.id); return; }
       lightTap();
       if (!n.read) markRead(n.id);
       navigation.navigate('NotificationDetail', { id: n.id });
     },
-    [markRead, navigation],
+    [selectMode, toggleSelect, markRead, navigation],
+  );
+
+  const onLongPress = useCallback(
+    (id: string) => {
+      if (!selectMode) enterSelectMode(id);
+    },
+    [selectMode, enterSelectMode],
   );
 
   useLayoutEffect(() => {
@@ -177,7 +255,15 @@ const Notifications: React.FC = () => {
         data={filtered}
         keyExtractor={(n) => n.id}
         renderItem={({ item, index }) => (
-          <NotificationRow item={item} index={index} onPress={onPress} onDelete={remove} />
+          <NotificationRow
+            item={item}
+            index={index}
+            onPress={onPress}
+            onLongPress={onLongPress}
+            onDelete={remove}
+            selectMode={selectMode}
+            isSelected={selectedIds.has(item.id)}
+          />
         )}
         contentContainerStyle={filtered.length ? styles.listContent : styles.listEmpty}
         showsVerticalScrollIndicator={false}
@@ -193,6 +279,47 @@ const Notifications: React.FC = () => {
           )
         }
       />
+
+      {/* Select mode — floating bar: cancel · N selected · delete (red on press), like TransactionsList */}
+      {selectMode && (
+        <View style={[styles.selectBar, { bottom: insets.bottom + SPACING.md }]}>
+          <TouchableOpacity
+            onPress={exitSelectMode}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.selectBarCloseBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t.common.cancel}
+          >
+            <Feather name="x" size={18} color={C.textSecondary} />
+          </TouchableOpacity>
+          <Text style={styles.selectBarCount}>
+            {selectedIds.size} {t.notifications.selected}
+          </Text>
+          <Pressable
+            onPress={handleBulkDelete}
+            accessibilityRole="button"
+            accessibilityLabel={t.common.delete}
+            style={({ pressed }) => [
+              styles.selectBarDeleteBtn,
+              pressed && styles.selectBarDeleteBtnPressed,
+            ]}
+          >
+            {({ pressed }) => (
+              <>
+                <Feather name="trash-2" size={15} color={pressed ? DELETE_RED : C.textMuted} />
+                <Text
+                  style={[
+                    styles.selectBarDeleteText,
+                    pressed && styles.selectBarDeleteTextPressed,
+                  ]}
+                >
+                  {t.common.delete}
+                </Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 };
@@ -278,6 +405,75 @@ const makeStyles = (C: typeof CALM) =>
       width: 56,
       marginLeft: SPACING.sm,
       borderRadius: RADIUS.xl,
+    },
+    // ── Select mode — checkbox + card highlight (mirrors TransactionItem) ──
+    cardSelected: {
+      backgroundColor: withAlpha(C.accent, 0.06),
+      borderWidth: 1,
+      borderColor: withAlpha(C.accent, 0.25),
+    },
+    checkbox: {
+      width: 22,
+      height: 22,
+      borderRadius: RADIUS.full,
+      borderWidth: 2,
+      borderColor: C.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: SPACING.sm,
+      marginTop: 10,
+    },
+    checkboxChecked: {
+      backgroundColor: C.accent,
+      borderColor: C.accent,
+    },
+    // ── Select mode — floating bordered bar (cancel · N selected · delete) ──
+    selectBar: {
+      position: 'absolute',
+      left: SPACING.lg,
+      right: SPACING.lg,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: SPACING.lg,
+      paddingVertical: SPACING.md,
+      backgroundColor: C.background,
+      borderRadius: RADIUS.xl,
+      borderWidth: 1,
+      borderColor: C.border,
+      ...SHADOWS.md,
+    },
+    selectBarCloseBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    selectBarCount: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    selectBarDeleteBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 4,
+      borderRadius: RADIUS.md,
+    },
+    selectBarDeleteBtnPressed: {
+      backgroundColor: withAlpha(DELETE_RED, 0.12),
+    },
+    selectBarDeleteText: {
+      fontSize: TYPOGRAPHY.size.sm,
+      color: C.textMuted,
+    },
+    selectBarDeleteTextPressed: {
+      color: DELETE_RED,
+      fontWeight: TYPOGRAPHY.weight.semibold,
     },
   });
 

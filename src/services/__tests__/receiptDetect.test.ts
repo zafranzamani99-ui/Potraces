@@ -13,7 +13,7 @@ import { extractReceiptFromRows } from '../localReceiptOcr';
 let pass = 0;
 let fail = 0;
 
-function expectReceipt(name: string, rows: string[], total: number) {
+function expectReceipt(name: string, rows: string[], total: number, vendor?: string) {
   const got = extractReceiptFromRows(rows);
   if (!got) {
     fail++;
@@ -28,6 +28,11 @@ function expectReceipt(name: string, rows: string[], total: number) {
   if (got.itemCount < 2) {
     fail++;
     console.log(`✗ ${name}\n    itemCount: expected >= 2, got ${got.itemCount}`);
+    return;
+  }
+  if (vendor !== undefined && got.vendor !== vendor) {
+    fail++;
+    console.log(`✗ ${name}\n    vendor: expected ${JSON.stringify(vendor)}, got ${JSON.stringify(got.vendor)}`);
     return;
   }
   pass++;
@@ -72,6 +77,44 @@ expectReceipt('Grocery receipt — JUMLAH (Malay total)', [
   'BAKI 8.60',
   'Terima Kasih',
 ], 51.40);
+
+// FOREIGN-currency invoice (owner's real Kimi/Moonshot PDF, "example receipt/Receipt-2581-7948.pdf"):
+// the sticker price is $199.00 USD but the Visa was "Charged RM844.67 using 1 USD = 4.2446 MYR".
+// The MYR settlement is what left the bank → it must be the total, not the $199. And the vendor
+// must be MOONSHOT AI, not the month-first "Date paid July 25, 2026" row (US date format).
+expectReceipt('Moonshot/Kimi USD invoice — MYR "Charged" settlement wins, US date is not the vendor', [
+  'Receipt',
+  'Invoice number CX18BCHY-0003',
+  'Receipt number 2581-7948',
+  'Date paid July 25, 2026',
+  'MOONSHOT AI PTE. LTD.',
+  '91 BENCOOLEN STREET',
+  '#12-03, SUNSHINE PLAZA',
+  'SINGAPORE 189652',
+  'Singapore',
+  'membership@moonshot.ai',
+  'SG GST 202326494K',
+  'Bill to',
+  'Muhammad Zafran bin Zamani',
+  '65, Regat Taman Tasek',
+  'Taman Tasek Manikavasagam',
+  '31400 Ipoh',
+  'Perak',
+  'Malaysia',
+  'zafranzamani99@gmail.com',
+  '$199.00 paid on July 25, 2026',
+  'Description Qty Unit price Amount',
+  'Kimi 1 $199.00 $199.00',
+  'Jul 25-Aug 25, 2026',
+  'Subtotal $199.00',
+  'Total $199.00',
+  'Amount paid $199.00',
+  'Payment history',
+  'Payment method Date Amount paid Receipt number',
+  'Visa - 6128 July 25, 2026 $199.00 2581-7948',
+  'Charged RM844.67 using 1 USD = 4.2446 MYR',
+  'Page 1 of 1',
+], 844.67, 'MOONSHOT AI PTE. LTD.');
 
 // ── Not receipts (must return null) ──
 expectNotReceipt('Payment confirmation (LNTHAIFOOD) — no grand-total line', [

@@ -1451,8 +1451,16 @@ const MoneyChat: React.FC = () => {
     });
   }, [chatMessages.length, hasConversations, archiveChat, navigation, C]);
 
-  // Scroll to bottom when new messages arrive
-  const shouldScrollRef = useRef(false);
+  // Scroll to bottom when new messages arrive. This used to be a single-shot
+  // flag consumed by the FIRST onContentSizeChange — but a finished reply
+  // settles in several layout passes (streaming footer swaps to the committed
+  // bubble, then action cards/timestamps grow it), so the one scroll landed
+  // short and the last line stayed hidden behind the composer. Instead, keep a
+  // short follow WINDOW: every content-size change inside it re-scrolls.
+  const followUntilRef = useRef(0);
+  // Set on any manual drag, cleared when the user is back near the bottom —
+  // so auto-follow never fights someone who scrolled up to read.
+  const userDraggedRef = useRef(false);
   // A fresh mount (the quick-action root-stack entry) renders the list from the TOP (first
   // message) and never auto-scrolls, unlike the persistent tab mount which keeps its bottom
   // position. This lands every fresh mount on the LATEST message, so both entry points match.
@@ -1463,7 +1471,8 @@ const MoneyChat: React.FC = () => {
   useEffect(() => {
     showScrollDownRef.current = showScrollDown;
     if (chatMessages.length > prevCountRef.current && !showScrollDown) {
-      shouldScrollRef.current = true;
+      followUntilRef.current = Date.now() + 2000;
+      userDraggedRef.current = false;
     }
     prevCountRef.current = chatMessages.length;
   }, [chatMessages.length, showScrollDown]);
@@ -1472,7 +1481,7 @@ const MoneyChat: React.FC = () => {
   // already near the bottom (don't yank them back if they scrolled up to read).
   const followStream = useCallback(() => {
     if (!showScrollDownRef.current) {
-      shouldScrollRef.current = true;
+      followUntilRef.current = Date.now() + 1000;
     }
   }, []);
 
@@ -1483,8 +1492,7 @@ const MoneyChat: React.FC = () => {
       flatListRef.current?.scrollToEnd({ animated: false });
       return;
     }
-    if (shouldScrollRef.current) {
-      shouldScrollRef.current = false;
+    if (Date.now() < followUntilRef.current && !userDraggedRef.current) {
       flatListRef.current?.scrollToEnd({ animated: true });
     }
   }, []);
@@ -1510,10 +1518,29 @@ const MoneyChat: React.FC = () => {
     contentHeightRef.current = contentSize.height;
     const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
     setShowScrollDown(distanceFromBottom > 150);
+    // Back near the bottom → re-arm auto-follow (a manual drag had paused it).
+    if (distanceFromBottom <= 150) userDraggedRef.current = false;
+  }, []);
+
+  // Any manual drag pauses auto-follow until the user returns to the bottom —
+  // this is what stops the list yanking them down mid-read.
+  const handleScrollBeginDrag = useCallback(() => {
+    userDraggedRef.current = true;
   }, []);
 
   const scrollToBottom = useCallback(() => {
     flatListRef.current?.scrollToEnd({ animated: true });
+  }, []);
+
+  // Opening an archived conversation from history: when the active chat was
+  // empty the list is UNMOUNTED (the empty-state ScrollView takes its place),
+  // so it remounts fresh — and a single scrollToEnd on first layout lands
+  // short/no-ops (same quirk the fresh-mount effect retries around). Retry
+  // across a few frames; non-animated, an opened chat should JUMP to the end.
+  const scrollToLatestRetries = useCallback(() => {
+    [60, 160, 320, 600].forEach((ms) =>
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), ms),
+    );
   }, []);
 
   // Process AI response — parse actions but DON'T execute
@@ -2120,6 +2147,7 @@ const MoneyChat: React.FC = () => {
             initialNumToRender={10}
             onContentSizeChange={handleContentSizeChange}
             onScroll={handleScroll}
+            onScrollBeginDrag={handleScrollBeginDrag}
             scrollEventThrottle={100}
             ListFooterComponent={
               streamingText
@@ -2608,6 +2636,7 @@ const MoneyChat: React.FC = () => {
                       if (locked) { lightTap(); setHistoryPaywallVisible(true); return; }
                       loadConversation(convo.id);
                       setShowHistory(false);
+                      scrollToLatestRetries();
                     }}
                     activeOpacity={0.7}
                   >
@@ -3362,7 +3391,7 @@ const makeStyles = (
     backgroundColor: C.accent,
   },
 
-  // Input bar — a floating rounded pill that matches the Liquid Glass tab bar's
+  // Input bar — a floating rounded card that matches the Liquid Glass tab bar's
   // language (same 16px side inset, rounded corners, soft lift). A full-width
   // square band above an inset pill made the four corners read as broken.
   inputBar: {
@@ -3373,7 +3402,7 @@ const makeStyles = (
     paddingLeft: SPACING.xs,        // + hugs the left edge → maximum input width
     paddingRight: SPACING.sm,       // mic keeps a touch more air on the right
     paddingVertical: SPACING.md,
-    borderRadius: RADIUS['2xl'],    // 28 — echoes the capsule's 30
+    borderRadius: RADIUS.lg,        // 14 — gently rounded; 28 read as an over-round capsule on a 2-line bar
     ...neu.raisedSoft,              // onyx lift — zero outline per the neu standard
   },
   attachBackdrop: {

@@ -50,9 +50,11 @@ const MAX_AMOUNT = 1_000_000; // in sync with localReceiptOcr's cap
 const AMOUNT_RE =
   /(RM|MYR|SGD|USD|S\$|US\$)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)|\b(\d{1,3}(?:,\d{3})*\.\d{2}|\d+\.\d{2})\b/gi;
 
-// Rows whose amount is NOT the payment: wallet balance, fee, reward, points, cashback.
+// Rows whose amount is NOT the payment: wallet balance, fee, reward, points, cashback —
+// and PROMO figures ("up to RM400", "had belanja RM400" spending-limit ads), which are
+// never the payment amount even when they're the only other number on screen.
 const NOT_PAYMENT_AMOUNT_RE =
-  /\b(balance|baki|available|remaining|reward|ganjaran|cashback|pulangan|fee|charge|caj|point|mata|\bpts\b|saving|jimat)\b/i;
+  /\b(balance|baki|available|remaining|reward|ganjaran|cashback|pulangan|fee|charge|caj|point|mata|\bpts\b|saving|jimat|limit|up\s*to|sehingga|had\s*belanja)\b/i;
 // Rows that explicitly label the payment amount → strong signal.
 const AMOUNT_LABEL_RE = /\b(amount|jumlah|you\s*paid|you\s*sent|paid|total|transfer\s*amount|bayaran?)\b/i;
 
@@ -77,19 +79,34 @@ interface AmountHit {
   excluded: boolean;
 }
 
-// A row that is a date and/or time — its numbers are NEVER a money amount. Critical for a
-// dot-garbled time ("01.21 AM"), which otherwise reads as RM 1.21 and gets picked as the amount.
+// A row that is a date and/or time — its date/time numbers are NEVER a money amount (a
+// dot-garbled time "01.21 AM" would otherwise read as RM 1.21). But the row can ALSO hold
+// a real amount next to the date ("Thank you! Payment of RM300.03 on 24/07/2026"), so
+// collectAmounts strips the date/time text and collects from what's LEFT, not blanket-
+// excludes the row.
 function isDateOrTimeRow(row: string): boolean {
-  if (DMY_TEXT_RE.test(row) || DMY_NUM_RE.test(row)) return true;
+  if (DMY_TEXT_RE.test(row) || DMY_NUM_RE.test(row) || MDY_TEXT_RE.test(row)) return true;
   return /\d\s*[:.;'\s]?\s*\d{2}\s*[ap]\.?\s?m(?![a-z])/i.test(row); // "01.21 AM" / "0121AM"
+}
+
+// Remove the date/time substrings isDateOrTimeRow detects, leaving any real amount behind.
+function stripDateTime(row: string): string {
+  return row
+    .replace(DMY_TEXT_RE, ' ')
+    .replace(DMY_NUM_RE, ' ')
+    .replace(MDY_TEXT_RE, ' ')
+    .replace(/\d\s*[:.;'\s]?\s*\d{2}\s*[ap]\.?\s?m(?![a-z])\.?/i, ' ')
+    .replace(/\b[012]?\d:[0-5]\d(?::[0-5]\d)?\b/, ' ');
 }
 
 function collectAmounts(rows: string[]): AmountHit[] {
   const hits: AmountHit[] = [];
   rows.forEach((row, rowIndex) => {
-    const excluded = NOT_PAYMENT_AMOUNT_RE.test(row) || isDateOrTimeRow(row);
+    const isDt = isDateOrTimeRow(row);
+    const scan = isDt ? stripDateTime(row) : row;
+    const excluded = NOT_PAYMENT_AMOUNT_RE.test(row) || (isDt && scan.match(AMOUNT_RE) == null);
     const labelled = AMOUNT_LABEL_RE.test(row);
-    for (const m of row.matchAll(AMOUNT_RE)) {
+    for (const m of scan.matchAll(AMOUNT_RE)) {
       const currency = m[1] ? normalizeCurrency(m[1]) : null;
       const value = toAmount(m[2] ?? m[3] ?? '');
       if (value > 0) hits.push({ value, currency, rowIndex, labelled, excluded });
@@ -150,11 +167,27 @@ const DATE_HEADER_WORD_RE = /^(yesterday|today|semalam|hari\s*ini|this\s*week|la
 const LEDGER_ROW_RE = /(?:^|\s)[-+]\s*(?:RM|MYR)\s*\d/i;
 
 // ── Payee ───────────────────────────────────────────────────
-// Rows that are labels/metadata, never a payee.
+// Rows that are labels/metadata, never a payee. Includes the generic screen words a
+// bill-pay confirmation shows instead of a merchant name ("Bill Payment", "Bill Paid",
+// "Bills") — those are the payment TYPE, not who was paid — and Gmail/mail UI junk
+// ("Based on this email Correct?", "ADAPTIS Notification", "Reply o Forward", "to me")
+// that litters emailed payment confirmations. Navigation/button rows ("Back to Home",
+// "Back to Bills") are UI, never a payee either.
 const LABEL_ROW_RE =
-  /\b(reference|ref\s*no|rujukan|transaction|date|time|tarikh|masa|type|jenis|status|successful|berjaya|receipt|resit|share|done|balance|baki|amount|jumlah|method|kaedah|wallet|bank|payment|failed|gagal|try\s*again)\b/i;
+  /\b(reference|ref\s*no|rujukan|transaction|date|time|tarikh|masa|type|jenis|status|successful|berjaya|receipt|resit|share|done|balance|baki|amount|jumlah|method|kaedah|wallet|bank|payment|paid|bills?|failed|gagal|try\s*again|e-?mail|inbox|reply|forward|correct|notification|to\s+me|(?:back|return|go)\s+to)\b/i;
 // "to NAME" / "from NAME" / "kepada NAME" — the payee is captured directly.
 const TO_FROM_RE = /\b(?:to|kepada|from|daripada|dari)\s+([A-Za-z][A-Za-z'@.\- ]{2,})$/i;
+// …but NOT a navigation/button row — "Back to Bills" is a button, "Bills" is not a payee.
+const NAV_TO_RE = /^(?:back|return|go|continue|proceed)\s+to\b/i;
+// A bank spend-notification captured in the screenshot names the merchant: "You've just
+// spent RM 292.65 at ATOME* MONTHLYBILL with your Maybank Debit Card". Capture between
+// "at"/"di" and " with/via/using" (or EOL); statement-style "* " separators collapse.
+const AT_MERCHANT_RE =
+  /\b(?:at|di)\s+([A-Z0-9][A-Za-z0-9*'&.,\- ]{2,}?)(?=\s+(?:with|via|using|on)\b|\s*$)/i;
+// Bill-pay EMAIL confirmations name the merchant as "CelcomDigi bill" or in the subject
+// "CelcomDigi - Payment details". The merchant is the part BEFORE "bill"/the dash.
+const BILL_PAYEE_RE = /^([A-Za-z0-9][A-Za-z0-9&.'\- ]{2,}?)\s+bills?\b/i;
+const SUBJECT_PAYEE_RE = /^([A-Za-z0-9][A-Za-z0-9&.' ]{2,}?)\s*[-–—]\s*payment\s*(?:details|receipt|confirmation)\b/i;
 // Label that introduces the payee VALUE: "Merchant  Acme Sdn Bhd", "Payee: Ali", and the
 // two-line transfer-receipt form "Beneficiary name\nMOHD FIRDAUS BIN ABIDIN". It absorbs a
 // trailing "name"/"account holder" so "Beneficiary name" is the LABEL (and doesn't capture the
@@ -166,7 +199,13 @@ const PAYEE_LABEL_RE =
 const LABEL_WORD_RE = /^(?:name|reference|account|number|no|bank|holder|details|id|type)\b/i;
 
 function extractPayee(rows: string[], amountRowIndex: number): string | null {
-  // 1) explicit label → value: "Merchant: NAME", "Beneficiary name\nNAME", "to/from NAME".
+  // Pass order matters: an explicit LABEL ("Beneficiary name") is the strongest payee
+  // signal and must beat a WEAK capture from a truncated bank-notification row
+  // ("You've transferred RM 585.00 to MOHD" — the name continues on the next row, which
+  // isn't part of the capture). Previously the first matching ROW won, so "MOHD" beat
+  // "MOHD FIRDAUS BIN ABIDIN" just by sitting higher on screen.
+  //
+  // 1) explicit label → value: "Merchant: NAME", "Beneficiary name\nNAME" (two-line).
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const mm = row.match(PAYEE_LABEL_RE);
@@ -182,15 +221,38 @@ function extractPayee(rows: string[], amountRowIndex: number): string | null {
         break; // the next non-empty row is another label/metadata → this label has no value
       }
     }
-    const m = row.match(TO_FROM_RE);
-    if (m) return tidy(m[1]);
   }
-  // 2) first "namey" row after the amount (merchant like LNTHAIFOOD, or a person)
+  // 2) bill-email patterns: "CelcomDigi bill" / subject "CelcomDigi - Payment details".
+  for (const row of rows) {
+    const bill = row.match(BILL_PAYEE_RE) ?? row.match(SUBJECT_PAYEE_RE);
+    if (bill) {
+      const v = tidy(bill[1]);
+      if (v && isNameyRow(v) && !LABEL_WORD_RE.test(v)) return v;
+    }
+  }
+  // 3) bank spend-notification "… at MERCHANT with your Maybank …".
+  for (const row of rows) {
+    const at = row.match(AT_MERCHANT_RE);
+    if (at) {
+      const merchant = tidy(at[1].replace(/\*\s*/g, ' '));
+      if (merchant && isNameyRow(merchant) && !LABEL_WORD_RE.test(merchant)) return merchant;
+    }
+  }
+  // 4) "to NAME" / "from NAME" — WEAKEST (notification rows truncate the name).
+  for (const row of rows) {
+    const m = row.match(TO_FROM_RE);
+    if (m && !NAV_TO_RE.test(row)) {
+      const v = tidy(m[1]);
+      // "Add Email to Contact Email" → "Contact Email" is UI junk, not a payee.
+      if (v && isNameyRow(v) && !LABEL_WORD_RE.test(v)) return v;
+    }
+  }
+  // 5) first "namey" row after the amount (merchant like LNTHAIFOOD, or a person)
   for (let i = amountRowIndex + 1; i < rows.length; i++) {
     const row = rows[i].trim();
     if (isNameyRow(row)) return tidy(row);
   }
-  // 3) fallback: a namey row anywhere (some layouts put payee above the amount)
+  // 6) fallback: a namey row anywhere (some layouts put payee above the amount)
   for (const row of rows) {
     if (isNameyRow(row.trim())) return tidy(row);
   }
@@ -199,6 +261,7 @@ function extractPayee(rows: string[], amountRowIndex: number): string | null {
 
 function isNameyRow(row: string): boolean {
   if (!row || LABEL_ROW_RE.test(row)) return false;
+  if (/\d{1,2}:\d{2}/.test(row)) return false; // a name never contains a timestamp
   const letters = (row.match(/[A-Za-z]/g) || []).length;
   if (letters < 3) return false;
   if (/\d/.test(row.replace(/[A-Za-z]/g, '')) && letters < row.length / 2) return false; // mostly digits
@@ -263,8 +326,14 @@ const MONTHS: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, mac: 2, apr: 3, may: 4, mei: 4, jun: 5, jul: 6,
   aug: 7, ogo: 7, ogos: 7, sep: 8, oct: 9, okt: 9, nov: 10, dec: 11, dis: 11,
 };
-const DMY_TEXT_RE = /\b(\d{1,2})\s+([A-Za-z]{3,4})[a-z]*\s+(\d{2,4})\b/; // 18 May 2026
+const DMY_TEXT_RE = /\b(\d{1,2})\s*([A-Za-z]{3,4})[a-z]*\s+(\d{2,4})\b/; // 18 May 2026 / OCR-merged "24Jul 2026"
 const DMY_NUM_RE = /\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})\b/; // 18/05/2026 (MY = d/m/y)
+// A date with NO year — "24 Jul" on a success screen. The year is assumed (see
+// extractDateTime): the current year, rolled back one when that lands in the future.
+const DM_YEARLESS_RE = /\b(\d{1,2})\s*([A-Za-z]{3,4})[a-z]*\b/;
+// Month-first (US/Stripe invoices): "July 25, 2026" / "July 25th, 2026". Year is 4-digit —
+// a 2-digit tail would let a period label like "May 2026" misread as the 20th.
+const MDY_TEXT_RE = /\b([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/;
 
 // ── Time (OCR-tolerant) ─────────────────────────────────────
 // A receipt timestamp ("01:21 AM") is often light-grey text the OCR GARBLES: the colon becomes
@@ -285,7 +354,7 @@ function deOcrDigits(s: string): string {
     .replace(/[Zz]/g, '2');
 }
 
-function extractTime(rows: string[]): { h: number; min: number } | null {
+function extractTime(rows: string[]): { h: number; min: number; ambiguous: boolean } | null {
   // 1) am/pm-anchored — recovers the garbled grey timestamp.
   for (const row of rows) {
     for (const ap of row.matchAll(AMPM_G)) {
@@ -301,16 +370,44 @@ function extractTime(rows: string[]): { h: number; min: number } | null {
         const which = ap[1].toLowerCase();
         if (which === 'p' && h < 12) h += 12;
         if (which === 'a' && h === 12) h = 0;
-        return { h, min };
+        return { h, min, ambiguous: false };
       }
     }
   }
-  // 2) clean 24h "HH:MM" anywhere (no am/pm), e.g. a details screen "12:57:47".
+  // 2) clean 24h "HH:MM" anywhere (no am/pm), e.g. a details screen "12:57:47". The hour
+  // must be TWO digits — a one-digit "5:54" in flowing text is too likely to be the
+  // status-bar clock with its am/pm cropped away (handled below, not here).
   for (const row of rows) {
-    const t = row.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-    if (t) return { h: +t[1], min: +t[2] };
+    const t = row.match(/\b([01]\d|2[0-3]):([0-5]\d)\b/);
+    if (t) return { h: +t[1], min: +t[2], ambiguous: false };
+  }
+  // 3) the phone's STATUS-BAR clock ≈ when the screenshot (and the payment) happened. OCR
+  // joins the whole bar into one row of icon-garbage — "5:54 A l5G 33)" — so the clock
+  // must be at the row START with no real word after it ("5:54 meeting" is content, not
+  // the status bar). 12h-AMBIGUOUS (no am/pm) → resolved against the share moment in
+  // extractDateTime: the reading that "just happened" (closest to now, not future) wins.
+  for (const row of rows) {
+    const t = row.trim().match(/^(\d{1,2}):([0-5]\d)\s*(.*)$/);
+    if (t && +t[1] >= 1 && +t[1] <= 12 && !/[a-z]{3,}/.test(t[3])) {
+      return { h: +t[1], min: +t[2], ambiguous: true };
+    }
   }
   return null;
+}
+
+// A bare status-bar clock is 12h-ambiguous ("5:54" = 5:54 AM or 5:54 PM?). Pick the
+// reading that best fits "just happened": closest to now without being in the future
+// (2-min slack for a screenshot shared seconds later); if both are in the future, the
+// nearer one. Shared at ~5:54pm → 17; shared at 2am → the PM 8h back beats the AM 20h back.
+function resolveAmPm(h12: number, min: number, y: number, mo: number, d: number): number {
+  const now = Date.now();
+  const SLACK = 2 * 60_000;
+  const amH = h12 % 12, pmH = (h12 % 12) + 12;
+  const am = new Date(y, mo, d, amH, min).getTime();
+  const pm = new Date(y, mo, d, pmH, min).getTime();
+  const amOk = am <= now + SLACK, pmOk = pm <= now + SLACK;
+  if (amOk !== pmOk) return pmOk ? pmH : amH;
+  return Math.abs(now - pm) <= Math.abs(now - am) ? pmH : amH;
 }
 
 function extractDateTime(rows: string[]): Date | null {
@@ -318,15 +415,40 @@ function extractDateTime(rows: string[]): Date | null {
   for (const row of rows) {
     const t = row.match(DMY_TEXT_RE);
     if (t) {
-      d = +t[1]; mo = MONTHS[t[2].toLowerCase().slice(0, 3)] ?? MONTHS[t[2].toLowerCase()]; y = norm2Year(+t[3]);
-      break;
+      // Validate the month word — with the OCR-merged optional space ("24Jul"), a
+      // non-month word can match the shape; don't break on it, keep scanning.
+      const m = MONTHS[t[2].toLowerCase().slice(0, 3)] ?? MONTHS[t[2].toLowerCase()];
+      if (m != null) { d = +t[1]; mo = m; y = norm2Year(+t[3]); break; }
     }
     const n = row.match(DMY_NUM_RE);
     if (n) { d = +n[1]; mo = +n[2] - 1; y = norm2Year(+n[3]); break; }
+    // Month-first "July 25, 2026" (US/Stripe invoices) — month word validated the same way.
+    const mdy = row.match(MDY_TEXT_RE);
+    if (mdy) {
+      const m = MONTHS[mdy[1].toLowerCase().slice(0, 3)] ?? MONTHS[mdy[1].toLowerCase()];
+      if (m != null) { d = +mdy[2]; mo = m; y = norm2Year(+mdy[3]); break; }
+    }
+    // Yearless "24 Jul": only if the month word is real (else "5 commitments" would match).
+    const yl = row.match(DM_YEARLESS_RE);
+    if (yl) {
+      const m = MONTHS[yl[2].toLowerCase().slice(0, 3)] ?? MONTHS[yl[2].toLowerCase()];
+      if (m != null) { d = +yl[1]; mo = m; y = null; break; }
+    }
   }
-  if (y == null || mo == null || d == null || isNaN(mo)) return null;
+  if (mo == null || d == null || isNaN(mo)) return null;
   const time = extractTime(rows);
-  const dt = new Date(y, mo, d, time?.h ?? 0, time?.min ?? 0, 0, 0);
+  if (y == null) {
+    // No year on screen → current year; if that's more than ~2 days in the FUTURE, the
+    // payment was last year (e.g. "28 Dec" seen in early Jan).
+    const now = new Date();
+    y = now.getFullYear();
+    if (new Date(y, mo, d).getTime() - now.getTime() > 2 * 86_400_000) y -= 1;
+  }
+  const dt = new Date(
+    y, mo, d,
+    time ? (time.ambiguous ? resolveAmPm(time.h, time.min, y, mo, d) : time.h) : 0,
+    time?.min ?? 0, 0, 0,
+  );
   return isNaN(dt.getTime()) ? null : dt;
 }
 

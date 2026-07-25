@@ -22,7 +22,8 @@ import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { collectzCategoryColor } from '../../../constants/collectzColors';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import BottomSheet from '../../../components/common/BottomSheet';
@@ -63,6 +64,7 @@ import {
 } from '../../../services/collectzService';
 import { supabasePersonal } from '../../../services/supabase';
 import { AvatarView } from '../../../components/common/Avatar';
+import StatusChip from '../../../components/collectz/StatusChip';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
 import CostNotesSheet from '../../../components/collectz/CostNotesSheet';
 import { presetClubIcon } from '../../../constants/clubIcons';
@@ -81,6 +83,7 @@ interface ConfirmState {
 const CollectzDetail: React.FC = () => {
   const C = useCalm();
   const t = useT();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   // faintDark: the "soft neu dark" tier — cards + pills match Goals/Bills/Debt.
   const neu = useNeu(undefined, { faintDark: true });
@@ -205,15 +208,9 @@ const CollectzDetail: React.FC = () => {
   }, [teamsOn, teamCount, actives]);
   const unassigned = teamsOn ? actives.filter((p) => p.team_idx == null || p.team_idx > teamCount) : actives;
   const isOpen = session?.status === 'open';
+  // Category identity — tints the hero wash, code card, progress fill and actions.
+  const catColor = collectzCategoryColor(session?.category, isDark);
 
-  const statusColor = (status: CollectzParticipantStatus): string => {
-    switch (status) {
-      case 'confirmed': return C.accent;
-      case 'pending': return C.gold;
-      case 'rejected': return C.overdue;
-      default: return C.neutral;
-    }
-  };
   const statusLabel = (status: CollectzParticipantStatus): string => {
     switch (status) {
       case 'confirmed': return t.collectz.statusConfirmed;
@@ -629,7 +626,6 @@ const CollectzDetail: React.FC = () => {
 
   const renderRow = (p: CollectzParticipant) => {
     const share = p.slot === 'reserve' ? null : shares.get(p.id);
-    const color = statusColor(p.status);
     return (
       <Pressable
         key={p.id}
@@ -663,9 +659,7 @@ const CollectzDetail: React.FC = () => {
           </Text>
         </View>
 
-        <View style={[styles.statusChip, { backgroundColor: withAlpha(color, 0.18) }]}>
-          <Text style={[styles.statusChipText, { color }]}>{statusLabel(p.status)}</Text>
-        </View>
+        <StatusChip status={p.status} label={statusLabel(p.status)} />
         <Feather name="chevron-right" size={16} color={C.textMuted} />
       </Pressable>
     );
@@ -697,6 +691,13 @@ const CollectzDetail: React.FC = () => {
       >
         {/* Header card */}
         <View style={[styles.headerCard, neu.raisedSoft]}>
+          {/* Category tint — inner absolute-fill layer (the neu shadow lives on
+              the card, so no overflow clip here; corners rounded to match).
+              Flat fill, no gradient. */}
+          <View
+            style={[StyleSheet.absoluteFillObject, { borderRadius: RADIUS.lg, backgroundColor: withAlpha(catColor, isDark ? 0.12 : 0.07) }]}
+            pointerEvents="none"
+          />
           <View style={styles.titleRow}>
             {(() => {
               const preset = presetClubIcon(session.image_path);
@@ -706,7 +707,7 @@ const CollectzDetail: React.FC = () => {
               // corners (the "cropped picture" bug). Square well + contain for
               // presets; full-bleed cover for uploaded club photos.
               return (
-                <View style={styles.clubWell}>
+                <View style={[styles.clubWell, { backgroundColor: withAlpha(catColor, 0.12) }]}>
                   {preset ? (
                     <Text style={styles.clubEmoji}>{preset.emoji}</Text>
                   ) : (
@@ -740,10 +741,15 @@ const CollectzDetail: React.FC = () => {
             delayLongPress={350}
             accessibilityRole="button"
             accessibilityLabel={t.collectz.codeCopyHint}
-            style={({ pressed }) => [styles.codeCard, neu.raisedSoft, pressed && { opacity: 0.9 }]}
+            style={({ pressed }) => [
+              styles.codeCard,
+              neu.raisedSoft,
+              { backgroundColor: withAlpha(catColor, isDark ? 0.16 : 0.10) },
+              pressed && { opacity: 0.9 },
+            ]}
           >
             <View style={styles.codeCardLeft}>
-              <Text style={styles.codeCardCode}>{session.share_code}</Text>
+              <Text style={[styles.codeCardCode, { color: catColor }]}>{session.share_code}</Text>
               <Text style={[styles.codeCopyHint, codeCopied && { color: C.accent, fontWeight: TYPOGRAPHY.weight.semibold }]}>
                 {codeCopied ? (codeCopied === 'link' ? t.collectz.linkCopied : t.collectz.codeCopied) : t.collectz.codeCopyHint}
               </Text>
@@ -765,7 +771,7 @@ const CollectzDetail: React.FC = () => {
         {progress && (
           <View style={[styles.progressCard, neu.raisedSoft]}>
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${Math.round(pct * 100)}%` }]} />
+              <View style={[styles.progressFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: catColor }]} />
             </View>
             <Text style={styles.progressText}>
               {progress.target != null
@@ -810,8 +816,8 @@ const CollectzDetail: React.FC = () => {
           onPress={openCostNotes}
           accessibilityRole="button"
         >
-          <View style={styles.notesEntryIcon}>
-            <Feather name="percent" size={16} color={C.accent} />
+          <View style={[styles.notesEntryIcon, { backgroundColor: withAlpha(catColor, 0.1) }]}>
+            <Feather name="percent" size={16} color={catColor} />
           </View>
           <View style={styles.notesEntryMain}>
             <Text style={styles.notesEntryTitle}>{t.collectz.costNotesEntry}</Text>
@@ -822,26 +828,26 @@ const CollectzDetail: React.FC = () => {
 
         {/* Primary actions — the organizer's daily trio */}
         <View style={styles.actionsRow}>
-          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={shareAnnouncement}>
-            <Feather name="share-2" size={15} color={C.accent} />
-            <Text style={styles.actionBtnText}>{t.collectz.actionShare}</Text>
+          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, { backgroundColor: withAlpha(catColor, 0.1) }, pressed && { opacity: 0.85 }]} onPress={shareAnnouncement}>
+            <Feather name="share-2" size={15} color={catColor} />
+            <Text style={[styles.actionBtnText, { color: catColor }]}>{t.collectz.actionShare}</Text>
           </Pressable>
           {/* Remind only while open — the server rejects it (session_closed) once settled/cancelled */}
           {isOpen && (
-            <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={sendReminders} disabled={busy}>
-              <Feather name="bell" size={15} color={C.accent} />
-              <Text style={styles.actionBtnText}>{t.collectz.actionRemind}</Text>
+            <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, { backgroundColor: withAlpha(catColor, 0.1) }, pressed && { opacity: 0.85 }]} onPress={sendReminders} disabled={busy}>
+              <Feather name="bell" size={15} color={catColor} />
+              <Text style={[styles.actionBtnText, { color: catColor }]}>{t.collectz.actionRemind}</Text>
             </Pressable>
           )}
           {isOpen ? (
-            <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={settle} disabled={busy}>
+            <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, { backgroundColor: withAlpha(catColor, 0.1) }, pressed && { opacity: 0.85 }]} onPress={settle} disabled={busy}>
               <Feather name="check-circle" size={15} color={C.bronze} />
               <Text style={[styles.actionBtnText, { color: C.bronze }]}>{t.collectz.actionSettle}</Text>
             </Pressable>
           ) : (
-            <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={reopen} disabled={busy}>
-              <Feather name="rotate-ccw" size={15} color={C.accent} />
-              <Text style={styles.actionBtnText}>{t.collectz.actionReopen}</Text>
+            <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, { backgroundColor: withAlpha(catColor, 0.1) }, pressed && { opacity: 0.85 }]} onPress={reopen} disabled={busy}>
+              <Feather name="rotate-ccw" size={15} color={catColor} />
+              <Text style={[styles.actionBtnText, { color: catColor }]}>{t.collectz.actionReopen}</Text>
             </Pressable>
           )}
         </View>
@@ -903,17 +909,17 @@ const CollectzDetail: React.FC = () => {
         {/* Manage — edit / duplicate / new link */}
         <Text style={[styles.sectionTitle, styles.sectionGap]}>{t.collectz.manageSection}</Text>
         <View style={styles.actionsRow}>
-          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={edit} disabled={busy}>
-            <Feather name="edit-2" size={15} color={C.accent} />
-            <Text style={styles.actionBtnText}>{t.collectz.actionEdit}</Text>
+          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, { backgroundColor: withAlpha(catColor, 0.1) }, pressed && { opacity: 0.85 }]} onPress={edit} disabled={busy}>
+            <Feather name="edit-2" size={15} color={catColor} />
+            <Text style={[styles.actionBtnText, { color: catColor }]}>{t.collectz.actionEdit}</Text>
           </Pressable>
-          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={duplicate} disabled={busy}>
-            <Feather name="copy" size={15} color={C.accent} />
-            <Text style={styles.actionBtnText}>{t.collectz.actionDuplicate}</Text>
+          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, { backgroundColor: withAlpha(catColor, 0.1) }, pressed && { opacity: 0.85 }]} onPress={duplicate} disabled={busy}>
+            <Feather name="copy" size={15} color={catColor} />
+            <Text style={[styles.actionBtnText, { color: catColor }]}>{t.collectz.actionDuplicate}</Text>
           </Pressable>
-          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, pressed && { opacity: 0.85 }]} onPress={regenLink} disabled={busy}>
-            <Feather name="refresh-cw" size={15} color={C.accent} />
-            <Text style={styles.actionBtnText}>{t.collectz.actionRegenLink}</Text>
+          <Pressable style={({ pressed }) => [styles.actionBtn, neu.raised, { backgroundColor: withAlpha(catColor, 0.1) }, pressed && { opacity: 0.85 }]} onPress={regenLink} disabled={busy}>
+            <Feather name="refresh-cw" size={15} color={catColor} />
+            <Text style={[styles.actionBtnText, { color: catColor }]}>{t.collectz.actionRegenLink}</Text>
           </Pressable>
         </View>
 
@@ -969,7 +975,6 @@ const CollectzDetail: React.FC = () => {
         {actionFor && session && (() => {
           const p = actionFor;
           const share = p.slot === 'reserve' ? null : shares.get(p.id) ?? null;
-          const color = statusColor(p.status);
           const canNudge = (p.status === 'unpaid' || p.status === 'rejected') && isOpen;
           const proofIsPdf = p.proof_path?.toLowerCase().endsWith('.pdf') ?? false;
 
@@ -1064,9 +1069,7 @@ const CollectzDetail: React.FC = () => {
                         : t.collectz.shareUnknown}
                   </Text>
                 </View>
-                <View style={[styles.statusChip, { backgroundColor: withAlpha(color, 0.18) }]}>
-                  <Text style={[styles.statusChipText, { color }]}>{statusLabel(p.status)}</Text>
-                </View>
+                <StatusChip status={p.status} label={statusLabel(p.status)} />
               </View>
 
               {/* Submitted proof, right in the modal — confirm below it. */}
@@ -1390,7 +1393,6 @@ const makeStyles = (C: typeof CALM) =>
       width: 52,
       height: 52,
       borderRadius: RADIUS.lg,
-      backgroundColor: withAlpha(C.textPrimary, 0.03),
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
@@ -1415,7 +1417,7 @@ const makeStyles = (C: typeof CALM) =>
       marginBottom: SPACING.md,
     },
     progressTrack: { height: 8, borderRadius: RADIUS.full, backgroundColor: C.pillBg, overflow: 'hidden' },
-    progressFill: { height: 8, borderRadius: RADIUS.full, backgroundColor: C.accent },
+    progressFill: { height: 8, borderRadius: RADIUS.full },
     progressText: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
     // Session info card — details / court cost / rules
     infoCard: {
@@ -1501,8 +1503,6 @@ const makeStyles = (C: typeof CALM) =>
     },
     claimedTagText: { fontSize: 10, color: C.accent, fontWeight: TYPOGRAPHY.weight.medium },
     rowShare: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
-    statusChip: { borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 3 },
-    statusChipText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold },
     // Participant action modal
     amWrap: { padding: SPACING.lg, paddingTop: SPACING.sm, gap: SPACING.md },
     amHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },

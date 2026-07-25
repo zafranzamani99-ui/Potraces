@@ -5,10 +5,16 @@ import Constants from 'expo-constants';
 import { supabaseBusiness as supabase, supabasePersonal } from './supabase'; // per-mode clients
 import { useSettingsStore } from '../store/settingsStore';
 
-// Configure how notifications appear when app is in foreground
+// Configure how notifications appear when app is in foreground.
+// Two independent master switches (Settings → Preferences): order pushes
+// (data.type === 'new_order') follow the business orders toggle; everything
+// else (broadcasts, quick-log, payment alerts, reminders) follows the personal
+// push toggle.
 Notifications.setNotificationHandler({
-  handleNotification: async () => {
-    const enabled = useSettingsStore.getState().notificationsEnabled;
+  handleNotification: async (notification) => {
+    const s = useSettingsStore.getState();
+    const isOrder = notification?.request?.content?.data?.type === 'new_order';
+    const enabled = isOrder ? s.orderNotificationsEnabled : s.notificationsEnabled;
     return {
       shouldShowAlert: enabled,
       shouldPlaySound: enabled,
@@ -146,13 +152,18 @@ export async function registerPushNotifications(
   // (one row per device → a payment alert reaches every phone the seller is
   // logged into, e.g. two phones at one counter). qr-payment-webhook reads
   // device_tokens; legacy senders still read seller_profiles.push_token.
+  // push_token feeds the new-order DB trigger, so it is only (re)written while
+  // the orders toggle is ON — otherwise the silent startup registration would
+  // resurrect order pushes after the seller opted out.
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
-      await supabase
-        .from('seller_profiles')
-        .update({ push_token: token })
-        .eq('user_id', session.user.id);
+      if (useSettingsStore.getState().orderNotificationsEnabled) {
+        await supabase
+          .from('seller_profiles')
+          .update({ push_token: token })
+          .eq('user_id', session.user.id);
+      }
       // Upsert per-device token (unique on user_id+token).
       await supabase
         .from('device_tokens')
@@ -169,6 +180,26 @@ export async function registerPushNotifications(
 }
 
 /**
+ * Business orders toggle OFF: clear seller_profiles.push_token so the
+ * trg_notify_order_link trigger stops pushing (it treats '' as "no token").
+ * device_tokens rows are kept — qr-payment-webhook payment alerts are a
+ * separate feature with their own delivery path.
+ */
+export async function unregisterOrderPushToken(): Promise<void> {
+  if (!Device.isDevice) return;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    await supabase
+      .from('seller_profiles')
+      .update({ push_token: '' })
+      .eq('user_id', session.user.id);
+  } catch (e) {
+    if (__DEV__) console.warn('[push] Failed to clear order push token:', e);
+  }
+}
+
+/**
  * Personal-mode counterpart. Quick-log pushes are sent to device_tokens rows
  * belonging to the PERSONAL auth user — the seller path above registers under
  * the business user only (two-account split), so without this a personal-only
@@ -180,6 +211,8 @@ export async function registerPersonalDeviceToken(
 ): Promise<void> {
   const { promptIfNeeded = false } = opts;
   if (!Device.isDevice) return;
+  // Master personal push switch is OFF — don't (re)register behind the user's back.
+  if (!useSettingsStore.getState().notificationsEnabled) return;
 
   const { data: { session } } = await supabasePersonal.auth.getSession();
   const userId = session?.user?.id;
@@ -220,6 +253,8 @@ export async function registerBroadcastDevice(
 ): Promise<void> {
   const { promptIfNeeded = false } = opts;
   if (!Device.isDevice) return;
+  // Master personal push switch is OFF — broadcasts stay opted out too.
+  if (!useSettingsStore.getState().notificationsEnabled) return;
 
   const { status: existing } = await Notifications.getPermissionsAsync();
   let finalStatus = existing;
@@ -241,6 +276,46 @@ export async function registerBroadcastDevice(
     });
   } catch (e) {
     if (__DEV__) console.warn('[push] Failed to register broadcast device:', e);
+  }
+}
+
+/**
+ * Personal push toggle OFF: delete THIS device's token from the personal
+ * user's device_tokens, so quick-log / payment pushes stop reaching it.
+ * Other signed-in devices keep their own rows.
+ */
+export async function unregisterPersonalDeviceToken(): Promise<void> {
+  if (!Device.isDevice) return;
+  try {
+    const { data: { session } } = await supabasePersonal.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) return;
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+    await supabasePersonal
+      .from('device_tokens')
+      .delete()
+      .eq('user_id', userId)
+      .eq('token', token);
+  } catch (e) {
+    if (__DEV__) console.warn('[push] Failed to delete personal token:', e);
+  }
+}
+
+/**
+ * Personal push toggle OFF: remove this device from push_devices (admin
+ * broadcasts) via the register-device function's remove flag.
+ */
+export async function unregisterBroadcastDevice(): Promise<void> {
+  if (!Device.isDevice) return;
+  try {
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+    await supabasePersonal.functions.invoke('register-device', {
+      body: { token, remove: true },
+    });
+  } catch (e) {
+    if (__DEV__) console.warn('[push] Failed to unregister broadcast device:', e);
   }
 }
 

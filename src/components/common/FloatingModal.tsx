@@ -35,8 +35,8 @@ interface FloatingModalProps {
   swipeToDismiss?: boolean;
   /**
    * Entrance style. 'slide' (default) springs up from the bottom like a sheet.
-   * 'fade' fades + scales in place like a centered dialog (matches the Repay
-   * Credit picker) — swipe-to-dismiss is inert in this mode; tap-outside closes.
+   * 'fade' appears instantly in place (centered dialog) — no open or close
+   * animation; swipe-to-dismiss is inert in this mode; tap-outside closes.
    */
   entrance?: 'slide' | 'fade';
   children: React.ReactNode;
@@ -65,35 +65,32 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
   const fadeMode = entrance === 'fade';
 
   const sheetY = useSharedValue(SCREEN_H);
-  const fade = useSharedValue(0);
   const dragStart = useSharedValue(0);
   const thresholdCrossed = useSharedValue(false);
 
-  useEffect(() => {
-    if (visible) {
-      if (fadeMode) {
-        fade.value = 0;
-        fade.value = withTiming(1, { duration: 200 });
-      } else {
-        sheetY.value = SCREEN_H;
-        sheetY.value = withSpring(0, SPRING_OPEN);
-      }
-    }
-  }, [visible, SCREEN_H, fadeMode]);
+  // Fade mode: NO open/close animation at all — the modal appears and unmounts
+  // instantly. Only the slide sheet keeps its spring (pre-existing behavior).
+  const playEntrance = useCallback(() => {
+    if (fadeMode) return;
+    if (sheetY.value === 0) return; // already open (e.g. rotation re-fire)
+    sheetY.value = SCREEN_H;
+    sheetY.value = withSpring(0, SPRING_OPEN);
+  }, [fadeMode, SCREEN_H, sheetY]);
 
+  useEffect(() => {
+    if (visible) playEntrance();
+  }, [visible, playEntrance]);
+
+  // Fade mode: NO exit animation — dismiss fires onClose and the modal unmounts
+  // immediately. Slide mode keeps its sheet slide-down (part of the gesture,
+  // not an added flourish).
   const dismiss = useCallback(() => {
-    if (fadeMode) {
-      fade.value = withTiming(0, { duration: CLOSE_DURATION }, (finished) => {
-        'worklet';
-        if (finished) runOnJS(onClose)();
-      });
-      return;
-    }
+    if (fadeMode) { onClose(); return; }
     sheetY.value = withTiming(SCREEN_H, { duration: CLOSE_DURATION }, (finished) => {
       'worklet';
       if (finished) runOnJS(onClose)();
     });
-  }, [SCREEN_H, onClose, fadeMode]);
+  }, [fadeMode, SCREEN_H, onClose, sheetY]);
 
   const panGesture = useMemo(
     () =>
@@ -122,29 +119,23 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
         .onEnd((e) => {
           'worklet';
           if (e.translationY > DISMISS_THRESHOLD || e.velocityY > DISMISS_VELOCITY) {
-            sheetY.value = withTiming(SCREEN_H, { duration: CLOSE_DURATION }, (finished) => {
-              'worklet';
-              if (finished) runOnJS(onClose)();
-            });
+            runOnJS(dismiss)();
           } else {
             sheetY.value = withSpring(0, SPRING_OPEN);
           }
         }),
-    [swipeToDismiss, SCREEN_H, onClose],
+    [swipeToDismiss, SCREEN_H, dismiss],
   );
 
   const sheetAnimatedStyle = useAnimatedStyle(() =>
     fadeMode
-      ? {
-          opacity: fade.value,
-          transform: [{ scale: interpolate(fade.value, [0, 1], [0.96, 1], Extrapolation.CLAMP) }],
-        }
+      ? { opacity: 1 } // fade mode: no entrance animation — appear as-is
       : { transform: [{ translateY: sheetY.value }] },
   );
 
   const backdropAnimatedStyle = useAnimatedStyle(() =>
     fadeMode
-      ? { opacity: fade.value }
+      ? { opacity: 1 }
       : { opacity: interpolate(sheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP) },
   );
 

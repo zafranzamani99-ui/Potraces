@@ -218,18 +218,20 @@ export default function WalletActionSheet({
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity
-          style={[styles.sheetRow, neuF.raisedSoft, { marginTop: SPACING.xs }]}
-          onPress={() => onDelete(aw.id)}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={t.wallets.deleteWalletAction}
-        >
-          <Feather name="trash-2" size={20} color={C.neutral} />
-          <Text style={[styles.sheetRowLabel, { color: C.neutral, fontWeight: TYPOGRAPHY.weight.medium }]}>
-            {t.wallets.deleteWalletAction}
-          </Text>
-        </TouchableOpacity>
+        {aw.type !== 'cash' && (
+          <TouchableOpacity
+            style={[styles.sheetRow, neuF.raisedSoft, { marginTop: SPACING.xs }]}
+            onPress={() => onDelete(aw.id)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t.wallets.deleteWalletAction}
+          >
+            <Feather name="trash-2" size={20} color={C.neutral} />
+            <Text style={[styles.sheetRowLabel, { color: C.neutral, fontWeight: TYPOGRAPHY.weight.medium }]}>
+              {t.wallets.deleteWalletAction}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </BottomSheet>
   );

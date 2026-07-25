@@ -10,6 +10,7 @@ import {
   Keyboard,
   Switch,
   Modal,
+  InteractionManager,
 } from 'react-native';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
@@ -23,14 +24,15 @@ import ReAnimated, {
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../../i18n';
 import { newId } from '../../utils/id';
-import { lightTap } from '../../services/haptics';
+import { lightTap, errorNotification } from '../../services/haptics';
 import NewstInput, { newstOutline } from '../../components/business/NewstInput';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
@@ -50,11 +52,15 @@ const StallProducts: React.FC = () => {
   const { products, addProduct, updateProduct, deleteProduct, roundCashTo5, setRoundCashTo5, units, categories } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const [showForm, setShowForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [showUnitPicker, setShowUnitPicker] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  // Set when we leave for Settings from the half-filled form — on return focus
+  // the form reopens with every field intact (state never unmounts).
+  const returnToForm = useRef(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -66,6 +72,8 @@ const StallProducts: React.FC = () => {
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const [modifiers, setModifiers] = useState<{ key: string; label: string; delta: string }[]>([]);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  // Inline validation — set by handleSave, cleared per-field on type.
+  const [formErrors, setFormErrors] = useState<{ name?: string; price?: string; cost?: string }>({});
   const modKeyRef = React.useRef(0);
   const addModifierRow = useCallback(() => {
     setModifiers((prev) => [...prev, { key: `m${modKeyRef.current++}`, label: '', delta: '' }]);
@@ -131,6 +139,28 @@ const StallProducts: React.FC = () => {
     lightTap();
     setCatDropdownOpen(true);
   }, []);
+
+  // Manage units/categories → the real Settings screen. The form closes (its
+  // field state stays mounted on this screen), and useFocusEffect below pops
+  // it back open when the user swipes back from Settings.
+  const openManagerInSettings = useCallback((kind: 'unit' | 'category') => {
+    lightTap();
+    setShowUnitPicker(false);
+    setShowCategoryPicker(false);
+    returnToForm.current = true;
+    setShowForm(false);
+    navigation.navigate('SettingsDetail', { section: 'money', scrollTo: kind === 'unit' ? 'units' : 'stallcats' });
+  }, [navigation]);
+
+  // Returning from Settings (swipe-back or back button) → reopen the form.
+  // runAfterInteractions lets the pop transition finish before the modal presents.
+  useFocusEffect(
+    useCallback(() => {
+      if (!returnToForm.current) return;
+      returnToForm.current = false;
+      InteractionManager.runAfterInteractions(() => setShowForm(true));
+    }, []),
+  );
 
   const expandSearch = useCallback(() => {
     setSearchOpen(true);
@@ -200,6 +230,7 @@ const StallProducts: React.FC = () => {
     setCategory('');
     setImageUrl(undefined);
     setModifiers([]);
+    setFormErrors({});
     setEditingId(null);
     setShowDetails(false);
     setShowUnitPicker(false);
@@ -207,10 +238,43 @@ const StallProducts: React.FC = () => {
     setShowForm(false);
   }, []);
 
+  // Clear one field's error as the user types into it.
+  const clearFieldError = useCallback((key: 'name' | 'price' | 'cost') => {
+    setFormErrors((e) => (e[key] ? { ...e, [key]: undefined } : e));
+  }, []);
+
+  // FAB → open a blank product form (fresh fields, no leftover errors).
+  const openAddForm = useCallback(() => {
+    setEditingId(null);
+    setName('');
+    setPrice('');
+    setDefaultQty('');
+    setCost('');
+    setUnit('');
+    setCategory('');
+    setImageUrl(undefined);
+    setModifiers([]);
+    setFormErrors({});
+    setShowDetails(false);
+    setShowForm(true);
+  }, []);
+
   const handleSave = useCallback(() => {
     const trimmedName = name.trim();
     const parsedPrice = parseFloat(price);
-    if (!trimmedName || isNaN(parsedPrice) || parsedPrice <= 0) return;
+
+    // Validate — mandatory: name + price. Cost is optional but must be valid
+    // if filled. The old silent `return` left users tapping "add" with no clue.
+    const errs: { name?: string; price?: string; cost?: string } = {};
+    if (!trimmedName) errs.name = t.stall.errorNameRequired;
+    if (isNaN(parsedPrice) || parsedPrice <= 0) errs.price = t.stall.errorPriceInvalid;
+    if (cost.trim() && (isNaN(parseFloat(cost)) || parseFloat(cost) <= 0)) errs.cost = t.stall.errorCostInvalid;
+    if (Object.keys(errs).length > 0) {
+      setFormErrors(errs);
+      errorNotification();
+      return;
+    }
+    setFormErrors({});
 
     const parsedDefault = parseInt(defaultQty, 10);
     const defaultStartQty = !isNaN(parsedDefault) && parsedDefault > 0 ? parsedDefault : undefined;
@@ -229,7 +293,7 @@ const StallProducts: React.FC = () => {
       addProduct({ name: trimmedName, price: parsedPrice, isActive: true, defaultStartQty, unitCost, unit: unitVal, category: categoryVal, imageUrl, modifiers: modsPayload });
     }
     resetForm();
-  }, [name, price, defaultQty, cost, unit, category, imageUrl, modifiers, editingId, updateProduct, addProduct, resetForm]);
+  }, [name, price, defaultQty, cost, unit, category, imageUrl, modifiers, editingId, updateProduct, addProduct, resetForm, t]);
 
   const handleEdit = useCallback((id: string) => {
     const product = products.find((p) => p.id === id);
@@ -296,7 +360,7 @@ const StallProducts: React.FC = () => {
     >
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 96 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -361,12 +425,12 @@ const StallProducts: React.FC = () => {
                       </TouchableOpacity>
                     );
                   })}
-                  {/* Manage units in settings — matches seller mode. Closes the sheet
-                      and jumps to Settings (stall → "Manage units"). */}
+                  {/* Manage units in settings — jumps to Settings; swiping back
+                      reopens this half-filled form (fields are preserved). */}
                   <TouchableOpacity
                     style={styles.unitManageBtn}
                     activeOpacity={0.7}
-                    onPress={() => { setShowUnitPicker(false); setShowForm(false); navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'units' }); }}
+                    onPress={() => openManagerInSettings('unit')}
                     accessibilityRole="button"
                     accessibilityLabel={t.stall.manageUnitsInSettings}
                   >
@@ -422,11 +486,12 @@ const StallProducts: React.FC = () => {
                       </TouchableOpacity>
                     );
                   })}
-                  {/* Manage categories in settings — jumps to Settings → "Manage categories". */}
+                  {/* Manage categories in settings — jumps to Settings; swiping back
+                      reopens this half-filled form (fields are preserved). */}
                   <TouchableOpacity
                     style={styles.unitManageBtn}
                     activeOpacity={0.7}
-                    onPress={() => { setShowCategoryPicker(false); setShowForm(false); navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'stallcats' }); }}
+                    onPress={() => openManagerInSettings('category')}
                     accessibilityRole="button"
                     accessibilityLabel={t.stall.manageCategoriesInSettings}
                   >
@@ -514,9 +579,10 @@ const StallProducts: React.FC = () => {
               <NewstInput
                 label={t.stall.productNameLabel}
                 value={name}
-                onChangeText={setName}
+                onChangeText={(v) => { setName(v); clearFieldError('name'); }}
                 autoFocus={!editingId}
                 accessibilityLabel="Product name"
+                error={formErrors.name}
                 style={styles.nameField}
               />
             </View>
@@ -546,19 +612,21 @@ const StallProducts: React.FC = () => {
               <NewstInput
                 label={t.stall.priceLabel}
                 value={price}
-                onChangeText={setPrice}
+                onChangeText={(v) => { setPrice(v); clearFieldError('price'); }}
                 prefix={currency}
                 keyboardType="decimal-pad"
                 accessibilityLabel="Product price"
+                error={formErrors.price}
                 style={styles.col}
               />
               <NewstInput
                 label={t.stall.costEachLabel}
                 value={cost}
-                onChangeText={setCost}
+                onChangeText={(v) => { setCost(v); clearFieldError('cost'); }}
                 prefix={currency}
                 keyboardType="decimal-pad"
                 accessibilityLabel="Cost per unit, optional"
+                error={formErrors.cost}
                 style={styles.col}
               />
             </View>
@@ -792,28 +860,6 @@ const StallProducts: React.FC = () => {
           })() : null}
         </FloatingModal>
 
-        {/* Add button — always visible; opens the product sheet */}
-        <NeuButton
-          icon="plus"
-          label={t.stall.addProduct}
-          color={C.bronze}
-          onPress={() => {
-            setEditingId(null);
-            setName('');
-            setPrice('');
-            setDefaultQty('');
-            setCost('');
-            setUnit('');
-            setCategory('');
-            setImageUrl(undefined);
-            setModifiers([]);
-            setShowDetails(false);
-            setShowForm(true);
-          }}
-          accessibilityLabel="Add a new product"
-          style={{ marginBottom: SPACING['2xl'] }}
-        />
-
         {/* Browse row (copied from Sell): category dropdown + expanding search */}
         {products.length > 0 && (
           <View style={styles.browseRow} onLayout={handleBrowseRowLayout}>
@@ -966,6 +1012,18 @@ const StallProducts: React.FC = () => {
         </TouchableOpacity>
       </ScrollView>
 
+      {/* Add product — floating bronze FAB, bottom-right (the personal-mode
+          per-screen FAB pattern, in business bronze). */}
+      <TouchableOpacity
+        style={[styles.addFab, { bottom: insets.bottom + SPACING['2xl'] }]}
+        onPress={openAddForm}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={t.stall.addProduct}
+      >
+        <Feather name="plus" size={26} color={C.onAccent} />
+      </TouchableOpacity>
+
       {/* Category dropdown list — centered floating modal (copied from Sell). */}
       <Modal
         visible={catDropdownOpen}
@@ -1028,7 +1086,6 @@ const StallProducts: React.FC = () => {
     </KeyboardAvoidingView>
   );
 };
-
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
@@ -1048,6 +1105,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     ...TYPE.muted,
     color: C.textSecondary,
     marginBottom: SPACING['3xl'],
+  },
+
+  // Add-product FAB — bronze fill, white +, bottom-right float (shadow like
+  // BusinessFAB: present in light, dropped in dark).
+  addFab: {
+    position: 'absolute',
+    right: SPACING['2xl'],
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.bronze,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
 
   // ─── Browse row: category dropdown + expanding search (copied from Sell) ───
@@ -1462,7 +1533,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(C.textPrimary, 0.03),
     paddingHorizontal: SPACING.lg,
     justifyContent: 'center',
-    gap: 2,
+    gap: 6,
     marginBottom: SPACING.md,
   },
 
@@ -1662,7 +1733,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(C.textPrimary, 0.03),
     paddingHorizontal: SPACING.lg,
     justifyContent: 'center',
-    gap: 2,
+    gap: 6,
   },
   unitSelectorLabel: {
     fontSize: TYPOGRAPHY.size.xs,

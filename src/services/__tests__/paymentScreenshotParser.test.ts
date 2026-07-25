@@ -362,6 +362,147 @@ check('Half-recognized transfer (Funds Transfer + amount, no status) → uncerta
   isPaymentScreen: false, reason: 'not_payment', amount: null, uncertain: true,
 });
 
+// Atome bill-pay success + a Maybank2u spend notification in-frame (owner-shared, 24 Jul
+// 2026). Three traps: the "Back to Bills" BUTTON must not become the payee (the merchant
+// is in the notification: "at ATOME* MONTHLYBILL"); the promo "had belanja RM400" must not
+// become the amount; the yearless "24 Jul" is the date. The screen has NO transaction time,
+// so the bare status-bar clock "5:54" is used, with AM/PM resolved against the share moment
+// (screenshot at ~5:54pm → 17:54, never 5:54 am).
+const atomeYear = (() => {
+  const now = new Date();
+  let y = now.getFullYear();
+  if (new Date(y, 6, 24).getTime() - now.getTime() > 2 * 86_400_000) y -= 1;
+  return y;
+})();
+// Expected hour for a 12h-ambiguous status-bar clock on 24 Jul, resolved exactly like the
+// parser's resolveAmPm (closest reading to "now" that isn't in the future).
+function jul24Hour(h12: number, min: number): number {
+  const now = Date.now();
+  const am = new Date(atomeYear, 6, 24, h12 % 12, min).getTime();
+  const pm = new Date(atomeYear, 6, 24, (h12 % 12) + 12, min).getTime();
+  const amOk = am <= now + 120_000, pmOk = pm <= now + 120_000;
+  if (amOk !== pmOk) return pmOk ? (h12 % 12) + 12 : h12 % 12;
+  return Math.abs(now - pm) <= Math.abs(now - am) ? (h12 % 12) + 12 : h12 % 12;
+}
+check('Atome bill payment + Maybank notification — payee=merchant, yearless date, status-bar time as PM', [
+  '5:54 A l5G 33)',
+  'Maybank2u: Card Transaction now',
+  "You've just spent RM 292.65 at ATOME*",
+  'MONTHLYBILL with your Maybank Debit Ca...',
+  'Payment successful',
+  'Bill Payment',
+  '24 Jul',
+  'RM292.65',
+  'Amount Details',
+  'Bill Paid RM292.65',
+  'Payment method VISA **** 28',
+  'Ajak rakan',
+  'atome VISA',
+  'Dapatkan sehingga',
+  'had belanja RM400',
+  'VISA',
+  "Here's how",
+  'RM400',
+  'SPENDING LIMIT VISA',
+  'ato',
+  'Back to Bills',
+], {
+  isPaymentScreen: true, reason: 'ok', direction: 'out', amount: 292.65, currency: 'MYR',
+  payee: 'ATOME', walletHint: 'maybank',
+  dt: [atomeYear, 6, 24, jul24Hour(5, 54), 54],
+});
+
+// Biller-app success page (owner-shared, CelcomDigi app): the amount and the date share ONE
+// sentence row ("Thank you! Payment of RM300.03 on 24/07/2026"). The date must be STRIPPED,
+// not the whole row excluded — the blanket exclusion regressed this to reason:'no_amount',
+// which spent an AI call and logged with the WRONG date (today, not 24 Jul). "Back to Home"
+// is a button, never the payee; the garbled status-bar "5:184" reads as 5:18, PM-resolved.
+check('Biller success page — amount+date in one sentence, nav button is not payee', [
+  '5:184 l 5G (43)',
+  'Payment Successful',
+  'Thank you! Payment of RM300.03 on 24/07/2026',
+  'was successful.',
+  'You can view the details in your Transaction History page.',
+  'Back to Home',
+  'Add Email to Contact Email',
+], {
+  isPaymentScreen: true, reason: 'ok', direction: 'out', amount: 300.03, currency: 'MYR',
+  payee: null, walletHint: null,
+  dt: [2026, 6, 24, jul24Hour(5, 18), 18],
+});
+
+// Gmail bill-payment confirmation email (owner-shared, CelcomDigi). The payee must come
+// from the subject / "X bill" card — NEVER the Gmail feedback row "Based on this email
+// Correct?" or the sender+time row "ADAPTIS Notification 5:17 PM". The explicit "5:17 PM"
+// beats the ambiguous 5:18 status bar; the subject's "Ref#" gives the ref id.
+check('Gmail bill-payment email — payee from subject/"X bill", Gmail UI junk excluded', [
+  '5:18',
+  '5G 42',
+  'CelcomDigi',
+  'CelcomDigi - Payment details',
+  '(Ref# NGA260724091623NGN2W)',
+  'Inbox',
+  'Paid on 24 Jul',
+  'CelcomDigi bill',
+  'Amount paid',
+  'RM300.03',
+  'Based on this email Correct?',
+  'ADAPTIS Notification 5:17 PM',
+  'to me',
+  'celcomdigı',
+  'Reply o Forward',
+], {
+  isPaymentScreen: true, reason: 'ok', direction: 'out', amount: 300.03, currency: 'MYR',
+  payee: 'CelcomDigi', refId: 'NGA260724091623NGN2W', walletHint: null,
+  dt: [atomeYear, 6, 24, 17, 17],
+});
+
+// Maybank DuitNow receipt + a TRUNCATED transfer notification in-frame (owner-shared).
+// Two OCR realities: the notification row ends mid-name ("...to MOHD") — the explicit
+// "Beneficiary name" label must beat that weak to/from fragment; and the date is merged
+// "24Jul 2026" (no space) — must still parse (else it logs "now", here 3:44 am).
+check('Maybank receipt + truncated notif — label payee beats fragment, no-space date parses', [
+  '4:384 l5G 52',
+  'Maybank2u: Transfer now',
+  "You've transferred RM 585.00 to MOHD",
+  "FIRDAUS BIN ABIDIN's HONG LEONG BANK...",
+  'Maybank',
+  'DuitNow Transfer Successful',
+  'Reference ID',
+  '24Jul 2026, 04:37 PM',
+  '372989296M',
+  'Beneficiary name',
+  'MOHD FIRDAUS BIN ABIDIN',
+  'Beneficiary account number',
+  '1275 0184 731',
+  'Receiving bank',
+  'HONG LEONG BANK',
+  'Recipient reference',
+  'zafran-merba',
+  'Amount',
+  'RM 585.00',
+  'Note: This receipt is computer generated and no',
+  'signature is required.',
+], {
+  isPaymentScreen: true, reason: 'ok', direction: 'out', amount: 585, currency: 'MYR',
+  payee: 'MOHD FIRDAUS BIN ABIDIN', refId: '372989296M', walletHint: 'maybank',
+  method: 'duitnow',
+  dt: [2026, 6, 24, 16, 37],
+});
+
+// US-style month-first date ("July 25, 2026") — Stripe/subscription confirmations use it;
+// must parse like the day-first forms (and "May 2026"-style period labels must NOT become
+// "the 20th", hence the 4-digit-year requirement).
+check('US month-first date parses (Stripe-style)', [
+  'Payment successful',
+  'RM 88.00',
+  'KEDAI SERBANEKA',
+  'July 25, 2026, 02:30 PM',
+], {
+  isPaymentScreen: true, reason: 'ok', direction: 'out', amount: 88, payee: 'KEDAI SERBANEKA',
+  dt: [2026, 6, 25, 14, 30],
+});
+
 // A store RECEIPT is rejected by the payment rules (multi-amount), but it is NOT an in-app
 // screen — so its reason must stay `not_payment` (receipt-eligible), never `not_payment_screen`.
 // Share-to-Log then runs the receipt detector on it (see receiptDetect.test.ts).

@@ -138,6 +138,7 @@ const DATE_RES = [
   /\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/, // dd/mm/yyyy, dd-mm-yy, dd.mm.yyyy
   /\b\d{4}-\d{1,2}-\d{1,2}\b/, // yyyy-mm-dd
   /\b\d{1,2}\s+(?:jan|feb|mac|mar|apr|mei|may|jun|jul|ogos?|aug|sep|okt|oct|nov|dis|dec)[a-z]*\s+\d{2,4}\b/i, // dd MMM yyyy (incl. Malay months)
+  /\b(?:jan|feb|mac|mar|apr|mei|may|jun|jul|ogos?|aug|sep|okt|oct|nov|dis|dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b/i, // MMM dd, yyyy (US/Stripe invoices; 4-digit year so "May 2026" ≠ the 20th)
 ];
 
 // Priority-ordered payment-method detection → the same method strings the
@@ -210,6 +211,18 @@ function findKeywordAmount(rows: string[], keywordRe: RegExp): number | undefine
 }
 
 function findTotal(rows: string[], items: ReceiptItem[], tax?: number): number {
+  // 0. A FOREIGN-currency receipt that states the MYR settlement ("Charged RM844.67
+  //    using 1 USD = 4.2446 MYR" — Stripe/subscription invoices): the RM figure is what
+  //    actually left the bank, so it beats the foreign "Total $199.00" lines below.
+  for (const row of rows) {
+    if (!/\bcharged\b/i.test(row)) continue;
+    const m = row.match(/RM\s*(\d{1,3}(?:,\d{3})*\.\d{2}|\d+\.\d{2})/i);
+    if (m) {
+      const n = toAmount(m[1]);
+      if (n > 0) return n;
+    }
+  }
+
   // 1. Largest amount on a total-keyword line (grand total ≥ subtotal, so the
   //    max across matching lines is the grand total even though "subtotal"
   //    also matches /total/).

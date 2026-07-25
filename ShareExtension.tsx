@@ -7,6 +7,7 @@ import { parsePaymentScreenshot } from './src/services/paymentScreenshotParser';
 import { dedupeKeyFor } from './src/utils/paymentDedupeKey';
 import { hasSharedKey, addSharedKey } from './src/utils/sharedPaymentDedupe';
 import { addPendingReceipt } from './src/utils/sharedReceiptInbox';
+import { addPendingText } from './src/utils/sharedTextInbox';
 
 /**
  * iOS share-extension root — Flow C. iOS blocks a share extension from launching its host
@@ -62,12 +63,20 @@ function toFileUri(p: string): string {
   return p.startsWith('/') ? `file://${p}` : p;
 }
 
-export default function ShareExtension({ images, files }: InitialProps) {
+export default function ShareExtension({ images, files, text }: InitialProps) {
   const [status, setStatus] = useState<Status>('loading');
   const [subtitle, setSubtitle] = useState('Reading your screenshot…');
 
   useEffect(() => {
     let done = false;
+    // Dev-only timing: how long each step takes on-device (bundle load happens BEFORE
+    // this line — its cost is the gap between tapping Potraces and the first log).
+    const t0 = Date.now();
+    const tlog = (msg: string) => console.log(`[sharex] t+${Date.now() - t0}ms ${msg}`);
+    tlog('extension JS running (bundle loaded)');
+    // Permissions are needed only at notify time, but the async call is slow-ish — start
+    // it NOW so it resolves in parallel with OCR instead of adding to the wait.
+    const permP = Notifications.getPermissionsAsync();
     const finishAfter = (ms: number) =>
       setTimeout(() => {
         if (!done) {
@@ -79,15 +88,32 @@ export default function ShareExtension({ images, files }: InitialProps) {
     (async () => {
       try {
         const raw = images?.[0] ?? files?.[0] ?? null;
-        if (!raw || !isLocalOcrAvailable()) {
+        // TEXT share (bank SMS, WhatsApp receipt, emailed confirmation): no OCR needed —
+        // the same parser reads the lines directly. Images win when both are present.
+        const sharedText = !raw && typeof text === 'string' && text.trim().length > 0 ? text : null;
+        // A PDF FILE — OCR reads images only. Say so plainly (native PDF text extraction
+        // lands with the next native build) instead of the opaque "couldn't read it".
+        if (raw && /\.pdf($|[?#])/i.test(raw) && !sharedText) {
+          tlog('pdf file — not supported yet');
+          setStatus('error');
+          setSubtitle("Can't read PDFs yet — screenshot the receipt and share that instead.");
+          finishAfter(2800);
+          return;
+        }
+        if ((!raw && !sharedText) || (!!raw && !isLocalOcrAvailable())) {
+          tlog(`error path (raw=${!!raw} text=${!!sharedText} ocrAvail=${isLocalOcrAvailable()})`);
           setStatus('error');
           setSubtitle('Open Potraces to add it manually.');
           finishAfter(2400);
           return;
         }
 
-        const rows = await recognizeRows(toFileUri(raw));
+        const rows = sharedText
+          ? sharedText.split(/\r?\n/).map((r) => r.trim()).filter(Boolean)
+          : await recognizeRows(toFileUri(raw!));
+        tlog(sharedText ? `text share (${rows.length} lines)` : `ocr done (${rows.length} rows)`);
         const parsed = parsePaymentScreenshot(rows);
+        tlog(`parsed pay=${parsed.isPaymentScreen} amt=${parsed.amount} reason=${parsed.reason}`);
 
         if (parsed.reason === 'failed') {
           setStatus('failed');
@@ -112,13 +138,14 @@ export default function ShareExtension({ images, files }: InitialProps) {
             payee: parsed.payee,
           });
           if (await hasSharedKey(key)) {
+            tlog('already-logged');
             setStatus('already');
             setSubtitle(msg);
             finishAfter(1800);
             return;
           }
 
-          const perm = await Notifications.getPermissionsAsync();
+          const perm = await permP;
           if (perm.status === 'granted') {
             await Notifications.scheduleNotificationAsync({
               content: { title: 'Logged to Potraces', body: msg, data: { type: 'share_logged' } },
@@ -126,6 +153,13 @@ export default function ShareExtension({ images, files }: InitialProps) {
             });
           }
           await addSharedKey(key);
+          if (sharedText) {
+            // The native side stages IMAGES in the app-group dir — for a TEXT share nothing
+            // is staged, so stash the text for the app to log on next foreground.
+            const tid = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+            await addPendingText(tid, sharedText, 'payment');
+          }
+          tlog('success card shown');
           setStatus('success');
           setSubtitle(msg);
           finishAfter(1800);
@@ -141,10 +175,21 @@ export default function ShareExtension({ images, files }: InitialProps) {
         const receipt =
           parsed.reason !== 'not_payment_screen' ? extractReceiptFromRows(rows) : null;
         if (receipt) {
+          const tail = receipt.vendor ? ` · ${receipt.vendor}` : '';
+          if (sharedText) {
+            // TEXT receipt — no image for the item-by-item scanner review. Stash it; the
+            // app logs the grand TOTAL (editable) on next foreground and notifies there.
+            const tid = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+            await addPendingText(tid, sharedText, 'other');
+            setStatus('receipt');
+            tlog('receipt (text) card shown');
+            setSubtitle(`RM ${receipt.total.toFixed(2)}${tail} — open Potraces to save it.`);
+            finishAfter(2600);
+            return;
+          }
           const rid = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
           if (raw) await addPendingReceipt(rid, toFileUri(raw));
-          const tail = receipt.vendor ? ` · ${receipt.vendor}` : '';
-          const perm = await Notifications.getPermissionsAsync();
+          const perm = await permP;
           const notifsOn = perm.status === 'granted';
           if (notifsOn) {
             await Notifications.scheduleNotificationAsync({
@@ -157,6 +202,7 @@ export default function ShareExtension({ images, files }: InitialProps) {
             });
           }
           setStatus('receipt');
+          tlog('receipt card shown');
           setSubtitle(
             notifsOn
               ? 'Tap the notification to review & save it.'
@@ -170,6 +216,10 @@ export default function ShareExtension({ images, files }: InitialProps) {
         // extension can't run AI, so hand off: the app takes a closer look (AI) when opened,
         // and fires the final notification then. No notification here.
         if (parsed.uncertain) {
+          if (sharedText) {
+            const tid = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+            await addPendingText(tid, sharedText, 'other');
+          }
           setStatus('checking');
           setSubtitle('Open Potraces — this one needs a closer look.');
           finishAfter(2600);
@@ -179,7 +229,8 @@ export default function ShareExtension({ images, files }: InitialProps) {
         setStatus('not_payment');
         setSubtitle("This isn't a successful payment — nothing logged.");
         finishAfter(2200);
-      } catch {
+      } catch (e) {
+        tlog(`THREW: ${String(e).slice(0, 80)}`);
         setStatus('error');
         setSubtitle('Open Potraces to add it manually.');
         finishAfter(2400);

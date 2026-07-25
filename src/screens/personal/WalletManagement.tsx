@@ -969,8 +969,11 @@ const WalletManagement: React.FC = () => {
   const guardedSave = useSubmitGuard(handleSave);
 
   const handleDelete = useCallback((walletId: string) => {
+    // Cash wallets are never deletable — the swipe and action-sheet affordances
+    // are hidden too, but guard here so no path can delete one.
+    if (wallets.find((w) => w.id === walletId)?.type === 'cash') return;
     setDeleteConfirmId(walletId);
-  }, []);
+  }, [wallets]);
 
   // A wallet is blocked from deletion while it still has linked money records —
   // transactions or transfers — so deleting it can't orphan or corrupt history.
@@ -1263,7 +1266,7 @@ const WalletManagement: React.FC = () => {
       <ReanimatedSwipeable
         ref={getSwipeRef(wallet.id)}
         renderRightActions={renderRightActions}
-        renderLeftActions={renderLeftActions}
+        renderLeftActions={wallet.type === 'cash' ? undefined : renderLeftActions}
 
         friction={1.2}
         rightThreshold={48}

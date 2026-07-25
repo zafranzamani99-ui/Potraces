@@ -867,15 +867,17 @@ const CollectzCreate: React.FC = () => {
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>{t.collectz.fieldCategory}</Text>
           <View style={styles.chipRow}>
-            {CATEGORIES.map((key) => (
-              <Pressable
-                key={key}
-                style={[styles.chip, neuF.raised, category === key && styles.chipActive]}
-                onPress={() => { selectionChanged(); setCategory(category === key ? null : key); }}
-              >
-                <Text style={[styles.chipText, category === key && styles.chipTextActive]}>{catLabels[key]}</Text>
-              </Pressable>
-            ))}
+            {CATEGORIES.map((key) => {
+              return (
+                <Pressable
+                  key={key}
+                  style={[styles.chip, neuF.raised, category === key && styles.chipActive]}
+                  onPress={() => { selectionChanged(); setCategory(category === key ? null : key); }}
+                >
+                  <Text style={[styles.chipText, category === key && styles.chipTextActive]}>{catLabels[key]}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
@@ -884,17 +886,19 @@ const CollectzCreate: React.FC = () => {
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>{t.collectz.fieldImage}</Text>
           <View style={styles.iconGrid}>
-            {clubIconsForCategory(category).map((icon) => (
-              <Pressable
-                key={icon.id}
-                style={[styles.iconTile, imagePreset === icon.id && styles.iconTileActive]}
-                onPress={() => pickPreset(icon.id)}
-                accessibilityRole="button"
-                accessibilityLabel={icon.id}
-              >
-                <Text style={styles.iconEmoji}>{icon.emoji}</Text>
-              </Pressable>
-            ))}
+            {clubIconsForCategory(category).map((icon) => {
+              return (
+                <Pressable
+                  key={icon.id}
+                  style={[styles.iconTile, imagePreset === icon.id && styles.iconTileActive]}
+                  onPress={() => pickPreset(icon.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={icon.id}
+                >
+                  <Text style={styles.iconEmoji}>{icon.emoji}</Text>
+                </Pressable>
+              );
+            })}
             <Pressable
               style={[styles.iconTile, (imageUpload || (!imagePreset && oldImagePath)) && styles.iconTileActive]}
               onPress={pickUpload}

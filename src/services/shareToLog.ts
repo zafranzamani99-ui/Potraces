@@ -36,6 +36,7 @@ import { useAppStore } from '../store/appStore';
 import { globalShowToast } from '../context/ToastContext';
 import { dedupeKeyFor } from '../utils/paymentDedupeKey';
 import { addSharedKey, pruneSharedKeysByLiveTxIds } from '../utils/sharedPaymentDedupe';
+import { listPendingTexts, removePendingText } from '../utils/sharedTextInbox';
 import {
   getPendingReceiptRaw,
   listPendingReceipts,
@@ -47,7 +48,7 @@ import {
 // Temporary on-device diagnostics for the Share-to-Log flow. Logs stream to Metro
 // (visible to the developer); the user-facing outcome still shows via the toast in the
 // notify* helpers. Flip off once the flow is verified.
-const SHARE_DEBUG = false;
+const SHARE_DEBUG = true;
 function dbg(msg: string) {
   if (SHARE_DEBUG) console.log(`[share] ${msg}`);
 }
@@ -131,6 +132,20 @@ export async function reconcileSharedPayments(): Promise<void> {
       try { await logPaymentFromShare(p, { silent: true, scanReceipts: false }); } catch { /* */ }
       try { await deleteAsync(p, { idempotent: true }); } catch { /* */ }
     }
+
+    // 3) Pending shared TEXTS (bank SMS, WhatsApp receipts — the native side stages only
+    //    images as files, so these arrive via the text inbox instead). Replay each through
+    //    the same pipeline, then consume the entry. The extension already notified for
+    //    'payment' texts → those stay silent; 'other' texts (receipt / uncertain) get their
+    //    outcome notification here.
+    try {
+      const texts = await listPendingTexts();
+      if (texts.length > 0) dbg(`reconcile: ${texts.length} pending text(s)`);
+      for (const t of texts) {
+        try { await logTextFromShare(t.text, { silent: t.kind === 'payment' }); } catch { /* */ }
+        await removePendingText(t.tid);
+      }
+    } catch { /* best-effort */ }
   } finally {
     _reconciling = false;
   }
@@ -488,7 +503,7 @@ export async function echoEnrichPayment(
  */
 export async function logPaymentFromShare(
   imageUri: string | null | undefined,
-  opts?: { silent?: boolean; scanReceipts?: boolean },
+  opts?: { silent?: boolean; scanReceipts?: boolean; textRows?: string[] },
 ): Promise<void> {
   // silent: the iOS share extension already fired the "Logged RM…" notification, so the
   // app-group reconcile writes the ledger entry WITHOUT firing a second notification.
@@ -508,30 +523,37 @@ export async function logPaymentFromShare(
   const nCouldnt = (m?: string) => (silent ? Promise.resolve() : notifyCouldntRead(m));
   const nAlready = () => (silent ? Promise.resolve() : notifyAlreadyLogged());
 
-  dbg(`start uri=${imageUri ? String(imageUri).slice(-28) : 'NULL'} silent=${silent}`);
-  if (!imageUri) {
+  dbg(`start uri=${imageUri ? String(imageUri).slice(-28) : 'NULL'} text=${opts?.textRows ? 'yes' : 'no'} silent=${silent}`);
+  if (!imageUri && !opts?.textRows) {
     await nCouldnt('No image received from the share.');
     return;
   }
   try {
-    const uri = normalizeUri(imageUri);
+    const uri = imageUri ? normalizeUri(imageUri) : null;
 
     let parsed: ParsedPayment | null = null;
-    let rows: string[] = [];
-    const ocrAvail = isLocalOcrAvailable();
-    if (ocrAvail) {
-      try {
-        rows = await recognizeRows(uri);
-        dbg(`ocr ok, ${rows.length} rows`);
-        parsed = parsePaymentScreenshot(rows);
-      } catch (e) {
-        dbg(`ocr THREW: ${String(e).slice(0, 60)}`);
-        parsed = null;
-      }
+    let rows: string[] = opts?.textRows ?? [];
+    if (opts?.textRows) {
+      // Shared TEXT (bank SMS, WhatsApp receipt): the lines ARE the rows — no OCR.
+      dbg(`text share, ${rows.length} lines: ${rows.join(' | ').slice(0, 400)}`);
+      parsed = parsePaymentScreenshot(rows);
     } else {
-      dbg('OCR not available in this build');
+      const ocrAvail = isLocalOcrAvailable();
+      if (ocrAvail) {
+        try {
+          rows = await recognizeRows(uri as string);
+          dbg(`ocr ok, ${rows.length} rows`);
+          dbg(`rows: ${rows.join(' | ').slice(0, 600)}`);
+          parsed = parsePaymentScreenshot(rows);
+        } catch (e) {
+          dbg(`ocr THREW: ${String(e).slice(0, 60)}`);
+          parsed = null;
+        }
+      } else {
+        dbg('OCR not available in this build');
+      }
     }
-    dbg(`parsed pay=${parsed?.isPaymentScreen} amt=${parsed?.amount} reason=${parsed?.reason} conf=${parsed?.confidence}`);
+    dbg(`parsed pay=${parsed?.isPaymentScreen} amt=${parsed?.amount} reason=${parsed?.reason} conf=${parsed?.confidence} payee=${parsed?.payee ?? '-'} dt=${parsed?.datetime ? parsed.datetime.toISOString() : '-'} wallet=${parsed?.walletHint ?? '-'}`);
 
     // Explicit failed/declined screen → never log a wrong success.
     if (parsed && parsed.reason === 'failed') {
@@ -565,10 +587,30 @@ export async function logPaymentFromShare(
       const receipt = extractReceiptFromRows(rows);
       if (receipt) {
         dbg(`receipt: RM ${receipt.total} · ${receipt.vendor ?? '?'} (${receipt.itemCount} items)`);
-        // Receipts are tap-only: a silent reconcile passes scanReceipts:false and must NOT open
-        // the scanner (the notification tap does, via openSharedReceiptById). Only the direct /
-        // deep-link path (scanReceipts !== false) opens it here.
-        if (opts?.scanReceipts !== false) await openReceiptReview(uri);
+        if (uri) {
+          // IMAGE receipt: tap-only review — a silent reconcile passes scanReceipts:false and
+          // must NOT open the scanner (the notification tap does, via openSharedReceiptById).
+          // Only the direct / deep-link path (scanReceipts !== false) opens it here.
+          if (opts?.scanReceipts !== false) await openReceiptReview(uri);
+        } else {
+          // TEXT receipt — no image for the scanner review: log the grand TOTAL as an
+          // editable expense (vendor as the note). Silent-gated like a payment.
+          const result = logQuickExpense({
+            amount: receipt.total,
+            type: 'expense',
+            note: receipt.vendor ?? 'Receipt',
+            inputMethod: 'share',
+            dedupeKey: dedupeKeyFor({
+              refId: null, direction: 'out', amount: receipt.total,
+              datetime: null, payee: receipt.vendor,
+            }),
+          });
+          if (!result) {
+            await nAlready();
+          } else {
+            await nLogged('out', result.amount, receipt.vendor ?? 'Receipt', result.txId);
+          }
+        }
         return;
       }
     }
@@ -577,8 +619,9 @@ export async function logPaymentFromShare(
     //    (a possibly-complicated payment layout). This is the ONLY paid path: ask Gemini, but
     //    only when online AND within the monthly AI quota. Only the rare hard screens reach
     //    here, so cost stays tiny. Always notifies (the extension showed a neutral "checking…").
+    //    Needs an IMAGE — a shared text has nothing more for the AI to read than the rules had.
     const aiAvailable = isGeminiAvailable() && usePremiumStore.getState().canUseAI();
-    if (parsed?.uncertain && aiAvailable) {
+    if (parsed?.uncertain && aiAvailable && uri) {
       const echo = await echoEnrichPayment(uri, parsed);
       if (echo?.amount && echo.amount > 0) {
         const result = logFromEcho(echo, parsed);
@@ -616,4 +659,15 @@ export async function logPaymentFromShare(
   } catch {
     await nCouldnt();
   }
+}
+
+/**
+ * Entry point for a shared TEXT (bank SMS, WhatsApp/Telegram payment confirmation, an
+ * emailed receipt pasted as text). The lines go through the SAME parser + pipeline as OCR
+ * rows — no image involved. Called by the reconcile for each text the extension stashed.
+ */
+export async function logTextFromShare(text: string, opts?: { silent?: boolean }): Promise<void> {
+  const rows = (text ?? '').split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
+  if (rows.length === 0) return;
+  await logPaymentFromShare(null, { ...opts, textRows: rows });
 }

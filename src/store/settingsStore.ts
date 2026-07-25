@@ -238,7 +238,12 @@ interface SettingsState {
   avatarBg: string | null;
   currency: string;
   hapticEnabled: boolean;
+  /** Personal master switch for push notifications (announcements, reminders,
+   *  alerts). OFF also unregisters this device's push tokens. */
   notificationsEnabled: boolean;
+  /** Business-only: push me when a customer places an order via the web shop
+   *  link. OFF clears seller_profiles.push_token so the DB trigger stops. */
+  orderNotificationsEnabled: boolean;
   echoDailyCheckin: boolean;
   /** Daily check-in reminder times, 24h "HH:mm" (local notifications fire daily at each). */
   echoCheckinTimes: string[];
@@ -349,6 +354,7 @@ interface SettingsState {
   setEchoCheckinTimes: (times: string[]) => void;
   setQuickLogConfigured: (configured: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
+  setOrderNotificationsEnabled: (enabled: boolean) => void;
   setQuickActionOrder: (order: string[]) => void;
   setBusinessModeEnabled: (enabled: boolean) => void;
   setDefaultMode: (mode: 'personal' | 'business') => void;
@@ -593,6 +599,7 @@ export const useSettingsStore = create<SettingsState>()(
       currency: 'RM',
       hapticEnabled: true,
       notificationsEnabled: true,
+      orderNotificationsEnabled: true,
       quickActionOrder: [...DEFAULT_QUICK_ACTION_ORDER],
       echoDailyCheckin: false,
       echoCheckinTimes: ['21:00'],
@@ -692,6 +699,7 @@ export const useSettingsStore = create<SettingsState>()(
       setEchoCheckinTimes: (echoCheckinTimes) => set({ echoCheckinTimes }),
       setQuickLogConfigured: (quickLogConfigured) => set({ quickLogConfigured }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
+      setOrderNotificationsEnabled: (orderNotificationsEnabled) => set({ orderNotificationsEnabled }),
       setQuickActionOrder: (quickActionOrder) => set({ quickActionOrder }),
       setBusinessModeEnabled: (businessModeEnabled) => set({ businessModeEnabled }),
       setDefaultMode: (defaultMode) => set({ defaultMode }),
@@ -808,6 +816,7 @@ export const useSettingsStore = create<SettingsState>()(
           language: 'en',
           hapticEnabled: true,
           notificationsEnabled: true,
+          orderNotificationsEnabled: true,
           echoDailyCheckin: false,
           // `currency` is NOT a device preference — it is the unit every BUSINESS
           // screen and PDF export renders the preserved shop figures in. Resetting
@@ -959,6 +968,12 @@ export const useSettingsStore = create<SettingsState>()(
         // Ensure businessProfile exists (added after some installs shipped)
         if (!state.businessProfile) {
           state.businessProfile = { ...EMPTY_BUSINESS_PROFILE };
+        }
+        // orderNotificationsEnabled was added after some installs shipped —
+        // old persisted state has no key, so default it ON (prior behavior:
+        // order pushes always fired once a token existed).
+        if (typeof raw.orderNotificationsEnabled !== 'boolean') {
+          state.orderNotificationsEnabled = true;
         }
         // Ensure bank details exist (added 2026-07-23)
         if (!state.businessBankDetails) {

@@ -32,7 +32,7 @@ import {
   getDaysInMonth,
 } from 'date-fns';
 
-import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useIsFocused, useScrollToTop } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -214,6 +214,10 @@ const PersonalDashboard: React.FC = () => {
   const [refreshing, setRefreshing] = React.useState(false);
   const navigation = useNavigation<any>();
   const isFocused = useIsFocused(); // pauses the strip's ambient ECG on other tabs
+  // Tap the already-active Home tab → scroll back to top (first tap from
+  // another tab just navigates here, scroll position preserved).
+  const scrollRef = React.useRef<InstanceType<typeof RNScrollView>>(null);
+  useScrollToTop(scrollRef);
   const unreadCount = useNotificationStore((s) => s.items.filter((n) => !n.read).length);
 
   const categoryMap = useMemo(() => {
@@ -812,6 +816,7 @@ const PersonalDashboard: React.FC = () => {
   return (
     <View style={styles.container}>
       <RNScrollView
+        ref={scrollRef}
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
