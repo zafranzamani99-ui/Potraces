@@ -13,6 +13,7 @@ import {
   LayoutChangeEvent,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Feather } from '@expo/vector-icons';
@@ -20,6 +21,9 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import Button from '../common/Button';
 import ModalToastHost from '../common/ModalToastHost';
+import NeuButton from '../common/NeuButton';
+import { useNeu } from '../common/neu';
+import { newstOutline } from '../business/NewstInput';
 import QrCaptureModal, { type QrCaptureResult } from '../common/QrCaptureModal';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
@@ -38,7 +42,10 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
   const isDark = useIsDark();
   const t = useT();
   const styles = React.useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
+  const [qrLabelFocused, setQrLabelFocused] = useState(false);
 
   const personalQrs = useSettingsStore((s) => s.paymentQrs) || [];
   const businessQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
@@ -262,59 +269,71 @@ const PaymentQrCard: React.FC<{ mode: 'personal' | 'business'; onLayout?: (e: La
         <ModalToastHost />
       </Modal>
 
-      {/* QR Label Prompt Modal (cross-platform Alert.prompt replacement) */}
+      {/* QR Label Prompt Modal (cross-platform Alert.prompt replacement).
+          Onyx/neu rules: C.background card + neu.raisedModal (no border, no
+          surface slab), 0.4 backdrop, no open animation, newstOutline input,
+          Neu Select save. Anchored LOW — it was centering in the
+          keyboard-shrunk space, which read as "too high". */}
       <Modal
         visible={qrLabelModal.visible}
         transparent
         statusBarTranslucent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setQrLabelModal((s) => ({ ...s, visible: false }))}
       >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }}>
-        <Pressable style={[styles.qrLabelOverlay, { backgroundColor: 'transparent' }]} onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}>
-          <Pressable style={[styles.qrLabelCard, { backgroundColor: C.surface }]} onPress={() => {}}>
+        <KeyboardAvoidingView behavior="padding" style={styles.qrLabelKav}>
+        <Pressable style={[styles.qrLabelOverlay, { paddingBottom: insets.bottom + SPACING['2xl'] }]} onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}>
+          <Pressable style={[styles.qrLabelCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
             <Text style={styles.qrLabelTitle}>
               {qrLabelModal.renameIndex !== undefined ? t.settings.qrRenameTitle : t.settings.qrNameTitle}
             </Text>
             <TextInput
-              style={[styles.qrLabelInput, { color: C.textPrimary }]}
+              style={[styles.qrLabelInput, newstOutline(C, qrLabelFocused)]}
               value={qrLabelInput}
               onChangeText={setQrLabelInput}
+              onFocus={() => setQrLabelFocused(true)}
+              onBlur={() => setQrLabelFocused(false)}
               placeholder={t.settings.qrNamePlaceholder}
-              placeholderTextColor={C.textMuted}
+              placeholderTextColor={C.neutral}
               autoFocus
               selectTextOnFocus
               keyboardAppearance={isDark ? 'dark' : 'light'}
               selectionColor={withAlpha(C.accent, 0.25)}
             />
-            <View style={{ flexDirection: 'row', gap: SPACING.md, justifyContent: 'flex-end' }}>
+            <View style={styles.qrLabelBtnRow}>
               <TouchableOpacity
                 style={styles.qrLabelCancel}
                 onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}
+                accessibilityRole="button"
+                accessibilityLabel={t.settings.qrCancel}
               >
                 <Text style={{ color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium }}>{t.settings.qrCancel}</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.qrLabelSave}
-                onPress={() => {
-                  const label = qrLabelInput.trim();
-                  if (qrLabelModal.renameIndex !== undefined) {
-                    if (label) updatePaymentQrLabel(qrLabelModal.renameIndex, label, mode);
-                  } else if (qrLabelModal.uri) {
-                    const qrLabel = label || `QR ${qrLabelModal.replaceIndex !== undefined ? qrLabelModal.replaceIndex + 1 : paymentQrs.length + 1}`;
-                    if (qrLabelModal.replaceIndex !== undefined) {
-                      replacePaymentQr(qrLabelModal.replaceIndex, qrLabelModal.uri, qrLabel, mode);
-                      showToast(t.settings.qrUpdated, 'success');
-                    } else {
-                      addPaymentQr(qrLabelModal.uri, qrLabel, mode);
-                      showToast(t.settings.qrAdded, 'success');
+              {/* flex:1 wrapper — NeuButton is width:'100%' of its parent; without
+                  this it shrinks to its label (same confirmCol trick as StallProducts). */}
+              <View style={{ flex: 1 }}>
+                <NeuButton
+                  icon="check"
+                  label={t.settings.qrSave}
+                  color={C.accent}
+                  onPress={() => {
+                    const label = qrLabelInput.trim();
+                    if (qrLabelModal.renameIndex !== undefined) {
+                      if (label) updatePaymentQrLabel(qrLabelModal.renameIndex, label, mode);
+                    } else if (qrLabelModal.uri) {
+                      const qrLabel = label || `QR ${qrLabelModal.replaceIndex !== undefined ? qrLabelModal.replaceIndex + 1 : paymentQrs.length + 1}`;
+                      if (qrLabelModal.replaceIndex !== undefined) {
+                        replacePaymentQr(qrLabelModal.replaceIndex, qrLabelModal.uri, qrLabel, mode);
+                        showToast(t.settings.qrUpdated, 'success');
+                      } else {
+                        addPaymentQr(qrLabelModal.uri, qrLabel, mode);
+                        showToast(t.settings.qrAdded, 'success');
+                      }
                     }
-                  }
-                  setQrLabelModal((s) => ({ ...s, visible: false }));
-                }}
-              >
-                <Text style={{ color: C.onAccent, fontWeight: TYPOGRAPHY.weight.semibold }}>{t.settings.qrSave}</Text>
-              </TouchableOpacity>
+                    setQrLabelModal((s) => ({ ...s, visible: false }));
+                  }}
+                />
+              </View>
             </View>
           </Pressable>
         </Pressable>
@@ -481,15 +500,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     height: 1,
     backgroundColor: C.border,
   },
+  qrLabelKav: {
+    flex: 1,
+    // Onyx rule 4 — every scrim is 0.4, no 0.35 variants.
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
   qrLabelOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
     padding: SPACING['2xl'],
   },
+  // Onyx/neu modal card: C.background (never C.surface slab), radius xl,
+  // neu.raisedModal supplies separation — NO border outline (Onyx rule 2).
   qrLabelCard: {
-    backgroundColor: C.surface,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING['2xl'],
     width: '100%',
@@ -501,25 +525,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
+  // Layout + type only; the ONE input border comes from newstOutline in the JSX.
   qrLabelInput: {
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
-    backgroundColor: C.background,
+    minHeight: 48,
+  },
+  qrLabelBtnRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    alignItems: 'center',
   },
   qrLabelCancel: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-  },
-  qrLabelSave: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.xl,
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.md,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   qrPreviewOverlay: {
     flex: 1,

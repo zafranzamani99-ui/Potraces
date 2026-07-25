@@ -15,6 +15,7 @@ import {
   Platform,
   BackHandler,
   Image,
+  ScrollView,
   useWindowDimensions,
 } from 'react-native';
 // Renders into a UIWindow ABOVE the whole app — including the native-stack
@@ -25,8 +26,9 @@ import { FullWindowOverlay } from 'react-native-screens';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
 import { useCalm, useIsDark } from '../../../hooks/useCalm';
@@ -49,14 +51,17 @@ import {
   uploadClubImage,
   uploadQrImage,
   notifySession,
+  clubImageUrl,
 } from '../../../services/collectzService';
 import { parseCollectzAnnouncement } from '../../../services/collectzParser';
 import { supabasePersonal } from '../../../services/supabase';
-import { clubIconsForCategory, presetClubIcon, CLUB_PRESET_PREFIX } from '../../../constants/clubIcons';
+import { clubIconsForCategory, presetClubIcon, presetClubColor, CLUB_PRESET_PREFIX, CLUB_ICON_COLORS } from '../../../constants/clubIcons';
+import { collectzCategoryIcon } from '../../../constants/collectzColors';
 import { isMapsLink } from '../../../utils/mapLink';
 import { parseAmountLoose } from '../../../utils/parseAmountLoose';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
 import CollectzCreatedModal from '../../../components/collectz/CollectzCreatedModal';
+import BottomSheet from '../../../components/common/BottomSheet';
 import { useNeu } from '../../../components/common/neu';
 import PageScrollView from '../../../components/common/PageScrollView';
 import NeuButton from '../../../components/common/NeuButton';
@@ -128,6 +133,11 @@ const CollectzCreate: React.FC = () => {
   const [totalAmount, setTotalAmount] = useState('');
   const [payBy, setPayBy] = useState<Date | null>(null);
   const [rules, setRules] = useState('');
+  // Player requirements (all optional — null = open to all / not specified).
+  const [skillLevel, setSkillLevel] = useState<'beginner' | 'intermediate' | 'advanced' | null>(null);
+  const [ageReq, setAgeReq] = useState<'below_18' | '18_above' | 'any' | null>(null);
+  const [genderReq, setGenderReq] = useState<'male' | 'female' | 'any' | null>(null);
+  const [bookingStatus, setBookingStatus] = useState<'booked' | 'later' | null>(null);
   const [roster, setRoster] = useState<RosterRow[]>([]);
   // Capacity — caps the ACTIVE roster. 'none' = no limit, 'total' = a plain max,
   // 'teams' = N teams × M per team (max = N × M). Joining is blocked at max.
@@ -148,6 +158,7 @@ const CollectzCreate: React.FC = () => {
 
   // v2: club image + edit/template bookkeeping
   const [imagePreset, setImagePreset] = useState<string | null>(null); // CLUB_ICONS id
+  const [iconColor, setIconColor] = useState<string | null>(null); // 6-char hex, no '#'
   const [imageUpload, setImageUpload] = useState<{ uri: string; mimeType?: string } | null>(null);
   const [oldImagePath, setOldImagePath] = useState<string | null>(null); // DB value on load (edit/template)
   const [removedIds, setRemovedIds] = useState<string[]>([]); // edit-mode roster deletions
@@ -170,6 +181,11 @@ const CollectzCreate: React.FC = () => {
   // ── Date/time picker ──
   const [picker, setPicker] = useState<{ field: 'event' | 'eventEnd' | 'payBy'; mode: 'date' | 'time' } | null>(null);
 
+  // ── Section sheets — tap a summary row, edit in a modal (keeps the form a
+  // clean one-pager: grouped cards, not one endless scroll of fields). ──
+  const [sheet, setSheet] = useState<null | 'category' | 'icon' | 'scheme' | 'details' | 'rules' | 'contact' | 'capacity' | 'qr' | 'requirements'>(null);
+  const openSheet = (s: NonNullable<typeof sheet>) => { lightTap(); setSheet(s); };
+
   // ── Note fields (details / rules) — gold keyboard-done FAB while focused ──
   const [multilineFocused, setMultilineFocused] = useState(false);
   const { keyboardVisible, keyboardHeight } = useKeyboardVisible(() => setMultilineFocused(false));
@@ -179,14 +195,15 @@ const CollectzCreate: React.FC = () => {
   // everything typed. Intercept it while an overlay is open and just close that.
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    if (!picker && !pasteOpen) return;
+    if (!picker && !pasteOpen && !sheet) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (sheet) { setSheet(null); return true; }
       if (pasteOpen) { setPasteOpen(false); return true; }
       if (picker) { setPicker(null); return true; }
       return false;
     });
     return () => sub.remove();
-  }, [picker, pasteOpen]);
+  }, [picker, pasteOpen, sheet]);
 
   const keySeq = useRef(0);
   const nextKey = () => `row-${++keySeq.current}`;
@@ -230,6 +247,10 @@ const CollectzCreate: React.FC = () => {
         setTotalAmount(s.total_amount != null ? String(s.total_amount) : '');
         setPayBy(isEdit ? pb : (pb ? shift(s.pay_by) : null));
         setRules(s.rules_text ?? '');
+        setSkillLevel(s.skill_level ?? null);
+        setAgeReq(s.age_req ?? null);
+        setGenderReq(s.gender_req ?? null);
+        setBookingStatus(s.booking_status ?? null);
         setCurrency(s.currency || appCurrency);
         setQrPayload(s.qr_payload ?? null);
         setQrLabel(null);
@@ -249,6 +270,7 @@ const CollectzCreate: React.FC = () => {
         }
         const preset = presetClubIcon(s.image_path);
         setImagePreset(preset ? preset.id : null);
+        setIconColor(presetClubColor(s.image_path)?.slice(1) ?? null);
         setOldImagePath(preset ? null : (s.image_path ?? null));
         if (isEdit) {
           const map: Record<string, string> = {};
@@ -274,6 +296,131 @@ const CollectzCreate: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editSessionId, templateFrom]);
 
+  // ── Draft autosave — the whole form (minus image uploads) persists to
+  // AsyncStorage 600ms after the last change. Coming back to a screen with a
+  // draft shows a tappable banner — NOTHING is applied until you tap Restore;
+  // typing something fresh quietly replaces the stored draft. ──
+  const draftKey = `@potraces/collectzDraft/v1/${isEdit ? `edit-${editSessionId}` : templateFrom ? `tpl-${templateFrom}` : 'new'}`;
+  const draftChecked = useRef(false);
+  const [draftAvailable, setDraftAvailable] = useState<Record<string, any> | null>(null);
+
+  const applyDraft = (d: Record<string, any>) => {
+    setTitle(d.title ?? '');
+    setCategory(d.category ?? null);
+    setEventAt(d.eventAt ? new Date(d.eventAt) : null);
+    setEventEnd(d.eventEnd ? new Date(d.eventEnd) : null);
+    setVenue(d.venue ?? '');
+    setMapsUrl(d.mapsUrl ?? '');
+    setSocialHandles(d.socialHandles ?? { ig: '', x: '', threads: '', fb: '', telegram: '' });
+    setGroupUrl(d.groupUrl ?? '');
+    setDetails(d.details ?? '');
+    setScheme(d.scheme ?? 'flat');
+    setShareAmount(d.shareAmount ?? '');
+    setTotalAmount(d.totalAmount ?? '');
+    setPayBy(d.payBy ? new Date(d.payBy) : null);
+    setRules(d.rules ?? '');
+    setSkillLevel(d.skillLevel ?? null);
+    setAgeReq(d.ageReq ?? null);
+    setGenderReq(d.genderReq ?? null);
+    setBookingStatus(d.bookingStatus ?? null);
+    if (Array.isArray(d.roster)) {
+      setRoster(d.roster);
+      for (const r of d.roster) {
+        const m = /^row-(\d+)$/.exec(r?.key ?? '');
+        if (m) keySeq.current = Math.max(keySeq.current, Number(m[1]));
+      }
+    }
+    setCapMode(d.capMode ?? 'none');
+    setMaxPlayers(d.maxPlayers ?? 10);
+    setTeamCount(d.teamCount ?? 2);
+    setTeamNames(Array.isArray(d.teamNames) ? d.teamNames : []);
+    setTeamSize(d.teamSize ?? 5);
+    setQrPayload(d.qrPayload ?? null);
+    setQrLabel(d.qrLabel ?? null);
+    setQrImagePath(d.qrImagePath ?? null);
+    setCurrency(d.currency ?? appCurrency);
+    setImagePreset(d.imagePreset ?? null);
+    setIconColor(d.iconColor ?? null);
+    setOldImagePath(d.oldImagePath ?? null);
+    if (isEdit && Array.isArray(d.removedIds)) setRemovedIds(d.removedIds);
+  };
+
+  const restoreDraft = () => {
+    if (!draftAvailable) return;
+    lightTap();
+    applyDraft(draftAvailable);
+    setDraftAvailable(null);
+    showToast(t.collectz.draftRestored, 'info');
+  };
+
+  const discardDraft = () => {
+    lightTap();
+    setDraftAvailable(null);
+    AsyncStorage.removeItem(draftKey).catch(() => {});
+  };
+
+  // The persistable form snapshot (everything but image uploads + savedAt,
+  // which is added at write time). Compared against a baseline so only real
+  // user edits trigger a write — never the mount run or the banner appearing.
+  const serializeDraft = () => ({
+    title, category,
+    eventAt: eventAt ? eventAt.toISOString() : null,
+    eventEnd: eventEnd ? eventEnd.toISOString() : null,
+    venue, mapsUrl, socialHandles, groupUrl, details, scheme,
+    shareAmount, totalAmount,
+    payBy: payBy ? payBy.toISOString() : null,
+    rules, roster, capMode, maxPlayers, teamCount, teamNames, teamSize,
+    skillLevel, ageReq, genderReq, bookingStatus,
+    qrPayload, qrLabel, qrImagePath, currency, imagePreset, iconColor, oldImagePath,
+    removedIds,
+  });
+  const draftBaseline = useRef<string>('');
+
+  // Check storage once (after any prefill) and OFFER the draft via the banner.
+  useEffect(() => {
+    if (prefilling || draftChecked.current) return;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(draftKey);
+        if (raw) {
+          const d = JSON.parse(raw);
+          // Edit mode: a draft older than the server's last update is stale — drop it.
+          if (isEdit && original.current?.updated_at && !(d.savedAt > new Date(original.current.updated_at).getTime())) {
+            AsyncStorage.removeItem(draftKey).catch(() => {});
+          } else {
+            setDraftAvailable(d);
+          }
+        }
+      } catch {
+        // A corrupt draft is disposable — ignore it and start clean.
+      } finally {
+        // Baseline = the form as it stands now (fresh or server-prefilled).
+        // Only a CHANGE from this point counts as user input for autosave.
+        draftBaseline.current = JSON.stringify(serializeDraft());
+        draftChecked.current = true;
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefilling, draftKey]);
+
+  useEffect(() => {
+    if (prefilling) return;
+    const h = setTimeout(() => {
+      if (!draftChecked.current) return;
+      const json = JSON.stringify(serializeDraft());
+      // No user edit since the baseline — do NOT write (and never dismiss the
+      // banner). This is what kept auto-vanishing the restore offer.
+      if (json === draftBaseline.current) return;
+      draftBaseline.current = json;
+      // Typing with the banner up = "start fresh": the offer goes away and the
+      // new content becomes the draft.
+      setDraftAvailable((cur) => (cur ? null : cur));
+      AsyncStorage.setItem(draftKey, JSON.stringify({ savedAt: Date.now(), ...JSON.parse(json) })).catch(() => {});
+    }, 600);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefilling, draftKey, title, category, eventAt, eventEnd, venue, mapsUrl, socialHandles, groupUrl, details, scheme, shareAmount, totalAmount, payBy, rules, roster, capMode, maxPlayers, teamCount, teamNames, teamSize, skillLevel, ageReq, genderReq, bookingStatus, qrPayload, qrLabel, qrImagePath, currency, imagePreset, iconColor, oldImagePath, removedIds]);
+
   const catLabels: Record<CategoryKey, string> = {
     sport: t.collectz.catSport,
     makan: t.collectz.catMakan,
@@ -286,6 +433,36 @@ const CollectzCreate: React.FC = () => {
     equal: t.collectz.schemeEqual,
     custom: t.collectz.schemeCustom,
   };
+  // Player-requirement value labels (null state = "Optional" in the row).
+  const skillLabels: Record<string, string> = {
+    beginner: t.collectz.reqSkillBeginner,
+    intermediate: t.collectz.reqSkillIntermediate,
+    advanced: t.collectz.reqSkillAdvanced,
+  };
+  const ageLabels: Record<string, string> = {
+    below_18: t.collectz.reqAgeBelow18,
+    '18_above': t.collectz.reqAge18Above,
+    any: t.collectz.reqAgeAny,
+  };
+  const genderLabels: Record<string, string> = {
+    male: t.collectz.reqGenderMale,
+    female: t.collectz.reqGenderFemale,
+    any: t.collectz.reqGenderAny,
+  };
+  const bookingLabels: Record<string, string> = {
+    booked: t.collectz.reqBookingBooked,
+    later: t.collectz.reqBookingLater,
+  };
+  // One summary row in the requirements card — every row opens the same sheet.
+  const reqRow = (label: string, value: string | null) => (
+    <Pressable style={styles.cardRow} onPress={() => openSheet('requirements')} accessibilityRole="button">
+      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={styles.rowValueWrap}>
+        <Text style={value ? styles.rowValue : styles.rowValueDim}>{value ?? t.collectz.optionalValue}</Text>
+        <Feather name="chevron-right" size={15} color={C.textMuted} />
+      </View>
+    </Pressable>
+  );
 
   // Effective cap (null = no limit) + how many active names are filled. Drives the
   // "x of y spots" counter and locks "Add name" once the roster is full.
@@ -293,6 +470,10 @@ const CollectzCreate: React.FC = () => {
     capMode === 'total' ? maxPlayers : capMode === 'teams' ? teamCount * teamSize : null;
   const activeFilled = roster.filter((r) => r.name.trim() && r.slot === 'active').length;
   const rosterFull = capacityMax != null && activeFilled >= capacityMax;
+  // Filled contact channels — drives the contact summary row ("2 added").
+  const contactCount =
+    SOCIAL_PLATFORMS.filter((p) => socialHandles[p.key].trim()).length +
+    (isWhatsappGroupUrl(groupUrl) ? 1 : 0);
   // How many ACTIVE players sit in each team (1-based index -> count). Reserves
   // hold no team slot, so they never fill one up.
   const teamFill = useMemo(() => {
@@ -360,34 +541,39 @@ const CollectzCreate: React.FC = () => {
     applyPicked(date);
   };
 
-  const renderWhenRow = (
+  // In-card date/time row: label left, small date/time pills right. Tapping a
+  // pill opens the same picker overlay as before — only the presentation changed.
+  const rowWhen = (
     label: string,
     value: Date | null,
-    field: 'event' | 'payBy',
-    onClear?: () => void,
+    field: 'event' | 'eventEnd' | 'payBy',
+    opts?: { timeOnly?: boolean; onClear?: () => void },
   ) => (
-    <View style={styles.fieldGroup}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.whenRow}>
-        <Pressable style={styles.whenBtn} onPress={() => { selectionChanged(); setPicker({ field, mode: 'date' }); }}>
-          <Feather name="calendar" size={15} color={C.textSecondary} />
-          <Text style={[styles.whenText, !value && styles.whenTextDim]}>
-            {value ? fmtDate(value.toISOString()) : t.collectz.pickDate}
-          </Text>
-        </Pressable>
-        <Pressable style={styles.whenBtn} onPress={() => { selectionChanged(); setPicker({ field, mode: 'time' }); }}>
-          <Feather name="clock" size={15} color={C.textSecondary} />
-          <Text style={[styles.whenText, !value && styles.whenTextDim]}>
-            {value ? fmtTime(value.toISOString()) : t.collectz.pickTime}
-          </Text>
-        </Pressable>
-        {value && onClear && (
-          <Pressable onPress={onClear} hitSlop={8} accessibilityRole="button" accessibilityLabel={t.common.clear}>
-            <Feather name="x-circle" size={18} color={C.textMuted} />
+    <>
+      <View style={styles.cardRow}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <View style={styles.rowValueWrap}>
+          {!opts?.timeOnly && (
+            <Pressable style={styles.whenPill} onPress={() => { selectionChanged(); setPicker({ field, mode: 'date' }); }}>
+              <Text style={[styles.whenPillText, !value && styles.whenTextDim]}>
+                {value ? fmtDate(value.toISOString()) : t.collectz.pickDate}
+              </Text>
+            </Pressable>
+          )}
+          <Pressable style={styles.whenPill} onPress={() => { selectionChanged(); setPicker({ field, mode: 'time' }); }}>
+            <Text style={[styles.whenPillText, !value && styles.whenTextDim]}>
+              {value ? fmtTime(value.toISOString()) : t.collectz.pickTime}
+            </Text>
           </Pressable>
-        )}
+          {value && opts?.onClear && (
+            <Pressable onPress={opts.onClear} hitSlop={8} accessibilityRole="button" accessibilityLabel={t.common.clear}>
+              <Feather name="x-circle" size={16} color={C.textMuted} />
+            </Pressable>
+          )}
+        </View>
       </View>
-    </View>
+      <View style={styles.rowDivider} />
+    </>
   );
 
   // ── Capacity stepper (− value +) ──
@@ -479,7 +665,7 @@ const CollectzCreate: React.FC = () => {
    */
   const resolveImagePath = async (sessionId: string): Promise<string | null> => {
     if (imageUpload) return uploadClubImage(sessionId, imageUpload);
-    if (imagePreset) return `${CLUB_PRESET_PREFIX}${imagePreset}`;
+    if (imagePreset) return `${CLUB_PRESET_PREFIX}${imagePreset}${iconColor ? `:${iconColor}` : ''}`;
     return oldImagePath;
   };
 
@@ -501,6 +687,9 @@ const CollectzCreate: React.FC = () => {
 
   const changeSummary = (next: {
     venue: string | null;
+    maps_url: string | null;
+    qr_payload: string | null;
+    qr_image_path: string | null;
     event_at: string | null;
     event_end: string | null;
     pay_by: string | null;
@@ -515,8 +704,13 @@ const CollectzCreate: React.FC = () => {
     if (!s) return null;
     const parts: string[] = [];
     if ((s.venue ?? '') !== (next.venue ?? '')) parts.push(`${t.collectz.changeVenue.replace('{v}', next.venue ?? '—')}`);
+    if ((s.maps_url ?? '') !== (next.maps_url ?? '')) parts.push(t.collectz.changeMaps);
     if (!sameInstant(s.event_at, next.event_at) || !sameInstant(s.event_end, next.event_end)) parts.push(t.collectz.changeTime);
     if (!sameInstant(s.pay_by, next.pay_by)) parts.push(t.collectz.changePayBy);
+    // QR changes move real money — participants must re-scan, never slip it in silently.
+    if ((s.qr_payload ?? null) !== (next.qr_payload ?? null) || (s.qr_image_path ?? null) !== (next.qr_image_path ?? null)) {
+      parts.push(t.collectz.changeQr);
+    }
     // Capacity changes were invisible to participants — now they're reported too.
     if ((s.max_participants ?? null) !== (next.max_participants ?? null)) {
       parts.push(
@@ -644,6 +838,9 @@ const CollectzCreate: React.FC = () => {
       socials: Object.keys(socialsOut).length ? socialsOut : null,
       group_url: isWhatsappGroupUrl(groupUrl) ? groupUrl.trim() : null,
     };
+    // Step tag for the dev error toast — RLS/Postgres errors don't name the
+    // table, so without this we can't tell a QR upload failure from a roster one.
+    let saveStep = 'prep';
     try {
       if (isEdit && editSessionId) {
         // ── Edit path: update the session, reconcile the roster, maybe notify ──
@@ -658,6 +855,10 @@ const CollectzCreate: React.FC = () => {
           details_text: details.trim() || null,
           rules_text: rules.trim() || null,
           scheme,
+          skill_level: skillLevel,
+          age_req: ageReq,
+          gender_req: genderReq,
+          booking_status: bookingStatus,
           // Persisted for ALL schemes: for 'equal' it's the split base, otherwise
           // the informational court/venue cost (never fed into share math).
           total_amount: parseAmount(totalAmount),
@@ -672,13 +873,17 @@ const CollectzCreate: React.FC = () => {
           image_path: null as string | null,
           qr_image_path: null as string | null,
         };
+        saveStep = 'club-image';
         next.image_path = await resolveImagePath(editSessionId);
         // Photo QR: upload the newly-picked picture, else keep whatever was stored.
+        saveStep = 'qr-upload';
         next.qr_image_path = qrImageUri
           ? await uploadQrImage(editSessionId, { uri: qrImageUri })
           : qrImagePath;
+        saveStep = 'update-session';
         await updateSession(editSessionId, next);
         // Roster diff: removals first, then updates, then additions.
+        saveStep = 'roster';
         for (const id of removedIds) {
           // Tell the removed person first — collectz-notify's 'removed' kind
           // pushes to the participant_user_id we pass, and must fire BEFORE the
@@ -711,12 +916,14 @@ const CollectzCreate: React.FC = () => {
         if (notifyChanges && summary) {
           notifySession(editSessionId, 'edited', summary).catch(() => {});
         }
+        AsyncStorage.removeItem(draftKey).catch(() => {});
         successNotification();
         navigation.goBack();
         return;
       }
 
       // ── Create path (blank or template) ──
+      saveStep = 'create-session';
       const session = await createSession({
         title: title.trim(),
         category,
@@ -728,6 +935,10 @@ const CollectzCreate: React.FC = () => {
         details_text: details.trim() || null,
         rules_text: rules.trim() || null,
         scheme,
+        skill_level: skillLevel,
+        age_req: ageReq,
+        gender_req: genderReq,
+        booking_status: bookingStatus,
         // Persisted for ALL schemes: for 'equal' it's the split base, otherwise
         // the informational court/venue cost (never fed into share math).
         total_amount: parseAmount(totalAmount),
@@ -739,7 +950,7 @@ const CollectzCreate: React.FC = () => {
         team_count: capMode === 'teams' ? teamCount : null,
         team_size: capMode === 'teams' ? teamSize : null,
         team_names: teamNamesPayload(),
-        image_path: imagePreset ? `${CLUB_PRESET_PREFIX}${imagePreset}` : oldImagePath,
+        image_path: imagePreset ? `${CLUB_PRESET_PREFIX}${imagePreset}${iconColor ? `:${iconColor}` : ''}` : oldImagePath,
         qr_image_path: qrImagePath,
       });
       // Uploads come after create — they need the session id for their storage path.
@@ -766,6 +977,7 @@ const CollectzCreate: React.FC = () => {
         }
       }
       const rows = roster.filter((r) => r.name.trim());
+      saveStep = 'roster';
       for (const r of rows) {
         // Sequential keeps failures attributable to a specific name.
         await addParticipant(session.id, r.name.trim(), {
@@ -775,6 +987,7 @@ const CollectzCreate: React.FC = () => {
         });
       }
       successNotification();
+      AsyncStorage.removeItem(draftKey).catch(() => {});
       // Confirmation first (was: navigate + auto-open the share sheet). The modal
       // shows a summary + the code/link to copy, and owns "Share" + "View session".
       setCreatedSession({
@@ -788,11 +1001,11 @@ const CollectzCreate: React.FC = () => {
       // a bare "try again" hid a plain schema error (missing column) for a whole
       // debugging round.
       const detail = err instanceof Error && err.message ? err.message : '';
-      showToast(__DEV__ && detail ? `${t.collectz.createError} — ${detail}` : t.collectz.createError, 'error');
+      showToast(__DEV__ && detail ? `${t.collectz.createError} [${saveStep}] — ${detail}` : t.collectz.createError, 'error');
     } finally {
       setSaving(false);
     }
-  }, [saving, isEdit, editSessionId, title, category, eventAt, eventEnd, venue, mapsUrl, socialHandles, groupUrl, details, rules, scheme, totalAmount, shareAmount, currency, payBy, qrPayload, qrImageUri, qrImagePath, imagePreset, imageUpload, oldImagePath, removedIds, roster, notifyChanges, capacityMax, capMode, teamCount, teamSize, teamNames, navigation, showToast, t]);
+  }, [saving, isEdit, editSessionId, title, category, eventAt, eventEnd, venue, mapsUrl, socialHandles, groupUrl, details, rules, scheme, totalAmount, shareAmount, currency, payBy, qrPayload, qrImageUri, qrImagePath, imagePreset, imageUpload, oldImagePath, removedIds, roster, notifyChanges, capacityMax, capMode, teamCount, teamSize, teamNames, skillLevel, ageReq, genderReq, bookingStatus, navigation, showToast, t]);
 
   const handleSave = () => {
     if (!title.trim()) {
@@ -851,289 +1064,223 @@ const CollectzCreate: React.FC = () => {
         </Pressable>
         )}
 
-        {/* Title */}
-        <View style={[styles.fieldCard, neuF.raisedSoft]}>
-          <Text style={styles.fieldCardLabel}>{t.collectz.fieldTitle} <Text style={styles.requiredStar}>*</Text></Text>
-          <TextInput
-            style={styles.fieldCardInput}
-            value={title}
-            onChangeText={setTitle}
-            placeholder={t.collectz.fieldTitlePlaceholder}
-            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
-          />
-        </View>
-
-        {/* Category chips */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t.collectz.fieldCategory}</Text>
-          <View style={styles.chipRow}>
-            {CATEGORIES.map((key) => {
-              return (
-                <Pressable
-                  key={key}
-                  style={[styles.chip, neuF.raised, category === key && styles.chipActive]}
-                  onPress={() => { selectionChanged(); setCategory(category === key ? null : key); }}
-                >
-                  <Text style={[styles.chipText, category === key && styles.chipTextActive]}>{catLabels[key]}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Club image / icon — the grid focuses on the picked category (tap a
-            category above to filter it to related icons). */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t.collectz.fieldImage}</Text>
-          <View style={styles.iconGrid}>
-            {clubIconsForCategory(category).map((icon) => {
-              return (
-                <Pressable
-                  key={icon.id}
-                  style={[styles.iconTile, imagePreset === icon.id && styles.iconTileActive]}
-                  onPress={() => pickPreset(icon.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={icon.id}
-                >
-                  <Text style={styles.iconEmoji}>{icon.emoji}</Text>
-                </Pressable>
-              );
-            })}
-            <Pressable
-              style={[styles.iconTile, (imageUpload || (!imagePreset && oldImagePath)) && styles.iconTileActive]}
-              onPress={pickUpload}
-              accessibilityRole="button"
-              accessibilityLabel={t.collectz.imageUpload}
-            >
-              {imageUpload ? (
-                <Image source={{ uri: imageUpload.uri }} style={styles.iconImage} />
-              ) : (
-                <Feather name="upload" size={20} color={C.textSecondary} />
-              )}
+        {/* Draft offer — nothing is applied unless you tap Restore; ✕ discards,
+            typing something fresh replaces it. */}
+        {!!draftAvailable && (
+          <View style={[styles.draftBanner, neuF.raisedSoft]}>
+            <Feather name="clock" size={14} color={C.textMuted} />
+            <Text style={styles.draftBannerText} numberOfLines={1}>
+              {fill(t.collectz.draftBannerTitle, {
+                when: `${fmtDate(new Date(draftAvailable.savedAt).toISOString())} · ${fmtTime(new Date(draftAvailable.savedAt).toISOString())}`,
+              })}
+            </Text>
+            <Pressable onPress={restoreDraft} hitSlop={8} accessibilityRole="button">
+              <Text style={styles.draftRestore}>{t.collectz.draftRestore}</Text>
+            </Pressable>
+            <Pressable onPress={discardDraft} hitSlop={8} accessibilityRole="button" accessibilityLabel={t.common.clear}>
+              <Feather name="x" size={16} color={C.textMuted} />
             </Pressable>
           </View>
-        </View>
+        )}
 
-        {renderWhenRow(t.collectz.fieldEventAt, eventAt, 'event')}
-
-        {/* End time (optional) — turns the display into a range ("9:00 – 11:00 PM").
-            Time-only; the date follows the start. */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t.collectz.fieldEventEnd}</Text>
-          <View style={styles.whenRow}>
-            <Pressable style={styles.whenBtn} onPress={() => { selectionChanged(); setPicker({ field: 'eventEnd', mode: 'time' }); }}>
-              <Feather name="clock" size={15} color={C.textSecondary} />
-              <Text style={[styles.whenText, !eventEnd && styles.whenTextDim]}>
-                {eventEnd ? fmtTime(eventEnd.toISOString()) : t.collectz.pickTime}
+        {/* ── BASICS ── */}
+        <Text style={styles.sectionLabel}>{t.collectz.secBasics}</Text>
+        <View style={[styles.gCard, neuF.raisedSoft]}>
+          <View style={[styles.cardRow, styles.cardRowCol]}>
+            <Text style={styles.rowLabel}>{t.collectz.fieldTitle} <Text style={styles.requiredStar}>*</Text></Text>
+            <TextInput
+              style={styles.rowInput}
+              value={title}
+              onChangeText={setTitle}
+              placeholder={t.collectz.fieldTitlePlaceholder}
+              placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+              multiline
+            />
+          </View>
+          <View style={styles.rowDivider} />
+          <Pressable style={styles.cardRow} onPress={() => openSheet('category')} accessibilityRole="button">
+            <Text style={styles.rowLabel}>{t.collectz.fieldCategory}</Text>
+            <View style={styles.rowValueWrap}>
+              {category ? (
+                <MaterialCommunityIcons name={collectzCategoryIcon(category) as any} size={16} color={C.textSecondary} />
+              ) : null}
+              <Text style={category ? styles.rowValue : styles.rowValueDim}>
+                {category ? catLabels[category] : t.collectz.chooseValue}
               </Text>
-            </Pressable>
-            {eventEnd && (
-              <Pressable onPress={() => setEventEnd(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel={t.common.clear}>
-                <Feather name="x-circle" size={18} color={C.textMuted} />
-              </Pressable>
+              <Feather name="chevron-right" size={15} color={C.textMuted} />
+            </View>
+          </Pressable>
+          <View style={styles.rowDivider} />
+          <Pressable style={styles.cardRow} onPress={() => openSheet('icon')} accessibilityRole="button">
+            <Text style={styles.rowLabel}>{t.collectz.fieldImage}</Text>
+            <View style={styles.rowValueWrap}>
+              {imagePreset ? (
+                <MaterialCommunityIcons
+                  name={(presetClubIcon(`${CLUB_PRESET_PREFIX}${imagePreset}`)?.icon ?? 'account-group') as any}
+                  size={20}
+                  color={iconColor ? `#${iconColor}` : C.textSecondary}
+                />
+              ) : imageUpload ? (
+                <Image source={{ uri: imageUpload.uri }} style={styles.rowThumb} />
+              ) : oldImagePath ? (
+                <Image source={{ uri: clubImageUrl(oldImagePath) }} style={styles.rowThumb} />
+              ) : (
+                <Text style={styles.rowValueDim}>{t.collectz.chooseValue}</Text>
+              )}
+              <Feather name="chevron-right" size={15} color={C.textMuted} />
+            </View>
+          </Pressable>
+        </View>
+
+        {/* ── PLAYER REQUIREMENTS ── */}
+        <Text style={styles.sectionLabel}>{t.collectz.secRequirements}</Text>
+        <View style={[styles.gCard, neuF.raisedSoft]}>
+          {reqRow(t.collectz.reqSkill, skillLevel ? skillLabels[skillLevel] : null)}
+          <View style={styles.rowDivider} />
+          {reqRow(t.collectz.reqAge, ageReq ? ageLabels[ageReq] : null)}
+          <View style={styles.rowDivider} />
+          {reqRow(t.collectz.reqGender, genderReq ? genderLabels[genderReq] : null)}
+          <View style={styles.rowDivider} />
+          {reqRow(t.collectz.reqBooking, bookingStatus ? bookingLabels[bookingStatus] : null)}
+        </View>
+
+        {/* ── SCHEDULE ── */}
+        <Text style={styles.sectionLabel}>{t.collectz.secSchedule}</Text>
+        <View style={[styles.gCard, neuF.raisedSoft]}>
+          {rowWhen(t.collectz.fieldEventAt, eventAt, 'event')}
+          {rowWhen(t.collectz.fieldEventEnd, eventEnd, 'eventEnd', { timeOnly: true, onClear: () => setEventEnd(null) })}
+          <View style={[styles.cardRow, styles.cardRowCol]}>
+            <Text style={styles.rowLabel}>{t.collectz.fieldVenue}</Text>
+            <TextInput
+              style={styles.rowInput}
+              value={venue}
+              onChangeText={setVenue}
+              placeholder={t.collectz.fieldVenuePlaceholder}
+              placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+              multiline
+            />
+          </View>
+          <View style={styles.rowDivider} />
+          <View style={[styles.cardRow, styles.cardRowCol]}>
+            <Text style={styles.rowLabel}>{t.collectz.fieldMaps}</Text>
+            <TextInput
+              style={styles.rowInput}
+              value={mapsUrl}
+              onChangeText={setMapsUrl}
+              placeholder={t.collectz.fieldMapsPlaceholder}
+              placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+              autoCapitalize="none"
+              keyboardType="url"
+              multiline
+            />
+            {!!mapsUrl.trim() && isMapsLink(mapsUrl.trim()) && (
+              <MapPreviewCard mapsUrl={mapsUrl.trim()} compact />
             )}
           </View>
         </View>
 
-        {/* Venue */}
-        <View style={[styles.fieldCard, neuF.raisedSoft]}>
-          <Text style={styles.fieldCardLabel}>{t.collectz.fieldVenue}</Text>
-          <TextInput
-            style={styles.fieldCardInput}
-            value={venue}
-            onChangeText={setVenue}
-            placeholder={t.collectz.fieldVenuePlaceholder}
-            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
-          />
-        </View>
-
-        {/* Maps link + preview */}
-        <View style={[styles.fieldCard, neuF.raisedSoft]}>
-          <Text style={styles.fieldCardLabel}>{t.collectz.fieldMaps}</Text>
-          <TextInput
-            style={styles.fieldCardInput}
-            value={mapsUrl}
-            onChangeText={setMapsUrl}
-            placeholder={t.collectz.fieldMapsPlaceholder}
-            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
-            autoCapitalize="none"
-            keyboardType="url"
-          />
-          {!!mapsUrl.trim() && isMapsLink(mapsUrl.trim()) && (
-            <MapPreviewCard mapsUrl={mapsUrl.trim()} compact />
-          )}
-        </View>
-
-        {/* Contact (optional) — organizer socials + WhatsApp group link. Shown to
-            everyone who has the link; skipping it changes nothing. */}
-        <View style={[styles.fieldCard, neuF.raisedSoft]}>
-          <Text style={styles.fieldCardLabel}>{t.collectz.fieldContact}</Text>
-          <Text style={styles.contactHint}>{t.collectz.fieldContactHint}</Text>
-          {SOCIAL_PLATFORMS.map((p) => (
-            <View key={p.key} style={styles.contactRow}>
-              <Feather name={p.icon as keyof typeof Feather.glyphMap} size={15} color={C.textMuted} />
-              <TextInput
-                style={[styles.fieldCardInput, styles.contactInput]}
-                value={socialHandles[p.key]}
-                onChangeText={(v) => setSocialHandles((prev) => ({ ...prev, [p.key]: v }))}
-                placeholder={`${p.label} · @handle`}
-                placeholderTextColor={withAlpha(C.textMuted, 0.55)}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
+        {/* ── PAYMENT ── */}
+        <Text style={styles.sectionLabel}>{t.collectz.secPayment}</Text>
+        <View style={[styles.gCard, neuF.raisedSoft]}>
+          <Pressable style={styles.cardRow} onPress={() => openSheet('scheme')} accessibilityRole="button">
+            <Text style={styles.rowLabel}>{t.collectz.fieldScheme}</Text>
+            <View style={styles.rowValueWrap}>
+              <Text style={styles.rowValue}>{schemeLabels[scheme]}</Text>
+              <Feather name="chevron-right" size={15} color={C.textMuted} />
             </View>
-          ))}
-          <View style={styles.contactRow}>
-            <Feather name="users" size={15} color={C.textMuted} />
-            <TextInput
-              style={[styles.fieldCardInput, styles.contactInput]}
-              value={groupUrl}
-              onChangeText={setGroupUrl}
-              placeholder={t.collectz.fieldGroupPlaceholder}
-              placeholderTextColor={withAlpha(C.textMuted, 0.55)}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
-          </View>
-          {!!groupUrl.trim() && !isWhatsappGroupUrl(groupUrl) && (
-            <Text style={styles.contactWarn}>{t.collectz.groupLinkInvalid}</Text>
+          </Pressable>
+          <View style={styles.rowDivider} />
+          {scheme === 'flat' && (
+            <>
+              <View style={styles.cardRow}>
+                <Text style={styles.rowLabel}>{t.collectz.fieldShareAmount.replace('{currency}', currency)}</Text>
+                <TextInput
+                  style={styles.rowAmountInput}
+                  value={shareAmount}
+                  onChangeText={setShareAmount}
+                  placeholder="0.00"
+                  placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={styles.rowDivider} />
+            </>
           )}
-        </View>
-
-        {/* Details */}
-        <View style={[styles.fieldCard, neuF.raisedSoft]}>
-          <Text style={styles.fieldCardLabel}>{t.collectz.fieldDetails}</Text>
-          <TextInput
-            style={[styles.fieldCardInput, styles.fieldCardMultiline]}
-            value={details}
-            onChangeText={setDetails}
-            placeholder={t.collectz.fieldDetailsPlaceholder}
-            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
-            multiline
-            textAlignVertical="top"
-            onFocus={() => setMultilineFocused(true)}
-            onBlur={() => setMultilineFocused(false)}
-          />
-        </View>
-
-        {/* Scheme */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t.collectz.fieldScheme}</Text>
-          <View style={styles.chipRow}>
-            {(['flat', 'equal', 'custom'] as CollectzScheme[]).map((key) => (
-              <Pressable
-                key={key}
-                style={[styles.chip, neuF.raised, scheme === key && styles.chipActive]}
-                onPress={() => { selectionChanged(); setScheme(key); }}
-              >
-                <Text style={[styles.chipText, scheme === key && styles.chipTextActive]}>{schemeLabels[key]}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        {/* Amount — same debt-style card as the other fields */}
-        {scheme === 'flat' && (
-          <View style={[styles.fieldCard, neuF.raisedSoft]}>
-            <Text style={styles.fieldCardLabel}>{t.collectz.fieldShareAmount.replace('{currency}', currency)}</Text>
+          {/* Total / court cost — always available. For "equal" it's the number that
+              gets divided; for flat/custom it's the informational venue/court cost
+              (e.g. "Harga Court: RM180") so it's never lost. */}
+          <View style={styles.cardRow}>
+            <Text style={styles.rowLabel}>
+              {(scheme === 'equal' ? t.collectz.fieldTotalAmount : t.collectz.fieldCourtCost).replace('{currency}', currency)}
+            </Text>
             <TextInput
-              style={styles.fieldCardInput}
-              value={shareAmount}
-              onChangeText={setShareAmount}
+              style={styles.rowAmountInput}
+              value={totalAmount}
+              onChangeText={setTotalAmount}
               placeholder="0.00"
               placeholderTextColor={withAlpha(C.textMuted, 0.55)}
               keyboardType="decimal-pad"
             />
           </View>
-        )}
-        {/* Total / court cost — always available. For "equal" it's the number that
-            gets divided; for flat/custom it's the informational venue/court cost
-            (e.g. "Harga Court: RM180") so it's never lost. */}
-        <View style={[styles.fieldCard, neuF.raisedSoft]}>
-          <Text style={styles.fieldCardLabel}>
-            {(scheme === 'equal' ? t.collectz.fieldTotalAmount : t.collectz.fieldCourtCost).replace('{currency}', currency)}
-          </Text>
-          <TextInput
-            style={styles.fieldCardInput}
-            value={totalAmount}
-            onChangeText={setTotalAmount}
-            placeholder="0.00"
-            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
-            keyboardType="decimal-pad"
-          />
+          <View style={styles.rowDivider} />
+          {/* Currency is NOT chosen here — it follows the app currency (Settings).
+              Editing an existing session keeps whatever it was created with. */}
+          {rowWhen(t.collectz.fieldPayBy, payBy, 'payBy', { onClear: () => setPayBy(null) })}
+          <Pressable style={styles.cardRow} onPress={() => openSheet('details')} accessibilityRole="button">
+            <Text style={styles.rowLabel}>{t.collectz.fieldDetails}</Text>
+            <View style={styles.rowValueWrap}>
+              <Text style={details.trim() ? styles.rowValuePreview : styles.rowValueDim}>
+                {details.trim() ? details.trim() : t.collectz.optionalValue}
+              </Text>
+              <Feather name="chevron-right" size={15} color={C.textMuted} />
+            </View>
+          </Pressable>
+          <View style={styles.rowDivider} />
+          <Pressable style={styles.cardRow} onPress={() => openSheet('rules')} accessibilityRole="button">
+            <Text style={styles.rowLabel}>{t.collectz.fieldRules}</Text>
+            <View style={styles.rowValueWrap}>
+              <Text style={rules.trim() ? styles.rowValuePreview : styles.rowValueDim}>
+                {rules.trim() ? rules.trim() : t.collectz.optionalValue}
+              </Text>
+              <Feather name="chevron-right" size={15} color={C.textMuted} />
+            </View>
+          </Pressable>
         </View>
 
-        {/* Currency is NOT chosen here — it follows the app currency (Settings).
-            Editing an existing session keeps whatever it was created with. */}
-
-        {renderWhenRow(t.collectz.fieldPayBy, payBy, 'payBy', () => setPayBy(null))}
-
-        {/* Rules */}
-        <View style={[styles.fieldCard, neuF.raisedSoft]}>
-          <Text style={styles.fieldCardLabel}>{t.collectz.fieldRules}</Text>
-          <TextInput
-            style={[styles.fieldCardInput, styles.fieldCardMultiline]}
-            value={rules}
-            onChangeText={setRules}
-            placeholder={t.collectz.fieldRulesPlaceholder}
-            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
-            multiline
-            textAlignVertical="top"
-            onFocus={() => setMultilineFocused(true)}
-            onBlur={() => setMultilineFocused(false)}
-          />
+        {/* ── CONTACT (single summary row — the 6 optional inputs live in the sheet) ── */}
+        <Text style={styles.sectionLabel}>{t.collectz.fieldContact}</Text>
+        <View style={[styles.gCard, neuF.raisedSoft]}>
+          <Pressable style={styles.cardRow} onPress={() => openSheet('contact')} accessibilityRole="button">
+            <Text style={styles.rowLabel}>{t.collectz.fieldContact}</Text>
+            <View style={styles.rowValueWrap}>
+              {contactCount > 0 ? (
+                <Text style={styles.rowValue}>{fill(t.collectz.contactAdded, { n: contactCount })}</Text>
+              ) : (
+                <Text style={styles.rowValueDim}>{t.collectz.optionalValue}</Text>
+              )}
+              <Feather name="chevron-right" size={15} color={C.textMuted} />
+            </View>
+          </Pressable>
         </View>
 
-        {/* Capacity — cap the active roster. Teams mode just multiplies out to the
-            max (the roster itself stays one flat list). */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t.collectz.capacity}</Text>
-          <View style={styles.chipRow}>
-            {([
-              ['none', t.collectz.capacityNone],
-              ['total', t.collectz.capacityTotal],
-              ['teams', t.collectz.capacityTeams],
-            ] as const).map(([key, lbl]) => (
-              <Pressable
-                key={key}
-                style={[styles.chip, neuF.raised, capMode === key && styles.chipActive]}
-                onPress={() => { selectionChanged(); setCapMode(key); }}
-              >
-                <Text style={[styles.chipText, capMode === key && styles.chipTextActive]}>{lbl}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {capMode === 'total' && renderStepper(t.collectz.capacityMax, maxPlayers, setMaxPlayers, 1, 99)}
-          {capMode === 'teams' && (
-            <>
-              {renderStepper(t.collectz.capacityTeamCount, teamCount, setTeamCount, 1, 20)}
-              {renderStepper(t.collectz.capacityTeamSize, teamSize, setTeamSize, 1, 30)}
-              <Text style={styles.capHint}>{fill(t.collectz.capacityMaxHint, { n: teamCount * teamSize })}</Text>
-              {/* Team names are optional — blank just shows "Team 1". */}
-              <Text style={styles.teamNamesLabel}>{t.collectz.teamRename}</Text>
-              {Array.from({ length: teamCount }, (_, i) => i).map((i) => (
-                <TextInput
-                  key={i}
-                  style={[styles.input, styles.teamNameInput]}
-                  value={teamNames[i] ?? ''}
-                  onChangeText={(v) =>
-                    setTeamNames((prev) => {
-                      const next = [...prev];
-                      while (next.length < teamCount) next.push('');
-                      next[i] = v;
-                      return next;
-                    })
-                  }
-                  placeholder={fill(t.collectz.teamN, { n: i + 1 })}
-                  placeholderTextColor={withAlpha(C.textMuted, 0.55)}
-                  maxLength={40}
-                />
-              ))}
-            </>
-          )}
+        {/* ── ROSTER ── capacity is a summary row; the config lives in its sheet */}
+        <Text style={styles.sectionLabel}>{t.collectz.fieldRoster}</Text>
+        <View style={[styles.gCard, neuF.raisedSoft]}>
+          <Pressable style={styles.cardRow} onPress={() => openSheet('capacity')} accessibilityRole="button">
+            <Text style={styles.rowLabel}>{t.collectz.capacity}</Text>
+            <View style={styles.rowValueWrap}>
+              <Text style={styles.rowValue}>
+                {capMode === 'none'
+                  ? t.collectz.capacityNone
+                  : capMode === 'total'
+                    ? fill(t.collectz.capacityValueTotal, { n: maxPlayers })
+                    : fill(t.collectz.capacityTeamsValue, { t: teamCount, n: teamSize })}
+              </Text>
+              <Feather name="chevron-right" size={15} color={C.textMuted} />
+            </View>
+          </Pressable>
           {capacityMax != null && (
-            <Text style={[styles.capCount, activeFilled > capacityMax && styles.capCountOver]}>
+            <Text style={[styles.capCount, styles.cardHint, activeFilled > capacityMax && styles.capCountOver]}>
               {activeFilled > capacityMax
                 ? fill(t.collectz.capacityOver, { n: activeFilled, max: capacityMax })
                 : fill(t.collectz.capacityCount, { n: activeFilled, max: capacityMax })}
@@ -1141,9 +1288,8 @@ const CollectzCreate: React.FC = () => {
           )}
         </View>
 
-        {/* Roster editor */}
+        {/* Roster editor — names stay inline; everything else moved to sheets */}
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t.collectz.fieldRoster}</Text>
           {roster.map((row) => (
           <React.Fragment key={row.key}>
             <View style={styles.rosterRow}>
@@ -1153,6 +1299,7 @@ const CollectzCreate: React.FC = () => {
                 onChangeText={(v) => patchRow(row.key, { name: v })}
                 placeholder={t.collectz.rosterNamePlaceholder}
                 placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+                multiline
               />
               <Pressable
                 style={[styles.reserveChip, neuF.raised, row.slot === 'reserve' && styles.reserveChipActive]}
@@ -1228,35 +1375,27 @@ const CollectzCreate: React.FC = () => {
           </Pressable>
         </View>
 
-        {/* QR picker */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t.collectz.fieldQr}</Text>
-          {paymentQrs.length === 0 ? (
-            <Text style={styles.hint}>{t.collectz.qrEmptyHint}</Text>
-          ) : (
-            <View style={styles.chipRow}>
-              <Pressable
-                style={[styles.chip, neuF.raised, qrLabel === null && styles.chipActive]}
-                onPress={() => pickQr(null)}
-              >
-                <Text style={[styles.chipText, qrLabel === null && styles.chipTextActive]}>
-                  {t.collectz.qrNone}
-                </Text>
-              </Pressable>
-              {paymentQrs.map((qr, i) => (
-                <Pressable
-                  key={`${qr.label}-${i}`}
-                  style={[styles.chip, neuF.raised, qrLabel === qr.label && styles.chipActive]}
-                  onPress={() => pickQr(qr)}
-                >
-                  <Text style={[styles.chipText, qrLabel === qr.label && styles.chipTextActive]}>{qr.label}</Text>
-                </Pressable>
-              ))}
+        {/* ── PAYMENT QR ── summary row; saved QRs are picked in the sheet */}
+        <Text style={styles.sectionLabel}>{t.collectz.fieldQr}</Text>
+        <View style={[styles.gCard, neuF.raisedSoft]}>
+          <Pressable
+            style={styles.cardRow}
+            onPress={() => paymentQrs.length > 0 && openSheet('qr')}
+            disabled={paymentQrs.length === 0}
+            accessibilityRole="button"
+          >
+            <Text style={styles.rowLabel}>{t.collectz.fieldQr}</Text>
+            <View style={styles.rowValueWrap}>
+              <Text style={qrLabel ? styles.rowValue : styles.rowValueDim}>{qrLabel ?? t.collectz.qrNone}</Text>
+              {paymentQrs.length > 0 && <Feather name="chevron-right" size={15} color={C.textMuted} />}
             </View>
+          </Pressable>
+          {paymentQrs.length === 0 && (
+            <Text style={styles.cardHint}>{t.collectz.qrEmptyHint}</Text>
           )}
           {/* Photo QR is allowed — just tell the organizer the amount won't auto-fill. */}
           {!qrPayload && (qrImageUri || qrImagePath) && (
-            <Text style={styles.hint}>{t.collectz.qrNoPayload}</Text>
+            <Text style={styles.cardHint}>{t.collectz.qrNoPayload}</Text>
           )}
         </View>
 
@@ -1377,8 +1516,349 @@ const CollectzCreate: React.FC = () => {
         </KAView>
       )}
 
-      {/* Gold keyboard-done FAB — floats above the keyboard while a note field is focused */}
-      <KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />
+      {/* ── Section sheets — summary rows above open these; the form stays a
+          one-page overview while each editor gets full keyboard room. ── */}
+
+      {/* Category picker */}
+      <BottomSheet
+        visible={sheet === 'category'}
+        onClose={() => setSheet(null)}
+        header={<Text style={styles.sheetTitle}>{t.collectz.fieldCategory}</Text>}
+        maxHeightPct={0.55}
+      >
+        <View style={styles.sheetBody}>
+          {CATEGORIES.map((key) => (
+            <Pressable
+              key={key}
+              style={styles.sheetRow}
+              onPress={() => { selectionChanged(); setCategory(category === key ? null : key); setSheet(null); }}
+              accessibilityRole="button"
+            >
+              <MaterialCommunityIcons name={collectzCategoryIcon(key) as any} size={20} color={C.textSecondary} />
+              <Text style={styles.sheetRowText}>{catLabels[key]}</Text>
+              {category === key && <Feather name="check" size={17} color={C.accent} />}
+            </Pressable>
+          ))}
+        </View>
+      </BottomSheet>
+
+      {/* Club icon picker — the grid moved here from the form (same tiles, plus
+          upload). The grid focuses on the picked category. */}
+      <BottomSheet
+        visible={sheet === 'icon'}
+        onClose={() => setSheet(null)}
+        header={<Text style={styles.sheetTitle}>{t.collectz.fieldImage}</Text>}
+        maxHeightPct={0.85}
+      >
+        <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
+          <View style={styles.iconGrid}>
+            {clubIconsForCategory(category).map((icon) => (
+              <Pressable
+                key={icon.id}
+                style={[styles.iconTile, imagePreset === icon.id && styles.iconTileActive]}
+                onPress={() => { pickPreset(icon.id); }}
+                accessibilityRole="button"
+                accessibilityLabel={icon.id}
+              >
+                <MaterialCommunityIcons
+                  name={icon.icon as any}
+                  size={22}
+                  color={imagePreset === icon.id ? (iconColor ? `#${iconColor}` : C.accent) : C.textSecondary}
+                />
+              </Pressable>
+            ))}
+            <Pressable
+              style={[styles.iconTile, (imageUpload || (!imagePreset && oldImagePath)) && styles.iconTileActive]}
+              onPress={async () => { await pickUpload(); setSheet(null); }}
+              accessibilityRole="button"
+              accessibilityLabel={t.collectz.imageUpload}
+            >
+              {imageUpload ? (
+                <Image source={{ uri: imageUpload.uri }} style={styles.iconImage} />
+              ) : (
+                <Feather name="upload" size={20} color={C.textSecondary} />
+              )}
+            </Pressable>
+          </View>
+          {/* Color swatches — appear once an icon is picked; tap the active one
+              again to go back to the default accent. Stored in the preset marker. */}
+          {imagePreset && (
+            <>
+              <Text style={styles.swatchLabel}>{t.collectz.iconColorLabel}</Text>
+              <View style={styles.swatchRow}>
+                {CLUB_ICON_COLORS.map((hex) => {
+                  const active = iconColor === hex;
+                  return (
+                    <Pressable
+                      key={hex}
+                      style={[styles.swatch, { backgroundColor: `#${hex}` }, active && styles.swatchActive]}
+                      onPress={() => { selectionChanged(); setIconColor(active ? null : hex); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`#${hex}`}
+                    />
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </BottomSheet>
+
+      {/* Payment scheme picker */}
+      <BottomSheet
+        visible={sheet === 'scheme'}
+        onClose={() => setSheet(null)}
+        header={<Text style={styles.sheetTitle}>{t.collectz.fieldScheme}</Text>}
+        maxHeightPct={0.5}
+      >
+        <View style={styles.sheetBody}>
+          {(['flat', 'equal', 'custom'] as CollectzScheme[]).map((key) => (
+            <Pressable
+              key={key}
+              style={styles.sheetRow}
+              onPress={() => { selectionChanged(); setScheme(key); setSheet(null); }}
+              accessibilityRole="button"
+            >
+              <View style={styles.sheetRowMain}>
+                <Text style={styles.sheetRowText}>{schemeLabels[key]}</Text>
+                <Text style={styles.sheetRowDesc}>
+                  {key === 'flat' ? t.collectz.schemeDescFlat : key === 'equal' ? t.collectz.schemeDescEqual : t.collectz.schemeDescCustom}
+                </Text>
+              </View>
+              {scheme === key && <Feather name="check" size={17} color={C.accent} />}
+            </Pressable>
+          ))}
+        </View>
+      </BottomSheet>
+
+      {/* Details editor */}
+      <BottomSheet
+        visible={sheet === 'details'}
+        onClose={() => setSheet(null)}
+        header={<Text style={styles.sheetTitle}>{t.collectz.fieldDetails}</Text>}
+        keyboardAvoiding
+        overlay={<KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />}
+      >
+        <View style={styles.sheetBody}>
+          <TextInput
+            style={styles.sheetMultiline}
+            value={details}
+            onChangeText={setDetails}
+            placeholder={t.collectz.fieldDetailsPlaceholder}
+            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+            multiline
+            textAlignVertical="top"
+            autoFocus
+            onFocus={() => setMultilineFocused(true)}
+            onBlur={() => setMultilineFocused(false)}
+          />
+          <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} />
+        </View>
+      </BottomSheet>
+
+      {/* Rules editor */}
+      <BottomSheet
+        visible={sheet === 'rules'}
+        onClose={() => setSheet(null)}
+        header={<Text style={styles.sheetTitle}>{t.collectz.fieldRules}</Text>}
+        keyboardAvoiding
+        overlay={<KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />}
+      >
+        <View style={styles.sheetBody}>
+          <TextInput
+            style={styles.sheetMultiline}
+            value={rules}
+            onChangeText={setRules}
+            placeholder={t.collectz.fieldRulesPlaceholder}
+            placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+            multiline
+            textAlignVertical="top"
+            autoFocus
+            onFocus={() => setMultilineFocused(true)}
+            onBlur={() => setMultilineFocused(false)}
+          />
+          <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} />
+        </View>
+      </BottomSheet>
+
+      {/* Contact editor — organizer socials + WhatsApp group link. Shown to
+          everyone who has the link; skipping it changes nothing. */}
+      <BottomSheet
+        visible={sheet === 'contact'}
+        onClose={() => setSheet(null)}
+        header={<Text style={styles.sheetTitle}>{t.collectz.fieldContact}</Text>}
+        keyboardAvoiding
+        overlay={<KeyboardDoneFab visible={keyboardVisible} keyboardHeight={keyboardHeight} />}
+      >
+        <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
+          <Text style={styles.contactHint}>{t.collectz.fieldContactHint}</Text>
+          {SOCIAL_PLATFORMS.map((p) => (
+            <View key={p.key} style={styles.contactRow}>
+              <Feather name={p.icon as keyof typeof Feather.glyphMap} size={15} color={C.textMuted} />
+              <TextInput
+                style={[styles.sheetInput, styles.contactInput]}
+                value={socialHandles[p.key]}
+                onChangeText={(v) => setSocialHandles((prev) => ({ ...prev, [p.key]: v }))}
+                placeholder={`${p.label} · @handle`}
+                placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+                autoCapitalize="none"
+                autoCorrect={false}
+                multiline
+              />
+            </View>
+          ))}
+          <View style={styles.contactRow}>
+            <Feather name="users" size={15} color={C.textMuted} />
+            <TextInput
+              style={[styles.sheetInput, styles.contactInput]}
+              value={groupUrl}
+              onChangeText={setGroupUrl}
+              placeholder={t.collectz.fieldGroupPlaceholder}
+              placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+              autoCapitalize="none"
+              keyboardType="url"
+              multiline
+            />
+          </View>
+          {!!groupUrl.trim() && !isWhatsappGroupUrl(groupUrl) && (
+            <Text style={styles.contactWarn}>{t.collectz.groupLinkInvalid}</Text>
+          )}
+          <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} />
+        </ScrollView>
+      </BottomSheet>
+
+      {/* Capacity config — mode chips + steppers + optional team names */}
+      <BottomSheet
+        visible={sheet === 'capacity'}
+        onClose={() => setSheet(null)}
+        header={<Text style={styles.sheetTitle}>{t.collectz.capacity}</Text>}
+        keyboardAvoiding
+        overlay={<KeyboardDoneFab visible={keyboardVisible} keyboardHeight={keyboardHeight} />}
+      >
+        <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
+          <View style={styles.chipRow}>
+            {([
+              ['none', t.collectz.capacityNone],
+              ['total', t.collectz.capacityTotal],
+              ['teams', t.collectz.capacityTeams],
+            ] as const).map(([key, lbl]) => (
+              <Pressable
+                key={key}
+                style={[styles.chip, neuF.raised, capMode === key && styles.chipActive]}
+                onPress={() => { selectionChanged(); setCapMode(key); }}
+              >
+                <Text style={[styles.chipText, capMode === key && styles.chipTextActive]}>{lbl}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {capMode === 'total' && renderStepper(t.collectz.capacityMax, maxPlayers, setMaxPlayers, 1, 99)}
+          {capMode === 'teams' && (
+            <>
+              {renderStepper(t.collectz.capacityTeamCount, teamCount, setTeamCount, 1, 20)}
+              {renderStepper(t.collectz.capacityTeamSize, teamSize, setTeamSize, 1, 30)}
+              <Text style={styles.capHint}>{fill(t.collectz.capacityMaxHint, { n: teamCount * teamSize })}</Text>
+              {/* Team names are optional — blank just shows "Team 1". */}
+              <Text style={styles.teamNamesLabel}>{t.collectz.teamRename}</Text>
+              {Array.from({ length: teamCount }, (_, i) => i).map((i) => (
+                <TextInput
+                  key={i}
+                  style={[styles.input, styles.teamNameInput]}
+                  value={teamNames[i] ?? ''}
+                  onChangeText={(v) =>
+                    setTeamNames((prev) => {
+                      const next = [...prev];
+                      while (next.length < teamCount) next.push('');
+                      next[i] = v;
+                      return next;
+                    })
+                  }
+                  placeholder={fill(t.collectz.teamN, { n: i + 1 })}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.55)}
+                  maxLength={40}
+                  multiline
+                />
+              ))}
+            </>
+          )}
+          {capacityMax != null && (
+            <Text style={[styles.capCount, activeFilled > capacityMax && styles.capCountOver]}>
+              {activeFilled > capacityMax
+                ? fill(t.collectz.capacityOver, { n: activeFilled, max: capacityMax })
+                : fill(t.collectz.capacityCount, { n: activeFilled, max: capacityMax })}
+            </Text>
+          )}
+          <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} style={{ marginTop: SPACING.md }} />
+        </ScrollView>
+      </BottomSheet>
+
+      {/* Payment QR picker */}
+      <BottomSheet
+        visible={sheet === 'qr'}
+        onClose={() => setSheet(null)}
+        header={<Text style={styles.sheetTitle}>{t.collectz.fieldQr}</Text>}
+        maxHeightPct={0.6}
+      >
+        <View style={styles.sheetBody}>
+          <Pressable
+            style={styles.sheetRow}
+            onPress={() => { pickQr(null); setSheet(null); }}
+            accessibilityRole="button"
+          >
+            <Text style={styles.sheetRowText}>{t.collectz.qrNone}</Text>
+            {qrLabel === null && <Feather name="check" size={17} color={C.accent} />}
+          </Pressable>
+          {paymentQrs.map((qr, i) => (
+            <Pressable
+              key={`${qr.label}-${i}`}
+              style={styles.sheetRow}
+              onPress={() => { pickQr(qr); setSheet(null); }}
+              accessibilityRole="button"
+            >
+              <Text style={styles.sheetRowText}>{qr.label}</Text>
+              {qrLabel === qr.label && <Feather name="check" size={17} color={C.accent} />}
+            </Pressable>
+          ))}
+        </View>
+      </BottomSheet>
+
+      {/* Player requirements — skill / age / gender / booking, all optional.
+          One sheet, four chip groups; tapping the active chip clears it. */}
+      <BottomSheet
+        visible={sheet === 'requirements'}
+        onClose={() => setSheet(null)}
+        header={<Text style={styles.sheetTitle}>{t.collectz.secRequirements}</Text>}
+      >
+        <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
+          {([
+            { label: t.collectz.reqSkill, options: ['beginner', 'intermediate', 'advanced'] as const, labels: skillLabels, value: skillLevel, set: setSkillLevel },
+            { label: t.collectz.reqAge, options: ['below_18', '18_above', 'any'] as const, labels: ageLabels, value: ageReq, set: setAgeReq },
+            { label: t.collectz.reqGender, options: ['male', 'female', 'any'] as const, labels: genderLabels, value: genderReq, set: setGenderReq },
+            { label: t.collectz.reqBooking, options: ['booked', 'later'] as const, labels: bookingLabels, value: bookingStatus, set: setBookingStatus },
+          ]).map((group) => (
+            <View key={group.label} style={styles.sheetGroup}>
+              <Text style={styles.sheetGroupLabel}>{group.label}</Text>
+              <View style={styles.chipRow}>
+                {group.options.map((key) => (
+                  <Pressable
+                    key={key}
+                    style={[styles.chip, neuF.raised, group.value === key && styles.chipActive]}
+                    onPress={() => { selectionChanged(); (group.set as (v: string | null) => void)(group.value === key ? null : key); }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.chipText, group.value === key && styles.chipTextActive]}>{group.labels[key]}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ))}
+          <NeuButton icon="check" label={t.common.done} onPress={() => setSheet(null)} accessibilityLabel={t.common.done} style={{ marginTop: SPACING.md }} />
+        </ScrollView>
+      </BottomSheet>
+
+      {/* Gold keyboard-done FAB — floats above the keyboard for ANY focused
+          field on the main form (sheets render their own via `overlay`). */}
+      <KeyboardDoneFab visible={keyboardVisible && !sheet && !pasteOpen} keyboardHeight={keyboardHeight} />
 
       {/* "Session created" confirmation — summary + tap-to-copy code/link. Opening
           the session (button or backdrop) replaces this screen with the detail. */}
@@ -1419,7 +1899,7 @@ const makeStyles = (C: typeof CALM) =>
       fontWeight: TYPOGRAPHY.weight.semibold,
       color: C.accent,
     },
-    fieldGroup: { marginBottom: SPACING.lg, gap: SPACING.sm },
+    fieldGroup: { marginTop: SPACING.md, marginBottom: SPACING.lg, gap: SPACING.sm },
     label: {
       // base (15) — matches the input text size so the title never reads smaller
       // than the value it labels.
@@ -1499,7 +1979,6 @@ const makeStyles = (C: typeof CALM) =>
     iconTileActive: { borderColor: C.accent },
     iconImage: { width: 44, height: 44, borderRadius: 22 },
     iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
-    iconEmoji: { fontSize: 26 },
     templateBanner: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1612,6 +2091,129 @@ const makeStyles = (C: typeof CALM) =>
     capCountOver: { color: C.overdue },
     hint: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, lineHeight: 19 },
     warnHint: { fontSize: TYPOGRAPHY.size.sm, color: C.bronze, lineHeight: 19 },
+
+    // ── Grouped-form ("settings") layout ──
+    sectionLabel: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.bold,
+      color: C.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 1.2,
+      marginBottom: SPACING.sm,
+      marginTop: SPACING.lg,
+    },
+    gCard: {
+      // surface + elevation from neuF.raisedSoft (base C.background)
+      borderRadius: RADIUS.lg,
+      paddingVertical: SPACING.xs,
+    },
+    cardRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: SPACING.sm,
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.sm + 3,
+    },
+    cardRowCol: { flexDirection: 'column', alignItems: 'stretch', gap: 4 },
+    rowLabel: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
+    rowInput: {
+      fontSize: TYPOGRAPHY.size.base,
+      color: C.textPrimary,
+      fontWeight: TYPOGRAPHY.weight.medium,
+      paddingVertical: 2,
+    },
+    rowAmountInput: {
+      minWidth: 96,
+      textAlign: 'right',
+      fontSize: TYPOGRAPHY.size.base,
+      color: C.textPrimary,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      fontVariant: ['tabular-nums'],
+      paddingVertical: 2,
+    },
+    rowValueWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+    rowValue: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium },
+    rowValueDim: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted },
+    rowValuePreview: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, flexShrink: 1 },
+    rowDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: withAlpha(C.textPrimary, 0.08),
+      marginLeft: SPACING.md,
+    },
+    rowThumb: { width: 24, height: 24, borderRadius: 12 },
+    whenPill: {
+      borderRadius: RADIUS.full,
+      backgroundColor: withAlpha(C.textPrimary, 0.05),
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 5,
+    },
+    whenPillText: { fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary },
+    cardHint: {
+      fontSize: TYPOGRAPHY.size.xs,
+      color: C.textMuted,
+      lineHeight: 17,
+      paddingHorizontal: SPACING.md,
+      paddingBottom: SPACING.sm,
+    },
+    // Sheets
+    sheetTitle: {
+      fontSize: TYPOGRAPHY.size.lg,
+      fontWeight: TYPOGRAPHY.weight.bold,
+      color: C.textPrimary,
+      paddingHorizontal: SPACING.xl,
+    },
+    sheetScroll: { flexShrink: 1 },
+    sheetBody: { padding: SPACING.xl, gap: SPACING.sm },
+    sheetRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      paddingVertical: SPACING.sm + 2,
+    },
+    sheetRowMain: { flex: 1, gap: 2 },
+    sheetRowText: { flex: 1, fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.medium, color: C.textPrimary },
+    sheetRowDesc: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
+    sheetGroup: { gap: SPACING.sm, marginBottom: SPACING.sm },
+    sheetGroupLabel: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
+    sheetMultiline: {
+      minHeight: 160,
+      maxHeight: 260,
+      borderRadius: RADIUS.lg,
+      borderWidth: 1,
+      borderColor: C.inputBorder,
+      backgroundColor: C.background,
+      padding: SPACING.md,
+      fontSize: TYPOGRAPHY.size.base,
+      color: C.textPrimary,
+      lineHeight: 20,
+    },
+    sheetInput: {
+      minHeight: 42,
+      borderRadius: RADIUS.lg,
+      borderWidth: 1,
+      borderColor: C.inputBorder,
+      backgroundColor: C.surface,
+      paddingHorizontal: SPACING.md,
+      fontSize: TYPOGRAPHY.size.base,
+      color: C.textPrimary,
+    },
+    swatchLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: SPACING.sm },
+    swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+    swatch: { width: 30, height: 30, borderRadius: 15 },
+    swatchActive: { borderWidth: 3, borderColor: C.textPrimary },
+    draftBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      borderRadius: RADIUS.lg,
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.sm + 2,
+      marginBottom: SPACING.lg,
+    },
+    draftBannerText: { flex: 1, fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
+    draftRestore: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.accent },
+
     // In-screen overlay (not a <Modal>) → absolute-fill above the scroll, dim backdrop.
     pickerOverlay: {
       ...StyleSheet.absoluteFillObject,

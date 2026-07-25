@@ -33,11 +33,20 @@ export function toRelativeReceiptPath(uri: string): string {
  * - undefined → undefined
  * - http(s) remote → as-is
  * - relative → prefixed with the current documentDirectory
- * - legacy absolute file:// → as-is (best-effort for pre-migration data)
+ * - absolute file:// → SELF-HEALED: a path from an OLD sandbox container (iOS rewrites
+ *   the container UUID on every install/update) is rebased onto the current
+ *   documentDirectory via its '/Documents/' suffix, instead of going stale.
  */
 export function resolveReceiptImageUri(stored?: string): string | undefined {
   if (!stored) return undefined;
   if (/^https?:\/\//i.test(stored)) return stored;
-  if (stored.startsWith('file://') || stored.startsWith('/')) return stored;
+  if (stored.startsWith('file://') || stored.startsWith('/')) {
+    const docDir = FileSystem.documentDirectory ?? '';
+    if (docDir && stored.startsWith(docDir)) return stored; // current container
+    const marker = '/Documents/';
+    const idx = stored.indexOf(marker);
+    if (idx !== -1 && docDir) return `${docDir}${stored.slice(idx + marker.length)}`;
+    return stored;
+  }
   return `${FileSystem.documentDirectory}${stored}`;
 }

@@ -3,6 +3,8 @@ import { PotracesPromo } from './PotracesPromo';
 import { CollectzPromo } from './CollectzPromo';
 import { EchoPromo } from './EchoPromo';
 import { DebtPromo } from './DebtPromo';
+import { HutangPromo } from './HutangPromo';
+import { WhyPromo } from './WhyPromo';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -26,7 +28,23 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="DebtPromo"
         component={DebtPromo}
-        durationInFrames={2310} // 38.5s @ 60fps
+        durationInFrames={2398} // 40.0s @ 60fps
+        fps={60}
+        width={1080}
+        height={1920}
+      />
+      <Composition
+        id="HutangPromo"
+        component={HutangPromo}
+        durationInFrames={2559} // 42.7s @ 60fps
+        fps={60}
+        width={1080}
+        height={1920}
+      />
+      <Composition
+        id="WhyPromo"
+        component={WhyPromo}
+        durationInFrames={4460} // 74.3s @ 60fps
         fps={60}
         width={1080}
         height={1920}

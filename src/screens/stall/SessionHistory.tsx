@@ -1,3 +1,8 @@
+/* Hallmark · redesign: receipt-tape · genre: editorial (app-locked CALM/neu system)
+ * differs from prior run (QuickLogSetup hero+timeline): structure + divider language
+ * One tape surface, dashed tear-lines between entries, stamp badges, typographic stats.
+ * pre-emit critique: P4 H4 E4 S4 R4 V4
+ */
 import React, { useMemo, useCallback } from 'react';
 import {
   View,
@@ -20,7 +25,7 @@ import { useNeu } from '../../components/common/neu';
 import { useT } from '../../i18n';
 import { StallSession, SessionCondition } from '../../types';
 
-// ─── Condition badge colors ─────────────────────────────
+// ─── Condition stamp colors (text + hairline outline; transparent fill) ─────
 const CONDITION_CONFIG: Record<SessionCondition, { label: string; bg: string; text: string }> = {
   good: { label: 'good', bg: withAlpha(CALM.bronze, 0.12), text: CALM.bronze },
   slow: { label: 'slow', bg: withAlpha(CALM.gold, 0.12), text: CALM.gold },
@@ -28,6 +33,25 @@ const CONDITION_CONFIG: Record<SessionCondition, { label: string; bg: string; te
   hot: { label: 'hot', bg: withAlpha(CALM.gold, 0.12), text: CALM.gold },
   normal: { label: 'normal', bg: CALM.border, text: CALM.textSecondary },
 };
+
+// A receipt tear-line: a row of dashes (cross-platform — Android can't dash a
+// single-side border). Evenly spread so it scales to the tape's width.
+const TearLine: React.FC<{ color: string }> = React.memo(({ color }) => (
+  <View style={tearStyles.row} importantForAccessibility="no-hide-descendants">
+    {Array.from({ length: 28 }).map((_, i) => (
+      <View key={i} style={[tearStyles.dash, { backgroundColor: color }]} />
+    ))}
+  </View>
+));
+const tearStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    marginVertical: 2,
+  },
+  dash: { width: 6, height: 1 },
+});
 
 const SessionHistory: React.FC = () => {
   const C = useCalm();
@@ -54,6 +78,7 @@ const SessionHistory: React.FC = () => {
 
   const lifetimeStats = useMemo(() => getLifetimeStats(), [sessions]);
   const insight = useMemo(() => explainStallHistory(closedSessions, currency), [closedSessions, currency]);
+  const tearColor = withAlpha(C.textMuted, 0.45);
 
   const formatDuration = (minutes: number): string => {
     if (minutes < 60) return `${minutes}m`;
@@ -74,122 +99,102 @@ const SessionHistory: React.FC = () => {
     [navigation],
   );
 
-  const renderSessionCard = useCallback(
-    ({ item }: { item: StallSession }) => {
+  // ─── One tape entry per session; a tear-line separates it from the next ───
+  const renderSessionEntry = useCallback(
+    ({ item, index }: { item: StallSession; index: number }) => {
       const summary = getSessionSummary(item.id);
       const displayName = item.name || formatSessionDate(item);
+      const condition = item.condition ? CONDITION_CONFIG[item.condition] : undefined;
 
       return (
-        <TouchableOpacity
-          style={[styles.sessionCard, neu.raisedSoft]}
-          onPress={() => handleSessionPress(item.id)}
-          activeOpacity={0.85}
-          accessibilityLabel={`Session ${displayName}, total came in ${currency} ${item.totalRevenue.toFixed(2)}, ${summary.saleCount} sales`}
-          accessibilityHint="Tap to view session details"
-          accessibilityRole="button"
-        >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardTitleRow}>
-              <Text style={styles.cardTitle} numberOfLines={1}>
+        <View>
+          <TouchableOpacity
+            style={styles.entry}
+            onPress={() => handleSessionPress(item.id)}
+            activeOpacity={0.7}
+            accessibilityLabel={`Session ${displayName}, total came in ${currency} ${item.totalRevenue.toFixed(2)}, ${summary.saleCount} sales`}
+            accessibilityHint="Tap to view session details"
+            accessibilityRole="button"
+          >
+            <View style={styles.entryTitleRow}>
+              <Text style={styles.entryTitle} numberOfLines={1}>
                 {displayName}
               </Text>
-              {item.condition && CONDITION_CONFIG[item.condition] && (
-                <View
-                  style={[
-                    styles.conditionBadge,
-                    { backgroundColor: CONDITION_CONFIG[item.condition].bg },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.conditionText,
-                      { color: CONDITION_CONFIG[item.condition].text },
-                    ]}
-                  >
-                    {CONDITION_CONFIG[item.condition].label}
+              {condition && (
+                <View style={[styles.stamp, { borderColor: withAlpha(condition.text, 0.55) }]}>
+                  <Text style={[styles.stampText, { color: condition.text }]}>
+                    {condition.label.toUpperCase()}
                   </Text>
                 </View>
               )}
             </View>
 
-            <Text style={styles.cardDate}>
+            <Text style={styles.entryDate}>
               {formatSessionDate(item)}
-              {'  \u00B7  '}
+              {'  ·  '}
               {formatDuration(summary.duration)}
             </Text>
-          </View>
 
-          <View style={styles.cardFooter}>
-            <Text
-              style={styles.cardCameIn}
-              accessibilityLabel={`Came in ${currency} ${item.totalRevenue.toFixed(2)}`}
-            >
-              {currency} {item.totalRevenue.toFixed(0)}
-            </Text>
-
-            <View style={styles.cardMeta}>
-              <Text style={styles.cardMetaText}>
-                {summary.saleCount === 1 ? t.stallHistory.nSales.replace('{n}', '1') : t.stallHistory.nSalesPlural.replace('{n}', String(summary.saleCount))}
+            <View style={styles.entryBottomRow}>
+              <Text
+                style={styles.entryAmount}
+                accessibilityLabel={`Came in ${currency} ${item.totalRevenue.toFixed(2)}`}
+              >
+                {currency} {item.totalRevenue.toFixed(0)}
               </Text>
-              <Text style={styles.cardMetaDot}>{'\u00B7'}</Text>
-              <Text style={styles.cardMetaText}>
+              <Text style={styles.entryMeta} numberOfLines={1}>
+                {summary.saleCount === 1
+                  ? t.stallHistory.nSales.replace('{n}', '1')
+                  : t.stallHistory.nSalesPlural.replace('{n}', String(summary.saleCount))}
+                {' · '}
                 {t.stallHistory.cash} {currency} {item.totalCash.toFixed(0)}
-              </Text>
-              <Text style={styles.cardMetaDot}>{'\u00B7'}</Text>
-              <Text style={styles.cardMetaText}>
+                {' · '}
                 {t.stallHistory.qr} {currency} {item.totalQR.toFixed(0)}
               </Text>
             </View>
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+          {index < closedSessions.length - 1 && <TearLine color={tearColor} />}
+        </View>
       );
     },
-    [currency, getSessionSummary, handleSessionPress],
+    [currency, closedSessions.length, getSessionSummary, handleSessionPress, styles, tearColor, t],
   );
 
-  const renderHeader = useCallback(() => {
+  // ─── Tape head: the register-receipt totals block (bare type, hairline rules) ───
+  const renderTapeHead = useCallback(() => {
+    const showSummary = closedSessions.length >= 3;
+    const showInsight = insight && closedSessions.length >= 2;
+    if (!showSummary && !showInsight) return null;
     return (
-      <View style={styles.headerContainer}>
-        <Text style={styles.heading}>{t.stallHistory.heading}</Text>
-
-        {/* Lifetime stats -- only show if 3+ sessions */}
-        {closedSessions.length >= 3 && (
-          <View style={styles.lifetimeRow}>
-            <View style={[styles.lifetimeStat, neu.raised]}>
-              <View style={[styles.statIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
-                <Feather name="activity" size={14} color={C.accent} />
-              </View>
-              <Text style={styles.lifetimeNumber}>{lifetimeStats.totalSessions}</Text>
-              <Text style={styles.lifetimeLabel}>{t.stallHistory.sessions}</Text>
+      <View>
+        {showSummary && (
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryStat}>
+              <Text style={styles.summaryNumber}>{lifetimeStats.totalSessions}</Text>
+              <Text style={styles.summaryLabel}>{t.stallHistory.sessions.toUpperCase()}</Text>
             </View>
-            <View style={[styles.lifetimeStat, neu.raised]}>
-              <View style={[styles.statIcon, { backgroundColor: withAlpha(C.bronze, 0.12) }]}>
-                <Feather name="dollar-sign" size={14} color={C.bronze} />
-              </View>
-              <Text style={styles.lifetimeNumber}>
+            <View style={styles.summaryRule} />
+            <View style={styles.summaryStat}>
+              <Text style={styles.summaryNumber}>
                 {currency} {lifetimeStats.totalRevenue.toFixed(0)}
               </Text>
-              <Text style={styles.lifetimeLabel}>{t.stallHistory.lifetimeCameIn}</Text>
+              <Text style={styles.summaryLabel}>{t.stallHistory.lifetimeCameIn.toUpperCase()}</Text>
             </View>
-            <View style={[styles.lifetimeStat, neu.raised]}>
-              <View style={[styles.statIcon, { backgroundColor: withAlpha(C.gold, 0.12) }]}>
-                <Feather name="trending-up" size={14} color={C.gold} />
-              </View>
-              <Text style={styles.lifetimeNumber}>
+            <View style={styles.summaryRule} />
+            <View style={styles.summaryStat}>
+              <Text style={styles.summaryNumber}>
                 {currency} {lifetimeStats.avgPerSession.toFixed(0)}
               </Text>
-              <Text style={styles.lifetimeLabel}>{t.stallHistory.avgPerSession}</Text>
+              <Text style={styles.summaryLabel}>{t.stallHistory.avgPerSession.toUpperCase()}</Text>
             </View>
           </View>
         )}
-
-        {/* AI insight line */}
-        {insight && closedSessions.length >= 2 && (
-          <Text style={styles.insightText}>{insight}</Text>
-        )}
+        {showSummary && <View style={styles.headRule} />}
+        {showInsight && <Text style={styles.insightText}>{insight}</Text>}
+        <TearLine color={tearColor} />
       </View>
     );
-  }, [closedSessions.length, lifetimeStats, insight, currency]);
+  }, [closedSessions.length, lifetimeStats, insight, currency, styles, tearColor, t]);
 
   const renderEmpty = useCallback(() => {
     return (
@@ -201,23 +206,32 @@ const SessionHistory: React.FC = () => {
         </Text>
       </View>
     );
-  }, []);
+  }, [C, styles, t]);
 
   return (
     <SafeAreaView style={styles.container}>
-      <FlatList
-        data={closedSessions}
-        renderItem={renderSessionCard}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={renderEmpty}
-        showsVerticalScrollIndicator={false}
-        removeClippedSubviews
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        initialNumToRender={10}
-      />
+      <View style={styles.pagePad}>
+        <Text style={styles.heading}>{t.stallHistory.heading}</Text>
+        {/* The tape: ONE surface holds the whole history. neu shadow lives on
+            the unclipped wrapper; the inner view clips the tape to its radius. */}
+        <View style={[styles.tapeShadow, neu.raisedSoft]}>
+          <View style={styles.tapeClip}>
+            <FlatList
+              data={closedSessions}
+              renderItem={renderSessionEntry}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, SPACING.md) }}
+              ListHeaderComponent={renderTapeHead}
+              ListEmptyComponent={renderEmpty}
+              showsVerticalScrollIndicator={false}
+              removeClippedSubviews
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              initialNumToRender={10}
+            />
+          </View>
+        </View>
+      </View>
     </SafeAreaView>
   );
 };
@@ -227,18 +241,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     backgroundColor: C.background,
   },
-  listContent: {
+  pagePad: {
+    flex: 1,
     padding: SPACING.lg,
-    paddingBottom: SPACING['4xl'],
-    gap: SPACING.md,
     maxWidth: 680,
     width: '100%',
     alignSelf: 'center' as const,
-  },
-
-  // ─── Header ────────────────────────────────────────────
-  headerContainer: {
-    marginBottom: SPACING.sm,
   },
   heading: {
     fontSize: TYPOGRAPHY.size['2xl'],
@@ -248,102 +256,117 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.lg,
   },
 
-  // ─── Lifetime stats ───────────────────────────────────
-  lifetimeRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginBottom: SPACING.lg,
-  },
-  lifetimeStat: {
+  // ─── The tape surface ──────────────────────────────────
+  tapeShadow: {
     flex: 1,
-    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.lg,
-    alignItems: 'center',
   },
-  statIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.xs,
-  },
-  lifetimeNumber: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  lifetimeLabel: {
-    ...TYPE.muted,
-    marginTop: SPACING.xs,
-  },
-
-  // ─── Insight ───────────────────────────────────────────
-  insightText: {
-    ...TYPE.insight,
-    color: C.textSecondary,
-    marginBottom: SPACING.lg,
-  },
-
-  // ─── Session card ──────────────────────────────────────
-  sessionCard: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    gap: SPACING.md,
-  },
-  cardHeader: {
-    gap: SPACING.xs,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  cardTitle: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
+  tapeClip: {
     flex: 1,
-  },
-  conditionBadge: {
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-  },
-  conditionText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  cardDate: {
-    ...TYPE.muted,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden' as const,
   },
 
-  cardFooter: {
-    gap: SPACING.xs,
+  // ─── Tape head: register-tape totals (no tiles, no icons) ───
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
   },
-  cardCameIn: {
+  summaryStat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  summaryRule: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+    marginVertical: 2,
+  },
+  summaryNumber: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
     letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
-  cardMeta: {
+  summaryLabel: {
+    fontSize: 9,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    letterSpacing: 1.1,
+    textAlign: 'center' as const,
+  },
+  headRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+    marginHorizontal: SPACING.lg,
+  },
+
+  // ─── Insight — the clerk's margin note ────────────────
+  insightText: {
+    ...TYPE.insight,
+    fontStyle: 'italic',
+    color: C.textSecondary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+  },
+
+  // ─── Tape entry (one session) ──────────────────────────
+  entry: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    gap: 3,
+  },
+  entryTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: SPACING.xs,
+    gap: SPACING.sm,
   },
-  cardMetaText: {
+  entryTitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    flex: 1,
+  },
+  // Rubber-stamp badge: hairline outline, slight tilt, no fill.
+  stamp: {
+    borderWidth: 1,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    transform: [{ rotate: '-3deg' }],
+  },
+  stampText: {
+    fontSize: 9,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    letterSpacing: 1.2,
+  },
+  entryDate: {
+    ...TYPE.muted,
+  },
+  entryBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  entryAmount: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
+  },
+  entryMeta: {
     ...TYPE.muted,
     fontVariant: ['tabular-nums'],
-  },
-  cardMetaDot: {
-    ...TYPE.muted,
+    flexShrink: 1,
+    textAlign: 'right' as const,
   },
 
   // ─── Empty state ───────────────────────────────────────

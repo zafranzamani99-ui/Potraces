@@ -132,7 +132,7 @@ const RegularCustomers: React.FC = () => {
         ],
       );
     },
-    [deleteRegularCustomer, editingId],
+    [deleteRegularCustomer, editingId, t],
   );
 
   const handleToggleAdd = useCallback(() => {
@@ -271,7 +271,7 @@ const RegularCustomers: React.FC = () => {
         </TouchableOpacity>
       );
     },
-    [editingId, editName, editUsualOrder, editNote, handleStartEdit, handleSaveEdit, handleCancelEdit, handleDelete, loyalty, neu],
+    [editingId, editName, editUsualOrder, editNote, handleStartEdit, handleSaveEdit, handleCancelEdit, handleDelete, loyalty, neu, styles, C, t],
   );
 
   // ─── Header with add form ─────────────────────────────
@@ -365,7 +365,7 @@ const RegularCustomers: React.FC = () => {
         </View>
       </View>
     );
-  }, [showAddForm, newName, newUsualOrder, newNote, handleToggleAdd, handleAdd, loyaltyEvery, loyaltyReward, commitLoyalty, isDark, C, focusedField, neu]);
+  }, [showAddForm, newName, newUsualOrder, newNote, handleToggleAdd, handleAdd, loyaltyEvery, loyaltyReward, commitLoyalty, isDark, C, focusedField, neu, styles, t]);
 
   const renderEmpty = useCallback(() => {
     return (
@@ -375,7 +375,7 @@ const RegularCustomers: React.FC = () => {
         <Text style={styles.emptyHint}>{t.stallRegulars.emptyHint}</Text>
       </View>
     );
-  }, []);
+  }, [C, styles, t]);
 
   return (
     <SafeAreaView style={styles.container}>

@@ -1,0 +1,58 @@
+[
+  {
+    "date": "2026-07-24",
+    "macrostructure": "app-screen: wind-down register close (appreciative header + neu hero)",
+    "theme": "CALM/neu (locked app system)",
+    "enrichment": "none",
+    "brief": "Potraces · CloseSession v2 — that-is-a-wrap mood, neu hero (no gradient/glass), KeyboardAwareScrollView fix, duplicate back removed"
+  },
+  {
+    "date": "2026-07-24",
+    "macrostructure": "app-screen: Z-report (bronze hero + glass sections + receipt kept-card + stamp picker)",
+    "theme": "CALM/neu + expo-glass-effect (locked app system)",
+    "enrichment": "none",
+    "brief": "Potraces · CloseSession — register-close hero with PaymentSplitBar, glass cashbox/expenses, diff stamp, stamp condition picker, spring CTA"
+  },
+  {
+    "date": "2026-07-24",
+    "macrostructure": "app-screen: live counter + POS sales sheet (list/edit switch view)",
+    "theme": "CALM/neu + expo-glass-effect (locked app system)",
+    "enrichment": "none",
+    "brief": "Potraces · StallDashboard — session sales modal with POS edit (qty stepper, payment chips, total override, void); updateSale gains total override"
+  },
+  {
+    "date": "2026-07-24",
+    "macrostructure": "app-screen: live counter (gradient money card + split bar + glass actions)",
+    "theme": "CALM/neu + expo-glass-effect (locked app system)",
+    "enrichment": "none",
+    "brief": "Potraces · StallDashboard State B — count-up hero, cash/QR proportional split bar, keep-selling glass tile, ledger recent sales"
+  },
+  {
+    "date": "2026-07-24",
+    "macrostructure": "app-screen: solid bronze hero + asymmetric liquid-glass bento (spring-press tiles)",
+    "theme": "CALM/neu + expo-glass-effect (locked app system)",
+    "enrichment": "none",
+    "brief": "Potraces · StallDashboard v2 — trending glass bento: bronze start-selling hero, tall pre-orders tile, stacked transactions/costs, wide register strip"
+  },
+  {
+    "date": "2026-07-24",
+    "macrostructure": "app-screen: stall-counter (identity row + bronze CTA + register strip + action grid + shop-card modal)",
+    "theme": "CALM/neu (locked app system)",
+    "enrichment": "none",
+    "brief": "Potraces · StallDashboard — tappable business identity, hero start-selling card, tape lifetime strip, 2x2 route grid, BusinessCard preview modal"
+  },
+  {
+    "date": "2026-07-24",
+    "macrostructure": "app-screen: receipt-tape (tear-line entries + register totals head)",
+    "theme": "CALM/neu (locked app system)",
+    "enrichment": "none",
+    "brief": "Potraces · SessionHistory — one tape surface, dashed tear dividers, stamp condition badges, typographic lifetime stats"
+  },
+  {
+    "date": "2026-07-21",
+    "macrostructure": "app-screen: branded hero + method-picker + timeline rail",
+    "theme": "CALM/neu (locked app system)",
+    "enrichment": "none",
+    "brief": "Potraces · QuickLogSetup v2 — deep-olive hero band, Apple Log / Backtap Log picker, timeline checklists, banner/done strips"
+  }
+]

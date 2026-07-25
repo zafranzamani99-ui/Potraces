@@ -385,7 +385,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   };
   function clubImgSrc(imagePath){
     if (!imagePath) return null;
-    if (imagePath.indexOf('preset:') === 0) return CLUB_PRESETS[imagePath.slice(7)] || null;
+    if (imagePath.indexOf('preset:') === 0) return CLUB_PRESETS[imagePath.slice(7).split(':')[0]] || null;
     return SB_URL + '/storage/v1/object/public/collectz-images/' + imagePath;
   }
 
@@ -423,6 +423,11 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       genericT: 'Something went wrong',
       genericM: 'We couldn’t load this kutipan. Check your connection and try again.',
       date: 'Date', venue: 'Venue', payBy: 'Pay by',
+      skill: 'Skill', age: 'Age', gender: 'Gender', booking: 'Booking',
+      skillBeginner: 'Beginner', skillIntermediate: 'Intermediate', skillAdvanced: 'Advanced',
+      ageBelow18: 'Below 18', age18Above: '18 & above', ageAny: 'No age limit',
+      genderMale: 'Male only', genderFemale: 'Female only', genderAny: 'Open to all',
+      bookingBooked: 'Booked', bookingLater: 'Will book later',
       details: 'Details', rules: 'House rules', roster: 'Who’s in',
       waiting: 'Waiting list',
       unpaid: 'Unpaid', pending: 'Pending', confirmed: 'Confirmed', rejected: 'Rejected',
@@ -443,6 +448,11 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       genericT: 'Ada masalah sikit',
       genericM: 'Kutipan ni tak dapat load. Check internet kau dan cuba lagi.',
       date: 'Tarikh', venue: 'Tempat', payBy: 'Bayar sebelum',
+      skill: 'Kemahiran', age: 'Umur', gender: 'Jantina', booking: 'Tempahan',
+      skillBeginner: 'Permulaan', skillIntermediate: 'Pertengahan', skillAdvanced: 'Mahir',
+      ageBelow18: 'Bawah 18', age18Above: '18 ke atas', ageAny: 'Tiada had umur',
+      genderMale: 'Lelaki sahaja', genderFemale: 'Perempuan sahaja', genderAny: 'Terbuka semua',
+      bookingBooked: 'Ditempah', bookingLater: 'Tempah kemudian',
       details: 'Butiran', rules: 'Peraturan', roster: 'Siapa masuk',
       waiting: 'Senarai menunggu',
       unpaid: 'Belum bayar', pending: 'Menunggu', confirmed: 'Disahkan', rejected: 'Ditolak',
@@ -557,6 +567,11 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     if (session.venue) rows += metaRow(s.venue, esc(session.venue));
     var payBy = fmtDate(session.pay_by);
     if (payBy) rows += metaRow(s.payBy, esc(payBy));
+    /* Player requirements — only the ones the organizer set. */
+    if (session.skill_level) rows += metaRow(s.skill, esc({ beginner: s.skillBeginner, intermediate: s.skillIntermediate, advanced: s.skillAdvanced }[session.skill_level] || session.skill_level));
+    if (session.age_req) rows += metaRow(s.age, esc({ below_18: s.ageBelow18, '18_above': s.age18Above, any: s.ageAny }[session.age_req] || session.age_req));
+    if (session.gender_req) rows += metaRow(s.gender, esc({ male: s.genderMale, female: s.genderFemale, any: s.genderAny }[session.gender_req] || session.gender_req));
+    if (session.booking_status) rows += metaRow(s.booking, esc(session.booking_status === 'booked' ? s.bookingBooked : s.bookingLater));
     if (rows) headHtml += '<div class="cz-rows">' + rows + '</div>';
     /* map preview (static via map-preview fn; falls back to plain link buttons).
        Scheme-guarded like socials below — the raw URL becomes an href, so only http(s). */

@@ -172,9 +172,10 @@ const LEDGER_ROW_RE = /(?:^|\s)[-+]\s*(?:RM|MYR)\s*\d/i;
 // "Bills") — those are the payment TYPE, not who was paid — and Gmail/mail UI junk
 // ("Based on this email Correct?", "ADAPTIS Notification", "Reply o Forward", "to me")
 // that litters emailed payment confirmations. Navigation/button rows ("Back to Home",
-// "Back to Bills") are UI, never a payee either.
+// "Back to Bills") are UI, never a payee either. Footer fine print ("signature is
+// required.") is metadata, never a payee.
 const LABEL_ROW_RE =
-  /\b(reference|ref\s*no|rujukan|transaction|date|time|tarikh|masa|type|jenis|status|successful|berjaya|receipt|resit|share|done|balance|baki|amount|jumlah|method|kaedah|wallet|bank|payment|paid|bills?|failed|gagal|try\s*again|e-?mail|inbox|reply|forward|correct|notification|to\s+me|(?:back|return|go)\s+to)\b/i;
+  /\b(reference|ref\s*no|rujukan|transaction|date|time|tarikh|masa|type|jenis|status|successful|berjaya|receipt|resit|share|done|balance|baki|amount|jumlah|method|kaedah|wallet|bank|payment|paid|bills?|failed|gagal|try\s*again|e-?mail|inbox|reply|forward|correct|notification|to\s+me|(?:back|return|go)\s+to|signature|required)\b/i;
 // "to NAME" / "from NAME" / "kepada NAME" — the payee is captured directly.
 const TO_FROM_RE = /\b(?:to|kepada|from|daripada|dari)\s+([A-Za-z][A-Za-z'@.\- ]{2,})$/i;
 // …but NOT a navigation/button row — "Back to Bills" is a button, "Bills" is not a payee.
@@ -213,12 +214,16 @@ function extractPayee(rows: string[], amountRowIndex: number): string | null {
       const inline = tidy(mm[1] ?? '');
       if (inline && isNameyRow(inline) && !LABEL_WORD_RE.test(inline)) return inline;
       // Label row with no usable inline value (two-line layout) → the value is the NEXT
-      // namey row (e.g. "Beneficiary name" then "MOHD FIRDAUS BIN ABIDIN").
+      // namey row (e.g. "Beneficiary name" then "MOHD FIRDAUS BIN ABIDIN"). A SINGLE-WORD
+      // row that is a label fragment ("name" — PDF extraction splits "Beneficiary name"
+      // into "Beneficiary" / "name" / value) is skipped, not treated as the value; a real
+      // next label ("Reference ID") still ends the search.
       for (let j = i + 1; j < rows.length; j++) {
         const v = rows[j].trim();
         if (!v) continue;
-        if (isNameyRow(v) && !LABEL_WORD_RE.test(v)) return tidy(v);
-        break; // the next non-empty row is another label/metadata → this label has no value
+        if (!/\s/.test(v) && LABEL_WORD_RE.test(v)) continue; // fragment of THIS label
+        if (isNameyRow(v)) return tidy(v);
+        break; // the next real row is another label/metadata → this label has no value
       }
     }
   }

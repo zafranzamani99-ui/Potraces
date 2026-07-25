@@ -18,11 +18,16 @@ import {
   copyAsync,
   makeDirectoryAsync,
   getInfoAsync,
+  readAsStringAsync,
   documentDirectory,
 } from 'expo-file-system/legacy';
 import * as Notifications from 'expo-notifications';
 import { parsePaymentScreenshot, type ParsedPayment } from './paymentScreenshotParser';
-import { recognizeRows, isLocalOcrAvailable, extractReceiptFromRows } from './localReceiptOcr';
+import { renderPdfFirstPageToPng } from '../../modules/pdf-raster/src';
+import { recognizeRows, isLocalOcrAvailable, extractReceiptFromRows, extractReceiptFromRowsFull, UNPAID_INVOICE_RE } from './localReceiptOcr';
+import { useReceiptStore } from '../store/receiptStore';
+import { toRelativeReceiptPath, resolveReceiptImageUri } from '../utils/receiptImage';
+import { extractPdfTextRows, base64ToBytes } from './pdfTextExtract';
 import { navigationRef } from '../navigation/navigationRef';
 import { logQuickExpense, type QuickLogResult } from './quickLog';
 import { prepareImage } from './receiptScanner';
@@ -36,7 +41,7 @@ import { useAppStore } from '../store/appStore';
 import { globalShowToast } from '../context/ToastContext';
 import { dedupeKeyFor } from '../utils/paymentDedupeKey';
 import { addSharedKey, pruneSharedKeysByLiveTxIds } from '../utils/sharedPaymentDedupe';
-import { listPendingTexts, removePendingText } from '../utils/sharedTextInbox';
+import { listPendingTexts, removePendingText, getPendingTextRaw } from '../utils/sharedTextInbox';
 import {
   getPendingReceiptRaw,
   listPendingReceipts,
@@ -62,6 +67,7 @@ const ShareExtNative = requireOptionalNativeModule('ExpoShareExtension') as
   | null;
 
 const IMAGE_EXT_RE = /\.(jpe?g|png|heic|heif)$/i;
+const PDF_EXT_RE = /\.pdf($|[?#])/i;
 let _reconciling = false;
 
 /**
@@ -99,6 +105,36 @@ export async function reconcileSharedPayments(): Promise<void> {
     try { pending = await listPendingReceipts(); } catch { pending = []; }
     const receiptByBase = new Map(pending.map((r) => [basename(r.file), r]));
 
+    // 2) Pending shared TEXTS first (bank SMS, WhatsApp receipts, extension-extracted PDFs).
+    //    Receipt entries AUTO-LOG the total + archive the document in Receipts (the extension
+    //    already notified → silent); their staged PDF is deleted HERE so the files loop below
+    //    can't double-process it (addReceipt has no dedupe of its own).
+    let receiptPdfBases = new Set<string>();
+    try {
+      const texts = await listPendingTexts();
+      if (texts.length > 0) dbg(`reconcile: ${texts.length} pending text(s)`);
+      receiptPdfBases = new Set(
+        texts.filter((t) => t.kind === 'receipt' && t.pdfFile).map((t) => basename(t.pdfFile!)),
+      );
+      for (const t of texts) {
+        if (t.kind === 'receipt') {
+          try {
+            await archiveReceiptFromRows(
+              t.text.split(/\r?\n/).map((r) => r.trim()).filter(Boolean),
+              { silent: true, pdfUri: t.pdfFile ?? null },
+            );
+          } catch { /* */ }
+          if (t.pdfFile) {
+            try { await deleteAsync(normalizeUri(t.pdfFile), { idempotent: true }); } catch { /* */ }
+          }
+          await removePendingText(t.tid);
+          continue;
+        }
+        try { await logTextFromShare(t.text, { silent: t.kind === 'payment' }); } catch { /* */ }
+        await removePendingText(t.tid);
+      }
+    } catch { /* best-effort */ }
+
     let paths: string[] = [];
     try {
       paths = (await ShareExtNative.getSharedFilePaths()) ?? [];
@@ -111,6 +147,15 @@ export async function reconcileSharedPayments(): Promise<void> {
     let openedReceipt = false;
     for (const p of paths) {
       if (!IMAGE_EXT_RE.test(p)) {
+        // A staged PDF receipt/invoice the EXTENSION couldn't extract: extract its text rows
+        // in JS and run them through the same pipeline as shared text (receipts also archive
+        // the PDF — see logPdfFromShare). PDFs owned by a pending receipt text were already
+        // handled above. Other stray files are dropped.
+        if (PDF_EXT_RE.test(p) && !receiptPdfBases.has(basename(p))) {
+          // NOT silent: on this fallback the extension showed a neutral "PDF received" card
+          // and fired no notification — the outcome notification must come from HERE.
+          try { await logPdfFromShare(p, { silent: false, scanReceipts: false }); } catch { /* */ }
+        }
         try { await deleteAsync(p, { idempotent: true }); } catch { /* */ }
         continue;
       }
@@ -132,20 +177,6 @@ export async function reconcileSharedPayments(): Promise<void> {
       try { await logPaymentFromShare(p, { silent: true, scanReceipts: false }); } catch { /* */ }
       try { await deleteAsync(p, { idempotent: true }); } catch { /* */ }
     }
-
-    // 3) Pending shared TEXTS (bank SMS, WhatsApp receipts — the native side stages only
-    //    images as files, so these arrive via the text inbox instead). Replay each through
-    //    the same pipeline, then consume the entry. The extension already notified for
-    //    'payment' texts → those stay silent; 'other' texts (receipt / uncertain) get their
-    //    outcome notification here.
-    try {
-      const texts = await listPendingTexts();
-      if (texts.length > 0) dbg(`reconcile: ${texts.length} pending text(s)`);
-      for (const t of texts) {
-        try { await logTextFromShare(t.text, { silent: t.kind === 'payment' }); } catch { /* */ }
-        await removePendingText(t.tid);
-      }
-    } catch { /* best-effort */ }
   } finally {
     _reconciling = false;
   }
@@ -246,8 +277,55 @@ export async function openReceiptReview(imageUri: string): Promise<void> {
 
 /** Drain a receipt detected while navigation wasn't ready yet. Call on nav-ready + foreground. */
 export function flushPendingReceiptReview(): void {
-  if (!pendingReceiptUri) return;
-  if (navigateToReceipt(pendingReceiptUri)) pendingReceiptUri = null;
+  if (pendingReceiptUri) {
+    if (navigateToReceipt(pendingReceiptUri)) pendingReceiptUri = null;
+  }
+  if (pendingReceiptRows) {
+    if (navigateToReceiptRows(pendingReceiptRows)) pendingReceiptRows = null;
+  }
+}
+
+// Rows-based variant of the receipt review for shared TEXT/PDF receipts: no image to copy
+// out — the ReceiptScanner prefills from the extracted rows instead of a photo + OCR.
+let pendingReceiptRows: string[] | null = null;
+
+function navigateToReceiptRows(rows: string[]): boolean {
+  if (!navigationRef.isReady()) return false;
+  try {
+    if (useAppStore.getState().mode !== 'personal') useAppStore.getState().setMode('personal');
+    (navigationRef as any).navigate('ReceiptScanner', { textRows: rows });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Open the ReceiptScanner review prefilled from extracted rows (no image). Never throws. */
+export async function openReceiptReviewRows(rows: string[]): Promise<void> {
+  if (!navigateToReceiptRows(rows)) pendingReceiptRows = rows;
+}
+
+/**
+ * Tap of a "Receipt found" notification for a shared TEXT/PDF receipt → open the scanner
+ * prefilled from the stashed rows. Same 24h tap window as image receipts; expired or gone →
+ * a brief toast. The ONLY entry point that opens a shared text receipt when notifications on.
+ */
+export async function openSharedTextReceiptById(tid?: string): Promise<void> {
+  if (!tid) return;
+  let entry: { text: string; ts: number } | null = null;
+  try { entry = await getPendingTextRaw(tid); } catch { entry = null; }
+  if (!entry) {
+    try { globalShowToast('That receipt is no longer available — share it again.', 'info'); } catch { /* */ }
+    return;
+  }
+  if (Date.now() - entry.ts > RECEIPT_TTL_MS) {
+    await removePendingText(tid);
+    try { globalShowToast('This receipt expired — share it again to scan.', 'info'); } catch { /* */ }
+    return;
+  }
+  const rows = entry.text.split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
+  await openReceiptReviewRows(rows);
+  await removePendingText(tid);
 }
 
 const MAX_AMOUNT = 1_000_000;
@@ -400,6 +478,116 @@ function logFromEcho(echo: EchoEnrichResult, parsed: ParsedPayment | null): Quic
     inputMethod: 'share',
     dedupeKey: echoDedupeKey(echo, parsed),
   });
+}
+
+// ─── Receipt archive (shared TEXT/PDF receipts) ──────────────
+// A receipt-shaped share with no photo: AUTO-LOG the grand total to transactions (the
+// "previous workflow") AND archive the receipt record in the Receipts screen — with the
+// shared PDF attached when the share was a file. `silent` = the extension already notified.
+function receiptDateToDate(s?: string): Date {
+  if (!s) return new Date();
+  const dmy = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/); // d/m/y (MY format)
+  if (dmy) {
+    const yy = +dmy[3] < 100 ? 2000 + +dmy[3] : +dmy[3];
+    const d = new Date(yy, +dmy[2] - 1, +dmy[1]);
+    if (!isNaN(d.getTime())) return d;
+  }
+  const d = new Date(s); // "July 25, 2026", "25 Jul 2026", ISO…
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
+async function copyPdfToReceiptStore(uri: string): Promise<string> {
+  const dir = `${documentDirectory}receipts/`;
+  const info = await getInfoAsync(dir);
+  if (!info.exists) await makeDirectoryAsync(dir, { intermediates: true });
+  const dest = `${dir}receipt-${Date.now()}.pdf`;
+  await copyAsync({ from: normalizeUri(uri), to: dest });
+  return dest;
+}
+
+/**
+ * Log a receipt-shaped rows share (total + archive). Returns true when the rows WERE a
+ * receipt (handled — caller returns), false to fall through to the payment/AI paths.
+ */
+async function archiveReceiptFromRows(
+  rows: string[],
+  opts: { silent: boolean; pdfUri?: string | null },
+): Promise<boolean> {
+  // An UNPAID invoice ("Amount due", "Pay online") is a bill, not a receipt — never log
+  // it. Return false so the caller falls through to the payment pipeline (which rejects).
+  if (UNPAID_INVOICE_RE.test(rows.join('\n'))) return false;
+  const full = extractReceiptFromRowsFull(rows);
+  if (!(full.total > 0)) return false;
+  const note = full.vendor ?? 'Receipt';
+  const result = logQuickExpense({
+    amount: full.total,
+    type: 'expense',
+    note,
+    inputMethod: 'share',
+    dedupeKey: dedupeKeyFor({
+      refId: null, direction: 'out', amount: full.total, datetime: null, payee: full.vendor ?? null,
+    }),
+  });
+  if (!result) {
+    dbg('OUTCOME already-logged (receipt dedupe)');
+    if (!opts.silent) await notifyAlreadyLogged();
+    return true;
+  }
+  // Archive in the Receipts screen (linked to the expense via transactionId). Best-effort —
+  // the expense is already logged; a failed copy/archive must not break the flow.
+  try {
+    let imageUri: string | undefined;
+    let pdfUri: string | undefined;
+    if (opts.pdfUri) {
+      try {
+        const copiedPdf = await copyPdfToReceiptStore(opts.pdfUri);
+        // Persist RELATIVE paths — iOS rewrites the sandbox container on every
+        // install/update, so an absolute file:// URI goes stale ("no access to the
+        // provided file" after a rebuild). Render sites resolve via resolveReceiptImageUri.
+        pdfUri = toRelativeReceiptPath(copiedPdf);
+        // Crisp PNG hero (rasterized first page) instead of the raw PDF path, which
+        // renders blurry in RN <Image>. The native module writes to Caches — copy the
+        // PNG into the receipts dir too (Caches is purgeable AND not resolvable
+        // relative to Documents). null on old dev clients → fall back to the PDF path.
+        const raster = await renderPdfFirstPageToPng(copiedPdf);
+        if (raster) {
+          try {
+            const pngDest = `${documentDirectory}receipts/receipt-${Date.now()}.png`;
+            await copyAsync({ from: raster, to: pngDest });
+            imageUri = toRelativeReceiptPath(pngDest);
+          } catch {
+            imageUri = toRelativeReceiptPath(copiedPdf);
+          }
+        } else {
+          imageUri = toRelativeReceiptPath(copiedPdf);
+        }
+        dbg(`pdf raster: ${raster ? 'png ok' : 'FALLBACK (module returned null)'} · ${String(imageUri).slice(-40)}`);
+      } catch { /* keep record without the file */ }
+    }
+    const date = receiptDateToDate(full.date);
+    useReceiptStore.getState().addReceipt({
+      title: note,
+      vendor: full.vendor,
+      items: full.items,
+      subtotal: full.subtotal,
+      tax: full.tax,
+      total: full.total,
+      date,
+      category: 'other',
+      myTaxCategory: 'none',
+      paymentMethod: full.paymentMethod,
+      location: full.location,
+      imageUri,
+      pdfUri,
+      verified: false,
+      transactionId: result.txId,
+      year: date.getFullYear(),
+    });
+    dbg(`receipt archived: RM ${full.total} · ${note}${imageUri ? ' (pdf attached)' : ''}`);
+  } catch { /* best-effort */ }
+  inboxLogged('out', result.amount, note, result.txId);
+  if (!opts.silent) await notifyLogged('out', result.amount, note);
+  return true;
 }
 
 // ─── Echo (Gemini) enrichment ────────────────────────────────
@@ -593,23 +781,8 @@ export async function logPaymentFromShare(
           // Only the direct / deep-link path (scanReceipts !== false) opens it here.
           if (opts?.scanReceipts !== false) await openReceiptReview(uri);
         } else {
-          // TEXT receipt — no image for the scanner review: log the grand TOTAL as an
-          // editable expense (vendor as the note). Silent-gated like a payment.
-          const result = logQuickExpense({
-            amount: receipt.total,
-            type: 'expense',
-            note: receipt.vendor ?? 'Receipt',
-            inputMethod: 'share',
-            dedupeKey: dedupeKeyFor({
-              refId: null, direction: 'out', amount: receipt.total,
-              datetime: null, payee: receipt.vendor,
-            }),
-          });
-          if (!result) {
-            await nAlready();
-          } else {
-            await nLogged('out', result.amount, receipt.vendor ?? 'Receipt', result.txId);
-          }
+          // TEXT receipt (no image/PDF attached): auto-log the total + archive in Receipts.
+          if (await archiveReceiptFromRows(rows, { silent })) return;
         }
         return;
       }
@@ -670,4 +843,35 @@ export async function logTextFromShare(text: string, opts?: { silent?: boolean }
   const rows = (text ?? '').split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
   if (rows.length === 0) return;
   await logPaymentFromShare(null, { ...opts, textRows: rows });
+}
+
+/**
+ * Entry point for a shared PDF (a digitally-generated receipt/invoice — Stripe-style).
+ * Reads the file, extracts its text rows IN JS (no native PDF code — see
+ * pdfTextExtract.ts) and feeds them through the SAME pipeline as a shared text:
+ * receipt-shaped rows auto-log the grand total AND archive the receipt (with THIS PDF
+ * attached) in the Receipts screen; payment-shaped rows log the payment.
+ * A scanned-image PDF yields no text → we bail with a debug log (same outcome as
+ * "couldn't read", and in a silent reconcile the extension card already told the
+ * user to open the app). Never throws.
+ */
+export async function logPdfFromShare(
+  pdfUri: string,
+  opts?: { silent?: boolean; scanReceipts?: boolean },
+): Promise<void> {
+  try {
+    const b64 = await readAsStringAsync(normalizeUri(pdfUri), { encoding: 'base64' });
+    const rows = extractPdfTextRows(base64ToBytes(b64));
+    if (rows.length === 0) {
+      dbg('pdf: no text rows (scanned image or unsupported layout) — nothing logged');
+      return;
+    }
+    dbg(`pdf: ${rows.length} rows: ${rows.join(' | ').slice(0, 400)}`);
+    // Receipt-shaped → auto-log total + archive the PDF in Receipts (extension hand-off
+    // already covered; this is the fallback when the EXTENSION couldn't extract it).
+    if (await archiveReceiptFromRows(rows, { silent: opts?.silent ?? false, pdfUri })) return;
+    await logPaymentFromShare(null, { ...opts, textRows: rows });
+  } catch (e) {
+    dbg(`pdf THREW: ${String(e).slice(0, 60)}`);
+  }
 }

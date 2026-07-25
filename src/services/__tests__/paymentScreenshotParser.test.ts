@@ -503,6 +503,38 @@ check('US month-first date parses (Stripe-style)', [
   dt: [2026, 6, 25, 14, 30],
 });
 
+// Maybank Share-Receipt as a PDF (M2U_*.pdf — owner hit this, 25 Jul 2026): PDF text
+// extraction FRAGMENTS the two-line labels — "Beneficiary" / "name" / value on separate
+// rows. The label walk must skip the lone "name" fragment (and the receipt footer
+// "signature is required." must never be a payee — owner saw it logged as the payee).
+check('Maybank PDF receipt — fragmented "Beneficiary"/"name" label, footer is not payee', [
+  'Share Receipt',
+  'Maybank',
+  'DuitNow Transfer',
+  'Successful',
+  'Reference ID',
+  '25 Jul 2026, 08:13 PM',
+  '472081952M',
+  'Beneficiary',
+  'name',
+  'MOHAMAD WASHIL ALKAMAL BIN AHMAD SUHAINI',
+  'Beneficiary account number',
+  '7626 3729 27',
+  'Receiving bank',
+  'CIMB BANK BERHAD',
+  'Recipient reference',
+  'grab',
+  'Amount',
+  'RM 20.00',
+  'Note: This receipt is computer generated and no',
+  'signature is required.',
+], {
+  isPaymentScreen: true, reason: 'ok', direction: 'out', amount: 20, currency: 'MYR',
+  payee: 'MOHAMAD WASHIL ALKAMAL BIN AHMAD SUHAINI', refId: '472081952M',
+  walletHint: 'maybank', method: 'duitnow',
+  dt: [2026, 6, 25, 20, 13],
+});
+
 // A store RECEIPT is rejected by the payment rules (multi-amount), but it is NOT an in-app
 // screen — so its reason must stay `not_payment` (receipt-eligible), never `not_payment_screen`.
 // Share-to-Log then runs the receipt detector on it (see receiptDetect.test.ts).

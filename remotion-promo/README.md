@@ -51,6 +51,61 @@ Personality ("am i rich?") → Sign-off. All copy verbatim from the Echo code.
 - `src/echo/` — theme, fx (Orb, GlowType, Chip, StreamText, Waveform, …), scenes, EchoSound.
 - `npx remotion render EchoPromo out/echo-promo.mp4`
 
+## DebtPromo — "Paper v5" · 38.2s · 60fps · WHITE / living components
+
+Every app screen **rebuilt as a Remotion component** (pixel-close to
+`assets/website jejakbaki/*.PNG`) — rows stagger, totals count up, progress
+bars fill, the receipt scan sweeps, the WhatsApp message types, the saved
+DuitNow QR attaches itself. Signature type: **Rise** (classic masked
+word-rise, `src/debt4/type.tsx`) + `Rule` lower-third captions +
+`Scribble` emphasis. Screens zoomed ×1.2 for tele presence. **Tempo-locked
+to the 100 BPM bed** (beat = 36f). VO: **ElevenLabs "Daud M" (eleven_v3,
+Malay)** — the hook is a per-person **roll-call**: one VO clip per debt row,
+each name spoken right after its row slams in.
+
+Story: **Hook** (aiman RM 30 tiket bas · zikri RM 60 makan · mohsin RM 50
+bayar dulu semalam → RM 140 → "Track semua." → "Ingat barang. Ingat harga.
+Ingat orang sekali.") → **Snap+Split** (viewfinder scan → RM 129.60 parsed →
+÷ 4 → Split created!) → **Splits Overview** (you're owed back RM 316 across
+2 splits) → **Track** (You Owe RM 650 / Owed to You RM 60 — "…nanti halal je
+hutang tu") → **Remind** (message types → **saved DuitNow QR attaches** →
+WhatsApp + QR) → **Settle** (dia bayar — row strikes, "collected") →
+**Shared** ("Share sama-sama Netflix? Track kat sini jugak") → **Finale**
+("Hutang. Track dulu. Settle." — takde awkward dah).
+
+- `npm run debt-vo` — 14 clips via ElevenLabs (`ELEVENLABS_API_KEY` +
+  `DAUD_VOICE_ID`/`VOICE_ID` in `remotion-promo/.env`).
+- **`DEBT_PROMO_RULES.md` — user-corrected audio×display rules + approved
+  copy. READ before touching this promo.**
+- `npm run debt-audio` — synths the 100 BPM bed + dsfx set (deterministic).
+- `src/debt4/` — type (Rise/BlockReveal/Rule/Scribble/Ripple), screens (all
+  living screens), scenes, DebtSound (VO/SFX cue map).
+- `REMOTION_KNOWLEDGE.md` — field notes: determinism, motion recipes,
+  screenshot storytelling, audio grids, VO pipeline, render QA, gotchas.
+- `npm run render:debt` — → `out/debt-promo.mp4`
+- Official [remotion-dev/skills](https://github.com/remotion-dev/skills) best
+  practices vendored in `.skills/` for reference.
+
+## WhyPromo — "Why Potraces" · 74.3s · 60fps · problem → suspension → solution
+
+Contoh1 grammar, second pass: **Punch captions** (`src/why/punch.tsx` —
+neutral grotesque, per-word hard pops, tight cadence), montage over 20
+open-license stock images, **serious mix only** (bed + deep whooshes + riser,
+bed ducks through the suspension). VO persona: **Zain (Malay Newsroom
+Narrator)**. Structure: problem (16/day muflis · 49.5% personal loans ·
+53k<30 RM 1.9B · BNPL 5.1M <RM5k · 61% RM1k · kad 5-6 · kahwin RM30k+ ·
+RM 1.63T household debt · EPF 90%+) → **suspension** ("Masalahnya bukan gaji
+kecil… kita tak nampak duit tu pergi mana") → **solution = Potraces**
+("Sebab tu Potraces wujud." · snap receipt AI · Echo chat rekod · debts,
+splits, shared subs · "Ingat barang, harga, orang." · "Bukan sebab kau
+lemah. Sistem yang buat kau lupa. Potraces ingatkan." · "Track dulu. Baru
+berani belanja.").
+
+- `npm run why-vo` — 14 lines via ElevenLabs Zain (`WHY_VOICE_ID` to override).
+- Stock: open-license via Openverse/Wikimedia → `public/stock/` + `credits.json`.
+- `src/why/` — punch (Punch captions), fx (ImgBeat), scenes, WhySound.
+- `npm run render:why` — → `out/why-potraces.mp4`
+
 ## PotracesPromo — 11s generic app promo (first experiment, dark)
 
 ## Run

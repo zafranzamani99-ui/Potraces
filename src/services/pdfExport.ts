@@ -10,8 +10,11 @@
  */
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { readAsStringAsync } from 'expo-file-system/legacy';
 import { format as formatDate } from 'date-fns';
 import type { Transaction, Wallet, SavedReceipt } from '../types';
+import { buildReceiptReplicaHtml } from './receiptReplicaHtml';
+import { resolveReceiptImageUri } from '../utils/receiptImage';
 
 /** HTML-escape a string for safe interpolation into template bodies. */
 function esc(s: unknown): string {
@@ -333,7 +336,7 @@ function buildSingleReceiptHtml(input: SingleReceiptInput): string {
   }
   .receipt-wrap {
     width: 300pt;
-    margin: 20pt auto;
+    margin: 0 auto;
   }
   .page {
     background: #F9F6F0;
@@ -541,20 +544,80 @@ function buildSingleReceiptHtml(input: SingleReceiptInput): string {
       tracked with potraces${savedStr ? ` · saved ${esc(savedStr)}` : ''}<br/>
       keep original receipt for official claims
     </div>
+    <svg viewBox="0 0 360 16" preserveAspectRatio="none" style="width:100%;height:12pt;display:block;" xmlns="http://www.w3.org/2000/svg"><rect width="360" height="16" fill="#F9F6F0"/><path d="M0,6 Q6,0 12,9 Q18,14 24,4 Q30,1 36,10 Q42,15 48,5 Q54,0 60,8 Q66,13 72,3 Q78,0 84,10 Q90,16 96,4 Q102,1 108,9 Q114,14 120,3 Q126,0 132,8 Q138,12 144,5 Q150,0 156,10 Q162,15 168,4 Q174,1 180,9 Q186,14 192,3 Q198,0 204,8 Q210,13 216,5 Q222,0 228,10 Q234,16 240,4 Q246,1 252,8 Q258,13 264,5 Q270,0 276,9 Q282,16 288,4 Q294,0 300,7 Q306,14 312,5 Q318,1 324,9 Q330,14 336,4 Q342,0 348,8 Q354,13 360,6 L360,16 L0,16 Z" fill="#fff"/></svg>
   </div>
-  <svg viewBox="0 0 360 16" preserveAspectRatio="none" style="width:300pt;height:12pt;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg"><rect width="360" height="16" fill="#F9F6F0"/><path d="M0,6 Q6,0 12,9 Q18,14 24,4 Q30,1 36,10 Q42,15 48,5 Q54,0 60,8 Q66,13 72,3 Q78,0 84,10 Q90,16 96,4 Q102,1 108,9 Q114,14 120,3 Q126,0 132,8 Q138,12 144,5 Q150,0 156,10 Q162,15 168,4 Q174,1 180,9 Q186,14 192,3 Q198,0 204,8 Q210,13 216,5 Q222,0 228,10 Q234,16 240,4 Q246,1 252,8 Q258,13 264,5 Q270,0 276,9 Q282,16 288,4 Q294,0 300,7 Q306,14 312,5 Q318,1 324,9 Q330,14 336,4 Q342,0 348,8 Q354,13 360,6 L360,16 L0,16 Z" fill="#fff"/></svg>
   </div>
 </body></html>`;
 }
 
-export async function exportSingleReceiptPdf(input: SingleReceiptInput): Promise<void> {
+/** Render the designed-card receipt PDF to a cache file and return its URI. */
+export async function writeSingleReceiptPdf(input: SingleReceiptInput): Promise<string> {
   const html = buildSingleReceiptHtml(input);
+  const { uri } = await Print.printToFileAsync({ html, base64: false });
+  return uri;
+}
+
+export async function exportSingleReceiptPdf(input: SingleReceiptInput): Promise<void> {
+  const uri = await writeSingleReceiptPdf(input);
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Receipt' });
+  } else {
+    throw new Error('Sharing is not available on this device.');
+  }
+}
+
+/**
+ * Photo receipt (imageUri set, no archived PDF) → share the thermal-replica
+ * PDF instead of the designed card. Mirrors exportSingleReceiptPdf's share.
+ */
+export async function shareReceiptReplicaPdf(receipt: SavedReceipt, currency = 'RM'): Promise<void> {
+  const { uri } = await Print.printToFileAsync({ html: buildReceiptReplicaHtml(receipt, currency), base64: false });
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Receipt' });
+  } else {
+    throw new Error('Sharing is not available on this device.');
+  }
+}
+
+/**
+ * Share-as-PDF for a PHOTO receipt: the REAL captured image, full-page on a single page —
+ * not a generated card/replica. base64-embedded so WKWebView's print renderer can read it.
+ */
+export async function shareReceiptPhotoPdf(imageUri: string, title = 'receipt'): Promise<void> {
+  const b64 = await readAsStringAsync(imageUri, { encoding: 'base64' });
+  const mime = /\.png($|[?#])/i.test(imageUri) ? 'image/png' : 'image/jpeg';
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+    @page { margin: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #fff; }
+    img { width: 100vw; height: 100vh; object-fit: contain; display: block; }
+  </style></head><body><img src="data:${mime};base64,${b64}" alt=""/></body></html>`;
   const { uri } = await Print.printToFileAsync({ html, base64: false });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Receipt' });
   } else {
     throw new Error('Sharing is not available on this device.');
   }
+}
+
+/**
+ * The local PDF FILE for a receipt, for flows that need the file itself rather
+ * than the share sheet (e.g. Save to Drive): archived PDF → the original file,
+ * photo receipt → a freshly rendered thermal-replica PDF, otherwise the
+ * designed-card PDF.
+ */
+export async function resolveReceiptPdfUri(input: SingleReceiptInput): Promise<string> {
+  const { receipt, currency = 'RM' } = input;
+  // Stored pdfUri is relative / possibly a stale-container absolute → resolve first.
+  if (receipt.pdfUri) {
+    const resolved = resolveReceiptImageUri(receipt.pdfUri);
+    if (resolved) return resolved;
+  }
+  if (receipt.imageUri) {
+    const { uri } = await Print.printToFileAsync({ html: buildReceiptReplicaHtml(receipt, currency), base64: false });
+    return uri;
+  }
+  return writeSingleReceiptPdf(input);
 }
 
 export async function exportTaxYearPdf(input: TaxYearInput): Promise<void> {

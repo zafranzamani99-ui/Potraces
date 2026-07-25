@@ -54,6 +54,12 @@ export interface CollectzSession {
   image_path: string | null;
   /** Google Maps / Waze link for the venue (preview card parses it). */
   maps_url: string | null;
+  /** Player requirements (all optional; null = open to all / not specified). */
+  skill_level: 'beginner' | 'intermediate' | 'advanced' | null;
+  age_req: 'below_18' | '18_above' | 'any' | null;
+  gender_req: 'male' | 'female' | 'any' | null;
+  /** Whether the venue/court is already booked ('booked' | 'later' | null). */
+  booking_status: 'booked' | 'later' | null;
   /** Organizer-only cost scratchpad (never shown to participants). */
   calc_notes: string | null;
   /** Capacity: max ACTIVE players (null = no limit; joining is blocked at max). */
@@ -124,6 +130,10 @@ export interface CollectzJoinView {
     | 'status'
     | 'image_path'
     | 'maps_url'
+    | 'skill_level'
+    | 'age_req'
+    | 'gender_req'
+    | 'booking_status'
     | 'max_participants'
     | 'team_count'
     | 'team_size'
@@ -167,6 +177,10 @@ export interface CollectzSessionInput {
   qr_image_path?: string | null;
   image_path?: string | null;
   maps_url?: string | null;
+  skill_level?: 'beginner' | 'intermediate' | 'advanced' | null;
+  age_req?: 'below_18' | '18_above' | 'any' | null;
+  gender_req?: 'male' | 'female' | 'any' | null;
+  booking_status?: 'booked' | 'later' | null;
   socials?: CollectzSocials | null;
   group_url?: string | null;
   calc_notes?: string | null;
@@ -578,12 +592,13 @@ export async function viewByShareCode(shareCode: string): Promise<CollectzJoinVi
   return invokeJoin<CollectzJoinView>({ share_code: shareCode, action: 'view' });
 }
 
-/** Claim an organizer-added roster name as my own. */
-export async function claimParticipant(shareCode: string, participantId: string): Promise<string> {
+/** Claim an organizer-added roster name as my own (optionally straight into a team). */
+export async function claimParticipant(shareCode: string, participantId: string, teamIdx?: number): Promise<string> {
   const res = await invokeJoin<{ ok: boolean; participant_id: string }>({
     share_code: shareCode,
     action: 'claim',
     participant_id: participantId,
+    ...(teamIdx != null ? { team_idx: teamIdx } : {}),
   });
   return res.participant_id;
 }
@@ -623,11 +638,12 @@ export async function setParticipantTeam(participantId: string, teamIdx: number 
 }
 
 /** Add myself to the roster (my name wasn't pre-added by the organizer). */
-export async function addSelf(shareCode: string, name: string): Promise<string> {
+export async function addSelf(shareCode: string, name: string, teamIdx?: number): Promise<string> {
   const res = await invokeJoin<{ ok: boolean; participant_id: string }>({
     share_code: shareCode,
     action: 'add_self',
     name,
+    ...(teamIdx != null ? { team_idx: teamIdx } : {}),
   });
   return res.participant_id;
 }

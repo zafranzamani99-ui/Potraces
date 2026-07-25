@@ -127,6 +127,11 @@ function amountsIn(text: string): number[] {
 
 // ─── Keyword sets ───────────────────────────────────────────
 const TOTAL_RE = /\b(?:total|jumlah|amount\s*due|net)\b/i;
+// An UNPAID invoice/bill is NOT a receipt — nothing has been PAID yet ("Amount due",
+// "Pay online", "Date due"). Share-to-Log logs money that MOVED; an invoice must never
+// log. Bare "invoice" is fine — PAID receipts carry an "Invoice number" line too.
+export const UNPAID_INVOICE_RE =
+  /\b(amount\s*due|balance\s*due|payment\s*due|amount\s*outstanding|pay\s*online|due\s*date|date\s*due)\b/i;
 // A "total" line that is actually a tender/change/count line — never the grand total.
 const NOT_TOTAL_RE = /\b(?:tunai|cash|change|baki|tender|item|items|qty|quantity|point|pts|saving|savings|jimat)\b/i;
 const SUBTOTAL_RE = /\bsub\s*-?\s*(?:total|jumlah)\b/i;
@@ -349,6 +354,9 @@ export interface ReceiptDetection {
  * payment screen or a transaction list has no "TOTAL RM x" line, so it returns null.
  */
 export function extractReceiptFromRows(rows: string[]): ReceiptDetection | null {
+  // An UNPAID invoice ("Amount due", "Pay online") is a bill, not a receipt — nothing
+  // has moved, so it must never log. Paid receipts carry no due/pay-online language.
+  if (UNPAID_INVOICE_RE.test(rows.join('\n'))) return null;
   // The grand-total line is what separates a receipt from a payment screen / history list.
   const hasTotalLine = rows.some((row) => TOTAL_RE.test(row) && !NOT_TOTAL_RE.test(row));
   if (!hasTotalLine) return null;
@@ -368,13 +376,11 @@ export function extractReceiptFromRows(rows: string[]): ReceiptDetection | null 
 // ─── Entry points ───────────────────────────────────────────
 
 /**
- * Personal-scan fallback: same result shape as receiptScanner's Gemini path.
- * Fields the heuristics can't read stay undefined (the review screen lets the
- * user fill them in); items may be empty. Never counts against the scan quota.
+ * Rows → ExtractedReceipt, for scans that already HAVE text (shared PDF/text receipts) —
+ * the same heuristics as scanReceiptLocal minus the OCR step. The result is marked as a
+ * local scan (the review screen shows the "double-check the numbers" notice).
  */
-export async function scanReceiptLocal(imagePath: string): Promise<ExtractedReceipt> {
-  const { rows, rawText } = await runOcr(imagePath);
-
+export function extractReceiptFromRowsFull(rows: string[]): ExtractedReceipt {
   const items = findItems(rows);
   const subtotal = findKeywordAmount(rows, SUBTOTAL_RE);
   const tax = findKeywordAmount(rows, TAX_RE);
@@ -387,7 +393,7 @@ export async function scanReceiptLocal(imagePath: string): Promise<ExtractedRece
     tax,
     total,
     date: findDate(rows) ?? todayString(),
-    rawText,
+    rawText: rows.join('\n'),
     paymentMethod: findPaymentMethod(rows),
     // No category guessing locally — the screen defaults to other/none and the
     // user picks. (The shared type has no confidence flag; the WeakSet marker
@@ -395,6 +401,16 @@ export async function scanReceiptLocal(imagePath: string): Promise<ExtractedRece
   };
   localResults.add(result);
   return result;
+}
+
+/**
+ * Personal-scan fallback: same result shape as receiptScanner's Gemini path.
+ * Fields the heuristics can't read stay undefined (the review screen lets the
+ * user fill them in); items may be empty. Never counts against the scan quota.
+ */
+export async function scanReceiptLocal(imagePath: string): Promise<ExtractedReceipt> {
+  const { rows } = await runOcr(imagePath);
+  return extractReceiptFromRowsFull(rows);
 }
 
 /** Seller-scan fallback: same result shape as the seller Gemini path. */

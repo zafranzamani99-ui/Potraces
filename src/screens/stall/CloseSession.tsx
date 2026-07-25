@@ -1,15 +1,25 @@
+/* Hallmark · redesign v2: "that's a wrap" — wind-down register close for a tired
+ * seller. Mood: appreciative, calm, soft neu (no gradient, no glass, no solid
+ * bronze card). KeyboardAwareScrollView keeps the focused field visible.
+ * pre-emit critique: P5 H4 E4 S4 R5 V4
+ */
 import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   TextInput,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { ScrollView } from 'react-native-gesture-handler';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useStallStore } from '../../store/stallStore';
@@ -17,11 +27,13 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { SessionCondition } from '../../types';
 import { useT } from '../../i18n';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
-import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
+import { lightTap } from '../../services/haptics';
 import NewstInput, { newstOutline } from '../../components/business/NewstInput';
 import { useNeu } from '../../components/common/neu';
 import NeuIconButton from '../../components/common/NeuIconButton';
-import NeuButton from '../../components/common/NeuButton';
+import PaymentSplitBar from '../../components/business/PaymentSplitBar';
+
+const SPRING = { damping: 18, stiffness: 260, mass: 0.7 } as const;
 
 const CloseSession: React.FC = () => {
   const C = useCalm();
@@ -55,6 +67,10 @@ const CloseSession: React.FC = () => {
   const [expenseName, setExpenseName] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // Close-CTA press spring
+  const ctaScale = useSharedValue(1);
+  const ctaAStyle = useAnimatedStyle(() => ({ transform: [{ scale: ctaScale.value }] }));
 
   // Session summary
   const summary = useMemo(() => {
@@ -126,86 +142,54 @@ const CloseSession: React.FC = () => {
   const expenses = activeSession.expenses || [];
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior="padding"
-    >
-      <ScrollView
+    <View style={styles.container}>
+      <KeyboardAwareScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        bottomOffset={SPACING.lg}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <NeuIconButton
-            size={44}
-            radius={14}
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Go back"
-          >
-            <Feather name="arrow-left" size={22} color={C.textPrimary} />
-          </NeuIconButton>
-        </View>
+        {/* Appreciative wind-down header (back lives in the native nav header) */}
+        <Text style={styles.heading}>{t.stall.wrapHeading}</Text>
+        <Text style={styles.headingSub}>
+          {t.stall.wrapSubtitle.replace('{duration}', formatDuration(summary.duration))}
+        </Text>
 
-        <Text style={styles.heading}>{t.stall.closeSessionHeading}</Text>
+        {/* ─── Wind-down hero: soft neu well, the number is the payoff ─── */}
+        <View style={[styles.heroCard, neu.raisedSoft]}>
+          <Text style={styles.heroLabel}>{t.stall.cameInLabel.toUpperCase()}</Text>
+          <Text style={styles.heroAmount} accessibilityLabel={`${currency} ${Math.round(summary.totalRevenue)}`}>
+            {currency} {Math.round(summary.totalRevenue).toLocaleString()}
+          </Text>
 
-        {/* Session summary — canonical hero number */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryHeroWrap}>
-            <BusinessHeroNumber
-              amount={summary.totalRevenue}
-              label={t.stall.cameInLabel}
-              prefix={currency}
-              animated={false}
+          <View style={styles.heroStats}>
+            <Feather name="clock" size={13} color={C.textMuted} />
+            <Text style={styles.heroStatText}>
+              {summary.saleCount} {summary.saleCount !== 1 ? t.stall.salesLabel : t.stall.saleLabel}
+            </Text>
+          </View>
+
+          <View style={{ marginTop: SPACING.lg }}>
+            <PaymentSplitBar
+              cash={summary.totalCash}
+              qr={summary.totalQR}
+              card={summary.totalCard}
+              cashLabel={`${t.stall.cashPrefix} ${currency} ${summary.totalCash.toFixed(0)}`}
+              qrLabel={`${t.stall.qrPrefix} ${currency} ${summary.totalQR.toFixed(0)}`}
+              cardLabel={`${t.tapToPay.card} ${currency} ${summary.totalCard.toFixed(0)}`}
+              cashColor={C.bronze}
+              qrColor={C.accent}
+              cardColor={C.gold}
+              trackColor={withAlpha(C.textPrimary, 0.08)}
+              labelColor={C.textSecondary}
             />
           </View>
-
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Feather name="clock" size={16} color={C.textSecondary} style={{ marginBottom: 4 }} />
-              <Text style={styles.summaryItemValue}>
-                {formatDuration(summary.duration)}
-              </Text>
-              <Text style={styles.summaryItemLabel}>{t.stall.durationLabel}</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Feather name="shopping-bag" size={16} color={C.textSecondary} style={{ marginBottom: 4 }} />
-              <Text style={styles.summaryItemValue}>{summary.saleCount}</Text>
-              <Text style={styles.summaryItemLabel}>
-                {summary.saleCount !== 1 ? t.stall.salesLabel : t.stall.saleLabel}
-              </Text>
-            </View>
-          </View>
-
-          {/* Cash / QR breakdown */}
-          <View style={styles.breakdownRow}>
-            <View style={styles.breakdownItem}>
-              <Feather name="dollar-sign" size={14} color={C.textSecondary} />
-              <Text style={styles.breakdownText}>
-                {t.stall.cashPrefix} {currency} {summary.totalCash.toFixed(0)}
-              </Text>
-            </View>
-            <View style={styles.breakdownItem}>
-              <Feather name="smartphone" size={14} color={C.textSecondary} />
-              <Text style={styles.breakdownText}>
-                {t.stall.qrPrefix} {currency} {summary.totalQR.toFixed(0)}
-              </Text>
-            </View>
-            {summary.totalCard > 0 && (
-              <View style={styles.breakdownItem}>
-                <Feather name="wifi" size={14} color={C.textSecondary} />
-                <Text style={styles.breakdownText}>
-                  {t.tapToPay.card} {currency} {summary.totalCard.toFixed(0)}
-                </Text>
-              </View>
-            )}
-          </View>
         </View>
 
-        {/* Cash box — optional reconciliation. Card settles to Stripe, not the
-            drawer, so expected cash stays cash-only above. */}
-        <View style={styles.section}>
+        {/* ─── Count the drawer — optional cash reconciliation ───
+            Card settles to Stripe, not the drawer, so expected stays cash-only. */}
+        <View style={[styles.sectionCard, neu.raisedSoft]}>
           <Text style={styles.inputLabel}>{t.stall.cashBoxHeading}</Text>
           <Text style={styles.sectionHint}>{t.stall.cashBoxHint}</Text>
 
@@ -219,9 +203,9 @@ const CloseSession: React.FC = () => {
             style={styles.cashField}
           />
 
-          <View style={styles.cashLineRow}>
-            <Text style={styles.cashLineLabel}>{t.stall.expectedInBox}</Text>
-            <Text style={styles.cashLineValue}>{currency} {expectedCash.toFixed(2)}</Text>
+          <View style={styles.expectedRow}>
+            <Text style={styles.expectedLabel}>{t.stall.expectedInBox}</Text>
+            <Text style={styles.expectedValue}>{currency} {expectedCash.toFixed(2)}</Text>
           </View>
 
           <NewstInput
@@ -235,25 +219,42 @@ const CloseSession: React.FC = () => {
           />
 
           {hasCounted && (
-            <View style={styles.diffPill}>
-              <Feather
-                name={cashDiff === 0 ? 'check' : cashDiff > 0 ? 'arrow-up' : 'arrow-down'}
-                size={14}
-                color={C.bronze}
-              />
-              <Text style={styles.diffText}>
-                {cashDiff === 0
-                  ? t.stall.cashMatches
-                  : cashDiff > 0
-                  ? t.stall.overBy.replace('{currency}', currency).replace('{amount}', Math.abs(cashDiff).toFixed(2))
-                  : t.stall.shortBy.replace('{currency}', currency).replace('{amount}', Math.abs(cashDiff).toFixed(2))}
-              </Text>
+            <View style={styles.diffRow}>
+              <View
+                style={[
+                  styles.diffStamp,
+                  {
+                    borderColor: withAlpha(
+                      cashDiff === 0 ? C.positive : cashDiff > 0 ? C.gold : C.neutral,
+                      0.65
+                    ),
+                  },
+                ]}
+              >
+                <Feather
+                  name={cashDiff === 0 ? 'check' : cashDiff > 0 ? 'arrow-up' : 'arrow-down'}
+                  size={12}
+                  color={cashDiff === 0 ? C.positive : cashDiff > 0 ? C.gold : C.neutral}
+                />
+                <Text
+                  style={[
+                    styles.diffStampText,
+                    { color: cashDiff === 0 ? C.positive : cashDiff > 0 ? C.gold : C.neutral },
+                  ]}
+                >
+                  {cashDiff === 0
+                    ? t.stall.cashMatches.toUpperCase()
+                    : cashDiff > 0
+                    ? t.stall.overBy.replace('{currency}', currency).replace('{amount}', Math.abs(cashDiff).toFixed(2)).toUpperCase()
+                    : t.stall.shortBy.replace('{currency}', currency).replace('{amount}', Math.abs(cashDiff).toFixed(2)).toUpperCase()}
+                </Text>
+              </View>
             </View>
           )}
         </View>
 
-        {/* Money out — optional expenses */}
-        <View style={styles.section}>
+        {/* ─── Money out — optional expenses, ledger rows ─── */}
+        <View style={[styles.sectionCard, neu.raisedSoft]}>
           <Text style={styles.inputLabel}>{t.stall.moneyOutHeading}</Text>
           <Text style={styles.sectionHint}>{t.stall.moneyOutHint}</Text>
 
@@ -314,7 +315,7 @@ const CloseSession: React.FC = () => {
           </View>
         </View>
 
-        {/* What you kept — only when costs exist */}
+        {/* ─── What you kept — receipt lines, only when costs exist ─── */}
         {econ && econ.hasCosts && (
           <View style={styles.netCard}>
             <View style={styles.netRow}>
@@ -333,36 +334,33 @@ const CloseSession: React.FC = () => {
                 <Text style={styles.netValueMuted}>−{currency} {econ.expensesTotal.toFixed(2)}</Text>
               </View>
             )}
-            <View style={[styles.netRow, styles.netRowFinal]}>
+            <View style={styles.netRule} />
+            <View style={styles.netRow}>
               <Text style={styles.netKeptLabel}>{t.stall.keptRow}</Text>
               <Text style={styles.netKeptValue}>{currency} {econ.kept.toFixed(2)}</Text>
             </View>
           </View>
         )}
 
-        {/* Condition picker */}
+        {/* ─── Condition — rubber-stamp picker ─── */}
         <View style={styles.conditionSection}>
           <Text style={styles.inputLabel}>{t.stall.howWasIt}</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.conditionList}
-          >
+          <View style={styles.conditionWrap}>
             {CONDITIONS.map((cond) => {
               const isSelected = selectedCondition === cond.value;
               return (
                 <TouchableOpacity
                   key={cond.value}
                   style={[
-                    styles.conditionPill,
-                    neu.raised,
-                    isSelected && styles.conditionPillSelected,
+                    styles.conditionStamp,
+                    isSelected
+                      ? { backgroundColor: C.bronze, borderColor: C.bronze, transform: [{ rotate: '0deg' }] }
+                      : { borderColor: withAlpha(C.textSecondary, 0.45) },
                   ]}
-                  onPress={() =>
-                    setSelectedCondition(
-                      isSelected ? undefined : cond.value
-                    )
-                  }
+                  onPress={() => {
+                    lightTap();
+                    setSelectedCondition(isSelected ? undefined : cond.value);
+                  }}
                   activeOpacity={0.7}
                   accessibilityRole="button"
                   accessibilityLabel={`Condition: ${cond.label}`}
@@ -370,21 +368,21 @@ const CloseSession: React.FC = () => {
                 >
                   <Feather
                     name={cond.icon as keyof typeof Feather.glyphMap}
-                    size={16}
-                    color={isSelected ? C.onAccent : C.textSecondary}
+                    size={13}
+                    color={isSelected ? '#FFFFFF' : C.textSecondary}
                   />
                   <Text
                     style={[
-                      styles.conditionText,
-                      isSelected && styles.conditionTextSelected,
+                      styles.conditionStampText,
+                      { color: isSelected ? '#FFFFFF' : C.textSecondary },
                     ]}
                   >
-                    {cond.label}
+                    {cond.label.toUpperCase()}
                   </Text>
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
         </View>
 
         {/* Note input */}
@@ -399,16 +397,22 @@ const CloseSession: React.FC = () => {
           />
         </View>
 
-        {/* Close session button */}
-        <NeuButton
-          icon="check"
-          label={t.stall.closeSessionButton}
-          color={C.bronze}
-          onPress={guardedClose}
-          accessibilityLabel="Close this selling session"
-        />
-      </ScrollView>
-    </KeyboardAvoidingView>
+        {/* ─── Close CTA — solid bronze, spring press ─── */}
+        <Reanimated.View style={ctaAStyle}>
+          <Pressable
+            onPressIn={() => { ctaScale.value = withSpring(0.97, SPRING); }}
+            onPressOut={() => { ctaScale.value = withSpring(1, SPRING); }}
+            onPress={() => { lightTap(); guardedClose(); }}
+            accessibilityRole="button"
+            accessibilityLabel="Close this selling session"
+            style={[styles.closeCta, { backgroundColor: C.bronze }]}
+          >
+            <Feather name="check" size={18} color="#FFFFFF" />
+            <Text style={styles.closeCtaText}>{t.stall.closeSessionButton}</Text>
+          </Pressable>
+        </Reanimated.View>
+      </KeyboardAwareScrollView>
+    </View>
   );
 };
 
@@ -437,115 +441,119 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     letterSpacing: C === CALM_DARK ? 0.2 : 0,
-    marginBottom: SPACING['3xl'],
+    marginBottom: SPACING.xs,
+  },
+  headingSub: {
+    ...TYPE.muted,
+    color: C.textSecondary,
+    marginBottom: SPACING.xl,
   },
 
-  // ─── Summary card ────────────────────────────────────────────
-  summaryCard: {
-    backgroundColor: withAlpha(C.bronze, 0.04),
-    borderWidth: 1,
-    borderColor: withAlpha(C.bronze, 0.15),
-    borderRadius: RADIUS.lg,
-    padding: SPACING['2xl'],
-    marginBottom: SPACING['3xl'],
-  },
-  summaryHeroWrap: {
+  // ─── Wind-down hero: soft neu card, bronze number, calm rhythm ───
+  heroCard: {
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
     marginBottom: SPACING.xl,
-    alignItems: 'center',
   },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: SPACING['3xl'],
-    marginBottom: SPACING.lg,
+  heroLabel: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textMuted,
+    letterSpacing: 1.4,
+    marginBottom: SPACING.xs,
   },
-  summaryItem: {
-    alignItems: 'flex-start',
+  heroAmount: {
+    fontSize: 52,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -1,
   },
-  summaryItemValue: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-  summaryItemLabel: {
-    ...TYPE.muted,
-    marginTop: 2,
-  },
-  breakdownRow: {
-    flexDirection: 'row',
-    gap: SPACING.xl,
-    paddingTop: SPACING.lg,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-  },
-  breakdownItem: {
+  heroStats: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: 6,
+    marginTop: SPACING.sm,
   },
-  breakdownText: {
+  heroStatText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
 
-  // ─── Optional cashbox sections ───────────────────────────────
-  section: {
-    marginBottom: SPACING['3xl'],
+  // ─── Sections ──────────────────────────────────────────
+  sectionCard: {
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
   },
   sectionHint: {
     ...TYPE.muted,
     marginTop: -SPACING.xs,
     marginBottom: SPACING.md,
   },
+  inputLabel: {
+    ...TYPE.label,
+    marginBottom: SPACING.sm,
+  },
   cashField: {
     marginBottom: SPACING.sm,
   },
+  expectedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: C.border,
+  },
+  expectedLabel: {
+    ...TYPE.muted,
+  },
+  expectedValue: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // ─── Diff stamp (matched / over / short) ───────────────
+  diffRow: {
+    alignItems: 'flex-start',
+    marginTop: SPACING.sm,
+  },
+  diffStamp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 2,
+    transform: [{ rotate: '-2deg' }],
+  },
+  diffStampText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    letterSpacing: 1.1,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // ─── Money out ─────────────────────────────────────────
   amountCurrency: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
-  },
-  cashLineRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  cashLineLabel: {
-    ...TYPE.muted,
-  },
-  cashLineValue: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  diffPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: SPACING.xs,
-    backgroundColor: withAlpha(C.bronze, 0.08),
-    borderRadius: RADIUS.full,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    marginTop: SPACING.xs,
-  },
-  diffText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.bronze,
-    fontVariant: ['tabular-nums'],
   },
   expenseRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
     paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: C.border,
   },
   expenseLabel: {
@@ -596,13 +604,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
+
+  // ─── Kept (receipt lines) ──────────────────────────────
   netCard: {
-    backgroundColor: withAlpha(C.bronze, 0.04),
-    borderWidth: 1,
-    borderColor: withAlpha(C.bronze, 0.15),
-    borderRadius: RADIUS.lg,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
     padding: SPACING.xl,
-    marginBottom: SPACING['3xl'],
+    marginBottom: SPACING.lg,
     gap: SPACING.sm,
   },
   netRow: {
@@ -610,11 +618,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  netRowFinal: {
-    marginTop: SPACING.xs,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: withAlpha(C.bronze, 0.2),
+  netRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+    marginVertical: SPACING.xs,
   },
   netLabel: {
     fontSize: TYPOGRAPHY.size.base,
@@ -647,47 +654,54 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  // ─── Condition picker ────────────────────────────────────────
+  // ─── Condition stamps ──────────────────────────────────
   conditionSection: {
-    marginBottom: SPACING['3xl'],
+    marginBottom: SPACING.xl,
   },
-  inputLabel: {
-    ...TYPE.label,
-    marginBottom: SPACING.sm,
-  },
-  conditionList: {
+  conditionWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: SPACING.sm,
-    paddingRight: SPACING.sm,
   },
-  conditionPill: {
+  conditionStamp: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: withAlpha(C.textPrimary, 0.03),
-    borderRadius: RADIUS.full,
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    minHeight: 44,
+    minHeight: 40,
+    transform: [{ rotate: '-2deg' }],
   },
-  conditionPillSelected: {
-    backgroundColor: C.bronze,
-  },
-  conditionText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-  },
-  conditionTextSelected: {
-    color: C.onAccent,
+  conditionStampText: {
+    fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.bold,
+    letterSpacing: 1.1,
   },
 
-  // ─── Note ────────────────────────────────────────────────────
+  // ─── Note ──────────────────────────────────────────────
   noteSection: {
-    marginBottom: SPACING['3xl'],
+    marginBottom: SPACING.xl,
   },
 
-  // ─── Empty state ─────────────────────────────────────────────
+  // ─── Close CTA ─────────────────────────────────────────
+  closeCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    borderRadius: RADIUS.xl,
+    paddingVertical: SPACING.lg,
+    minHeight: 56,
+  },
+  closeCtaText: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: '#FFFFFF',
+  },
+
+  // ─── Empty state ───────────────────────────────────────
   emptyState: {
     flex: 1,
     alignItems: 'center',

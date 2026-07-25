@@ -56,6 +56,23 @@ const NotificationDetail: React.FC = () => {
   const storeUrl = typeof item.data?.storeUrl === 'string' ? (item.data.storeUrl as string) : '';
   const canUpdate = item.type === 'update' && !!storeUrl;
 
+  // Collectz pushes carry { type: 'collectz_*', sessionId } — offer the way
+  // onward. Organizer-bound types open the console, participant types the join
+  // screen; a removed participant's row is gone, so they land on Collectz home.
+  const collectzType = typeof item.data?.type === 'string' && item.data.type.startsWith('collectz_') ? item.data.type : null;
+  const collectzSessionId = typeof item.data?.sessionId === 'string' ? item.data.sessionId : null;
+  const canViewSession = !!collectzType && (!!collectzSessionId || collectzType === 'collectz_removed');
+
+  const handleViewSession = () => {
+    lightTap();
+    if (collectzType === 'collectz_removed') {
+      (navigation as any).navigate('CollectzHome');
+      return;
+    }
+    const organizer = collectzType === 'collectz_pending' || collectzType === 'collectz_team_change';
+    (navigation as any).navigate(organizer ? 'CollectzDetail' : 'CollectzJoin', { sessionId: collectzSessionId });
+  };
+
   const handleUpdate = () => {
     lightTap();
     Linking.openURL(storeUrl).catch(() => {});
@@ -119,6 +136,13 @@ const NotificationDetail: React.FC = () => {
         {canUpdate && (
           <View style={styles.actionWrap}>
             <NeuButton icon="download" label={t.notifications.updateNow} onPress={handleUpdate} />
+          </View>
+        )}
+
+        {/* ── Collectz CTA (collectz pushes only) ── */}
+        {canViewSession && (
+          <View style={styles.actionWrap}>
+            <NeuButton icon="users" label={t.collectz.viewSession} onPress={handleViewSession} />
           </View>
         )}
 

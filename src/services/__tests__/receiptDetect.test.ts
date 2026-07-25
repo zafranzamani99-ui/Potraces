@@ -116,6 +116,36 @@ expectReceipt('Moonshot/Kimi USD invoice — MYR "Charged" settlement wins, US d
   'Page 1 of 1',
 ], 844.67, 'MOONSHOT AI PTE. LTD.');
 
+// An UNPAID invoice (owner's Moonshot "Invoice-CX18BCHY-0003.pdf"): "Amount due", "Pay
+// online", "Date due" — a BILL, not a receipt. Money hasn't moved → must return null even
+// though it has a total line + 2 parseable items + a vendor. Share-to-Log logs PAID only.
+expectNotReceipt('Unpaid invoice (Amount due / Pay online) — a bill, never a receipt', [
+  'Invoice',
+  'Invoice number CX18BCHY-0003',
+  'Date of issue July 25, 2026',
+  'Date due July 25, 2026',
+  'MOONSHOT AI PTE. LTD.',
+  '91 BENCOOLEN STREET',
+  '#12-03, SUNSHINE PLAZA',
+  'SINGAPORE 189652',
+  'Singapore',
+  'membership@moonshot.ai',
+  'SG GST 202326494K',
+  'Bill to',
+  'Muhammad Zafran bin Zamani',
+  '65, Regat Taman Tasek',
+  'Malaysia',
+  '$199.00 USD due July 25, 2026',
+  'Pay online',
+  'Description Qty Unit price Amount',
+  'Kimi 1 $199.00 $199.00',
+  'Jul 25-Aug 25, 2026',
+  'Subtotal $199.00',
+  'Total $199.00',
+  'Amount due $199.00',
+  'Page 1 of 1',
+]);
+
 // ── Not receipts (must return null) ──
 expectNotReceipt('Payment confirmation (LNTHAIFOOD) — no grand-total line', [
   'Payment successful',

@@ -18,11 +18,11 @@ import {
 // arbitrates with the app's GestureHandlerRootView so drags aren't lost. Debt
 // uses it for its page scroller AND inside its modals, so both do here too.
 import { ScrollView } from 'react-native-gesture-handler';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
-import { collectzCategoryColor } from '../../../constants/collectzColors';
+import { collectzCategoryColor, collectzCategoryIcon } from '../../../constants/collectzColors';
 import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
@@ -67,8 +67,8 @@ import { AvatarView } from '../../../components/common/Avatar';
 import StatusChip from '../../../components/collectz/StatusChip';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
 import CostNotesSheet from '../../../components/collectz/CostNotesSheet';
-import { presetClubIcon } from '../../../constants/clubIcons';
-import { fmtEventRange, fmtMoney, fill, teamLabel } from './collectzFormat';
+import { presetClubIcon, presetClubColor } from '../../../constants/clubIcons';
+import { fmtEventRange, fmtMoney, fill, teamLabel, requirementChips } from './collectzFormat';
 
 /** Payload for the shared ConfirmDialog. `summary` adds the settle breakdown. */
 interface ConfirmState {
@@ -207,8 +207,16 @@ const CollectzDetail: React.FC = () => {
     return groups;
   }, [teamsOn, teamCount, actives]);
   const unassigned = teamsOn ? actives.filter((p) => p.team_idx == null || p.team_idx > teamCount) : actives;
+  // Flat-mode roster order: work floats up — pending proofs first, then unpaid,
+  // rejected, confirmed (stable within a status). Teams mode keeps roster order
+  // inside its team blocks, so it skips the "needs attention" pull-out too.
+  // Reserves are never reordered.
+  const statusUrgency: Record<CollectzParticipantStatus, number> = { pending: 0, unpaid: 1, rejected: 2, confirmed: 3 };
+  const flatActives = teamsOn ? actives : [...actives].sort((a, b) => statusUrgency[a.status] - statusUrgency[b.status]);
+  const pendingActives = teamsOn ? [] : flatActives.filter((p) => p.status === 'pending');
+  const rosterActives = teamsOn ? actives : flatActives.filter((p) => p.status !== 'pending');
   const isOpen = session?.status === 'open';
-  // Category identity — tints the hero wash, code card, progress fill and actions.
+  // Category identity — tints the hero wash, code pill, money panel and actions.
   const catColor = collectzCategoryColor(session?.category, isDark);
 
   const statusLabel = (status: CollectzParticipantStatus): string => {
@@ -680,6 +688,15 @@ const CollectzDetail: React.FC = () => {
         ? progress.confirmedCount / progress.activeCount
         : 0;
 
+  // Segmented contribution bar: one slice per active participant, width ∝
+  // share of the pot, colored by status. Only when EVERY active share is
+  // known and they sum to something — otherwise the single-fill bar shows.
+  const segRows = actives.map((p) => ({ p, share: shares.get(p.id) }));
+  const segSum = segRows.reduce((acc, r) => acc + (r.share ?? 0), 0);
+  const segReady = segRows.length > 0 && segSum > 0 && segRows.every((r) => r.share != null);
+  const pendingCount = actives.filter((p) => p.status === 'pending').length;
+  const unpaidCount = actives.filter((p) => p.status === 'unpaid' || p.status === 'rejected').length;
+
   const dateLine = fmtEventRange(session.event_at, session.event_end);
   const proofIsPdf = proofFor?.proof_path?.toLowerCase().endsWith('.pdf') ?? false;
 
@@ -702,16 +719,19 @@ const CollectzDetail: React.FC = () => {
             {(() => {
               const preset = presetClubIcon(session.image_path);
               const uri = !preset && session.image_path ? clubImageUrl(session.image_path) : null;
-              if (!preset && !uri) return null;
-              // Preset emoji PNGs are square artwork — a circular crop clips the
-              // corners (the "cropped picture" bug). Square well + contain for
-              // presets; full-bleed cover for uploaded club photos.
+              // An organizer-chosen icon color (preset:<id>:<hex>) wins over the
+              // category tint; uploaded club photos show full-bleed either way.
+              const tint = presetClubColor(session.image_path) ?? catColor;
               return (
-                <View style={[styles.clubWell, { backgroundColor: withAlpha(catColor, 0.12) }]}>
-                  {preset ? (
-                    <Text style={styles.clubEmoji}>{preset.emoji}</Text>
+                <View style={[styles.clubWell, { backgroundColor: withAlpha(tint, 0.12) }]}>
+                  {uri ? (
+                    <Image source={{ uri }} style={styles.clubImagePhoto} resizeMode="cover" />
                   ) : (
-                    <Image source={{ uri: uri! }} style={styles.clubImagePhoto} resizeMode="cover" />
+                    <MaterialCommunityIcons
+                      name={(preset ? preset.icon : collectzCategoryIcon(session.category)) as any}
+                      size={26}
+                      color={tint}
+                    />
                   )}
                 </View>
               );
@@ -730,11 +750,22 @@ const CollectzDetail: React.FC = () => {
               <Text style={styles.meta}>{session.venue}</Text>
             </View>
           )}
+          {/* Player requirements (skill / age / gender / booking) — only the
+              ones the organizer set, as quiet chips under the meta rows. */}
+          {requirementChips(t, session).length > 0 && (
+            <View style={styles.reqRow}>
+              {requirementChips(t, session).map((chip) => (
+                <View key={chip.label} style={styles.reqChip}>
+                  <Feather name={chip.icon as keyof typeof Feather.glyphMap} size={11} color={C.textSecondary} />
+                  <Text style={styles.reqChipText}>{chip.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
           {!!session.maps_url && <MapPreviewCard mapsUrl={session.maps_url} venue={session.venue} compact />}
-          {/* SHARE CODE — its own Neu Card: the code is the hero (big, letter-spaced),
-              the WHOLE card is the tap target (tap = bare code, long-press = join link),
-              and the icon well flips to a check while the hint names WHICH variant
-              landed ("code copied"/"link copied") for 1.4s. */}
+          {/* Share code — compact pill inside the hero: mono-ish code + copy
+              icon. Tap = bare code, long-press = join link; the icon flips to
+              a check and the hint names WHICH variant landed for 1.4s. */}
           <Pressable
             onPress={() => copyShareCode(false)}
             onLongPress={() => copyShareCode(true)}
@@ -742,21 +773,19 @@ const CollectzDetail: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel={t.collectz.codeCopyHint}
             style={({ pressed }) => [
-              styles.codeCard,
-              neu.raisedSoft,
+              styles.codePill,
               { backgroundColor: withAlpha(catColor, isDark ? 0.16 : 0.10) },
               pressed && { opacity: 0.9 },
             ]}
           >
-            <View style={styles.codeCardLeft}>
-              <Text style={[styles.codeCardCode, { color: catColor }]}>{session.share_code}</Text>
-              <Text style={[styles.codeCopyHint, codeCopied && { color: C.accent, fontWeight: TYPOGRAPHY.weight.semibold }]}>
-                {codeCopied ? (codeCopied === 'link' ? t.collectz.linkCopied : t.collectz.codeCopied) : t.collectz.codeCopyHint}
-              </Text>
-            </View>
-            <View style={[styles.codeCardWell, neu.well, codeCopied && { backgroundColor: withAlpha(C.accent, 0.12) }]}>
-              <Feather name={codeCopied ? 'check' : 'copy'} size={16} color={codeCopied ? C.accent : C.textSecondary} />
-            </View>
+            <Text style={[styles.codePillCode, { color: catColor }]}>{session.share_code}</Text>
+            <Text
+              style={[styles.codePillHint, codeCopied && { color: C.accent, fontWeight: TYPOGRAPHY.weight.semibold }]}
+              numberOfLines={1}
+            >
+              {codeCopied ? (codeCopied === 'link' ? t.collectz.linkCopied : t.collectz.codeCopied) : t.collectz.codeCopyHint}
+            </Text>
+            <Feather name={codeCopied ? 'check' : 'copy'} size={13} color={codeCopied ? C.accent : catColor} />
           </Pressable>
           {!isOpen && (
             <View style={styles.closedBanner}>
@@ -767,20 +796,65 @@ const CollectzDetail: React.FC = () => {
           )}
         </View>
 
-        {/* Progress */}
+        {/* Money panel — the number that matters (collected) up top, then the
+            contribution bar segmented per participant by status: confirmed =
+            category color, pending = gold, unpaid/rejected let the track show
+            through. Falls back to a single fill when shares are unknown. */}
         {progress && (
-          <View style={[styles.progressCard, neu.raisedSoft]}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: catColor }]} />
+          <View style={[styles.moneyCard, neu.raisedSoft]}>
+            <View>
+              <Text style={[styles.moneyAmount, { color: catColor }]}>
+                {fmtMoney(progress.confirmed, session.currency)}
+              </Text>
+              <Text style={styles.moneyCaption}>
+                {t.collectz.detailCollected}
+                {progress.target != null
+                  ? ` · ${fill(t.collectz.progressOfTarget, {
+                      confirmed: fmtMoney(progress.confirmed, session.currency),
+                      target: fmtMoney(progress.target, session.currency),
+                    })}`
+                  : ` · ${fill(t.collectz.confirmedCount, { n: progress.confirmedCount, m: progress.activeCount })}`}
+              </Text>
             </View>
-            <Text style={styles.progressText}>
-              {progress.target != null
-                ? `${fill(t.collectz.progressOfTarget, {
-                    confirmed: fmtMoney(progress.confirmed, session.currency),
-                    target: fmtMoney(progress.target, session.currency),
-                  })} · ${fill(t.collectz.confirmedCount, { n: progress.confirmedCount, m: progress.activeCount })}`
-                : fill(t.collectz.confirmedCount, { n: progress.confirmedCount, m: progress.activeCount })}
-            </Text>
+            <View style={styles.segTrack}>
+              {segReady ? (
+                segRows.map(({ p, share }) => (
+                  <View
+                    key={p.id}
+                    style={[
+                      styles.segFill,
+                      {
+                        flex: (share ?? 0) / segSum,
+                        backgroundColor:
+                          p.status === 'confirmed' ? catColor : p.status === 'pending' ? C.gold : 'transparent',
+                      },
+                    ]}
+                  />
+                ))
+              ) : (
+                <View style={[styles.segFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: catColor }]} />
+              )}
+            </View>
+            <View style={styles.segLegend}>
+              <View style={styles.segLegendItem}>
+                <View style={[styles.segDot, { backgroundColor: catColor }]} />
+                <Text style={styles.segLegendText}>
+                  {t.collectz.detailSegConfirmed} {progress.confirmedCount}
+                </Text>
+              </View>
+              <View style={styles.segLegendItem}>
+                <View style={[styles.segDot, { backgroundColor: C.gold }]} />
+                <Text style={styles.segLegendText}>
+                  {t.collectz.detailSegPending} {pendingCount}
+                </Text>
+              </View>
+              <View style={styles.segLegendItem}>
+                <View style={[styles.segDot, { backgroundColor: C.textMuted }]} />
+                <Text style={styles.segLegendText}>
+                  {t.collectz.detailSegUnpaid} {unpaidCount}
+                </Text>
+              </View>
+            </View>
           </View>
         )}
 
@@ -852,6 +926,19 @@ const CollectzDetail: React.FC = () => {
           )}
         </View>
 
+        {/* Needs attention — pending proofs pulled above the roster so the
+            organizer reviews them first. Flat mode only: in teams mode the
+            rows stay inside their team blocks (context beats triage there). */}
+        {pendingActives.length > 0 && (
+          <>
+            <View style={styles.attentionHeader}>
+              <View style={styles.attentionDot} />
+              <Text style={styles.attentionTitle}>{t.collectz.detailNeedsAttention}</Text>
+            </View>
+            <View style={[styles.rosterList, styles.attentionList]}>{pendingActives.map(renderRow)}</View>
+          </>
+        )}
+
         {/* Roster — who paid, right up front */}
         <Text style={styles.sectionTitle}>{t.collectz.roster}</Text>
         {actives.length === 0 && reserves.length === 0 ? (
@@ -896,7 +983,7 @@ const CollectzDetail: React.FC = () => {
             )}
           </>
         ) : (
-          <View style={styles.rosterList}>{actives.map(renderRow)}</View>
+          <View style={styles.rosterList}>{rosterActives.map(renderRow)}</View>
         )}
 
         {reserves.length > 0 && (
@@ -1342,42 +1429,26 @@ const makeStyles = (C: typeof CALM) =>
       lineHeight: 19,
       marginTop: SPACING.sm,
     },
-    codeCopyHint: {
-      fontSize: TYPOGRAPHY.size.xs,
-      color: C.textMuted,
-      marginTop: 2,
-    },
-    // SHARE CODE card — Neu Card recipe (raisedSoft on C.background, no border);
-    // marginTop keeps the breathing room above that codeRowGap used to give.
-    codeCard: {
-      marginTop: SPACING.md,
+    // Share-code pill — compact flat-tinted row inside the hero (code + hint +
+    // copy icon). alignSelf keeps it hugging its content, not full-width.
+    codePill: {
+      marginTop: 4,
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: SPACING.md,
-      paddingVertical: SPACING.md,
-      paddingHorizontal: SPACING.lg,
-      borderRadius: RADIUS.lg,
-      backgroundColor: C.background,
+      alignSelf: 'flex-start',
+      maxWidth: '100%',
+      gap: SPACING.sm,
+      paddingVertical: 6,
+      paddingHorizontal: SPACING.md,
+      borderRadius: RADIUS.full,
     },
-    codeCardLeft: { flex: 1, minWidth: 0 },
-    codeCardCode: {
-      fontSize: TYPOGRAPHY.size['2xl'],
+    codePillCode: {
+      fontSize: TYPOGRAPHY.size.sm,
       fontWeight: TYPOGRAPHY.weight.bold,
-      letterSpacing: 4,
-      color: C.textPrimary,
+      letterSpacing: 2,
       fontVariant: ['tabular-nums'],
     },
-    // small recessed icon slot inside the card (TransactionItem well pattern —
-    // an indicator, not a standalone button, so it sits IN the surface)
-    codeCardWell: {
-      width: 40,
-      height: 40,
-      borderRadius: RADIUS.full,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: withAlpha(C.textPrimary, 0.04),
-    },
+    codePillHint: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, flexShrink: 1 },
     content: { padding: SPACING.xl, paddingBottom: SPACING['5xl'] },
     loaderWrap: { flex: 1, backgroundColor: C.background, alignItems: 'center', justifyContent: 'center' },
     headerCard: {
@@ -1397,10 +1468,21 @@ const makeStyles = (C: typeof CALM) =>
       justifyContent: 'center',
       overflow: 'hidden',
     },
-    clubEmoji: { fontSize: 32 },
     clubImagePhoto: { width: 52, height: 52 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    reqRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginTop: 2 },
+    reqChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      borderRadius: RADIUS.full,
+      backgroundColor: withAlpha(C.textPrimary, 0.05),
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 4,
+    },
+    reqChipText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium, color: C.textSecondary },
     meta: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
+    // Closed-session banner — neutral, informational.
     closedBanner: {
       marginTop: 4,
       borderRadius: RADIUS.md,
@@ -1409,16 +1491,34 @@ const makeStyles = (C: typeof CALM) =>
       alignItems: 'center',
     },
     closedBannerText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textSecondary },
-    progressCard: {
+    // Money panel — collected amount + segmented contribution bar.
+    moneyCard: {
       backgroundColor: C.background,
       borderRadius: RADIUS.lg,
       padding: SPACING.md,
       gap: SPACING.sm,
       marginBottom: SPACING.md,
     },
-    progressTrack: { height: 8, borderRadius: RADIUS.full, backgroundColor: C.pillBg, overflow: 'hidden' },
-    progressFill: { height: 8, borderRadius: RADIUS.full },
-    progressText: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
+    moneyAmount: {
+      fontSize: TYPOGRAPHY.size['2xl'],
+      fontWeight: TYPOGRAPHY.weight.bold,
+      fontVariant: ['tabular-nums'],
+    },
+    moneyCaption: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted },
+    // 10px rounded track; segments flex ∝ share with a 1px gap between them.
+    segTrack: {
+      height: 10,
+      borderRadius: RADIUS.full,
+      backgroundColor: C.pillBg,
+      flexDirection: 'row',
+      gap: 1,
+      overflow: 'hidden',
+    },
+    segFill: { height: 10, borderRadius: RADIUS.full },
+    segLegend: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+    segLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    segDot: { width: 7, height: 7, borderRadius: RADIUS.full },
+    segLegendText: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted },
     // Session info card — details / court cost / rules
     infoCard: {
       borderRadius: RADIUS.lg,
@@ -1478,6 +1578,11 @@ const makeStyles = (C: typeof CALM) =>
       marginBottom: SPACING.sm,
     },
     sectionGap: { marginTop: SPACING.lg },
+    // "Needs attention" — pending proofs pulled above the roster (flat mode).
+    attentionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.sm },
+    attentionDot: { width: 7, height: 7, borderRadius: RADIUS.full, backgroundColor: C.gold },
+    attentionTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.gold },
+    attentionList: { marginBottom: SPACING.lg },
     emptyRoster: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, lineHeight: 19 },
     // Roster rows are standalone neu cards (spaced, not divided) — Onyx row standard.
     rosterList: { gap: SPACING.sm },

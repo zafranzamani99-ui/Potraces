@@ -96,8 +96,29 @@ Deno.serve(async (req: Request) => {
       .eq('id', event.refId)
       .maybeSingle();
     if (!order) {
-      // Valid event, no matching order (stall sale / pre-sync). Terminal, not an
-      // error — leave the claim so we don't reprocess a payment we can't map.
+      // Stall mode: no seller_orders row — the charge was tracked by
+      // qr-create-charge as a pending payment_events row. Flip it to paid and
+      // push to the owning user (this is the stall soundbox moment).
+      const { data: pendingRow } = await admin
+        .from('payment_events')
+        .select('id, user_id, status')
+        .eq('app_ref', event.refId)
+        .eq('provider', provider)
+        .maybeSingle();
+      if (pendingRow) {
+        await admin
+          .from('payment_events')
+          .update({ status: 'paid', charge_id: event.chargeId })
+          .eq('id', pendingRow.id);
+        await sendPushToUser(admin, pendingRow.user_id, {
+          amountCents: event.amountCents,
+          currency: event.currency,
+          orderId: event.refId,
+        });
+        return json({ ok: true, note: 'stall charge confirmed' });
+      }
+      // Valid event, nothing we can map it to. Terminal, not an error — leave
+      // the claim so we don't reprocess a payment we can't map.
       return json({ ok: true, note: 'no matching order' });
     }
 
@@ -167,12 +188,19 @@ async function verifySignature(
     return timingSafeEqual(sig, expected);
   }
   if (provider === 'fiuu') {
-    const secret = Deno.env.get('FIUU_WEBHOOK_SECRET');
+    const secret = Deno.env.get('FIUU_SECRET_KEY');
     if (!secret) return 'not_configured';
-    // TODO(activation): Fiuu signs with an MD5/SHA `skey` over specific fields
-    // (amount, orderid, appcode, status, …) per https://docs.fiuu.com/ . Compute
-    // that skey and compare to the posted `skey`. Stubbed-reject until wired.
-    return false;
+    // Fiuu OPA notification: form-encoded params + `signature` = HMAC-SHA256
+    // over the VALUES of all non-empty params (sorted by param name), keyed
+    // with the merchant secretKey. Keep in sync with qr-create-charge's
+    // fiuuSign and scripts/test-fiuu-signature.ts.
+    const fields = parseBody(rawBody);
+    const posted = String(fields.signature ?? '');
+    if (!posted) return false;
+    const strings: Record<string, string> = {};
+    for (const [k, v] of Object.entries(fields)) strings[k] = String(v ?? '');
+    const expected = await fiuuSign(strings, secret);
+    return timingSafeEqual(posted, expected);
   }
   return false;
 }
@@ -191,15 +219,14 @@ function parseProviderEvent(provider: Provider, rawBody: string): ParsedEvent {
       paid: String(body.status ?? '').toLowerCase() === 'completed',
     };
   }
-  // fiuu
-  // TODO(activation): map exact Fiuu fields per docs.
+  // fiuu — OPA payment notification fields (form-encoded).
   return {
-    eventId: String(body.tranID ?? body.txn_id ?? ''),
-    chargeId: String(body.tranID ?? ''),
-    refId: String(body.orderid ?? body.order_id ?? ''),
+    eventId: String(body.molTransactionId ?? ''),
+    chargeId: String(body.molTransactionId ?? ''),
+    refId: String(body.referenceId ?? ''),
     amountCents: Math.round(parseFloat(String(body.amount ?? '0')) * 100),
-    currency: String(body.currency ?? 'myr').toLowerCase(),
-    paid: String(body.status ?? '') === '00',
+    currency: String(body.currencyCode ?? 'myr').toLowerCase(),
+    paid: String(body.statusCode ?? '') === '00',
   };
 }
 
@@ -250,6 +277,22 @@ async function sendPushToUser(
 }
 
 // ── Crypto helpers ──────────────────────────────────────────────────────────
+/**
+ * Fiuu OPA signature (v1, hmac-sha256): all non-empty params except
+ * `signature`, sorted by parameter NAME, VALUES concatenated in that order
+ * (original form, case-sensitive, whitespace-stripped), HMAC-SHA256 with the
+ * merchant secretKey. Keep in sync with qr-create-charge's fiuuSign and
+ * scripts/test-fiuu-signature.ts.
+ */
+async function fiuuSign(params: Record<string, string>, secretKey: string): Promise<string> {
+  const concat = Object.keys(params)
+    .filter((k) => k !== 'signature' && params[k].trim() !== '')
+    .sort()
+    .map((k) => params[k].trim())
+    .join('');
+  return hmacSha256Hex(secretKey, concat);
+}
+
 async function hmacSha256Hex(secret: string, message: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(

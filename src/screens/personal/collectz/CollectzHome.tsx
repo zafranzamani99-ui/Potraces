@@ -1,12 +1,17 @@
 // CollectzHome — Collectz/Kutipz landing: sessions I organize + sessions I
 // joined, a join-with-code box, and the create FAB. Refresh on focus; rosters
-// for organized sessions are fetched in one pass so each card can show a live
-// progress line via computeProgress.
+// for organized sessions are fetched in one pass so each row can show a live
+// progress figure via computeProgress.
+//
+// Design: "statement" — a bank-ledger look. One typographic hero (amount left
+// to collect + a one-line attention summary), then sessions as divided rows
+// in a single surface per section. No emoji wells, no category washes, no
+// stat tiles: the money and the typography do the talking. UI glyphs are
+// Ionicons (premium iOS-native feel), not Feather.
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  Image,
   StyleSheet,
   RefreshControl,
   Pressable,
@@ -15,13 +20,12 @@ import {
   Keyboard,
   Alert,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
-import { useCalm, useIsDark } from '../../../hooks/useCalm';
-import { collectzCategoryColor } from '../../../constants/collectzColors';
+import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import FAB from '../../../components/common/FAB';
@@ -45,10 +49,8 @@ import {
   unarchiveParticipant,
   listMyJoinedParticipantRows,
   isCollectzAuthError,
-  clubImageUrl,
   type JoinedRow,
 } from '../../../services/collectzService';
-import { presetClubIcon } from '../../../constants/clubIcons';
 import { fmtEventRange, fmtMoney, fill } from './collectzFormat';
 
 // Pull a join code out of pasted text — either a bare code or a full share
@@ -71,7 +73,6 @@ function extractShareCode(raw: string): string {
 
 const CollectzHome: React.FC = () => {
   const C = useCalm();
-  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const neu = useNeu(undefined, { faintDark: true });
@@ -99,8 +100,8 @@ const CollectzHome: React.FC = () => {
       const mine = await listMySessions();
       setOrganizing(mine.organizing);
       setJoined(mine.joined);
-      // Rosters for organized sessions in one pass — cards need them for the
-      // progress line. A failed roster fetch degrades to "no progress line".
+      // Rosters for organized sessions in one pass — rows need them for the
+      // progress figure. A failed roster fetch degrades to "no progress".
       const entries = await Promise.all(
         mine.organizing.map(async (s) => {
           try {
@@ -186,7 +187,9 @@ const CollectzHome: React.FC = () => {
 
   const activeJoined = joined.filter((s) => !isArchived(s));
   const archivedJoined = joined.filter(isArchived);
-  // Attention strip counts — derived from state the cards already use.
+
+  // ── Hero derivations ──
+  // Attention counts, from state the rows already use.
   const statActive = organizing.filter((s) => s.status === 'open').length + activeJoined.length;
   const statToReview = Object.values(rosters).reduce(
     (sum, r) => sum + r.filter((p) => p.status === 'pending').length,
@@ -195,8 +198,26 @@ const CollectzHome: React.FC = () => {
   const statToPay = Object.values(myJoinedRows).filter(
     (r) => (r.status === 'unpaid' || r.status === 'rejected') && !r.archived_at,
   ).length;
-  // Empty-state wells have no session category — use the 'other' (olive) tint.
-  const emptyTint = collectzCategoryColor('other', isDark);
+  // "To collect" = Σ(target − confirmed) over open organized sessions with a
+  // money target. Only shown when every contributing session shares one
+  // currency (mixing currencies would lie); sessions without a target don't
+  // contribute — their remainder is unknowable.
+  const toCollectSessions = organizing.filter((s) => {
+    if (s.status !== 'open') return false;
+    const p = computeProgress(s, rosters[s.id] ?? []);
+    return p.target != null && p.target > 0;
+  });
+  const toCollectCurrencies = [...new Set(toCollectSessions.map((s) => s.currency))];
+  const toCollect =
+    toCollectCurrencies.length === 1
+      ? {
+          currency: toCollectCurrencies[0],
+          amount: toCollectSessions.reduce((sum, s) => {
+            const p = computeProgress(s, rosters[s.id] ?? []);
+            return sum + Math.max((p.target ?? 0) - p.confirmed, 0);
+          }, 0),
+        }
+      : null;
 
   const toggleArchive = (s: CollectzSession) => {
     const row = myJoinedRows[s.id];
@@ -240,13 +261,13 @@ const CollectzHome: React.FC = () => {
     setJoinCode(code);
   }, [showToast, t]);
 
-  const renderCard = (s: CollectzSession, mine: boolean) => {
+  // One ledger row: title + date/scheme meta on the left, money progress on
+  // the right. Pending-review organizer rows get a small gold dot by the title.
+  const renderRow = (s: CollectzSession, mine: boolean, last: boolean) => {
     const progress = mine ? computeProgress(s, rosters[s.id] ?? []) : null;
     const jprog = !mine ? joinedProgress[s.id] : null;
     const dateLine = fmtEventRange(s.event_at, s.event_end);
-    // Category identity color — settled/cancelled sessions drop it for neutral.
     const settled = s.status !== 'open';
-    const catColor = settled ? C.neutral : collectzCategoryColor(s.category, isDark);
     const pct =
       progress && progress.target && progress.target > 0
         ? Math.min(progress.confirmed / progress.target, 1)
@@ -259,7 +280,7 @@ const CollectzHome: React.FC = () => {
         : jprog && jprog.active_count > 0
           ? jprog.confirmed_count / jprog.active_count
           : 0;
-    // One money-block shape for both card kinds; only the source differs.
+    // One money shape for both row kinds; only the source differs.
     const money =
       mine && progress && progress.activeCount > 0
         ? { confirmed: progress.confirmed, target: progress.target, n: progress.confirmedCount, m: progress.activeCount, frac: pct }
@@ -267,94 +288,58 @@ const CollectzHome: React.FC = () => {
           ? { confirmed: jprog.confirmed_amount, target: jprog.target_amount, n: jprog.confirmed_count, m: jprog.active_count, frac: jpct }
           : null;
     const pendingCount = mine ? (rosters[s.id] ?? []).filter((p) => p.status === 'pending').length : 0;
+    const barColor = settled ? C.neutral : C.accent;
     return (
       <Pressable
         key={s.id}
-        style={({ pressed }) => [styles.card, neu.raisedSoft, pressed && { opacity: 0.9 }]}
+        style={({ pressed }) => [styles.row, pressed && { opacity: 0.75 }]}
         onPress={() => openSession(s, mine)}
         onLongPress={mine ? undefined : () => toggleArchive(s)}
         accessibilityRole="button"
         accessibilityLabel={s.title}
       >
-        {/* Category tint — inner absolute-fill layer so the neu shadow stays on
-            the card view (a clip on the card would kill the shadow — the neu
-            seam rule). Flat fill, no gradient. */}
-        {!settled && (
-          <View
-            style={[StyleSheet.absoluteFillObject, styles.cardWash, { backgroundColor: withAlpha(catColor, isDark ? 0.12 : 0.07) }]}
-            pointerEvents="none"
-          />
-        )}
-        <View style={styles.cardTopRow}>
-          {(() => {
-            // Show the club icon / photo the organizer picked at create time.
-            // Preset emoji PNGs are square artwork → contain in a square well;
-            // uploaded club photos → cover (mirrors CollectzDetail's header).
-            const preset = presetClubIcon(s.image_path);
-            const uri = !preset && s.image_path ? clubImageUrl(s.image_path) : null;
-            if (!preset && !uri) return null;
-            return (
-              <View style={[styles.clubWell, { backgroundColor: withAlpha(catColor, 0.12) }]}>
-                {preset ? (
-                  <Text style={styles.clubEmoji}>{preset.emoji}</Text>
-                ) : (
-                  <Image source={{ uri: uri! }} style={styles.clubImagePhoto} resizeMode="cover" />
-                )}
-              </View>
-            );
-          })()}
-          <Text style={styles.cardTitle} numberOfLines={1}>{s.title}</Text>
-          {s.status !== 'open' && (
-            <View style={styles.statusPill}>
-              <Text style={styles.statusPillText}>
+        <View style={styles.rowMain}>
+          <View style={styles.rowTitleLine}>
+            {pendingCount > 0 && <View style={styles.reviewDot} />}
+            <Text style={styles.rowTitle} numberOfLines={1}>{s.title}</Text>
+            {settled && (
+              <Text style={styles.rowStatus} numberOfLines={1}>
                 {s.status === 'settled' ? t.collectz.settledBanner : t.collectz.cancelledBanner}
               </Text>
-            </View>
-          )}
-          <Feather name="chevron-right" size={18} color={C.textMuted} />
-        </View>
-        {!!dateLine && (
-          <View style={styles.cardMetaRow}>
-            <Feather name="calendar" size={13} color={C.textMuted} />
-            <Text style={styles.cardMeta}>{dateLine}</Text>
+            )}
+            <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
           </View>
-        )}
-        <View style={styles.cardMetaRow}>
-          <Feather name="dollar-sign" size={13} color={C.textMuted} />
-          <Text style={styles.cardMeta}>{amountLine(s)}</Text>
-        </View>
-        {money && (
-          <View style={styles.moneyRow}>
-            <View style={styles.moneyLeft}>
-              <Text style={styles.moneyText}>
-                {money.target != null
-                  ? fill(t.collectz.progressOfTarget, {
-                      confirmed: fmtMoney(money.confirmed, s.currency),
-                      target: fmtMoney(money.target, s.currency),
-                    })
-                  : fmtMoney(money.confirmed, s.currency)}
-              </Text>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${Math.round(money.frac * 100)}%`, backgroundColor: catColor }]} />
+          <Text style={styles.rowMeta} numberOfLines={1}>
+            {[dateLine || null, amountLine(s)].filter(Boolean).join('  ·  ')}
+          </Text>
+          {money && (
+            <View style={styles.rowMoneyBlock}>
+              <View style={styles.rowMoneyLine}>
+                <Text style={styles.rowMoney}>
+                  {money.target != null
+                    ? `${fmtMoney(money.confirmed, s.currency)} / ${fmtMoney(money.target, s.currency)}`
+                    : fmtMoney(money.confirmed, s.currency)}
+                </Text>
+                <Text style={styles.rowPaid}>
+                  {fill(t.collectz.confirmedCount, { n: money.n, m: money.m })}
+                </Text>
+              </View>
+              <View style={styles.rowTrack}>
+                <View style={[styles.rowFill, { width: `${Math.round(money.frac * 100)}%`, backgroundColor: barColor }]} />
               </View>
             </View>
-            <View style={styles.moneyCountWrap}>
-              <Text style={[styles.moneyCount, { color: catColor }]}>
-                {money.n}/{money.m}
-              </Text>
-              <Text style={styles.moneyCaption}>{t.collectz.statusConfirmed}</Text>
-            </View>
-          </View>
-        )}
-        {mine && pendingCount > 0 && (
-          <View style={[styles.pendingBadge, { backgroundColor: withAlpha(C.gold, isDark ? 0.22 : 0.14) }]}>
-            <View style={styles.pendingDot} />
-            <Text style={styles.pendingText}>{fill(t.collectz.homePendingBadge, { n: pendingCount })}</Text>
-          </View>
-        )}
+          )}
+        </View>
+        {!last && <View style={styles.rowDivider} pointerEvents="none" />}
       </Pressable>
     );
   };
+
+  const renderRows = (sessions: CollectzSession[], mine: boolean) => (
+    <View style={[styles.listCard, neu.raisedSoft]}>
+      {sessions.map((s, i) => renderRow(s, mine, i === sessions.length - 1))}
+    </View>
+  );
 
   // Free tier gate: 2 creations per calendar week; paid tiers unlimited.
   // Joining someone's session is never gated. Fail-open on count errors.
@@ -389,6 +374,8 @@ const CollectzHome: React.FC = () => {
     navigation.navigate('CollectzCreate');
   }, [navigation, t]);
 
+  const hasAttention = statActive + statToReview + statToPay > 0;
+
   return (
     <View style={styles.screen}>
       <ScreenGuide
@@ -413,52 +400,44 @@ const CollectzHome: React.FC = () => {
           <ActivityIndicator size="large" color={C.accent} style={styles.loader} />
         ) : (
           <>
-            {/* ── Attention summary ── */}
-            {statActive + statToReview + statToPay > 0 && (
-              <View style={styles.statRow}>
-                {([
-                  { key: 'active', count: statActive, dot: C.accent, label: t.collectz.homeStatActive },
-                  { key: 'review', count: statToReview, dot: C.gold, label: t.collectz.homeStatToReview },
-                  { key: 'pay', count: statToPay, dot: C.overdue, label: t.collectz.homeStatToPay },
-                ] as const).map((tile) => (
-                  <View key={tile.key} style={[styles.statTile, neu.raisedSoft]}>
-                    <View style={styles.statTopRow}>
-                      <View style={[styles.statDot, { backgroundColor: tile.dot }]} />
-                      <Text style={styles.statCount}>{tile.count}</Text>
-                    </View>
-                    <Text style={styles.statLabel}>{tile.label}</Text>
-                  </View>
-                ))}
+            {/* ── Hero: the number that matters + one-line attention summary ── */}
+            {(toCollect != null || hasAttention) && (
+              <View style={styles.hero}>
+                {toCollect != null && (
+                  <>
+                    <Text style={styles.heroLabel}>{t.collectz.homeToCollect}</Text>
+                    <Text style={styles.heroAmount}>{fmtMoney(toCollect.amount, toCollect.currency)}</Text>
+                  </>
+                )}
+                {hasAttention && (
+                  <Text style={styles.heroMeta}>
+                    {`${statActive} ${t.collectz.homeStatActive}`}
+                    {statToReview > 0 && (
+                      <Text style={{ color: C.gold }}>{`   ·   ${statToReview} ${t.collectz.homeStatToReview}`}</Text>
+                    )}
+                    {statToPay > 0 && (
+                      <Text style={{ color: C.overdue }}>{`   ·   ${statToPay} ${t.collectz.homeStatToPay}`}</Text>
+                    )}
+                  </Text>
+                )}
               </View>
             )}
 
             {/* ── I organize ── */}
-            <View style={styles.sectionHeaderRow}>
-              <View style={[styles.sectionDot, { backgroundColor: C.deepOlive }]} />
-              <Text style={[styles.sectionTitle, styles.sectionTitleInRow]}>{t.collectz.homeOrganize}</Text>
-            </View>
+            <Text style={styles.sectionLabel}>{t.collectz.homeOrganize}</Text>
             {organizing.length === 0 ? (
               <View style={[styles.emptyCard, neu.raisedSoft]}>
-                <View style={[styles.emptyWell, { backgroundColor: withAlpha(emptyTint, 0.12) }]}>
-                  <Feather name="users" size={22} color={emptyTint} />
-                </View>
                 <Text style={styles.emptyTitle}>{t.collectz.homeEmptyOrganizeTitle}</Text>
                 <Text style={styles.emptyBody}>{t.collectz.homeEmptyOrganizeBody}</Text>
               </View>
             ) : (
-              organizing.map((s) => renderCard(s, true))
+              renderRows(organizing, true)
             )}
 
             {/* ── I joined ── */}
-            <View style={[styles.sectionHeaderRow, styles.sectionGap]}>
-              <View style={[styles.sectionDot, { backgroundColor: C.gold }]} />
-              <Text style={[styles.sectionTitle, styles.sectionTitleInRow]}>{t.collectz.homeJoined}</Text>
-            </View>
+            <Text style={[styles.sectionLabel, styles.sectionGap]}>{t.collectz.homeJoined}</Text>
             {joined.length === 0 ? (
               <View style={[styles.emptyCard, neu.raisedSoft]}>
-                <View style={[styles.emptyWell, { backgroundColor: withAlpha(emptyTint, 0.12) }]}>
-                  <Feather name="inbox" size={22} color={emptyTint} />
-                </View>
                 <Text style={styles.emptyBody}>{t.collectz.homeEmptyJoinedBody}</Text>
               </View>
             ) : (
@@ -466,7 +445,7 @@ const CollectzHome: React.FC = () => {
                 {activeJoined.length === 0 && archivedJoined.length > 0 && (
                   <Text style={styles.emptyBody}>{t.collectz.homeEmptyJoinedBody}</Text>
                 )}
-                {activeJoined.map((s) => renderCard(s, false))}
+                {activeJoined.length > 0 && renderRows(activeJoined, false)}
                 {archivedJoined.length > 0 && (
                   <>
                     <Pressable
@@ -478,16 +457,16 @@ const CollectzHome: React.FC = () => {
                       <Text style={styles.archivedHeaderText}>
                         {fill(t.collectz.archivedSection, { count: archivedJoined.length })}
                       </Text>
-                      <Feather name={archivedOpen ? 'chevron-down' : 'chevron-right'} size={16} color={C.textMuted} />
+                      <Ionicons name={archivedOpen ? 'chevron-down' : 'chevron-forward'} size={15} color={C.textMuted} />
                     </Pressable>
-                    {archivedOpen && archivedJoined.map((s) => renderCard(s, false))}
+                    {archivedOpen && renderRows(archivedJoined, false)}
                   </>
                 )}
               </>
             )}
 
             {/* ── Join with a code ── */}
-            <Text style={[styles.sectionTitle, styles.sectionGap]}>{t.collectz.homeJoinTitle}</Text>
+            <Text style={[styles.sectionLabel, styles.sectionGap]}>{t.collectz.homeJoinTitle}</Text>
             <View style={styles.joinRow}>
               <View style={styles.joinInputWrap}>
                 <TextInput
@@ -509,7 +488,7 @@ const CollectzHome: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={t.common.clear}
                   >
-                    <Feather name="x" size={18} color={C.textMuted} />
+                    <Ionicons name="close" size={18} color={C.textMuted} />
                   </Pressable>
                 ) : (
                   <Pressable
@@ -519,7 +498,7 @@ const CollectzHome: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={t.collectz.homePaste}
                   >
-                    <Feather name="clipboard" size={17} color={C.textSecondary} />
+                    <Ionicons name="clipboard-outline" size={17} color={C.textSecondary} />
                   </Pressable>
                 )}
               </View>
@@ -556,21 +535,33 @@ const makeStyles = (C: typeof CALM) =>
     scroll: { flex: 1 },
     content: { padding: SPACING.xl, paddingBottom: 120 },
     loader: { marginTop: SPACING['4xl'] },
-    sectionTitle: {
-      fontSize: TYPOGRAPHY.size.sm,
+
+    // ── Hero ──
+    hero: { marginBottom: SPACING.xl, gap: 2 },
+    heroLabel: {
+      fontSize: TYPOGRAPHY.size.xs,
       fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 1.2,
+    },
+    heroAmount: {
+      fontSize: TYPOGRAPHY.size['3xl'],
+      fontWeight: TYPOGRAPHY.weight.bold,
       color: C.textPrimary,
-      letterSpacing: 0.2,
+      letterSpacing: -0.5,
+    },
+    heroMeta: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, marginTop: 2 },
+
+    // ── Sections ──
+    sectionLabel: {
+      fontSize: TYPOGRAPHY.size.xs,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 1.2,
       marginBottom: SPACING.sm,
     },
-    sectionHeaderRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: SPACING.xs,
-      marginBottom: SPACING.sm,
-    },
-    sectionTitleInRow: { marginBottom: 0 },
-    sectionDot: { width: 7, height: 7, borderRadius: RADIUS.full },
     sectionGap: { marginTop: SPACING.xl },
     archivedHeader: {
       flexDirection: 'row',
@@ -581,114 +572,74 @@ const makeStyles = (C: typeof CALM) =>
       paddingVertical: SPACING.xs,
     },
     archivedHeaderText: {
-      fontSize: TYPOGRAPHY.size.sm,
+      fontSize: TYPOGRAPHY.size.xs,
       fontWeight: TYPOGRAPHY.weight.semibold,
       color: C.textMuted,
       textTransform: 'uppercase',
-      letterSpacing: 1,
+      letterSpacing: 1.2,
     },
-    card: {
+
+    // ── Ledger list ──
+    listCard: {
       // surface + elevation from neu.raisedSoft (base C.background)
       borderRadius: RADIUS.lg,
-      padding: SPACING.md,
-      marginBottom: SPACING.sm,
-      gap: 6,
+      paddingVertical: SPACING.xs,
     },
-    // Matches the card's radius so the category wash doesn't poke past the
-    // rounded corners (the card itself must NOT clip — the neu seam rule).
-    cardWash: { borderRadius: RADIUS.lg },
-    cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-    clubWell: {
-      width: 40,
-      height: 40,
-      borderRadius: RADIUS.md,
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
+    row: {
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.sm + 2,
     },
-    clubEmoji: { fontSize: 26 },
-    clubImagePhoto: { width: 40, height: 40 },
-    cardTitle: {
+    rowDivider: {
+      position: 'absolute',
+      left: SPACING.md,
+      right: 0,
+      bottom: 0,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: withAlpha(C.textPrimary, 0.08),
+    },
+    rowMain: { gap: 2 },
+    rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    reviewDot: { width: 6, height: 6, borderRadius: RADIUS.full, backgroundColor: C.gold },
+    rowTitle: {
       flex: 1,
       fontSize: TYPOGRAPHY.size.base,
       fontWeight: TYPOGRAPHY.weight.semibold,
       color: C.textPrimary,
     },
-    statusPill: {
-      borderRadius: RADIUS.full,
-      paddingHorizontal: SPACING.sm,
-      paddingVertical: 2,
-      backgroundColor: withAlpha(C.neutral, 0.25),
-    },
-    statusPillText: {
+    rowStatus: {
       fontSize: TYPOGRAPHY.size.xs,
       fontWeight: TYPOGRAPHY.weight.medium,
-      color: C.textSecondary,
+      color: C.textMuted,
     },
-    cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    cardMeta: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
-    statRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
-    statTile: {
-      // surface + elevation from neu.raisedSoft (base C.background)
-      flex: 1,
-      borderRadius: RADIUS.lg,
-      padding: SPACING.md,
-      gap: 2,
+    rowMeta: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
+    rowMoneyBlock: { marginTop: 6, gap: 4 },
+    rowMoneyLine: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: SPACING.sm,
     },
-    statTopRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
-    statDot: { width: 7, height: 7, borderRadius: RADIUS.full },
-    statCount: {
-      fontSize: TYPOGRAPHY.size.xl,
-      fontWeight: TYPOGRAPHY.weight.bold,
-      color: C.textPrimary,
-    },
-    statLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
-    moneyRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginTop: 2 },
-    moneyLeft: { flex: 1, gap: 6 },
-    moneyText: {
+    rowMoney: {
       fontSize: TYPOGRAPHY.size.sm,
       fontWeight: TYPOGRAPHY.weight.semibold,
       color: C.textPrimary,
     },
-    moneyCountWrap: { alignItems: 'flex-end' },
-    moneyCount: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold },
-    moneyCaption: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
-    pendingBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      alignSelf: 'flex-start',
-      gap: 6,
-      borderRadius: RADIUS.full,
-      paddingHorizontal: SPACING.sm,
-      paddingVertical: 3,
-      marginTop: 2,
-    },
-    pendingDot: { width: 6, height: 6, borderRadius: RADIUS.full, backgroundColor: C.gold },
-    pendingText: {
-      fontSize: TYPOGRAPHY.size.xs,
-      fontWeight: TYPOGRAPHY.weight.semibold,
-      color: C.gold,
-    },
-    progressTrack: {
-      height: 8,
+    rowPaid: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
+    rowTrack: {
+      height: 3,
       borderRadius: RADIUS.full,
       backgroundColor: C.pillBg,
       overflow: 'hidden',
     },
-    progressFill: { height: 8, borderRadius: RADIUS.full },
+    rowFill: { height: 3, borderRadius: RADIUS.full },
+
+    // ── Empty states ──
     emptyCard: {
       // surface + elevation from neu.raisedSoft (base C.background)
       borderRadius: RADIUS.lg,
       padding: SPACING.xl,
       alignItems: 'center',
       gap: SPACING.sm,
-    },
-    emptyWell: {
-      width: 44,
-      height: 44,
-      borderRadius: RADIUS.full,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
     emptyTitle: {
       fontSize: TYPOGRAPHY.size.base,
@@ -701,6 +652,8 @@ const makeStyles = (C: typeof CALM) =>
       textAlign: 'center',
       lineHeight: 19,
     },
+
+    // ── Join with a code ──
     joinRow: { flexDirection: 'row', gap: SPACING.sm },
     joinInputWrap: {
       flex: 1,

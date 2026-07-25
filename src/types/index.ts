@@ -569,7 +569,7 @@ export interface StallState {
   /** One-tap sale: 1 unit at the session's default payment method. Returns the new sale id. */
   quickSale: (productId: string, regularCustomerId?: string) => string | undefined;
   /** Edit an existing sale in the active session (quantity and/or payment method). */
-  updateSale: (saleId: string, updates: { quantity?: number; paymentMethod?: StallPaymentMethod }) => void;
+  updateSale: (saleId: string, updates: { quantity?: number; paymentMethod?: StallPaymentMethod; total?: number }) => void;
   /** Off-menu sale with a typed amount and no product. Returns the new sale id. */
   addCustomSale: (sale: { amount: number; paymentMethod: StallPaymentMethod; label?: string; regularCustomerId?: string; pspTransactionId?: string }) => string | undefined;
   /** Add stock back to a product mid-session (clears "sold out"). */
@@ -1235,6 +1235,13 @@ export interface SavedReceipt {
    * layer; local render always uses imageUri. Optional → backward compatible.
    */
   remoteImagePath?: string;
+  /**
+   * Local file URI of the ORIGINAL shared PDF (Share-to-Log archive). New records
+   * keep a crisp rasterized PNG in imageUri and the source PDF here for HD
+   * viewing/export. Optional → backward compatible: legacy records put the PDF
+   * path directly in imageUri and leave this unset.
+   */
+  pdfUri?: string;
   verified: boolean;
   transactionId?: string;
   year: number;

@@ -28,6 +28,8 @@ import CategoryIcon from '../common/CategoryIcon';
 import WalletLogo from '../common/WalletLogo';
 import ModalToastHost from '../common/ModalToastHost';
 import { useNeu } from '../common/neu';
+import { useReceiptStore } from '../../store/receiptStore';
+import { navigationRef } from '../../navigation/navigationRef';
 import { Transaction, CategoryOption, Wallet } from '../../types';
 
 const SPRING_CFG = { damping: 22, stiffness: 220, mass: 0.5 };
@@ -55,6 +57,13 @@ const TransactionDetailSheet: React.FC<TransactionDetailSheetProps> = ({
   const styles = useMemo(() => makeStyles(C), [C]);
   const closingRef = useRef(false);
   const pendingEditRef = useRef<Transaction | null>(null);
+  const pendingReceiptIdRef = useRef<string | null>(null);
+  // A receipt archived from Share-to-Log (or saved from the scanner) links back to this
+  // transaction via SavedReceipt.transactionId — surface the jump so the two screens
+  // stay interconnected.
+  const linkedReceipt = useReceiptStore((s) =>
+    transaction ? s.receipts.find((r) => r.transactionId === transaction.id) : undefined,
+  );
   const { height: SCREEN_H } = useWindowDimensions();
   const sheetY = useSharedValue(SCREEN_H);
   const dragStart = useSharedValue(0);
@@ -75,6 +84,11 @@ const TransactionDetailSheet: React.FC<TransactionDetailSheetProps> = ({
     // If the user tapped "edit", open the edit sheet only AFTER this sheet has
     // fully animated out — avoids stacking two native modal layers on iOS.
     if (editTxn) onEdit(editTxn);
+    // Same for "view receipt" — navigate only after the sheet is fully gone.
+    if (pendingReceiptIdRef.current && navigationRef.isReady()) {
+      (navigationRef as any).navigate('ReceiptDetail', { receiptId: pendingReceiptIdRef.current });
+      pendingReceiptIdRef.current = null;
+    }
   }, [onClose, onEdit]);
 
   const closeSheet = useCallback(() => {
@@ -212,6 +226,28 @@ const TransactionDetailSheet: React.FC<TransactionDetailSheetProps> = ({
                   {isExpense ? t.transactionList.expenses.toLowerCase() : t.transactionList.income.toLowerCase()}
                 </Text>
               </View>
+              {/* Linked receipt (Share-to-Log / scanner) — jump straight to it */}
+              {linkedReceipt && (
+                <>
+                  <View style={styles.rowDivider} />
+                  <TouchableOpacity
+                    style={styles.detailRow}
+                    onPress={() => {
+                      lightTap();
+                      pendingReceiptIdRef.current = linkedReceipt.id;
+                      closeSheet();
+                    }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                  >
+                    <View style={styles.rowIcon}>
+                      <Feather name="file-text" size={15} color={C.textMuted} />
+                    </View>
+                    <Text style={styles.detailLabel}>{t.transactionList.viewReceipt}</Text>
+                    <Feather name="chevron-right" size={16} color={C.accent} />
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
 
             {/* Tags */}

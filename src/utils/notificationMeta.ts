@@ -37,8 +37,14 @@ export function effectiveType(n: NotificationLike): NotificationType {
 /** True for logged-transaction notifications (share-to-log). */
 export const isTransaction = (n: NotificationLike): boolean => effectiveType(n) === 'transaction';
 
+/** True for Collectz pushes (data.type = 'collectz_*') — they keep store type
+ *  'push' but present with their own icon, tint and source label. */
+export const isCollectz = (n: NotificationLike): boolean =>
+  typeof n.data?.type === 'string' && n.data.type.startsWith('collectz_');
+
 /** Icon for a notification — directional arrow for transactions, type icon otherwise. */
 export function iconFor(n: NotificationLike): keyof typeof Feather.glyphMap {
+  if (isCollectz(n)) return 'users';
   const et = effectiveType(n);
   if (et === 'transaction') {
     return n.data?.direction === 'in' ? 'arrow-down-left' : 'arrow-up-right';
@@ -49,6 +55,7 @@ export function iconFor(n: NotificationLike): keyof typeof Feather.glyphMap {
 /** Tint for a notification. Transactions follow the app rule: olive for income,
  *  text-primary for expense (no green/red). Others use the per-type accent. */
 export function tintFor(n: NotificationLike, C: typeof CALM): string {
+  if (isCollectz(n)) return C.accent;
   const et = effectiveType(n);
   if (et === 'transaction') {
     return n.data?.direction === 'in' ? C.positive : C.textPrimary;
@@ -73,10 +80,12 @@ type SourceStrings = {
   sourceBroadcast: string;
   sourcePush: string;
   sourceTransaction: string;
+  sourceCollectz: string;
 };
 
 /** Human-readable "from" label per type (Transaction / System update / Announcement / Alert). */
 export function sourceLabel(n: NotificationLike, t: { notifications: SourceStrings }): string {
+  if (isCollectz(n)) return t.notifications.sourceCollectz;
   switch (effectiveType(n)) {
     case 'transaction':
       return t.notifications.sourceTransaction;

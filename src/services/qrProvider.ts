@@ -1,3 +1,5 @@
+import { supabaseBusiness } from './supabase';
+
 /**
  * qrProvider — provider-agnostic DuitNow QR charge creation.
  *
@@ -95,14 +97,19 @@ export async function createQrCharge(req: QrChargeRequest): Promise<QrChargeResu
 // Each should POST to a server endpoint that holds the PSP secret and returns
 // { qrPayload, chargeId }. Never put a PSP secret in the app bundle.
 
-// Fiuu (formerly Razer Merchant Services / MOLPay) — DuitNow QR via API.
-// Docs: https://docs.fiuu.com/  (DuitNow QR / Dynamic QR + webhook / return URL)
-async function createFiuuCharge(_req: QrChargeRequest): Promise<QrChargeResult> {
-  // TODO(Phase 2 activation): POST _req to the `qr-create-charge` edge function
-  // with provider=fiuu; it calls Fiuu's QR-create API with the merchant key and
-  // returns the EMVCo payload + charge id. Store {chargeId, refId} so the
-  // webhook can correlate. Verify webhook signature server-side (skey/vcode).
-  throw new QrProviderNotImplementedError('fiuu');
+// Fiuu (formerly Razer Merchant Services / MOLPay) — DuitNow QR via the
+// `qr-create-charge` edge function, which holds the merchant secret server-side
+// and calls Fiuu's OPA precreate (channelId 24). The webhook correlates by
+// referenceId/molTransactionId and flips the pending payment_events row.
+async function createFiuuCharge(req: QrChargeRequest): Promise<QrChargeResult> {
+  const { data, error } = await supabaseBusiness.functions.invoke('qr-create-charge', {
+    body: { amountCents: req.amountCents, refId: req.refId, mode: req.mode },
+  });
+  if (error) throw new QrProviderNotImplementedError('fiuu');
+  const qrPayload = String((data as { qrPayload?: unknown } | null)?.qrPayload ?? '');
+  const chargeId = String((data as { chargeId?: unknown } | null)?.chargeId ?? '');
+  if (!qrPayload || !chargeId) throw new QrProviderNotImplementedError('fiuu');
+  return { qrPayload, chargeId };
 }
 
 // HitPay — DuitNow QR via API, payment webhook with HMAC signature.

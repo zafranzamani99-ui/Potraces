@@ -1,0 +1,52 @@
+POTRACES PROMO — SCRIPT (38.3s)
+================================
+
+PROBLEM
+
+1. VO:  "Lima perpuluhan satu juta rakyat Malaysia terjebak BNPL."
+   SCREEN: 5.1 juta — rakyat Malaysia dah terjebak BNPL. (MOF 2025)
+
+2. VO:  "Lima puluh tiga ribu anak muda berhutang."
+   SCREEN: 53,000 — anak muda berhutang RM 1.9 bilion. (AKPK 2024)
+
+3. VO:  "Enam belas muflis setiap hari."
+   SCREEN: 16 — muflis setiap hari. (MdI)
+
+4. VO:  "Enam puluh satu peratus tak mampu keluar seribu ringgit bila kecemasan."
+   SCREEN: 61% — tak mampu keluar RM 1,000 bila kecemasan. (BNM 2024)
+
+   >> 0.75s BLACK — silence, dead air <<
+
+PROMOTE
+
+5. VO:  "Sebab tu kena ada Potraces."
+   SCREEN: Potraces. — duit kau, nampak semua
+
+TOUR
+
+6. VO:  "Log expenses? Tiga cara mudah. Backtap, auto log Apple Pay, share screenshot atau resit."
+   SCREEN: Tiga cara mudah. — Backtap / Auto Log / Share SS (shortcut tiles)
+   CAPTION: Backtap. Auto log. Share SS / resit.
+
+7. VO:  "Hutang, goals, savings, commitments, bank, e-wallet, semua satu tempat."
+   SCREEN: Manage Wallets — Cash Balance RM 12,961.50
+   CAPTION: Bukan integrasi — satu tempat untuk semua.
+
+8. VO:  "iPhone, kahwin, trip Japan, notes pun — semua sekali."
+   SCREEN: My Goals (kiri) + Notes "Extract with Echo" (kanan)
+   CAPTION: Goals. Notes. Semua sekali.
+
+9. VO:  "Resit? Simpan untuk tax relief."
+   SCREEN: Save Receipt result — pill flips Not Claimable → ✓ Claimable, circled
+
+10. VO: "Ada AI dalam — tanya Echo. Dia kira, kau decide."
+    SCREEN: Echo — "berapa aku belanja makan bulan ni" → RM 412.30 (4s read)
+
+FINALE — CTA END CARD
+
+11. VO: "Potraces. Track dulu."
+    SCREEN: ✓ Potraces. Track dulu. — duit kau, nampak semua
+            [ Muat turun percuma ]
+            [ App Store ] [ Google Play ]
+            visit jejakbaki.my untuk info lebih lanjut
+            (holds 2.2s)

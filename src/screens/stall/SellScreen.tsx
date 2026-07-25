@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import { StallProduct, StallModifier } from '../../types';
@@ -37,9 +38,13 @@ import { StallProduct, StallModifier } from '../../types';
 import { successNotification, lightTap } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 import { useNetInfo } from '@react-native-community/netinfo';
+import * as Crypto from 'expo-crypto';
 import TapToPaySheet from '../../components/common/TapToPaySheet';
 import { tapToPayAvailable } from '../../services/tapToPay';
 import QrPaySheet from '../../components/common/QrPaySheet';
+import { qrProviderConfigured, createQrCharge } from '../../services/qrProvider';
+import { resolvePendingPayments } from '../../services/qrPaymentResolver';
+import { usePendingPaymentsStore } from '../../store/pendingPaymentsStore';
 import NewstInput, { newstOutline } from '../../components/business/NewstInput';
 import { useNeu } from '../../components/common/neu';
 import NeuIconButton from '../../components/common/NeuIconButton';
@@ -88,6 +93,9 @@ const SellScreen: React.FC = () => {
   } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const { showToast } = useToast();
+  // Keyboard state — lifts the cart footer's discount field above the keyboard
+  // (CLAUDE.md "Scroll screens": a tapped input must never hide behind it).
+  const { keyboardVisible, keyboardHeight } = useKeyboardVisible();
 
   // Tap to Pay (card) availability — re-renders on connectivity change so the
   // Card option enables/disables live. `cardConfigured` = this device/build can
@@ -99,13 +107,63 @@ const SellScreen: React.FC = () => {
   const cardOffline = !cardAvail.available;
   const [cardSheet, setCardSheet] = useState<null | { amountCents: number; label: string; onDone: (txnId: string) => void }>(null);
 
-  // DuitNow QR pay sheet (stall mode is business mode). The QR shown is the
-  // first business QR with a decoded payload (exact-amount capable), else the
-  // first stored QR (image fallback). No money flows through the app — both
-  // sheet actions just complete the existing 'qr' sale.
+  // DuitNow QR pay sheet (stall mode is business mode). Two QR paths:
+  //  • provider (Fiuu, when configured): a PSP-issued exact-amount QR + live
+  //    "waiting" state; the webhook confirms and the sheet auto-completes.
+  //  • static fallback: the seller's stored QR with the amount embedded; the
+  //    seller confirms by eye (both sheet actions complete the 'qr' sale).
   const businessQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
   const qrForPay = useMemo(() => businessQrs.find((q) => q.payload) || businessQrs[0], [businessQrs]);
-  const [qrSheet, setQrSheet] = useState<null | { amountCents: number; onComplete: () => void }>(null);
+  const [qrSheet, setQrSheet] = useState<null | {
+    amountCents: number;
+    onComplete: () => void;
+    providerPayload?: string;
+    chargeId?: string;
+    refId?: string;
+  }>(null);
+  const addPending = usePendingPaymentsStore((s) => s.addPending);
+
+  // Create a provider charge; returns null on any failure (caller falls back
+  // to the static QR — a PSP hiccup must never block a sale).
+  const startProviderCharge = useCallback(async (amountCents: number, label: string) => {
+    if (!qrProviderConfigured()) return null;
+    try {
+      const refId = `st${Array.from(Crypto.getRandomBytes(9)).map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+      const { qrPayload, chargeId } = await createQrCharge({ amountCents, refId, mode: 'stall' });
+      addPending({
+        id: chargeId,
+        refId,
+        amountCents,
+        createdAt: new Date().toISOString(),
+        label,
+        mode: 'stall',
+      });
+      return { providerPayload: qrPayload, chargeId, refId };
+    } catch {
+      return null;
+    }
+  }, [addPending]);
+
+  // While a provider QR is on screen, poll payment_events every 4s (QR validity
+  // is 180s → ≤45 light polls). A hit auto-completes the sale; closing the
+  // sheet or the 30-min store prune stops it.
+  useEffect(() => {
+    if (!qrSheet?.providerPayload || !qrSheet.chargeId) return;
+    let cancelled = false;
+    const tick = async () => {
+      const resolved = await resolvePendingPayments();
+      if (cancelled) return;
+      const hit = resolved.find((p) => p.id === qrSheet.chargeId || p.refId === qrSheet.refId);
+      if (hit) {
+        successNotification();
+        showToast(t.qrPay.paymentReceivedToast, 'success');
+        qrSheet.onComplete();
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 4000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [qrSheet, showToast, t]);
 
   // Sell mode: quick (1 tap = 1 sale) vs cart (multi-item)
   const [mode, setMode] = useState<'quick' | 'cart'>('quick');
@@ -440,16 +498,29 @@ const SellScreen: React.FC = () => {
     });
   }, [cart, session, cardOffline, totalAmount, handleCheckout, showToast, t]);
 
-  // ── QR cart checkout: show the exact-amount DuitNow QR, then record ──
-  // If no QR is set up, fall straight through to today's one-tap behavior.
+  // ── QR cart checkout: try a PSP-issued exact-amount DuitNow QR first (live
+  // confirmation via webhook); fall back to the seller's static QR with manual
+  // confirm, then to today's one-tap behavior when no QR is set up at all.
   const openQrCheckout = useCallback(() => {
     if (cart.length === 0 || !session) return;
+    const amountCents = Math.round(totalAmount * 100);
+    const names = cart.map((i) => i.productName).join(', ');
+    const finish = () => { setQrSheet(null); handleCheckout('qr'); };
+    if (qrProviderConfigured()) {
+      startProviderCharge(amountCents, names || t.stall.todaysSales).then((charge) => {
+        if (charge) {
+          setQrSheet({ amountCents, onComplete: finish, ...charge });
+        } else if (qrForPay) {
+          setQrSheet({ amountCents, onComplete: finish });
+        } else {
+          guardedCheckout('qr');
+        }
+      });
+      return;
+    }
     if (!qrForPay) { guardedCheckout('qr'); return; }
-    setQrSheet({
-      amountCents: Math.round(totalAmount * 100),
-      onComplete: () => { setQrSheet(null); handleCheckout('qr'); },
-    });
-  }, [cart, session, qrForPay, totalAmount, handleCheckout, guardedCheckout]);
+    setQrSheet({ amountCents, onComplete: finish });
+  }, [cart, session, qrForPay, totalAmount, handleCheckout, guardedCheckout, startProviderCharge, t]);
   const guardedOpenQrCheckout = useSubmitGuard(openQrCheckout);
 
   // ── Quick-sell: tap a tile = 1 sale at the session default payment ──
@@ -589,22 +660,30 @@ const SellScreen: React.FC = () => {
       }, 60);
       return;
     }
-    if (customMethod === 'qr' && qrForPay) {
-      // Show the exact-amount QR for the custom amount, then record on confirm.
+    if (customMethod === 'qr') {
+      // Provider first (live confirmation), static QR fallback, plain record last.
+      const amountCents = Math.round(amt * 100);
+      const finish = () => { setQrSheet(null); finishCustomSale(amt, label, save); };
       setCustomVisible(false);
       Keyboard.dismiss();
       setTimeout(() => {
-        setQrSheet({
-          amountCents: Math.round(amt * 100),
-          onComplete: () => { setQrSheet(null); finishCustomSale(amt, label, save); },
-        });
+        if (qrProviderConfigured()) {
+          startProviderCharge(amountCents, label || t.stall.customSale).then((charge) => {
+            if (charge) setQrSheet({ amountCents, onComplete: finish, ...charge });
+            else if (qrForPay) setQrSheet({ amountCents, onComplete: finish });
+            else finishCustomSale(amt, label, save);
+          });
+          return;
+        }
+        if (qrForPay) { setQrSheet({ amountCents, onComplete: finish }); return; }
+        finishCustomSale(amt, label, save);
       }, 60);
       return;
     }
     setCustomVisible(false);
     Keyboard.dismiss();
     finishCustomSale(amt, label, save);
-  }, [customAmount, customLabel, customMethod, customSaveProduct, cardOffline, qrForPay, finishCustomSale, showToast, t]);
+  }, [customAmount, customLabel, customMethod, customSaveProduct, cardOffline, qrForPay, finishCustomSale, startProviderCharge, showToast, t]);
   const guardedConfirmCustom = useSubmitGuard(handleConfirmCustom);
 
   // ── Restock during session ──
@@ -1132,9 +1211,16 @@ const SellScreen: React.FC = () => {
             </ScrollView>
           </Pressable>
 
-          {/* Cart footer */}
+          {/* Cart footer — lifts above the keyboard while the discount field is
+              focused (the only main-screen input the keyboard would cover). */}
           <Pressable
-            style={[styles.cartFooter, { paddingBottom: insets.bottom + 84 }]}
+            style={[
+              styles.cartFooter,
+              {
+                paddingBottom:
+                  insets.bottom + 84 + (focusedField === 'discount' && keyboardVisible ? keyboardHeight : 0),
+              },
+            ]}
             onPress={!cartExpanded && cart.length > 0 ? expandCart : undefined}
             disabled={cartExpanded || cart.length === 0}
           >
@@ -1732,6 +1818,8 @@ const SellScreen: React.FC = () => {
         visible={!!qrSheet}
         amountCents={qrSheet?.amountCents ?? 0}
         paymentQr={qrForPay}
+        providerPayload={qrSheet?.providerPayload}
+        waiting={!!qrSheet?.providerPayload}
         onConfirmReceived={() => qrSheet?.onComplete()}
         onSkip={() => qrSheet?.onComplete()}
         onClose={() => setQrSheet(null)}

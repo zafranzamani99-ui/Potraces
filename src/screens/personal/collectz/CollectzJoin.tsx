@@ -20,16 +20,16 @@ import {
 // with it so drags aren't lost — a plain RN ScrollView (and KeyboardAwareScrollView,
 // which is built on one) can intermittently lose the pan ("mostly can't scroll,
 // sometimes can"). KeyboardAwareScrollView stays for modals/sheets.
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
-import { lightTap, mediumTap, successNotification, errorNotification } from '../../../services/haptics';
+import { lightTap, mediumTap, selectionChanged, successNotification, errorNotification } from '../../../services/haptics';
 import { useNeu } from '../../../components/common/neu';
 import FloatingModal from '../../../components/common/FloatingModal';
 import PageScrollView from '../../../components/common/PageScrollView';
@@ -52,9 +52,11 @@ import {
   renameTeam,
   joinErrorMessage,
 } from '../../../services/collectzService';
-import { presetClubIcon } from '../../../constants/clubIcons';
+import { presetClubIcon, presetClubColor } from '../../../constants/clubIcons';
+import { collectzCategoryColor, collectzCategoryIcon } from '../../../constants/collectzColors';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
-import { fmtDateTime, fmtEventRange, fmtMoney, fill, teamLabel, SOCIAL_PLATFORMS } from './collectzFormat';
+import StatusChip from '../../../components/collectz/StatusChip';
+import { fmtDateTime, fmtEventRange, fmtMoney, fill, teamLabel, SOCIAL_PLATFORMS, requirementChips } from './collectzFormat';
 
 // Leave/unclaim is wired below, but the collectz-join edge function has no
 // 'leave' action yet (its whitelist stops at view/claim/add_self/set_team/
@@ -64,6 +66,7 @@ const LEAVE_ENABLED = false;
 
 const CollectzJoin: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const neu = useNeu(undefined, { faintDark: true });
@@ -86,6 +89,9 @@ const CollectzJoin: React.FC = () => {
   const [renameTeamIdx, setRenameTeamIdx] = useState<number | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [selfName, setSelfName] = useState('');
+  // Teams sessions: joining requires picking a team up front (claim + add-self
+  // both send it). null = not chosen yet — the join actions gate on this.
+  const [joinTeamIdx, setJoinTeamIdx] = useState<number | null>(null);
   const [myRejectNote, setMyRejectNote] = useState<string | null>(null);
 
   // Claiming / paying needs a personal account. Route the user to the Account
@@ -223,6 +229,16 @@ const CollectzJoin: React.FC = () => {
 
   const myShare = my?.effective_share ?? null;
 
+  // Pay step indicator — a rejection sends the flow back to the Unpaid step
+  // (the proof must be redone) but keeps its terracotta. Same colour semantics
+  // as StatusChip (unpaid → neutral lavender).
+  const myPayStep: 'unpaid' | 'pending' | 'confirmed' =
+    my?.status === 'pending' ? 'pending' : my?.status === 'confirmed' ? 'confirmed' : 'unpaid';
+  const myStepColor = my?.status === 'rejected' ? C.overdue : C.neutral;
+
+  // Category identity — tints the hero wash, club well and progress/capacity fills.
+  const catColor = collectzCategoryColor(session?.category, isDark);
+
   // Exact-amount DuitNow QR — same visual pattern as QrPaySheet (white card so
   // it scans in dark mode). Falls back to the raw payload if embedding fails.
   const qrValue = useMemo(() => {
@@ -254,9 +270,7 @@ const CollectzJoin: React.FC = () => {
         {p.effective_share != null && (
           <Text style={styles.rowShare}>{fmtMoney(p.effective_share, currency)}</Text>
         )}
-        <View style={[styles.statusChip, { backgroundColor: withAlpha(statusColor(p.status), 0.18) }]}>
-          <Text style={[styles.statusChipText, { color: statusColor(p.status) }]}>{statusLabel(p.status)}</Text>
-        </View>
+        <StatusChip status={p.status} label={statusLabel(p.status)} />
       </View>
     </View>
   );
@@ -267,14 +281,6 @@ const CollectzJoin: React.FC = () => {
       case 'pending': return t.collectz.statusPending;
       case 'rejected': return t.collectz.statusRejected;
       default: return t.collectz.statusUnpaid;
-    }
-  };
-  const statusColor = (status: CollectzParticipantStatus): string => {
-    switch (status) {
-      case 'confirmed': return C.accent;
-      case 'pending': return C.gold;
-      case 'rejected': return C.overdue;
-      default: return C.neutral;
     }
   };
 
@@ -290,22 +296,31 @@ const CollectzJoin: React.FC = () => {
     setCode(next);
   };
 
+  // Teams sessions: a team must be picked BEFORE claiming or adding yourself —
+  // the organizer wants balanced teams from the start, not a shuffle later.
+  const teamGate = (): boolean => {
+    if (!teamsOn || joinTeamIdx != null) return true;
+    errorNotification();
+    showToast(t.collectz.joinTeamRequired, 'info');
+    return false;
+  };
+
   // Confirm before binding — a claimed name locks to your account, so one
   // fat-fingered chip tap shouldn't make you someone else.
   const claim = (p: { id: string; name: string }) => {
-    if (!code || busy) return;
+    if (!code || busy || !teamGate()) return;
     lightTap();
     Alert.alert(fill(t.collectz.claimConfirmTitle, { name: p.name }), t.collectz.claimConfirmBody, [
       { text: t.common.cancel, style: 'cancel' },
-      { text: t.collectz.claimConfirmCta, onPress: () => doClaim(p.id) },
+      { text: t.collectz.claimConfirmCta, onPress: () => doClaim(p.id, joinTeamIdx ?? undefined) },
     ]);
   };
 
-  const doClaim = async (participantId: string) => {
+  const doClaim = async (participantId: string, teamIdx?: number) => {
     if (!code || busy) return;
     setBusy(true);
     try {
-      await claimParticipant(code, participantId);
+      await claimParticipant(code, participantId, teamIdx);
       successNotification();
       await load();
     } catch (err) {
@@ -325,10 +340,10 @@ const CollectzJoin: React.FC = () => {
 
   const addMyself = async () => {
     const name = selfName.trim();
-    if (!code || !name || busy) return;
+    if (!code || !name || busy || !teamGate()) return;
     setBusy(true);
     try {
-      await addSelf(code, name);
+      await addSelf(code, name, joinTeamIdx ?? undefined);
       setSelfName('');
       successNotification();
       await load();
@@ -537,6 +552,20 @@ const CollectzJoin: React.FC = () => {
 
   const dateLine = fmtEventRange(session.event_at, session.event_end);
   const payByLine = session.pay_by ? fill(t.collectz.payByLine, { date: fmtDateTime(session.pay_by) ?? '' }) : null;
+  // Pay-by urgency chip — bronze nudge next to the deadline for anyone who
+  // still owes (or hasn't joined) inside the final week. Calendar-day diff, so
+  // "due later today" reads 'due today', never '1d left'.
+  const payByChipLabel = (() => {
+    if (!session.pay_by || !isOpen) return null;
+    if (my && my.status !== 'unpaid' && my.status !== 'rejected') return null;
+    const due = new Date(session.pay_by);
+    if (isNaN(due.getTime())) return null;
+    const now = new Date();
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const days = Math.round((startOfDay(due) - startOfDay(now)) / 86_400_000);
+    if (days > 7) return null;
+    return days >= 1 ? fill(t.collectz.joinPayByDaysLeft, { days }) : t.collectz.joinPayByDueToday;
+  })();
   const progress = view.progress;
   const pct =
     progress.target_amount && progress.target_amount > 0
@@ -553,20 +582,30 @@ const CollectzJoin: React.FC = () => {
       >
       {/* Event header */}
       <View style={[styles.headerCard, neu.raisedSoft]}>
+        {/* Category tint — inner absolute-fill layer (the neu shadow lives on
+            the card, so no overflow clip here; corners rounded to match).
+            Flat fill, no gradient. */}
+        <View
+          style={[StyleSheet.absoluteFillObject, { borderRadius: RADIUS.lg, backgroundColor: withAlpha(catColor, isDark ? 0.12 : 0.07) }]}
+          pointerEvents="none"
+        />
         <View style={styles.titleRow}>
           {(() => {
             const preset = presetClubIcon(session.image_path);
             const uri = !preset && session.image_path ? clubImageUrl(session.image_path) : null;
-            if (!preset && !uri) return null;
-            // Preset emoji PNGs are square artwork — a circular crop clips the
-            // corners. Square well + contain for presets; full-bleed cover for
-            // uploaded club photos.
+            // An organizer-chosen icon color (preset:<id>:<hex>) wins over the
+            // category tint; uploaded club photos show full-bleed either way.
+            const tint = presetClubColor(session.image_path) ?? catColor;
             return (
-              <View style={styles.clubWell}>
-                {preset ? (
-                  <Text style={styles.clubEmoji}>{preset.emoji}</Text>
+              <View style={[styles.clubWell, { backgroundColor: withAlpha(tint, 0.12) }]}>
+                {uri ? (
+                  <Image source={{ uri }} style={styles.clubImagePhoto} resizeMode="cover" />
                 ) : (
-                  <Image source={{ uri: uri! }} style={styles.clubImagePhoto} resizeMode="cover" />
+                  <MaterialCommunityIcons
+                    name={(preset ? preset.icon : collectzCategoryIcon(session.category)) as any}
+                    size={26}
+                    color={tint}
+                  />
                 )}
               </View>
             );
@@ -583,6 +622,18 @@ const CollectzJoin: React.FC = () => {
           <View style={styles.metaRow}>
             <Feather name="map-pin" size={13} color={C.textMuted} />
             <Text style={styles.meta}>{session.venue}</Text>
+          </View>
+        )}
+        {/* Player requirements (skill / age / gender / booking) — only the
+            ones the organizer set, as quiet chips under the meta rows. */}
+        {requirementChips(t, session).length > 0 && (
+          <View style={styles.reqRow}>
+            {requirementChips(t, session).map((chip) => (
+              <View key={chip.label} style={styles.reqChip}>
+                <Feather name={chip.icon as keyof typeof Feather.glyphMap} size={11} color={C.textSecondary} />
+                <Text style={styles.reqChipText}>{chip.label}</Text>
+              </View>
+            ))}
           </View>
         )}
         {!!session.maps_url && <MapPreviewCard mapsUrl={session.maps_url} venue={session.venue} />}
@@ -621,6 +672,11 @@ const CollectzJoin: React.FC = () => {
           <View style={styles.metaRow}>
             <Feather name="clock" size={13} color={C.bronze} />
             <Text style={[styles.meta, { color: C.bronze }]}>{payByLine}</Text>
+            {!!payByChipLabel && (
+              <View style={styles.payByChip}>
+                <Text style={styles.payByChipText}>{payByChipLabel}</Text>
+              </View>
+            )}
           </View>
         )}
         {!isOpen && (
@@ -635,7 +691,7 @@ const CollectzJoin: React.FC = () => {
       {/* Progress */}
       <View style={[styles.progressCard, neu.raisedSoft]}>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${Math.round(pct * 100)}%` }]} />
+          <View style={[styles.progressFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: catColor }]} />
         </View>
         <Text style={styles.progressText}>
           {progress.target_amount != null
@@ -693,10 +749,61 @@ const CollectzJoin: React.FC = () => {
           ) : (
             <Text style={styles.myHint}>{t.collectz.allClaimed}</Text>
           )}
+          {/* Teams sessions: pick your team up front — required before claiming
+              a name or adding yourself (full teams are disabled). */}
+          {teamsOn && (
+            <>
+              <Text style={[styles.myHint, styles.joinTeamLabel]}>{t.collectz.joinPickTeam}</Text>
+              <View style={styles.claimGrid}>
+                {teamGroups.map((g) => {
+                  const full = teamSize != null && g.members.length >= teamSize;
+                  const active = joinTeamIdx === g.idx;
+                  return (
+                    <Pressable
+                      key={g.idx}
+                      style={({ pressed }) => [
+                        styles.claimChip,
+                        neu.raised,
+                        active && styles.claimTeamChipActive,
+                        full && { opacity: 0.4 },
+                        pressed && { opacity: 0.85 },
+                      ]}
+                      onPress={() => { if (!full) { selectionChanged(); setJoinTeamIdx(active ? null : g.idx); } }}
+                      disabled={busy || full}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active, disabled: full }}
+                    >
+                      <Text style={[styles.claimChipText, active && styles.claimTeamChipTextActive]}>
+                        {teamLabel(teamNames, g.idx, fill(t.collectz.teamN, { n: g.idx }))}
+                      </Text>
+                      {teamSize != null && (
+                        <Text style={[styles.claimChipSub, active && styles.claimTeamChipTextActive]}>
+                          {g.members.length}/{teamSize}
+                        </Text>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          )}
           {maxParticipants != null && (
-            <Text style={styles.myHint}>
-              {fill(t.collectz.capacityCount, { n: activeCount, max: maxParticipants })}
-            </Text>
+            <View style={styles.capacityWrap}>
+              <Text style={styles.myHint}>
+                {fill(t.collectz.capacityCount, { n: activeCount, max: maxParticipants })}
+              </Text>
+              <View style={styles.capacityTrack}>
+                <View
+                  style={[
+                    styles.capacityFill,
+                    {
+                      width: `${Math.min(activeCount / Math.max(maxParticipants, 1), 1) * 100}%`,
+                      backgroundColor: catColor,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
           )}
           {isFull ? (
             <Text style={styles.fullHint}>{t.collectz.sessionFull}</Text>
@@ -727,9 +834,7 @@ const CollectzJoin: React.FC = () => {
           <View style={styles.joinedRow}>
             <Feather name="user-check" size={14} color={C.accent} />
             <Text style={styles.joinedText}>{fill(t.collectz.joinedAs, { name: my.name })}</Text>
-            <View style={[styles.statusChip, { backgroundColor: withAlpha(statusColor(my.status), 0.18) }]}>
-              <Text style={[styles.statusChipText, { color: statusColor(my.status) }]}>{statusLabel(my.status)}</Text>
-            </View>
+            <StatusChip status={my.status} label={statusLabel(my.status)} />
           </View>
 
           {my.slot === 'reserve' ? (
@@ -737,12 +842,39 @@ const CollectzJoin: React.FC = () => {
           ) : (
             <>
               {(my.status === 'unpaid' || my.status === 'rejected') && isOpen && (
-                <>
+                <View style={styles.payFlow}>
                   {my.status === 'rejected' && (
                     <Text style={styles.rejectedNote}>
                       {myRejectNote ? fill(t.collectz.rejectedNote, { note: myRejectNote }) : t.collectz.rejectedPlain}
                     </Text>
                   )}
+
+                  {/* Pay steps — static Unpaid → Pending → Confirmed indicator.
+                      The current step takes its status colour; non-current dots
+                      and labels stay pillBg/muted. */}
+                  <View style={styles.stepRow}>
+                    {(['unpaid', 'pending', 'confirmed'] as const).map((step, i, arr) => {
+                      const isCurrent = step === myPayStep;
+                      return (
+                        <View key={step} style={styles.stepItem}>
+                          <View style={styles.stepDotRow}>
+                            <View style={[styles.stepHalfLine, i === 0 && styles.stepHalfLineHidden]} />
+                            <View style={[styles.stepDot, { backgroundColor: isCurrent ? myStepColor : C.pillBg }]} />
+                            <View style={[styles.stepHalfLine, i === arr.length - 1 && styles.stepHalfLineHidden]} />
+                          </View>
+                          <Text
+                            style={[
+                              styles.stepLabel,
+                              isCurrent && { color: myStepColor, fontWeight: TYPOGRAPHY.weight.semibold },
+                            ]}
+                          >
+                            {statusLabel(step)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+
                   <Text style={styles.shareLabel}>{t.collectz.yourShare}</Text>
                   <Text style={styles.shareAmount}>
                     {myShare != null ? fmtMoney(myShare, currency) : t.collectz.shareUnknown}
@@ -780,14 +912,17 @@ const CollectzJoin: React.FC = () => {
                     </View>
                   ) : (
                     <View style={styles.uploadRow}>
-                      <NeuButton icon="image" label={t.collectz.uploadImage} onPress={pickImage} style={[styles.uploadBtn, styles.uploadBtnNeu]} />
+                      <Pressable style={({ pressed }) => [styles.secondaryBtn, styles.uploadBtn, pressed && { opacity: 0.85 }]} onPress={pickImage}>
+                        <Feather name="image" size={15} color={C.accent} />
+                        <Text style={styles.secondaryBtnText}>{t.collectz.uploadImage}</Text>
+                      </Pressable>
                       <Pressable style={({ pressed }) => [styles.secondaryBtn, styles.uploadBtn, pressed && { opacity: 0.85 }]} onPress={pickPdf}>
                         <Feather name="file-text" size={15} color={C.accent} />
                         <Text style={styles.secondaryBtnText}>{t.collectz.uploadPdf}</Text>
                       </Pressable>
                     </View>
                   )}
-                </>
+                </View>
               )}
 
               {my.status === 'pending' && (
@@ -1018,16 +1153,35 @@ const makeStyles = (C: typeof CALM) =>
       justifyContent: 'center',
       overflow: 'hidden',
     },
-    clubEmoji: { fontSize: 32 },
     clubImagePhoto: { width: 52, height: 52 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    reqRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginTop: 2 },
+    reqChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      borderRadius: RADIUS.full,
+      backgroundColor: withAlpha(C.textPrimary, 0.05),
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 4,
+    },
+    reqChipText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium, color: C.textSecondary },
     meta: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary },
+    // pay-by urgency — flat bronze alpha tint (no red per CALM)
+    payByChip: {
+      borderRadius: RADIUS.full,
+      backgroundColor: withAlpha(C.bronze, 0.14),
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 2,
+    },
+    payByChipText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold, color: C.bronze },
     // organizer contact chips — WhatsApp green stays FLAT per the Onyx exemptions
     contactChips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: 2 },
     waChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#25D366', borderRadius: RADIUS.full, paddingVertical: 8, paddingHorizontal: 14 },
     waChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: '#FFFFFF' },
     socialChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: withAlpha(C.textPrimary, 0.03), borderRadius: RADIUS.full, paddingVertical: 8, paddingHorizontal: 14 },
     socialChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: C.textSecondary },
+    // Closed-session banner — neutral, informational.
     closedBanner: {
       marginTop: 4,
       borderRadius: RADIUS.md,
@@ -1072,12 +1226,19 @@ const makeStyles = (C: typeof CALM) =>
     },
     claimChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
     claimChipSub: { fontSize: 10, color: C.bronze },
+    joinTeamLabel: { marginTop: SPACING.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
+    claimTeamChipActive: { backgroundColor: C.accent },
+    claimTeamChipTextActive: { color: C.onAccent },
     fullHint: {
       fontSize: TYPOGRAPHY.size.sm,
       color: C.bronze,
       fontWeight: TYPOGRAPHY.weight.semibold,
       marginTop: SPACING.xs,
     },
+    // capacity meter — same track/fill idiom as progressTrack, thinner
+    capacityWrap: { alignSelf: 'stretch', gap: 6 },
+    capacityTrack: { height: 6, borderRadius: RADIUS.full, backgroundColor: C.pillBg, overflow: 'hidden' },
+    capacityFill: { height: 6, borderRadius: RADIUS.full },
     addSelfRow: { flexDirection: 'row', gap: SPACING.sm, alignSelf: 'stretch', marginTop: SPACING.xs },
     addSelfInput: {
       flex: 1,
@@ -1102,8 +1263,18 @@ const makeStyles = (C: typeof CALM) =>
     leaveBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: SPACING.xs },
     leaveBtnText: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, fontWeight: TYPOGRAPHY.weight.medium },
     rejectedNote: { fontSize: TYPOGRAPHY.size.sm, color: C.overdue, lineHeight: 19, alignSelf: 'stretch' },
+    // unified payment column: steps → share → QR → upload
+    payFlow: { alignSelf: 'stretch', alignItems: 'center', gap: SPACING.sm },
+    stepRow: { flexDirection: 'row', alignSelf: 'stretch', marginTop: SPACING.xs },
+    stepItem: { flex: 1, alignItems: 'center', gap: 6 },
+    stepDotRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' },
+    stepHalfLine: { flex: 1, height: 1, backgroundColor: withAlpha(C.textMuted, 0.3) },
+    stepHalfLineHidden: { backgroundColor: 'transparent' },
+    stepDot: { width: 10, height: 10, borderRadius: RADIUS.full },
+    stepLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, textAlign: 'center' },
     shareLabel: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, marginTop: SPACING.xs },
-    shareAmount: { fontSize: 36, lineHeight: 42, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary },
+    // money stays neutral (CALM) — no category colour on the amount
+    shareAmount: { fontSize: TYPOGRAPHY.size['3xl'], lineHeight: 36, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, textAlign: 'center' },
     qrCard: {
       backgroundColor: '#FFFFFF',
       borderRadius: RADIUS.lg,
@@ -1117,7 +1288,6 @@ const makeStyles = (C: typeof CALM) =>
     uploadTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary, marginTop: SPACING.sm },
     uploadRow: { flexDirection: 'row', gap: SPACING.sm, alignSelf: 'stretch' },
     uploadBtn: { flex: 1, width: 'auto', flexDirection: 'row', gap: 6 },
-    uploadBtnNeu: { minHeight: 48, paddingVertical: SPACING.sm },
     uploadingRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, minHeight: 50 },
     retryBtn: { width: 'auto', paddingHorizontal: SPACING.xl },
     secondaryBtn: {
@@ -1196,8 +1366,6 @@ const makeStyles = (C: typeof CALM) =>
     },
     rowRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
     rowShare: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
-    statusChip: { borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 3 },
-    statusChipText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold },
   });
 
 export default CollectzJoin;

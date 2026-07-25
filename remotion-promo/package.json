@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "remotion studio",
     "render": "remotion render CollectzPromo out/collectz-promo.mp4",
-    "render:debt": "remotion render DebtPromo out/debt-promo.mp4",
+    "render:debt": "remotion render HutangPromo out/debt-promo.mp4",
+    "render:why": "remotion render WhyPromo out/why-potraces.mp4",
+    "why-vo": "node scripts/generate-why-vo.mjs",
+    "debt-vo": "node scripts/generate-debt-vo-el.mjs",
+    "debt-audio": "node scripts/generate-debt-audio.mjs",
     "render:potraces": "remotion render PotracesPromo out/potraces-promo.mp4",
     "vo": "node scripts/generate-vo.mjs",
     "sfx": "node scripts/generate-sfx.mjs",
@@ -16,6 +20,8 @@
   "dependencies": {
     "@remotion/cli": "^4.0.0",
     "@remotion/google-fonts": "^4.0.0",
+    "@remotion/shapes": "4.0.496",
+    "@remotion/transitions": "4.0.496",
     "lucide-react": "^0.454.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",

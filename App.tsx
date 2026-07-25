@@ -27,6 +27,7 @@ import {
   reconcileSharedPayments,
   flushPendingReceiptReview,
   openSharedReceiptById,
+  openSharedTextReceiptById,
 } from './src/services/shareToLog';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
 import { refreshQuickLogConfigured } from './src/services/quickLogKey';
@@ -470,7 +471,7 @@ function App() {
       // Share-to-log outcomes are recorded in the inbox at log time (shareToLog.ts),
       // reliably and on both platforms — don't double-insert from the foreground push. The
       // "Receipt found" nudge is transient (reconcile opens the scanner) — don't inbox it.
-      if (data?.type === 'share_logged' || data?.type === 'share_receipt') return;
+      if (data?.type === 'share_logged' || data?.type === 'share_receipt' || data?.type === 'share_receipt_text') return;
       // Persist any other foreground push into the in-app inbox.
       const c = n.request.content;
       useNotificationStore.getState().addNotification({
@@ -669,7 +670,7 @@ function App() {
       if (handledId === id) return; // cold-start check + live listener overlap
       handledId = id;
       const data = response.notification.request.content.data as
-        { type?: string; orderId?: string; sessionId?: string; rid?: string } | undefined;
+        { type?: string; orderId?: string; sessionId?: string; rid?: string; tid?: string } | undefined;
       if (data?.type === 'broadcast') {
         // Broadcast tap → pull it into the inbox, then open the Notifications screen.
         refreshBroadcasts();
@@ -713,6 +714,14 @@ function App() {
         setTimeout(() => { void openSharedReceiptById(rid); }, delay);
         return;
       }
+      if (data?.type === 'share_receipt_text') {
+        // Same tap-to-review contract, but for a shared TEXT/PDF receipt: the scanner opens
+        // prefilled from the stashed rows (no image, no OCR) instead of a photo.
+        useAppStore.getState().setMode('personal');
+        const tid = data.tid;
+        setTimeout(() => { void openSharedTextReceiptById(tid); }, delay);
+        return;
+      }
       if ((data?.type === 'new_order' || data?.type === 'payment_received') && data.orderId) {
         // Switch to business mode and navigate to order
         useAppStore.getState().setMode('business');
@@ -724,48 +733,28 @@ function App() {
         }, delay);
         return;
       }
-      // Collectz (personal mode): a participant marked themselves paid → the
-      // organizer reviews the proof on the detail screen; confirm / reject /
-      // remind go to the participant, landing on the join screen (it accepts
-      // { code?: string; sessionId?: string }).
-      if (data?.type === 'collectz_pending' && data.sessionId) {
+      // Collectz (personal mode): EVERY collectz push lands at the bell. The
+      // push is mirrored into the inbox first — foreground receives already
+      // mirror via the recv listener, but a tap from background/killed would
+      // otherwise leave the bell empty. From the bell, NotificationDetail's
+      // "View session" CTA deep-links onward.
+      if (data?.type?.startsWith('collectz_')) {
         useAppStore.getState().setMode('personal');
+        const c = response.notification.request.content;
+        useNotificationStore.getState().addNotification({
+          id: response.notification.request.identifier || `push-${Date.now()}`,
+          type: 'push',
+          title: c.title || '',
+          body: c.body || '',
+          createdAt: Date.now(),
+          data: (data as Record<string, unknown>) ?? undefined,
+        });
         setTimeout(() => {
           if (navigationRef.isReady()) {
-            (navigationRef as any).navigate('CollectzDetail', { sessionId: data.sessionId });
+            (navigationRef as any).navigate('Notifications');
           }
         }, delay);
         return;
-      }
-      // Removed from the roster: their participant row is gone, so the join
-      // screen would dead-end — land on the Collectz home list instead.
-      if (data?.type === 'collectz_removed') {
-        useAppStore.getState().setMode('personal');
-        setTimeout(() => {
-          if (navigationRef.isReady()) {
-            (navigationRef as any).navigate('CollectzHome');
-          }
-        }, delay);
-        return;
-      }
-      if (
-        (data?.type === 'collectz_confirmed' ||
-          data?.type === 'collectz_rejected' ||
-          data?.type === 'collectz_reminder' ||
-          // v2: organizer edits / cancels / settles / promotes a reserve —
-          // participant lands on their join screen
-          data?.type === 'collectz_edited' ||
-          data?.type === 'collectz_cancelled' ||
-          data?.type === 'collectz_settled' ||
-          data?.type === 'collectz_promoted') &&
-        data.sessionId
-      ) {
-        useAppStore.getState().setMode('personal');
-        setTimeout(() => {
-          if (navigationRef.isReady()) {
-            (navigationRef as any).navigate('CollectzJoin', { sessionId: data.sessionId });
-          }
-        }, delay);
       }
     };
     const sub = Notifications.addNotificationResponseReceivedListener((r) => handleResponse(r, 300));

@@ -1,0 +1,7 @@
+{
+  "name": "pdf-raster",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local Expo module: rasterize a PDF's first page to a high-res PNG via Apple PDFKit.",
+  "main": "src/index.ts"
+}

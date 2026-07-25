@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,14 +16,19 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Sharing from 'expo-sharing';
 import Svg, { Path as SvgPath, Rect as SvgRect } from 'react-native-svg';
 import { useReceiptStore } from '../../store/receiptStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useWalletStore } from '../../store/walletStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
-import { exportSingleReceiptPdf } from '../../services/pdfExport';
+import { exportSingleReceiptPdf, shareReceiptReplicaPdf, shareReceiptPhotoPdf, resolveReceiptPdfUri } from '../../services/pdfExport';
 import { shareCapturedReceipt } from '../../services/receiptImageExport';
+import { enhanceDocumentImage } from '../../../modules/pdf-raster/src';
+import { uploadReceiptToDrive } from '../../services/driveUpload';
+import { isGoogleSignedIn } from '../../services/googleAuth';
+import ReceiptReplicaView from '../../components/ReceiptReplicaView';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
 import { resolveReceiptImageUri } from '../../utils/receiptImage';
@@ -68,7 +73,16 @@ const ReceiptDetail: React.FC = () => {
   const [taxPickerVisible, setTaxPickerVisible] = useState(false);
   const [sharingImage, setSharingImage] = useState(false);
   const [hideWalletInShare, setHideWalletInShare] = useState(false);
+  const [savingToDrive, setSavingToDrive] = useState(false);
+  // "Save to Drive" is Google-only — resolved once on mount; Apple/phone users
+  // never see the button.
+  const [isGoogleUser, setIsGoogleUser] = useState(false);
   const captureRef = useRef<ViewShot>(null);
+  const replicaRef = useRef<ViewShot>(null);
+
+  useEffect(() => {
+    setIsGoogleUser(isGoogleSignedIn());
+  }, []);
 
   if (!receipt) {
     return (
@@ -89,9 +103,48 @@ const ReceiptDetail: React.FC = () => {
   const wallet = wallets.find((w) => w.id === receipt.walletId);
   // Resolve stored path (relative or legacy-absolute) to a renderable file URI.
   const resolvedImageUri = resolveReceiptImageUri(receipt.imageUri);
+  // Dual-storage model: NEW shared-PDF receipts keep a crisp rasterized PNG in
+  // imageUri (behaves like a normal image receipt — in-app viewer) plus the
+  // ORIGINAL .pdf in pdfUri. LEGACY records have the raw .pdf as imageUri: RN's
+  // <Image> rasterizes PDFs at a low fixed resolution (blurry, no zoom), so only
+  // those open in the system Quick Look instead (HD, pinch-zoom).
+  const pdfUri = receipt.pdfUri;
+  // pdfUri is stored RELATIVE (or as a stale absolute path from an older sandbox) —
+  // always share/open the RESOLVED path (self-heals old containers).
+  const resolvedPdfUri = resolveReceiptImageUri(pdfUri);
+  const isPdfAttachment = /\.pdf($|[?#])/i.test(resolvedImageUri ?? '');
+  // PHOTO receipt (camera/gallery/shared image, no archived PDF) → shares and
+  // Drive uploads render a thermal-receipt REPLICA instead of the designed card.
+  const isPhotoReceipt = !!receipt.imageUri && !pdfUri;
+  const openPdfAttachment = async () => {
+    if (!resolvedImageUri) return;
+    try {
+      await Sharing.shareAsync(resolvedImageUri, { UTI: 'com.adobe.pdf', mimeType: 'application/pdf' });
+    } catch { /* best-effort */ }
+  };
+  const openOriginalPdf = async () => {
+    if (!resolvedPdfUri) return;
+    try {
+      await Sharing.shareAsync(resolvedPdfUri, { UTI: 'com.adobe.pdf', mimeType: 'application/pdf' });
+    } catch { /* best-effort */ }
+  };
 
   const handleShare = async () => {
+    // Archived PDF receipt → share the ORIGINAL file instead of generating a card PDF.
+    if (pdfUri) return void openOriginalPdf();
     try {
+      // Photo receipt → PDF of the REAL photo, CamScanner-enhanced when the
+      // native enhancer succeeds (null → the untouched original). The replica
+      // stays only as the no-image-file fallback.
+      if (isPhotoReceipt) {
+        if (resolvedImageUri) {
+          const enhanced = await enhanceDocumentImage(resolvedImageUri);
+          await shareReceiptPhotoPdf(enhanced ?? resolvedImageUri, receipt.title || 'receipt');
+        } else {
+          await shareReceiptReplicaPdf(receipt, currency);
+        }
+        return;
+      }
       const categoryNames = Object.fromEntries(MYTAX_CATEGORIES.map((c) => [c.id, c.name]));
       await exportSingleReceiptPdf({ receipt, currency, categoryNames, walletName: wallet?.name, hideWallet: hideWalletInShare });
     } catch (err: any) {
@@ -103,14 +156,46 @@ const ReceiptDetail: React.FC = () => {
     if (sharingImage) return;
     setSharingImage(true);
     try {
+      // Archived PDF receipt with a renderable PNG hero → share that image FILE
+      // directly (crisp raster) instead of the ViewShot card.
+      if (pdfUri && resolvedImageUri && !isPdfAttachment) {
+        await Sharing.shareAsync(resolvedImageUri, { mimeType: 'image/png' });
+        return;
+      }
+      // Photo receipt → share the REAL photo FILE, CamScanner-enhanced when the
+      // native enhancer succeeds. Enhanced output is a PNG; the untouched
+      // original shares as JPEG.
+      if (isPhotoReceipt && resolvedImageUri) {
+        const enhanced = await enhanceDocumentImage(resolvedImageUri);
+        await Sharing.shareAsync(enhanced ?? resolvedImageUri, { mimeType: enhanced ? 'image/png' : 'image/jpeg' });
+        return;
+      }
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
       });
-      await shareCapturedReceipt(captureRef, receipt.title || 'receipt');
+      // Photo receipt → capture the thermal-replica ViewShot, not the card.
+      await shareCapturedReceipt(isPhotoReceipt ? replicaRef : captureRef, receipt.title || 'receipt');
     } catch (err: any) {
       Alert.alert(t.receiptDetail.shareFailed, err?.message || t.receiptDetail.shareFailedMsg);
     } finally {
       setSharingImage(false);
+    }
+  };
+
+  const handleSaveToDrive = async () => {
+    if (savingToDrive) return;
+    setSavingToDrive(true);
+    try {
+      const categoryNames = Object.fromEntries(MYTAX_CATEGORIES.map((c) => [c.id, c.name]));
+      // Which PDF: original archived file / thermal replica / designed card.
+      const fileUri = await resolveReceiptPdfUri({ receipt, currency, categoryNames, walletName: wallet?.name, hideWallet: hideWalletInShare });
+      const safeName = `${(receipt.title || 'receipt').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 40) || 'receipt'}.pdf`;
+      await uploadReceiptToDrive({ fileUri, name: safeName, mimeType: 'application/pdf' });
+      showToast(t.receiptDetail.driveSaved, 'success');
+    } catch (err: any) {
+      showToast(err?.message || t.receiptDetail.driveSaveFailed, 'error');
+    } finally {
+      setSavingToDrive(false);
     }
   };
 
@@ -143,7 +228,7 @@ const ReceiptDetail: React.FC = () => {
         {/* ── Hero image ── */}
         {receipt.imageUri && !imageError && (
           <TouchableOpacity
-            onPress={() => setImageViewVisible(true)}
+            onPress={() => (isPdfAttachment ? void openPdfAttachment() : setImageViewVisible(true))}
             activeOpacity={0.8}
             style={styles.heroImageWrap}
           >
@@ -194,6 +279,14 @@ const ReceiptDetail: React.FC = () => {
               <DetailRow icon="map-pin" label={t.receiptDetail.location} value={receipt.location} C={C} />
             )}
           </View>
+
+          {/* Original shared PDF (dual-storage receipts) — opens in Quick Look, HD */}
+          {pdfUri && (
+            <TouchableOpacity style={styles.viewPdfBtn} onPress={() => void openOriginalPdf()} activeOpacity={0.7}>
+              <Feather name="file-text" size={13} color={C.accent} />
+              <Text style={styles.viewPdfBtnText}>{t.receiptDetail.viewOriginalPdf}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Items card (groupCard pattern) ── */}
@@ -253,6 +346,14 @@ const ReceiptDetail: React.FC = () => {
             </View>
             <Text style={[styles.actionBtnText, { color: C.accent }]}>{t.receiptDetail.shareAsPdf}</Text>
           </TouchableOpacity>
+          {isGoogleUser && (
+            <TouchableOpacity style={[styles.actionBtn, neu.raised]} onPress={handleSaveToDrive} activeOpacity={0.7} disabled={savingToDrive}>
+              <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(C.accent, 0.08) }]}>
+                <Feather name="upload-cloud" size={16} color={C.accent} />
+              </View>
+              <Text style={[styles.actionBtnText, { color: C.accent }]}>{savingToDrive ? t.receiptDetail.savingToDrive : t.receiptDetail.saveToDrive}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Hide wallet toggle ── */}
@@ -387,21 +488,46 @@ const ReceiptDetail: React.FC = () => {
       </ViewShot>
       </View>
 
-      {/* Full-screen image overlay (position: absolute, not Modal) */}
-      {imageViewVisible && receipt.imageUri && !imageError && (
-        <View style={styles.imageOverlay}>
-          <TouchableOpacity
-            style={styles.imageOverlayClose}
-            onPress={() => setImageViewVisible(false)}
+      {/* ══ Off-screen thermal-replica capture (photo receipts only) ══ */}
+      {isPhotoReceipt && (
+        <View pointerEvents="none" style={styles.capOuter} collapsable={false}>
+          <ViewShot
+            ref={replicaRef}
+            options={{ format: 'png', quality: 1, useRenderInContext: true }}
           >
-            <Feather name="x" size={28} color="#fff" />
-          </TouchableOpacity>
-          <Image
-            source={{ uri: resolvedImageUri }}
-            style={styles.imageOverlayImage}
-            resizeMode="contain"
-          />
+            <ReceiptReplicaView receipt={receipt} currency={currency} />
+          </ViewShot>
         </View>
+      )}
+
+      {/* Full-screen image overlay — a real Modal so the dim covers the header and status
+          bar too (position:absolute stopped below the "Receipt" title). PDFs get a
+          tap-to-open card instead — the in-app Image raster is low-res; Quick Look is the
+          HD viewer. */}
+      {imageViewVisible && receipt.imageUri && !imageError && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setImageViewVisible(false)}>
+          <View style={[styles.imageOverlay, { paddingTop: insets.top + 48 }]}>
+            <TouchableOpacity
+              style={[styles.imageOverlayClose, { top: insets.top + 12 }]}
+              onPress={() => setImageViewVisible(false)}
+            >
+              <Feather name="x" size={28} color="#fff" />
+            </TouchableOpacity>
+            {isPdfAttachment ? (
+              <TouchableOpacity onPress={() => void openPdfAttachment()} activeOpacity={0.8} style={{ alignItems: 'center', padding: 32 }}>
+                <Feather name="file-text" size={56} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600', marginTop: 16 }}>PDF document</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, marginTop: 6, textAlign: 'center' }}>Tap to open in full quality</Text>
+              </TouchableOpacity>
+            ) : (
+              <Image
+                source={{ uri: resolvedImageUri }}
+                style={styles.imageOverlayImage}
+                resizeMode="contain"
+              />
+            )}
+          </View>
+        </Modal>
       )}
 
       {/* ── Tax Relief Picker Modal ── */}
@@ -591,6 +717,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   detailGrid: {
     marginTop: SPACING.xs,
+  },
+  viewPdfBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: SPACING.md,
+    paddingVertical: 4,
+  },
+  viewPdfBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: '600',
+    color: C.accent,
   },
 
   // ── Group card (items) ──
@@ -934,19 +1073,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Full-screen image overlay ──
   imageOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flex: 1,
     backgroundColor: 'rgba(0,0,0,0.92)',
-    justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 100,
   },
   imageOverlayClose: {
     position: 'absolute',
-    top: 60,
     right: 20,
     zIndex: 101,
     padding: SPACING.sm,

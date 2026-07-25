@@ -195,6 +195,10 @@ Deno.serve(async (req: Request) => {
         status: session.status,
         image_path: session.image_path,
         maps_url: session.maps_url,
+        skill_level: session.skill_level,
+        age_req: session.age_req,
+        gender_req: session.gender_req,
+        booking_status: session.booking_status,
         max_participants: session.max_participants,
         team_count: session.team_count,
         team_size: session.team_size,
@@ -305,14 +309,30 @@ Deno.serve(async (req: Request) => {
     if (!target) return json({ error: 'not_found' }, 404);
     if (target.user_id) return json({ error: 'already_claimed' }, 409);
 
+    // Optional team pick — validated exactly like set_team. Omitting it keeps
+    // whatever team the organizer pre-assigned to the row.
+    const teamIdx = body.team_idx == null ? null : Number(body.team_idx);
+    if (teamIdx !== null) {
+      const teamCount: number = session.team_count ?? 0;
+      if (!Number.isInteger(teamIdx) || teamIdx < 1 || teamIdx > teamCount) {
+        return json({ error: 'team_invalid' }, 400);
+      }
+      if (session.team_size != null) {
+        const members = actives.filter((p) => p.team_idx === teamIdx && p.id !== target.id);
+        if (members.length >= session.team_size) return json({ error: 'team_full' }, 409);
+      }
+    }
+
+    const patch: Record<string, unknown> = { user_id: userId };
+    if (teamIdx !== null) patch.team_idx = teamIdx;
     const { error } = await admin
       .from('collectz_participants')
-      .update({ user_id: userId })
+      .update(patch)
       .eq('id', participantId)
       .is('user_id', null); // guard against a race with another claimant
     if (error) return json({ error: 'claim_failed' }, 500);
 
-    return json({ ok: true, participant_id: participantId });
+    return json({ ok: true, participant_id: participantId, team_idx: teamIdx ?? target.team_idx ?? null });
   }
 
   // add_self
@@ -326,9 +346,22 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'session_full' }, 409);
   }
 
+  // Optional team pick — validated exactly like set_team.
+  const teamIdx = body.team_idx == null ? null : Number(body.team_idx);
+  if (teamIdx !== null) {
+    const teamCount: number = session.team_count ?? 0;
+    if (!Number.isInteger(teamIdx) || teamIdx < 1 || teamIdx > teamCount) {
+      return json({ error: 'team_invalid' }, 400);
+    }
+    if (session.team_size != null) {
+      const members = actives.filter((p) => p.team_idx === teamIdx);
+      if (members.length >= session.team_size) return json({ error: 'team_full' }, 409);
+    }
+  }
+
   const { data: inserted, error } = await admin
     .from('collectz_participants')
-    .insert({ session_id: session.id, name, user_id: userId })
+    .insert({ session_id: session.id, name, user_id: userId, team_idx: teamIdx })
     .select('id')
     .single();
   if (error) {
@@ -338,5 +371,5 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'join_failed' }, 500);
   }
 
-  return json({ ok: true, participant_id: inserted.id });
+  return json({ ok: true, participant_id: inserted.id, team_idx: teamIdx });
 });

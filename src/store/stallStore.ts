@@ -260,7 +260,7 @@ export const useStallStore = create<StallState>()(
           });
         const activeIds = new Set(get().products.filter((p) => p.isActive).map((p) => p.id));
         const seen = new Set<string>();
-        const spots: { name?: string; where?: string; setup: { productId: string; startQty: number }[] }[] = [];
+        const spots: { name?: string; where?: string; closedAt?: Date; setup: { productId: string; startQty: number }[] }[] = [];
         for (const s of closed) {
           const key = `${s.name || ''}|${s.where || ''}`;
           if (seen.has(key)) continue;
@@ -459,9 +459,15 @@ export const useStallStore = create<StallState>()(
           const newQty = updates.quantity != null ? Math.max(1, Math.round(updates.quantity)) : sale.quantity;
           const newMethod = updates.paymentMethod ?? sale.paymentMethod;
           // Preserve per-unit value (keeps any discount applied at checkout). Custom sales keep their total.
+          // An explicit `total` override wins — that's the after-the-fact price
+          // correction / discount path (POS edit); unitPrice follows the override.
           const perUnit = sale.quantity > 0 ? sale.total / sale.quantity : sale.unitPrice;
-          const newTotal = sale.isCustom ? sale.total : roundCash(perUnit * newQty, newMethod, state.roundCashTo5);
-          const newUnitPrice = sale.isCustom ? sale.unitPrice : roundMoney(perUnit);
+          const newTotal = updates.total != null
+            ? roundMoney(Math.max(0, updates.total))
+            : sale.isCustom ? sale.total : roundCash(perUnit * newQty, newMethod, state.roundCashTo5);
+          const newUnitPrice = updates.total != null
+            ? roundMoney(newTotal / newQty)
+            : sale.isCustom ? sale.unitPrice : roundMoney(perUnit);
           const qtyDelta = newQty - sale.quantity;
           const totalDelta = newTotal - sale.total;
 

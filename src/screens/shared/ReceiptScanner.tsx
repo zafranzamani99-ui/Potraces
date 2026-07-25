@@ -17,6 +17,7 @@ import {
   Linking,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -31,6 +32,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { format, getYear, parse, isValid } from 'date-fns';
 import { scanReceipt, isLocalScanResult, isLocalOcrAvailable } from '../../services/receiptScanner';
+import { extractReceiptFromRowsFull } from '../../services/localReceiptOcr';
 import { enqueueReceipt } from '../../services/receiptQueue';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { toRelativeReceiptPath, resolveReceiptImageUri } from '../../utils/receiptImage';
@@ -112,6 +114,7 @@ function parseReceiptDate(dateStr?: string): Date {
 const ReceiptScanner: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
+  const insets = useSafeAreaInsets();
   // Onyx: faint dark neu across the screen; the picker modals now sit on
   // C.background too, so one default-base accessor covers everything.
   const neu = useNeu(undefined, { faintDark: true });
@@ -124,9 +127,11 @@ const ReceiptScanner: React.FC = () => {
   // Share-to-Log hands off a shared RECEIPT image here (via navigationRef) so the user
   // reviews items/total/category and saves — nothing is auto-logged for receipts.
   const route = useRoute();
-  const sharedParams = route.params as { imageUri?: string; autoScan?: boolean } | undefined;
+  const sharedParams = route.params as { imageUri?: string; autoScan?: boolean; textRows?: string[] } | undefined;
   const sharedImageUri = sharedParams?.imageUri;
   const sharedAutoScan = sharedParams?.autoScan === true;
+  // Share-to-Log TEXT/PDF receipt hand-off: rows already extracted (no image, no OCR).
+  const sharedTextRows = sharedParams?.textRows;
   const { showToast } = useToast();
   const mode = useAppStore((s) => s.mode);
   const currency = useSettingsStore((s) => s.currency);
@@ -423,6 +428,27 @@ const ReceiptScanner: React.FC = () => {
       void handleExtract();
     }
   }, [sharedAutoScan, imageUri, sharedImageUri, receipt, handleExtract]);
+
+  // Share-to-Log TEXT/PDF receipt: the rows are already extracted (no image, no OCR, no
+  // scan-quota cost). Prefill the SAME review state the scan path fills. Runs once.
+  const autoRowsRef = useRef(false);
+  useEffect(() => {
+    if (!sharedTextRows || sharedTextRows.length === 0 || autoRowsRef.current) return;
+    autoRowsRef.current = true;
+    const extracted = extractReceiptFromRowsFull(sharedTextRows);
+    if (!(extracted.total > 0)) return; // nothing usable — leave the manual screen
+    setReceipt(extracted);
+    setEditVendor(extracted.vendor || '');
+    setEditTitle(extracted.vendor || '');
+    setEditItems([...extracted.items]);
+    setEditTotal(extracted.total.toFixed(2));
+    setEditDate(parseReceiptDate(extracted.date));
+    setEditCategory(extracted.suggestedExpenseCategory || 'other');
+    setEditMyTaxCategory(extracted.suggestedTaxCategory || 'none');
+    setEditLocation(extracted.location || '');
+    // Local read (offline + quota-free) — same "double-check the numbers" notice.
+    showToast(t.settings.scanOfflineUsed, 'info');
+  }, [sharedTextRows]);
 
   const handleReset = useCallback(() => {
     setImageUri(null);
@@ -1241,24 +1267,27 @@ const ReceiptScanner: React.FC = () => {
         <ModalToastHost />
       </Modal>
 
-      {/* Full-screen image overlay (inline, not Modal) */}
+      {/* Full-screen image overlay — a real Modal so the dim covers the header and status
+          bar too (position:absolute stopped below the "Save Receipt" title). */}
       {imageViewVisible && imageUri && (
-        <View style={styles.imageOverlay}>
-          <TouchableOpacity
-            style={styles.imageOverlayClose}
-            onPress={() => setImageViewVisible(false)}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityRole="button"
-            accessibilityLabel={t.receipts.closePickerA11y}
-          >
-            <Feather name="x" size={28} color="#fff" />
-          </TouchableOpacity>
-          <Image
-            source={{ uri: imageUri }}
-            style={styles.imageOverlayImage}
-            resizeMode="contain"
-          />
-        </View>
+        <Modal visible transparent animationType="fade" onRequestClose={() => setImageViewVisible(false)}>
+          <View style={[styles.imageOverlay, { paddingTop: insets.top + 48 }]}>
+            <TouchableOpacity
+              style={[styles.imageOverlayClose, { top: insets.top + 12 }]}
+              onPress={() => setImageViewVisible(false)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.receipts.closePickerA11y}
+            >
+              <Feather name="x" size={28} color="#fff" />
+            </TouchableOpacity>
+            <Image
+              source={{ uri: imageUri }}
+              style={styles.imageOverlayImage}
+              resizeMode="contain"
+            />
+          </View>
+        </Modal>
       )}
 
       <PaywallModal
@@ -1873,19 +1902,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Full-screen image overlay ──
   imageOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flex: 1,
     backgroundColor: 'rgba(0,0,0,0.92)',
-    justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 100,
   },
   imageOverlayClose: {
     position: 'absolute',
-    top: 60,
     right: 20,
     zIndex: 101,
     padding: SPACING.sm,

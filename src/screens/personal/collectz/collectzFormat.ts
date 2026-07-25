@@ -121,3 +121,62 @@ export function teamLabel(names: string[] | null | undefined, idx: number, fallb
   const custom = names?.[idx - 1];
   return custom && custom.trim() ? custom.trim() : fallback;
 }
+
+
+// ── Player requirements (skill / age / gender / booking) ────────────────────
+// One chip per SET requirement — screens render them in the hero card; unset
+// fields produce nothing. Icon names are Feather glyphs.
+
+type RequirementSession = {
+  skill_level?: 'beginner' | 'intermediate' | 'advanced' | null;
+  age_req?: 'below_18' | '18_above' | 'any' | null;
+  gender_req?: 'male' | 'female' | 'any' | null;
+  booking_status?: 'booked' | 'later' | null;
+};
+
+type RequirementStrings = {
+  reqSkillBeginner: string;
+  reqSkillIntermediate: string;
+  reqSkillAdvanced: string;
+  reqAgeBelow18: string;
+  reqAge18Above: string;
+  reqAgeAny: string;
+  reqGenderMale: string;
+  reqGenderFemale: string;
+  reqGenderAny: string;
+  reqBookingBooked: string;
+  reqBookingLater: string;
+};
+
+export function requirementChips(
+  t: { collectz: RequirementStrings },
+  s: RequirementSession | null | undefined,
+): { icon: string; label: string }[] {
+  if (!s) return [];
+  const items: { icon: string; label: string }[] = [];
+  if (s.skill_level) {
+    items.push({
+      icon: 'zap',
+      label: { beginner: t.collectz.reqSkillBeginner, intermediate: t.collectz.reqSkillIntermediate, advanced: t.collectz.reqSkillAdvanced }[s.skill_level],
+    });
+  }
+  if (s.age_req) {
+    items.push({
+      icon: 'user',
+      label: { below_18: t.collectz.reqAgeBelow18, '18_above': t.collectz.reqAge18Above, any: t.collectz.reqAgeAny }[s.age_req],
+    });
+  }
+  if (s.gender_req) {
+    items.push({
+      icon: 'users',
+      label: { male: t.collectz.reqGenderMale, female: t.collectz.reqGenderFemale, any: t.collectz.reqGenderAny }[s.gender_req],
+    });
+  }
+  if (s.booking_status) {
+    items.push({
+      icon: 'bookmark',
+      label: s.booking_status === 'booked' ? t.collectz.reqBookingBooked : t.collectz.reqBookingLater,
+    });
+  }
+  return items;
+}

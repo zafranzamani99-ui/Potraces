@@ -2552,7 +2552,7 @@ const MoneyChat: React.FC = () => {
             value={input}
             onChangeText={setInput}
             placeholder={isRecording ? '' : dynamicPlaceholder}
-            placeholderTextColor={C.textSecondary}
+            placeholderTextColor={C.border}
             multiline
             editable={!isRecording && !isTranscribing}
           />
@@ -3391,7 +3391,7 @@ const makeStyles = (
     backgroundColor: C.accent,
   },
 
-  // Input bar — a floating rounded card that matches the Liquid Glass tab bar's
+  // Input bar — a floating rounded pill that matches the Liquid Glass tab bar's
   // language (same 16px side inset, rounded corners, soft lift). A full-width
   // square band above an inset pill made the four corners read as broken.
   inputBar: {
@@ -3402,11 +3402,12 @@ const makeStyles = (
     paddingLeft: SPACING.xs,        // + hugs the left edge → maximum input width
     paddingRight: SPACING.sm,       // mic keeps a touch more air on the right
     paddingVertical: SPACING.md,
-    borderRadius: RADIUS.lg,        // 14 — gently rounded; 28 read as an over-round capsule on a 2-line bar
+    borderRadius: RADIUS['2xl'],    // 28 — echoes the capsule's 30
     ...neu.raisedSoft,              // onyx lift — zero outline per the neu standard
   },
   attachBackdrop: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent', // explicit: tap-catcher only, never a dimming veil
   },
   attachPopover: {
     position: 'absolute',
@@ -3417,7 +3418,14 @@ const makeStyles = (
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.xs,
     zIndex: 50,
-    ...neu.raisedSoft,
+    // Plain solid card — no neu: raisedSoft painted it the SCREEN bg (read as
+    // "transparent"), and its boxShadow rendered the card wrong on this
+    // absolutely-positioned view. SHADOWS.md + surface + hairline is the same
+    // solid-card recipe the select bar uses.
+    backgroundColor: C.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    ...SHADOWS.md,
   },
   attachRow: {
     flexDirection: 'row',
@@ -3448,7 +3456,7 @@ const makeStyles = (
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     ...neu.insetSoft,
-    borderRadius: RADIUS.full,
+    borderRadius: 18,               // gentle rounding; full capsule was over-round
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     maxHeight: 100,
