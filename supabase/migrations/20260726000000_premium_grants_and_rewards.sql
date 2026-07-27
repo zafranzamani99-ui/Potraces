@@ -41,6 +41,19 @@ comment on table public.app_config is
 alter table public.app_config enable row level security;
 revoke all on public.app_config from anon, authenticated;
 
+-- Older environments created app_config with a json/jsonb value column. Normalize to
+-- text (the shape this migration declares and all helpers expect) so the seed insert
+-- below works everywhere. Idempotent: no-op where the column is already text.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'app_config' and data_type in ('json', 'jsonb')
+  ) then
+    alter table public.app_config alter column value type text using value #>> '{}';
+  end if;
+end $$;
+
 insert into public.app_config (key, value) values
   -- Launch gate. gate_on=false = beta behaviour (app stays open).
   ('premium_gate_on',           'false'),
