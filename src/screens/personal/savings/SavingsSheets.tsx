@@ -510,35 +510,50 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
   const backdropAnimStyle = useAnimatedStyle(() => ({ opacity: interpolate(sheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP) }));
   const saveAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: saveScale.value }] }));
 
+  // 'manual' (Update) takes the NEW TOTAL. The capital moves (Add money /
+  // Withdraw / Dividend) take a DELTA and the sheet computes the total — the
+  // user should never do the +/- in their head (and the old "wrong direction"
+  // guards become impossible by construction).
+  const isDelta = snap !== 'manual';
+  const heroLabel = !isDelta
+    ? t.savings.newValueLabel
+    : snap === 'deposit'
+      ? t.savings.addAmount
+      : snap === 'withdrawal'
+        ? t.savings.withdrawAmount
+        : t.savings.dividendAmount;
+
+  const parsed = parseFloat(normAmount(value));
+  const newTotal = useMemo(() => {
+    if (!account || isNaN(parsed)) return NaN;
+    if (snap === 'withdrawal') return account.currentValue - parsed;
+    if (snap === 'manual') return parsed;
+    return account.currentValue + parsed; // deposit + dividend
+  }, [account, parsed, snap]);
+
   const preview = useMemo(() => {
-    if (!account) return null;
+    if (!account || isDelta) return null;
     const v = parseFloat(normAmount(value));
     if (isNaN(v)) return null;
     const diff = v - account.currentValue;
     const pct = account.currentValue > 0 ? (diff / account.currentValue) * 100 : 0;
     return { diff, pct };
-  }, [value, account]);
+  }, [value, account, isDelta]);
 
-  const canSave = normAmount(value) !== '' && Number.isFinite(parseFloat(normAmount(value))) && parseFloat(normAmount(value)) >= 0;
+  const canSave = !isNaN(parsed) && (isDelta ? parsed > 0 && newTotal >= 0 : parsed >= 0);
 
   const save = useCallback(() => {
     if (savingRef.current) return;
     if (!account) return;
-    const v = parseFloat(normAmount(value));
-    if (!Number.isFinite(v) || v < 0) { showToast(t.savings.enterValidValue, 'error'); return; }
-    // Direction guard: a mistagged capital move (a "withdraw" that raises the value,
-    // or an "add money" that lowers it) would push the delta into gain/loss instead
-    // of the cost basis — steer the user to the right pill before committing.
-    if (snap === 'withdrawal' && v > account.currentValue) { showToast(t.savings.withdrawMustLower, 'error'); return; }
-    if (snap === 'deposit' && v < account.currentValue) { showToast(t.savings.depositMustRaise, 'error'); return; }
+    if (!canSave) { showToast(t.savings.enterValidValue, 'error'); return; }
+    if (isDelta && snap === 'withdrawal' && parsed > account.currentValue) { showToast(t.savings.withdrawTooMuch, 'error'); return; }
     // Commit past this point — block re-entrant double-taps while the Modal
-    // slides out. Auto-clears shortly after so the next open starts unlocked
-    // (mirrors the Add/Edit sheet's saving-flag + timeout).
+    // slides out. Auto-clears shortly after so the next open starts unlocked.
     savingRef.current = true;
     setTimeout(() => { savingRef.current = false; }, 600);
-    onSnapshot(account.id, v, note.trim() || undefined, snap);
+    onSnapshot(account.id, isDelta ? newTotal : parsed, note.trim() || undefined, snap);
     showToast(t.savings.valueUpdated, 'success'); successNotification(); requestClose();
-  }, [account, value, note, snap, onSnapshot, requestClose, showToast, t]);
+  }, [account, canSave, isDelta, snap, parsed, newTotal, note, onSnapshot, requestClose, showToast, t]);
 
   const fmt = (v: number) => `${currency} ${v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -577,18 +592,26 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
             contentContainerStyle={[a.scrollContent, keyboardVisible && { paddingBottom: keyboardHeight + SPACING.xl }]}
             keyboardDismissMode="on-drag"
           >
-            {/* Hero — new value + live change preview */}
+            {/* Hero — new value (Update) or delta amount (Add/Withdraw/Dividend) */}
             <View style={[a.heroCard, neu.raisedSoft]}>
-              <Text style={a.cardLabel}>{t.savings.newValueLabel} <Text style={a.reqStar}>*</Text></Text>
+              <Text style={a.cardLabel}>{heroLabel} <Text style={a.reqStar}>*</Text></Text>
               <View style={a.heroAmountRow}>
                 <Text style={[a.heroCurrency, { color: C.accent }]} numberOfLines={1}>{currency}</Text>
-                <TextInput value={value} onChangeText={(v) => setValue(normAmount(v))} keyboardType="decimal-pad" maxLength={13} autoFocus placeholder="0" placeholderTextColor={withAlpha(C.textPrimary, 0.12)} style={a.heroAmountInput} selectionColor={withAlpha(C.accent, 0.25)} accessibilityLabel={t.savings.newValueLabel} returnKeyType="done" onSubmitEditing={Keyboard.dismiss} keyboardAppearance={isDark ? 'dark' : 'light'} />
+                <TextInput value={value} onChangeText={(v) => setValue(normAmount(v))} keyboardType="decimal-pad" maxLength={13} autoFocus placeholder="0" placeholderTextColor={withAlpha(C.textPrimary, 0.12)} style={a.heroAmountInput} selectionColor={withAlpha(C.accent, 0.25)} accessibilityLabel={heroLabel} returnKeyType="done" onSubmitEditing={Keyboard.dismiss} keyboardAppearance={isDark ? 'dark' : 'light'} />
               </View>
-              {preview && Math.abs(preview.diff) > 0.001 && (
+              {!isDelta && preview && Math.abs(preview.diff) > 0.001 && (
                 <View style={[a.preview, { backgroundColor: withAlpha(preview.diff >= 0 ? C.positive : C.neutral, 0.1) }]}>
                   <Feather name={preview.diff >= 0 ? 'trending-up' : 'trending-down'} size={14} color={preview.diff >= 0 ? C.positive : C.neutral} />
                   <Text style={[a.previewText, { color: preview.diff >= 0 ? C.positive : C.neutral }]}>
                     {preview.diff >= 0 ? '+' : ''}{fmt(preview.diff)} ({preview.diff >= 0 ? '+' : ''}{preview.pct.toFixed(1)}%)
+                  </Text>
+                </View>
+              )}
+              {isDelta && !isNaN(parsed) && parsed > 0 && newTotal >= 0 && (
+                <View style={[a.preview, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
+                  <Feather name="arrow-right" size={14} color={C.accent} />
+                  <Text style={[a.previewText, { color: C.accent }]}>
+                    {t.savings.newTotalPreview} {fmt(newTotal)}
                   </Text>
                 </View>
               )}
@@ -600,9 +623,12 @@ export const UpdateValueSheet: React.FC<{ visible: boolean; account: SavingsAcco
               {SNAP_TYPES.map((st) => {
                 const on = snap === st.key;
                 return (
-                  <TouchableOpacity key={st.key} onPress={() => { setSnap(st.key); lightTap(); }} style={[a.snapPill, neu.raised, on && { backgroundColor: withAlpha(C.accent, 0.14) }]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t.savings[st.labelKey]} accessibilityState={{ selected: on }}>
-                    <Feather name={st.icon} size={13} color={on ? C.accent : C.textMuted} />
-                    <Text style={[a.snapText, on && { color: C.accent, fontWeight: '700' }]}>{t.savings[st.labelKey]}</Text>
+                  // Neu Pills: raised idle, accent fill when selected (shadow stays).
+                  // Switching types clears the field — a total and a delta mean
+                  // different things, so keeping the number would mislead.
+                  <TouchableOpacity key={st.key} onPress={() => { setSnap(st.key); setValue(''); lightTap(); }} style={[a.snapPill, neu.raised, on && a.snapPillActive]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t.savings[st.labelKey]} accessibilityState={{ selected: on }}>
+                    <Feather name={st.icon} size={13} color={on ? C.onAccent : C.textMuted} />
+                    <Text style={[a.snapText, on && a.snapTextActive]}>{t.savings[st.labelKey]}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -836,8 +862,11 @@ const addSheetStyles = (C: typeof CALM) => StyleSheet.create({
 
   // Update-value: snapshot-type pills + change preview
   snapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2, marginBottom: SPACING.md },
-  snapPill: { flexGrow: 1, flexBasis: '46%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: RADIUS.full, backgroundColor: C.background },
+  snapPill: { flexGrow: 1, flexBasis: '46%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: RADIUS.full, backgroundColor: withAlpha(C.textPrimary, 0.03) },
+  // Neu Pills recipe: selected = accent fill + onAccent text, neu shadow stays ON.
+  snapPillActive: { backgroundColor: C.accent },
   snapText: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, fontWeight: '600' },
+  snapTextActive: { color: C.onAccent, fontWeight: '700' },
   preview: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: RADIUS.full, marginTop: 12 },
   previewText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: '700', fontVariant: ['tabular-nums'] },
 

@@ -149,8 +149,35 @@ main{flex:1;padding:32px 0 64px}
 .footer .container{text-align:center}
 .footer .copy{font-family:var(--font-mono);font-size:.78rem;color:var(--ink-45)}
 
+/* rewards — create-codes form grid + minted-codes output */
+.rw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0 14px}
+.rw-codes{margin-top:14px;font-family:var(--font-mono);font-size:.88rem;line-height:1.9;background:var(--bg-soft);border:1px solid var(--ink-06);border-radius:var(--radius-md);padding:12px 14px;max-height:240px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.rw-minted-actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+
+/* rewards — codes table */
+.rw-actions{white-space:nowrap}
+.rw-actions .afoot-btn{margin-right:6px}
+.rcode{font-family:var(--font-mono);font-size:.82rem;font-weight:var(--fw-medium);letter-spacing:.04em;color:var(--ink);background:var(--ink-06);border:none;border-radius:var(--radius-md);padding:6px 10px;cursor:pointer;transition:background var(--dur-fast) var(--ease-out)}
+.rcode:hover{background:var(--ink-12)}
+.ri-chip.cst-live{color:var(--sage-text);background:var(--sage-pale)}
+.ri-chip.cst-expired{color:var(--ink-65)}
+.ri-chip.cst-exhausted{color:var(--on-ink);background:var(--ink)}
+.ri-chip.cst-disabled{color:var(--ink-45);text-decoration:line-through}
+
+/* rewards — launch gate card */
+.rw-gate{margin-top:22px}
+.rw-gate-row{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.rw-gate-row .field{margin-bottom:0;min-width:220px}
+.rw-sm{font-size:1rem}
+
+/* rewards — redemptions modal */
+.rmodal{position:fixed;inset:0;z-index:80;background:rgba(26,22,18,.45);display:flex;align-items:center;justify-content:center;padding:20px}
+.rmodal-card{background:var(--surface);border:1px solid var(--ink-06);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:100%;max-width:540px;max-height:80vh;overflow:auto;padding:20px 22px}
+.rmodal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.rmodal-head h2{font-size:1.05rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-tight)}
+
 @media (prefers-reduced-motion:reduce){
-  .signout,.refresh,.afoot-btn,.tablist .tab{transition:none}
+  .signout,.refresh,.afoot-btn,.tablist .tab,.rcode{transition:none}
 }
 </style>
 </head>
@@ -230,6 +257,7 @@ main{flex:1;padding:32px 0 64px}
           <button type="button" id="tabFeedback" class="tab active" role="tab" aria-selected="true">Beta feedback</button>
           <button type="button" id="tabWaitlist" class="tab" role="tab" aria-selected="false">Waitlist</button>
           <button type="button" id="tabBroadcast" class="tab" role="tab" aria-selected="false">Broadcast</button>
+          <button type="button" id="tabRewards" class="tab" role="tab" aria-selected="false">Rewards</button>
           <a class="tab tab-ops" href="/ops.html" target="_blank" rel="noopener" title="Open the live usage & cost console in a new tab">Usage console<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
         </div>
 
@@ -303,6 +331,94 @@ main{flex:1;padding:32px 0 64px}
           <p class="bcast-hist-sub">Every announcement you've broadcast, newest first.</p>
           <div id="bcastList"></div>
         </div><!-- /broadcastView -->
+
+        <!-- rewards view -->
+        <div id="rewardsView" class="hide">
+          <div class="head">
+            <h1>Rewards</h1>
+            <p class="lead">Mint gift codes, watch redemptions, flip the launch gate, and keep an eye on the referral funnel. Everything here is enforced server-side by is_admin().</p>
+          </div>
+
+          <!-- create codes -->
+          <div class="bcast">
+            <h2>Create codes</h2>
+            <p class="bcast-lead">Mint a batch of gift codes. Each code grants the chosen tier for the chosen number of days — codes are free grants, never sold.</p>
+            <div class="rw-grid">
+              <div class="field">
+                <label for="rwTier">Tier</label>
+                <select id="rwTier">
+                  <option value="basic">Basic</option>
+                  <option value="pro">Pro</option>
+                  <option value="premium">Premium</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="rwDays">Days</label>
+                <input id="rwDays" type="number" min="1" max="3700" value="30" inputmode="numeric">
+              </div>
+              <div class="field">
+                <label for="rwCount">Count (1–500)</label>
+                <input id="rwCount" type="number" min="1" max="500" value="1" inputmode="numeric">
+              </div>
+              <div class="field">
+                <label for="rwCampaign">Campaign prefix</label>
+                <input id="rwCampaign" type="text" maxlength="10" value="GIFT">
+              </div>
+              <div class="field">
+                <label for="rwMaxUses">Max uses per code</label>
+                <input id="rwMaxUses" type="number" min="1" value="1" inputmode="numeric">
+              </div>
+              <div class="field">
+                <label for="rwExpiry">Expiry (optional)</label>
+                <input id="rwExpiry" type="datetime-local">
+              </div>
+              <div class="field">
+                <label for="rwNote">Note (optional)</label>
+                <input id="rwNote" type="text" maxlength="200" placeholder="June testers batch">
+              </div>
+            </div>
+            <button type="button" id="rwCreateBtn" class="refresh send"><span id="rwCreateLabel">Create codes</span></button>
+            <div id="rwCreateMsg" class="msg" role="status" aria-live="polite"></div>
+            <div id="rwMinted" class="hide">
+              <div id="rwMintedCodes" class="rw-codes" tabindex="0"></div>
+              <div class="rw-minted-actions">
+                <button type="button" id="rwCopyAllBtn" class="refresh">Copy all</button>
+                <button type="button" id="rwCsvBtn" class="refresh">Download CSV</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- codes table -->
+          <h2 class="bcast-hist-h">Codes</h2>
+          <p class="bcast-hist-sub">Every minted code, newest first. Click a code to copy it.</p>
+          <div class="toolbar">
+            <input id="rwSearch" type="search" placeholder="Search code, campaign, note…" aria-label="Search codes">
+            <button type="button" id="rwRefreshBtn" class="refresh">Refresh</button>
+          </div>
+          <div id="rwCodes"></div>
+
+          <!-- launch gate -->
+          <div class="bcast rw-gate">
+            <h2>Launch gate</h2>
+            <p class="bcast-lead">While the gate is OFF the app stays open for beta and free-day clocks don't burn. When it goes ON the server enforces premium, and granted days start counting from the gate start date.</p>
+            <div class="stats" id="rwGateStats"></div>
+            <div class="rw-gate-row">
+              <div class="field">
+                <label for="rwGateStart">Gate start</label>
+                <input id="rwGateStart" type="datetime-local">
+              </div>
+              <button type="button" id="rwGateSaveBtn" class="refresh">Save date</button>
+              <button type="button" id="rwGateToggleBtn" class="refresh send">Turn gate ON</button>
+            </div>
+            <div id="rwGateMsg" class="msg" role="status" aria-live="polite"></div>
+          </div>
+
+          <!-- referral funnel -->
+          <h2 class="bcast-hist-h">Referral funnel</h2>
+          <p class="bcast-hist-sub">Who is inviting whom, and how many reward days have been granted.</p>
+          <div class="stats" id="rwFunnelStats"></div>
+          <div id="rwFunnel"></div>
+        </div><!-- /rewardsView -->
       </section>
 
     </div>
@@ -310,6 +426,17 @@ main{flex:1;padding:32px 0 64px}
 </main>
 
 <div class="flash" id="flash" role="status" aria-live="polite"></div>
+
+<!-- rewards — redemptions modal -->
+<div id="rwModal" class="rmodal hide" role="dialog" aria-modal="true" aria-labelledby="rwModalTitle">
+  <div class="rmodal-card">
+    <div class="rmodal-head">
+      <h2 id="rwModalTitle">Redemptions</h2>
+      <button type="button" id="rwModalClose" class="afoot-btn ashot">Close</button>
+    </div>
+    <div id="rwModalBody"></div>
+  </div>
+</div>
 
 <footer class="footer footer--simple">
   <div class="container">
@@ -339,10 +466,19 @@ const tabFeedback=$('tabFeedback'), tabWaitlist=$('tabWaitlist'), tabBroadcast=$
 const wlStatsEl=$('wlStats'), wlListEl=$('wlList'), wlSearch=$('wlSearch'), wlExportBtn=$('wlExportBtn'), wlRefreshBtn=$('wlRefreshBtn');
 const wlSendBtn=$('wlSendBtn'), wlSendCount=$('wlSendCount'), wlSendLabel=$('wlSendLabel');
 const bcastTitle=$('bcastTitle'), bcastBody=$('bcastBody'), bcastSendBtn=$('bcastSendBtn'), bcastSendLabel=$('bcastSendLabel'), bcastListEl=$('bcastList');
+const tabRewards=$('tabRewards'), rewardsView=$('rewardsView');
+const rwTier=$('rwTier'), rwDays=$('rwDays'), rwCount=$('rwCount'), rwCampaign=$('rwCampaign'), rwMaxUses=$('rwMaxUses'), rwExpiry=$('rwExpiry'), rwNote=$('rwNote');
+const rwCreateBtn=$('rwCreateBtn'), rwCreateLabel=$('rwCreateLabel'), rwCreateMsg=$('rwCreateMsg'), rwMinted=$('rwMinted'), rwMintedCodes=$('rwMintedCodes'), rwCopyAllBtn=$('rwCopyAllBtn'), rwCsvBtn=$('rwCsvBtn');
+const rwSearch=$('rwSearch'), rwRefreshBtn=$('rwRefreshBtn'), rwCodesEl=$('rwCodes');
+const rwGateStats=$('rwGateStats'), rwGateStart=$('rwGateStart'), rwGateSaveBtn=$('rwGateSaveBtn'), rwGateToggleBtn=$('rwGateToggleBtn'), rwGateMsg=$('rwGateMsg');
+const rwFunnelStats=$('rwFunnelStats'), rwFunnelEl=$('rwFunnel');
+const rwModal=$('rwModal'), rwModalTitle=$('rwModalTitle'), rwModalBody=$('rwModalBody'), rwModalClose=$('rwModalClose');
 
 let allReports = [];
 let allWaitlist = [], wlLoaded = false;
 let allBroadcasts = [], bcastLoaded = false;
+let allCodes = [], rwLoaded = false, rwMintedArr = [];
+let rwGate = { on:false, start:null };
 
 const STATUS = [['new','New'],['triaged','Looking into it'],['fixed','Fixed'],['wontfix','Noted'],['dup','Duplicate'],['done','Done']];
 const SEV = { idea:'Idea', minor:'Minor', major:'Annoying', blocker:'Blocks me' };
@@ -380,7 +516,7 @@ magicForm.addEventListener('submit', async (e) => {
   if(error){ setMsg(signinMsg,'Could not send the link. Try again.','warn'); return; }
   setMsg(signinMsg,'Check your email for the sign-in link.','ok'); magicForm.reset();
 });
-async function doSignOut(){ await sb.auth.signOut(); wlLoaded=false; bcastLoaded=false; switchTab('feedback'); show(signinState); }
+async function doSignOut(){ await sb.auth.signOut(); wlLoaded=false; bcastLoaded=false; rwLoaded=false; switchTab('feedback'); show(signinState); }
 signoutBtn.addEventListener('click', doSignOut);
 signoutBtn2.addEventListener('click', doSignOut);
 
@@ -496,7 +632,7 @@ refreshBtn.addEventListener('click', loadAll);
 
 /* ── view tabs (feedback / waitlist); usage & cost live in ops.html (new tab) ── */
 function switchTab(which){
-  const tabs = { feedback:[tabFeedback,feedbackView], waitlist:[tabWaitlist,waitlistView], broadcast:[tabBroadcast,broadcastView] };
+  const tabs = { feedback:[tabFeedback,feedbackView], waitlist:[tabWaitlist,waitlistView], broadcast:[tabBroadcast,broadcastView], rewards:[tabRewards,rewardsView] };
   for (const [k,[btn,view]] of Object.entries(tabs)){
     const on = k===which;
     btn.classList.toggle('active', on);
@@ -505,6 +641,7 @@ function switchTab(which){
   }
   if (which==='waitlist' && !wlLoaded) loadWaitlist();
   if (which==='broadcast' && !bcastLoaded) loadBroadcasts();
+  if (which==='rewards' && !rwLoaded) loadRewards();
 }
 
 async function loadWaitlist(){
@@ -700,6 +837,232 @@ wlRefreshBtn.addEventListener('click', loadWaitlist);
 wlExportBtn.addEventListener('click', exportWaitlistCsv);
 wlSendBtn.addEventListener('click', sendLaunchEmail);
 bcastSendBtn.addEventListener('click', sendBroadcast);
+
+/* ── rewards: codes, launch gate, referral funnel (all via is_admin()-gated rpc) ── */
+function groupCode(c){
+  const s = String(c==null?'':c).replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+  return s.replace(/(.{4})(?=.)/g,'$1-');
+}
+async function copyText(t){ try{ await navigator.clipboard.writeText(t); return true; } catch(e){ return false; } }
+function toLocalInput(iso){
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const p = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
+}
+
+function loadRewards(){ rwLoaded = true; loadCodes(); loadGate(); loadFunnel(); }
+
+/* create codes */
+async function createCodes(){
+  clearMsg(rwCreateMsg);
+  const tier = rwTier.value;
+  const days = parseInt(rwDays.value, 10);
+  const count = parseInt(rwCount.value, 10);
+  const campaign = (rwCampaign.value||'').trim();
+  const maxUses = parseInt(rwMaxUses.value, 10);
+  const expRaw = rwExpiry.value;
+  const note = (rwNote.value||'').trim();
+  if (!Number.isFinite(days) || days<1 || days>3700){ setMsg(rwCreateMsg,'Days must be between 1 and 3700.','warn'); return; }
+  if (!Number.isFinite(count) || count<1 || count>500){ setMsg(rwCreateMsg,'Count must be between 1 and 500.','warn'); return; }
+  if (!Number.isFinite(maxUses) || maxUses<1){ setMsg(rwCreateMsg,'Max uses must be at least 1.','warn'); return; }
+  let expiresAt = null;
+  if (expRaw){
+    const d = new Date(expRaw);
+    if (isNaN(d)){ setMsg(rwCreateMsg,'That expiry date is not valid.','warn'); return; }
+    expiresAt = d.toISOString();
+  }
+  rwCreateBtn.disabled = true;
+  rwCreateLabel.textContent = 'Creating…';
+  const { data, error } = await sb.rpc('admin_create_redeem_codes', {
+    p_tier: tier, p_days: days, p_count: count,
+    p_campaign: campaign || null,
+    p_max_uses: maxUses,
+    p_expires_at: expiresAt,
+    p_note: note || null
+  });
+  rwCreateBtn.disabled = false;
+  rwCreateLabel.textContent = 'Create codes';
+  if (error){ rwMinted.classList.add('hide'); setMsg(rwCreateMsg, 'Could not create codes: '+error.message, 'warn'); return; }
+  rwMintedArr = (data && data.codes) || [];
+  if (!rwMintedArr.length){ rwMinted.classList.add('hide'); setMsg(rwCreateMsg,'The server returned no codes.','warn'); return; }
+  setMsg(rwCreateMsg, `Created ${rwMintedArr.length} ${rwMintedArr.length===1?'code':'codes'} in campaign ${(data && data.campaign) || campaign || 'GIFT'}.`, 'ok');
+  rwMintedCodes.textContent = rwMintedArr.map(groupCode).join('\n');
+  rwMinted.classList.remove('hide');
+  loadCodes(); // the fresh batch should appear in the table right away
+}
+
+function downloadMintedCsv(){
+  if (!rwMintedArr.length){ showFlash('Nothing to download'); return; }
+  const csv = rwMintedArr.map(groupCode).join('\r\n'); // one code per line
+  const blob = new Blob(['﻿'+csv], { type:'text/csv;charset=utf-8' }); // BOM so Excel reads UTF-8
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'potraces-redeem-codes.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* codes table */
+async function loadCodes(){
+  rwCodesEl.innerHTML = `<div class="loading"><div class="spinner" aria-hidden="true"></div><p>Loading codes…</p></div>`;
+  const { data, error } = await sb.rpc('admin_list_redeem_codes', { p_campaign: null });
+  if (error){ rwCodesEl.innerHTML = `<div class="empty">Could not load codes.<br><small>${esc(error.message)}</small></div>`; allCodes=[]; return; }
+  allCodes = Array.isArray(data) ? data : [];
+  renderCodes();
+}
+
+function renderCodes(){
+  const q = (rwSearch.value||'').trim().toLowerCase();
+  const rows = allCodes.filter(r => !q || ((r.code||'')+' '+(r.campaign||'')+' '+(r.note||'')+' '+(r.created_by||'')).toLowerCase().includes(q));
+  if (rows.length === 0){
+    rwCodesEl.innerHTML = `<div class="empty">${allCodes.length ? 'No codes match your search.' : 'No codes yet — mint a batch above.'}</div>`;
+    return;
+  }
+  rwCodesEl.innerHTML = `<div class="table-wrap"><table class="table">
+    <thead><tr><th>Code</th><th>Campaign</th><th>Tier</th><th>Days</th><th>Uses</th><th>Expiry</th><th>Status</th><th>Created by</th><th>Note</th><th>Actions</th></tr></thead>
+    <tbody>${rows.map(r => `<tr>
+      <td><button type="button" class="rcode" data-copy="${escA(r.code)}" title="Click to copy">${esc(groupCode(r.code))}</button></td>
+      <td>${esc(r.campaign)}</td>
+      <td>${esc(r.tier)}</td>
+      <td>${r.days}</td>
+      <td>${r.use_count}/${r.max_uses}</td>
+      <td>${r.expires_at ? esc(fmtDate(r.expires_at)) : '—'}</td>
+      <td><span class="ri-chip cst-${escA(r.status)}">${esc(r.status)}</span></td>
+      <td>${esc(r.created_by||'—')}</td>
+      <td>${esc(r.note||'—')}</td>
+      <td class="rw-actions">
+        <button type="button" class="afoot-btn" data-toggle="${escA(r.code)}" data-disabled="${r.disabled_at ? '1' : ''}">${r.disabled_at ? 'Enable' : 'Disable'}</button>
+        <button type="button" class="afoot-btn" data-redemptions="${escA(r.code)}">Redemptions</button>
+      </td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+rwCodesEl.addEventListener('click', async (e) => {
+  const copyBtn = e.target.closest('.rcode');
+  if (copyBtn){
+    const ok = await copyText(groupCode(copyBtn.getAttribute('data-copy')));
+    showFlash(ok ? 'Code copied' : 'Copy failed');
+    return;
+  }
+  const togBtn = e.target.closest('[data-toggle]');
+  if (togBtn){
+    const code = togBtn.getAttribute('data-toggle');
+    const disabling = !togBtn.getAttribute('data-disabled');
+    if (!confirm(`${disabling?'Disable':'Enable'} code ${groupCode(code)}?`)) return;
+    togBtn.disabled = true;
+    const { error } = await sb.rpc('admin_set_redeem_code_disabled', { p_code: code, p_disabled: disabling });
+    togBtn.disabled = false;
+    if (error){ showFlash('Could not update code: '+error.message); return; }
+    showFlash(disabling ? 'Code disabled' : 'Code enabled');
+    loadCodes();
+    return;
+  }
+  const redBtn = e.target.closest('[data-redemptions]');
+  if (redBtn){ openRedemptions(redBtn.getAttribute('data-redemptions')); }
+});
+
+/* redemptions modal */
+async function openRedemptions(code){
+  rwModalTitle.textContent = 'Redemptions · ' + groupCode(code);
+  rwModalBody.innerHTML = `<div class="loading"><div class="spinner" aria-hidden="true"></div><p>Loading…</p></div>`;
+  rwModal.classList.remove('hide');
+  const { data, error } = await sb.rpc('admin_list_redemptions', { p_code: code });
+  if (error){ rwModalBody.innerHTML = `<div class="empty">Could not load redemptions.<br><small>${esc(error.message)}</small></div>`; return; }
+  const rows = Array.isArray(data) ? data : [];
+  if (rows.length === 0){ rwModalBody.innerHTML = `<div class="empty">No one has redeemed this code yet.</div>`; return; }
+  rwModalBody.innerHTML = rows.map(r => `<article class="arow">
+    <div class="arow-head"><span class="arow-email">${esc(r.email||'—')}</span><span class="ri-date">${esc(fmtDate(r.redeemed_at))}</span></div>
+  </article>`).join('');
+}
+function closeRedemptions(){ rwModal.classList.add('hide'); }
+
+/* launch gate — admin_set_gate with no args reads current state without changing it */
+async function loadGate(){
+  const { data, error } = await sb.rpc('admin_set_gate', {});
+  if (error){ rwGateStats.innerHTML=''; setMsg(rwGateMsg, 'Could not load gate state: '+error.message, 'warn'); return; }
+  rwGate = { on: !!(data && data.gate_on), start: data ? data.gate_start : null };
+  renderGate();
+}
+function renderGate(){
+  rwGateStats.innerHTML =
+    `<div class="stat"><b class="tnum">${rwGate.on ? 'ON' : 'OFF'}</b><span>Premium gate</span></div>`+
+    `<div class="stat"><b class="tnum rw-sm">${rwGate.start ? esc(fmtDate(rwGate.start)) : '—'}</b><span>Free days start</span></div>`;
+  rwGateStart.value = toLocalInput(rwGate.start);
+  rwGateToggleBtn.textContent = rwGate.on ? 'Turn gate OFF' : 'Turn gate ON';
+}
+async function saveGateStart(){
+  clearMsg(rwGateMsg);
+  const raw = rwGateStart.value;
+  if (!raw){ setMsg(rwGateMsg,'Pick a date and time first.','warn'); return; }
+  const d = new Date(raw);
+  if (isNaN(d)){ setMsg(rwGateMsg,'That date is not valid.','warn'); return; }
+  rwGateSaveBtn.disabled = true;
+  const { data, error } = await sb.rpc('admin_set_gate', { p_gate_start: d.toISOString() });
+  rwGateSaveBtn.disabled = false;
+  if (error){ setMsg(rwGateMsg, 'Could not save the date: '+error.message, 'warn'); return; }
+  rwGate = { on: !!(data && data.gate_on), start: data ? data.gate_start : null };
+  renderGate();
+  setMsg(rwGateMsg,'Gate start saved. Existing grants keep their baked start dates — this only affects grants made from now on.','ok');
+}
+async function toggleGate(){
+  clearMsg(rwGateMsg);
+  if (!confirm('This is the LAUNCH SWITCH. When ON, the app enforces server-side premium. Grants made during beta keep their baked start dates. Continue?')) return;
+  rwGateToggleBtn.disabled = true;
+  const { data, error } = await sb.rpc('admin_set_gate', { p_gate_on: !rwGate.on });
+  rwGateToggleBtn.disabled = false;
+  if (error){ setMsg(rwGateMsg, 'Could not flip the gate: '+error.message, 'warn'); return; }
+  rwGate = { on: !!(data && data.gate_on), start: data ? data.gate_start : null };
+  renderGate();
+  showFlash(rwGate.on ? 'Gate is ON — premium is enforced' : 'Gate is OFF — beta behavior');
+}
+
+/* referral funnel */
+async function loadFunnel(){
+  rwFunnelStats.innerHTML = '';
+  rwFunnelEl.innerHTML = `<div class="loading"><div class="spinner" aria-hidden="true"></div><p>Loading funnel…</p></div>`;
+  const { data, error } = await sb.rpc('admin_referral_funnel');
+  if (error){ rwFunnelEl.innerHTML = `<div class="empty">Could not load the referral funnel.<br><small>${esc(error.message)}</small></div>`; return; }
+  const t = (data && data.totals) || {};
+  const stat = (v,l) => `<div class="stat"><b class="tnum">${v==null?0:v}</b><span>${l}</span></div>`;
+  rwFunnelStats.innerHTML =
+    stat(t.referrals,'Referrals')+
+    stat(t.pending,'Pending')+
+    stat(t.qualified,'Qualified')+
+    stat(t.rewarded,'Rewarded')+
+    stat(t.rejected,'Rejected')+
+    stat(t.collectz,'Via Collectz')+
+    stat(t.days_granted,'Days granted');
+  const rows = (data && data.referrers) || [];
+  if (rows.length === 0){ rwFunnelEl.innerHTML = `<div class="empty">No referrals yet.</div>`; return; }
+  rwFunnelEl.innerHTML = `<div class="table-wrap"><table class="table">
+    <thead><tr><th>Referrer</th><th>Total</th><th>Pending</th><th>Rewarded</th><th>Rejected</th><th>Via Collectz</th></tr></thead>
+    <tbody>${rows.map(r => `<tr>
+      <td>${esc(r.referrer_email||'—')}</td>
+      <td>${r.total}</td>
+      <td>${r.pending}</td>
+      <td>${r.rewarded}</td>
+      <td>${r.rejected}</td>
+      <td>${r.via_collectz}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+tabRewards.addEventListener('click', () => switchTab('rewards'));
+rwCreateBtn.addEventListener('click', createCodes);
+rwCopyAllBtn.addEventListener('click', async () => {
+  if (!rwMintedArr.length){ showFlash('Nothing to copy'); return; }
+  const ok = await copyText(rwMintedArr.map(groupCode).join('\n'));
+  showFlash(ok ? `Copied ${rwMintedArr.length} ${rwMintedArr.length===1?'code':'codes'}` : 'Copy failed');
+});
+rwCsvBtn.addEventListener('click', downloadMintedCsv);
+rwSearch.addEventListener('input', renderCodes);
+rwRefreshBtn.addEventListener('click', loadRewards);
+rwGateSaveBtn.addEventListener('click', saveGateStart);
+rwGateToggleBtn.addEventListener('click', toggleGate);
+rwModalClose.addEventListener('click', closeRedemptions);
+rwModal.addEventListener('click', (e) => { if (e.target === rwModal) closeRedemptions(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !rwModal.classList.contains('hide')) closeRedemptions(); });
 
 /* ── PKCE finish ── */
 async function completePkceIfNeeded(){

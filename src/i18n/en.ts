@@ -1,4 +1,20 @@
 export const en = {
+  quickLogPromo: {
+    titleA: 'log it in ',
+    titleEm: '1 tap',
+    subtitle: '3 faster ways to add expenses — set up once, then log without even opening the app.',
+    shareTitle: 'share a screenshot',
+    shareDesc: 'send any payment ss to Potraces — we read it and log it for you.',
+    noSetup: 'no setup',
+    backTapTitle: 'double back tap',
+    backTapDesc: 'tap the back of your iphone twice — instant log, from anywhere.',
+    autoTitle: 'apple pay auto log',
+    autoDesc: 'logs itself the moment you pay — zero taps, zero opening.',
+    advanced: 'advanced',
+    cta: 'set up the first one',
+    later: 'maybe later',
+  },
+
   common: {
     // ── debt i18n pass (2026-07-16) — auto-added localized strings ──
     settings: 'settings',
@@ -512,6 +528,7 @@ export const en = {
 
     quickLog: {
       row: 'Quick Log',
+      rowSub: 'Apple Pay, back tap, or share a screenshot',
       title: 'Quick Log',
       // Hero block — the screen's headline + value prop (deep-olive branded band).
       heroHeadline: 'Log an expense without opening the app.',
@@ -4858,6 +4875,7 @@ export const en = {
     statusPending: 'pending',
     statusConfirmed: 'confirmed',
     statusRejected: 'rejected',
+    statusRequested: 'requested',
     claimed: 'Verified',
     waitingList: 'Waiting list',
     roster: 'Roster',
@@ -4981,6 +4999,9 @@ export const en = {
     capacityCount: '{n} of {max} spots filled',
     capacityOver: '{n} of {max} — over capacity',
     sessionFull: 'This session is full.',
+    joinApproval: 'Require my approval to join',
+    joinApprovalHint:
+      'People who add themselves wait for your OK. Names you add yourself still join instantly.',
     rosterAdd: 'Add name',
     rosterNamePlaceholder: 'Name',
     rosterReserve: 'reserve',
@@ -5147,6 +5168,16 @@ export const en = {
     emptyRoster: 'No names yet — share the link so people can claim a slot.',
     reserveShare: 'no payment',
     shareUnknown: '—',
+    // join requests (approval-gated sessions)
+    requestsTitle: 'Requests ({n})',
+    requestsDeclinedTitle: 'Declined ({n})',
+    requestWantsJoin: 'wants to join',
+    requestDeclinedTag: 'declined',
+    actionApprove: 'Approve',
+    requestApprovedToast: "{name} approved — they're in.",
+    requestDeclinedToast: '{name} declined.',
+    requestDeclinedRemoveBody:
+      'They were already told their request was declined. Removing them lets them request again.',
     // join
     joinOpen: 'Open',
     joinCodePlaceholder: 'Share code',
@@ -5202,6 +5233,13 @@ export const en = {
     reserveNote: "You're on the waiting list — no payment needed until you're promoted.",
     joinedAs: 'joined as {name}',
     sessionClosed: 'This session is no longer open.',
+    // join approval — requester side
+    joinApprovalNote: 'The organizer approves new joins',
+    requestedTitle: "Waiting for the organizer's approval",
+    requestedBody: "Your request was sent. You're in as soon as they approve.",
+    requestSentToast: 'Request sent — the organizer will approve you.',
+    joinRequestDeclinedTitle: 'Request declined',
+    joinRequestDeclinedBody: 'The organizer declined your request to join this session.',
     loading: 'Loading…',
   },
 

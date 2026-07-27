@@ -251,6 +251,8 @@ interface SettingsState {
    *  quick_log_keys). Refreshed at app start + sign-in; lets Echo and other
    *  screens know auto-log is set up without a server call. */
   quickLogConfigured: boolean;
+  /** One-shot: the quick-log promo modal (share ss / back tap / apple pay) has been shown. */
+  quickLogPromoSeen: boolean;
   businessModeEnabled: boolean;
   defaultMode: 'personal' | 'business';
   themePreference: ThemePreference;
@@ -353,6 +355,7 @@ interface SettingsState {
   setEchoDailyCheckin: (enabled: boolean) => void;
   setEchoCheckinTimes: (times: string[]) => void;
   setQuickLogConfigured: (configured: boolean) => void;
+  setQuickLogPromoSeen: (seen: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setOrderNotificationsEnabled: (enabled: boolean) => void;
   setQuickActionOrder: (order: string[]) => void;
@@ -364,7 +367,8 @@ interface SettingsState {
     uri: string,
     label: string,
     mode?: 'personal' | 'business',
-    meta?: PaymentQrMeta
+    meta?: PaymentQrMeta,
+    maxAllowed?: number
   ) => void;
   removePaymentQr: (index: number, mode?: 'personal' | 'business') => void;
   replacePaymentQr: (
@@ -604,6 +608,7 @@ export const useSettingsStore = create<SettingsState>()(
       echoDailyCheckin: false,
       echoCheckinTimes: ['21:00'],
       quickLogConfigured: false,
+      quickLogPromoSeen: false,
       businessModeEnabled: false,
       defaultMode: 'personal',
       themePreference: 'light',
@@ -698,6 +703,7 @@ export const useSettingsStore = create<SettingsState>()(
       setEchoDailyCheckin: (echoDailyCheckin) => set({ echoDailyCheckin }),
       setEchoCheckinTimes: (echoCheckinTimes) => set({ echoCheckinTimes }),
       setQuickLogConfigured: (quickLogConfigured) => set({ quickLogConfigured }),
+      setQuickLogPromoSeen: (quickLogPromoSeen) => set({ quickLogPromoSeen }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setOrderNotificationsEnabled: (orderNotificationsEnabled) => set({ orderNotificationsEnabled }),
       setQuickActionOrder: (quickActionOrder) => set({ quickActionOrder }),
@@ -706,11 +712,11 @@ export const useSettingsStore = create<SettingsState>()(
       setThemePreference: (themePreference) => set({ themePreference }),
       setLanguage: (language) => set({ language }),
       setSampleDataLoaded: (sampleDataLoaded) => set({ sampleDataLoaded }),
-      addPaymentQr: (uri, label, mode, meta) =>
+      addPaymentQr: (uri, label, mode, meta, maxAllowed = 2) =>
         set((s) => {
           const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
           const arr = s[key] || [];
-          return { [key]: arr.length < 2 ? [...arr, { uri, label, ...(meta || {}) }] : arr };
+          return { [key]: arr.length < maxAllowed ? [...arr, { uri, label, ...(meta || {}) }] : arr };
         }),
       removePaymentQr: (index, mode) =>
         set((s) => {
@@ -1038,6 +1044,9 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (typeof state.quickLogConfigured !== 'boolean') {
           state.quickLogConfigured = false;
+        }
+        if (typeof state.quickLogPromoSeen !== 'boolean') {
+          state.quickLogPromoSeen = false;
         }
         // Avatar fields (added after some installs shipped)
         if (typeof state.avatarId !== 'string') state.avatarId = null;

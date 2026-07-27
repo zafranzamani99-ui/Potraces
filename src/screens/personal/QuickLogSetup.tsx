@@ -57,7 +57,7 @@ const AUTOLOG_FILE_URL = 'https://jngmanwvhbpkpkeklfiv.supabase.co/storage/v1/ob
 // a failed download is detectable (unlike the fire-and-forget deep link), and
 // then we open the Safari guidance page instead.
 
-type LogMethod = 'apple' | 'backtap';
+type LogMethod = 'apple' | 'backtap' | 'share';
 
 // Real setup screenshots (owner-captured 2026-07-21/22) — the guide is a
 // VERTICAL slide-through: one screenshot per step, each with its instruction,
@@ -80,7 +80,7 @@ const SHOTS = {
   apRun: require('../../../assets/setup/ap5-run.jpg'),
 };
 
-export default function QuickLogSetup() {
+export default function QuickLogSetup({ route }: any) {
   const t = useT();
   const C = useCalm();
   const neu = useNeu();
@@ -92,10 +92,12 @@ export default function QuickLogSetup() {
   // In-app toggle (Settings → Preferences → Notifications): when OFF, the
   // foreground handler suppresses ALL banners while the app is open.
   const inAppNotifs = useSettingsStore((s) => s.notificationsEnabled);
-  // Which logging method the user is setting up — picked on arrival via the
-  // two method cards. Default = backtap: its flow creates the key the Apple
-  // Log automation depends on.
-  const [method, setMethod] = useState<LogMethod>('backtap');
+  // Hub vs method page: no ?method= → the hub (hero + 3 ways as list rows);
+  // ?method=apple|backtap|share → that flow's own screen (pushed on the stack,
+  // so the header's back button returns to the hub).
+  const routeMethod: LogMethod | undefined = route?.params?.method;
+  const isHub = !routeMethod;
+  const page: LogMethod = routeMethod ?? 'backtap';
   // Tap-to-enlarge: the inline slide photos are only ~138pt wide, too small to
   // read the iOS labels they're teaching. Holds the require()'d asset id of the
   // photo being viewed full-screen (null = viewer closed).
@@ -361,64 +363,48 @@ export default function QuickLogSetup() {
   );
 
   /**
-   * Method card — the arrival chooser (Apple Log / Backtap Log). Radio
-   * semantics: one is always selected, the checklist below follows it. Same
-   * render-function discipline as renderTimelineStep (stable identity).
+   * Method card — the arrival chooser (Apple Log / Backtap Log / Share Log).
+   * Radio semantics: one is always selected, the checklist below follows it.
+   * Data-driven so the third method slots in without a third copy of the JSX.
    */
-  const renderMethodCard = (id: LogMethod) => {
-    const q = t.settings.quickLog;
-    const selected = method === id;
-    const isApple = id === 'apple';
+  const q0 = t.settings.quickLog;
+  const METHOD_CARDS = {
+    apple: { icon: 'credit-card' as const, name: q0.appleName, desc: q0.appleDesc, badge: q0.appleBadge, badgeBg: withAlpha(C.gold, 0.2), badgeColor: C.bronze, meta: q0.appleMeta },
+    backtap: { icon: 'smartphone' as const, name: q0.backtapName, desc: q0.backtapDesc, badge: null as string | null, badgeBg: 'transparent', badgeColor: C.accent, meta: q0.backtapMeta },
+    share: { icon: 'share' as const, name: q0.shareName, desc: q0.shareDesc, badge: q0.shareBadge, badgeBg: withAlpha(C.accent, 0.14), badgeColor: C.accent, meta: q0.shareMeta },
+  };
+
+  /**
+   * Method row — one full-width list entry per way to log. Tapping pushes the
+   * SAME route with ?method= so each flow gets its own screen (stack back
+   * returns to this hub).
+   */
+  const renderMethodRow = (id: LogMethod) => {
+    const card = METHOD_CARDS[id];
     return (
       <Pressable
         key={id}
-        onPress={() => { if (!selected) { lightTap(); setMethod(id); } }}
-        accessibilityRole="radio"
-        accessibilityState={{ selected }}
-        style={({ pressed }) => [styles.pickPress, pressed && styles.pickPressed]}
+        onPress={() => { lightTap(); navigation.push('QuickLogSetup', { method: id }); }}
+        accessibilityRole="button"
+        style={({ pressed }) => [pressed && styles.pickPressed]}
       >
-        <View
-          style={[
-            styles.pickCard,
-            neu.raisedSoft,
-            {
-              backgroundColor: selected ? withAlpha(C.accent, 0.08) : C.background,
-              borderColor: selected ? C.accent : 'transparent',
-            },
-          ]}
-        >
-          <View style={styles.pickTop}>
-            <View style={[styles.pickIcon, neu.well, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
-              <Feather name={isApple ? 'credit-card' : 'smartphone'} size={18} color={C.accent} />
-            </View>
-            <View
-              style={[
-                styles.pickCheck,
-                {
-                  borderColor: selected ? C.accent : C.border,
-                  backgroundColor: selected ? C.accent : 'transparent',
-                },
-              ]}
-            >
-              {selected && <Feather name="check" size={12} color={C.onAccent} />}
-            </View>
+        <View style={[styles.methodRow, neu.raisedSoft, { backgroundColor: C.background }]}>
+          <View style={[styles.pickIcon, neu.well, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
+            <Feather name={card.icon} size={16} color={C.accent} />
           </View>
-          <Text style={[styles.pickName, { color: C.textPrimary }]}>
-            {isApple ? q.appleName : q.backtapName}
-          </Text>
-          <Text style={[styles.pickDesc, { color: C.textSecondary }]}>
-            {isApple ? q.appleDesc : q.backtapDesc}
-          </Text>
-          <View style={styles.pickMetaRow}>
-            {isApple && (
-              <View style={[styles.pickBadgePill, { backgroundColor: withAlpha(C.gold, 0.2) }]}>
-                <Text style={[styles.pickBadge, { color: C.bronze }]}>{q.appleBadge}</Text>
-              </View>
-            )}
-            <Text style={[styles.pickMeta, { color: C.textMuted }]}>
-              {isApple ? q.appleMeta : q.backtapMeta}
-            </Text>
+          <View style={styles.methodRowText}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
+              <Text style={[styles.pickName, { color: C.textPrimary, marginTop: 0 }]}>{card.name}</Text>
+              {card.badge && (
+                <View style={[styles.pickBadgePill, { backgroundColor: card.badgeBg }]}>
+                  <Text style={[styles.pickBadge, { color: card.badgeColor }]}>{card.badge}</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.pickDesc, { color: C.textSecondary }]}>{card.desc}</Text>
+            <Text style={[styles.pickMeta, { color: C.textMuted }]}>{card.meta}</Text>
           </View>
+          <Feather name="chevron-right" size={18} color={C.textMuted} />
         </View>
       </Pressable>
     );
@@ -505,7 +491,7 @@ export default function QuickLogSetup() {
           <NeuButton
             label={q.apPrereqCta}
             icon="smartphone"
-            onPress={() => { lightTap(); setMethod('backtap'); }}
+            onPress={() => { lightTap(); navigation.push('QuickLogSetup', { method: 'backtap' }); }}
           />
         </View>
       );
@@ -552,6 +538,24 @@ export default function QuickLogSetup() {
     );
   };
 
+  /** Share Log — zero setup: screenshot a payment → Share → Potraces → review
+   *  reads it → save. No shortcut, no key — the share option ships with the app. */
+  const renderShareFlow = () => {
+    const q = t.settings.quickLog;
+    return (
+      <>
+        <View style={[styles.card, neu.raisedSoft, { backgroundColor: C.background }]}>
+          <Text style={[styles.stepBody, styles.apLead, { color: C.textSecondary }]}>{q.shIntro}</Text>
+          {renderSlide('1', q.shStep1Title, q.shStep1Body, null, false)}
+          {renderSlide('2', q.shStep2Title, q.shStep2Body, null, false)}
+          {renderSlide('3', q.shStep3Title, q.shStep3Body, null, false)}
+          {renderSlide('4', q.shStep4Title, q.shStep4Body, null, true)}
+        </View>
+        {renderDone(q.shDone)}
+      </>
+    );
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.background }} edges={['bottom']}>
       <ScrollView
@@ -559,9 +563,10 @@ export default function QuickLogSetup() {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero — Neu Card: headline, value prop, and the live setup status as a
-            chip. The zap is a focal icon, so it LIFTS (neu.raised), never sinks. */}
-        <View style={[styles.hero, neu.raisedSoft, { backgroundColor: C.background }]}>
+        {/* Hero — hub only. Neu Card: headline, value prop, and the live setup
+            status as a chip. The zap is a focal icon, so it LIFTS, never sinks. */}
+        {isHub && (
+          <View style={[styles.hero, neu.raisedSoft, { backgroundColor: C.background }]}>
           <View style={styles.heroTop}>
             <View style={[styles.heroIcon, neu.raised, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
               <Feather name="zap" size={20} color={C.accent} />
@@ -578,6 +583,7 @@ export default function QuickLogSetup() {
           <Text style={[styles.heroHeadline, { color: C.textPrimary }]}>{t.settings.quickLog.heroHeadline}</Text>
           <Text style={[styles.heroSub, { color: C.textSecondary }]}>{t.settings.quickLog.heroSub}</Text>
         </View>
+        )}
 
         {!signedIn ? (
           // ── Gate: Quick Log needs a signed-in (free) account ─────────────
@@ -599,19 +605,19 @@ export default function QuickLogSetup() {
               onPress={() => navigation.navigate('Account', { returnTo: 'QuickLogSetup' })}
             />
           </View>
-        ) : (
+        ) : isHub ? (
           <>
-            {/* Method picker — the arrival choice: Apple Log or Backtap Log.
-                The checklist below shows one method's flow at a time. */}
+            {/* The three ways to log — each row opens its own screen. */}
             <Text style={[styles.pickLabel, { color: C.textMuted }]}>
               {t.settings.quickLog.pickLabel}
             </Text>
-            <View style={styles.pickRow}>
-              {renderMethodCard('apple')}
-              {renderMethodCard('backtap')}
+            <View style={styles.methodList}>
+              {renderMethodRow('apple')}
+              {renderMethodRow('backtap')}
+              {renderMethodRow('share')}
             </View>
 
-            {/* Notification permission — slim banner, shared by BOTH flows
+            {/* Notification permission — slim banner, shared by all three flows
                 (the confirmation tap-through needs OS permission). */}
             {notifGranted === false && (
               <View style={[styles.banner, { backgroundColor: withAlpha(C.gold, 0.14) }]}>
@@ -626,9 +632,6 @@ export default function QuickLogSetup() {
                 </Pressable>
               </View>
             )}
-
-            {/* The picked method's timeline */}
-            {method === 'backtap' ? renderBacktapFlow() : renderAppleFlow()}
 
             {/* Manual fallback — the pre-one-tap flow (generate + copy + Safari
                 download), kept for hand-setup and key rotation. Collapsed:
@@ -711,6 +714,20 @@ export default function QuickLogSetup() {
               </Pressable>
             )}
           </>
+        ) : (
+          <>
+            {/* Method page header — icon + name + what it does, then the flow. */}
+            <View style={[styles.methodRow, neu.raisedSoft, { backgroundColor: C.background }]}>
+              <View style={[styles.pickIcon, neu.well, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
+                <Feather name={METHOD_CARDS[page].icon} size={16} color={C.accent} />
+              </View>
+              <View style={styles.methodRowText}>
+                <Text style={[styles.pickName, { color: C.textPrimary, marginTop: 0 }]}>{METHOD_CARDS[page].name}</Text>
+                <Text style={[styles.pickDesc, { color: C.textSecondary }]}>{METHOD_CARDS[page].desc}</Text>
+              </View>
+            </View>
+            {page === 'apple' ? renderAppleFlow() : page === 'backtap' ? renderBacktapFlow() : renderShareFlow()}
+          </>
         )}
       </ScrollView>
 
@@ -764,18 +781,21 @@ const styles = StyleSheet.create({
   // Method picker — two equal cards, the selected one ringed in accent.
   pickLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase' as const },
   pickRow: { flexDirection: 'row', gap: SPACING.sm },
+  methodList: { gap: SPACING.sm },
+  methodRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, borderRadius: RADIUS.xl, padding: SPACING.md },
+  methodRowText: { flex: 1, gap: 2 },
   pickPress: { flex: 1 },
   pickPressed: { opacity: 0.85 },
   pickCard: { flex: 1, borderRadius: RADIUS.xl, padding: SPACING.md, gap: SPACING.xs, borderWidth: 2 },
   pickTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  pickIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  pickIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   pickCheck: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  pickName: { fontSize: 16, fontWeight: '700', marginTop: SPACING.xs },
-  pickDesc: { fontSize: 13, lineHeight: 18 },
+  pickName: { fontSize: 14, fontWeight: '700', marginTop: SPACING.xs },
+  pickDesc: { fontSize: 12, lineHeight: 16 },
   pickMetaRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginTop: SPACING.xs },
   pickBadgePill: { borderRadius: RADIUS.full, paddingHorizontal: 7, paddingVertical: 2 },
   pickBadge: { fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' as const },
-  pickMeta: { fontSize: 12, fontWeight: '500' },
+  pickMeta: { fontSize: 11, fontWeight: '500' },
 
   // Slim notification banner — replaces the old full card.
   banner: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, borderRadius: RADIUS.full, paddingVertical: 10, paddingHorizontal: SPACING.md },

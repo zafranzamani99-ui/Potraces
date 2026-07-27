@@ -318,7 +318,7 @@ function cleanCommitmentName(text: string): string {
   let s = ` ${text} `;
   s = s.replace(/\b\d{1,2}\s*[x×]\s*(?:rm\s*)?\d+(?:\.\d{1,2})?\b/gi, ' '); // "3x49.90"
   s = s.replace(/\b[x×]\s*\d{1,2}\b/gi, ' ');                              // "x3"
-  s = s.replace(/\b\d{1,2}\s*(?:kali|installments?|instalments?|payments?)\b/gi, ' ');
+  s = s.replace(/\b\d{1,2}\s*(?:kali(?:\s+bayar)?|installments?|instalments?|payments?)\b/gi, ' ');
   // Due-day BEFORE the bare "25hb" strip (so "due 25hb" goes as one unit, no orphan "due").
   s = s.replace(/\bdue\s*(?:on\s*)?(?:the\s*)?\d{1,2}(?:st|nd|rd|th|hb)?\b/gi, ' ');
   s = s.replace(/\b(?:on|every|each|setiap|tiap)\s+(?:the\s*)?\d{1,2}(?:st|nd|rd|th|hb)?\b/gi, ' ');
@@ -347,11 +347,14 @@ function extractCommitmentAmount(text: string, dueDay?: number, installments?: n
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) { const v = parseFloat(m[1]); if (v > 0) nums.push(v); }
   const pool = nums.filter((v) => v !== dueDay && v !== installments);
-  const use = pool.length ? pool : nums;
+  // The only number present WAS the due-day / installment count ("kereta baru 6
+  // kali bayar") — then no amount was stated. Never reuse the count as money;
+  // leave 0 and let the form ask for the real amount.
+  if (!pool.length) return 0;
   // Prefer a decimal (a price like 39.90), else the last number (amount usually trails the name).
-  const decimals = use.filter((v) => !Number.isInteger(v));
+  const decimals = pool.filter((v) => !Number.isInteger(v));
   if (decimals.length) return decimals[decimals.length - 1];
-  return use.length ? use[use.length - 1] : 0;
+  return pool[pool.length - 1];
 }
 
 export function parseCommitmentDraft(text: string): CommitmentDraft {

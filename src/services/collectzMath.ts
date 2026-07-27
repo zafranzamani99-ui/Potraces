@@ -17,19 +17,27 @@ export interface CollectzShareRow {
   slot: 'active' | 'reserve';
   share_amount: number | null;
   status?: string;
+  /** Membership gate (join approval) — absent means an approved member. */
+  join_status?: string;
+}
+
+/** Approved + playing rows — the only ones that pay or count toward splits. */
+function isPayingMember(p: CollectzShareRow): boolean {
+  return p.slot === 'active' && (p.join_status ?? 'active') === 'active';
 }
 
 /**
  * Effective per-person share for every ACTIVE participant, in roster order.
  * Custom amount wins; otherwise the scheme default. Reserves pay nothing and
- * are excluded from the map. Equal splits are cent-exact — remainder cents go
+ * are excluded from the map — so are requested/declined joins (they're not
+ * roster members yet). Equal splits are cent-exact — remainder cents go
  * to the earliest entries so shares always sum back to the total.
  */
 export function computeShares(
   session: CollectzSchemeInput,
   participants: CollectzShareRow[],
 ): Map<string, number | null> {
-  const actives = participants.filter((p) => p.slot === 'active');
+  const actives = participants.filter(isPayingMember);
   const out = new Map<string, number | null>();
 
   let equalCents: number[] = [];
@@ -55,7 +63,7 @@ export function computeProgress(
   participants: CollectzShareRow[],
 ): { activeCount: number; confirmedCount: number; target: number | null; confirmed: number } {
   const shares = computeShares(session, participants);
-  const actives = participants.filter((p) => p.slot === 'active');
+  const actives = participants.filter(isPayingMember);
   const confirmed = actives.filter((p) => p.status === 'confirmed');
   const sum = (rows: CollectzShareRow[]) => rows.reduce((acc, p) => acc + (shares.get(p.id) ?? 0), 0);
   return {

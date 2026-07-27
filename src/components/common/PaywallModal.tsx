@@ -33,6 +33,7 @@ import type { PaidTier } from '../../services/billingMap';
 import { hasSmartAi } from '../../services/chatModel';
 import { useNeu } from './neu';
 import NeuButton from './NeuButton';
+import PurchaseResultModal from './PurchaseResultModal';
 import GlassSegmentedControl from './GlassSegmentedControl';
 import { selectionChanged } from '../../services/haptics';
 import { useT, type Translations } from '../../i18n';
@@ -72,7 +73,7 @@ const openLegal = (url: string) => {
 // the disclosure must name the RIGHT store per platform (Apple ID / App Store account on iOS,
 // Google Play account / Google Play subscriptions on Android), not hardcode Apple everywhere.
 
-type PaywallFeature = 'wallet' | 'budget' | 'savings' | 'goals' | 'subscription' | 'scan' | 'ai' | 'backup' | 'collectz' | 'businessProfile';
+type PaywallFeature = 'wallet' | 'budget' | 'savings' | 'goals' | 'subscription' | 'scan' | 'ai' | 'backup' | 'collectz' | 'businessProfile' | 'paymentQr';
 
 interface PaywallModalProps {
   visible: boolean;
@@ -108,6 +109,7 @@ const buildFeatureConfig = (t: Translations): Record<PaywallFeature, FeatureConf
   backup: { headA: t.paywall.backupHeadA, headEm: t.paywall.backupHeadEm, headB: t.paywall.backupHeadB, unit: '', freeLimit: 0 },
   collectz: { headA: t.paywall.collectzHeadA, headEm: t.paywall.collectzHeadEm, headB: t.paywall.collectzHeadB, unit: t.paywall.unitCollectzSessions, freeLimit: FREE_TIER.maxCollectzSessionsPerWeek },
   businessProfile: { headA: t.paywall.businessProfileHeadA, headEm: t.paywall.businessProfileHeadEm, headB: t.paywall.businessProfileHeadB, unit: t.paywall.unitBusinessProfiles, freeLimit: FREE_TIER.maxBusinessProfiles },
+  paymentQr: { headA: t.paywall.paymentQrHeadA, headEm: t.paywall.paymentQrHeadEm, headB: t.paywall.paymentQrHeadB, unit: t.paywall.unitPaymentQrs, freeLimit: FREE_TIER.maxPaymentQrs },
 });
 
 // ─── Plans ────────────────────────────────────────────────────────────
@@ -328,6 +330,8 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
   // Tap-to-open info dialogs (business roadmap / subscription details). Rendered as an
   // in-window overlay — NOT a second Modal (iOS can't stack Modals; see the sheet's own note).
   const [infoModal, setInfoModal] = useState<null | 'business' | 'terms'>(null);
+  // Purchase/restore outcome — floating result modal stacked in-window (iOS can't nest Modals).
+  const [result, setResult] = useState<null | { kind: 'success' | 'failed'; message?: string; retry?: boolean }>(null);
 
   const featureConfig = buildFeatureConfig(t);
   const cfg = featureConfig[feature];
@@ -381,23 +385,31 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
       // Real purchase: buy the (tier, billing) package → entitlement → store tier.
       try {
         const ok = await purchaseTier(paidTier, billing);
-        if (ok) close();
+        if (ok) setResult({ kind: 'success' });
       } catch (e: any) {
-        if (!e?.userCancelled) console.warn('[paywall] purchase failed:', e?.message);
+        if (!e?.userCancelled) {
+          console.warn('[paywall] purchase failed:', e?.message);
+          setResult({ kind: 'failed', retry: true });
+        }
       }
       return;
     }
     // Billing not configured yet → local unlock so the app stays fully usable in dev.
     applyTier(paidTier);
-    close();
+    setResult({ kind: 'success' });
   };
 
   const handleRestore = async () => {
     if (!isBillingConfigured()) return;
     try {
-      if (await restorePurchases()) close();
+      if (await restorePurchases()) {
+        setResult({ kind: 'success' });
+      } else {
+        setResult({ kind: 'failed', message: t.settings.restoreNone });
+      }
     } catch (e: any) {
       console.warn('[paywall] restore failed:', e?.message);
+      setResult({ kind: 'failed' });
     }
   };
 
@@ -704,6 +716,21 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
               </TouchableOpacity>
             </View>
           </View>
+        )}
+        {/* Purchase / restore outcome — floating result modal, in-window overlay
+            (success dismiss also closes the paywall; failed keeps it open) */}
+        {result && (
+          <PurchaseResultModal
+            kind={result.kind}
+            tierName={paidTier.charAt(0).toUpperCase() + paidTier.slice(1)}
+            message={result.message}
+            onClose={() => {
+              const wasSuccess = result.kind === 'success';
+              setResult(null);
+              if (wasSuccess) close();
+            }}
+            onRetry={result.retry ? () => { setResult(null); handleContinue(); } : undefined}
+          />
         )}
       </View>
     </GestureHandlerRootView>

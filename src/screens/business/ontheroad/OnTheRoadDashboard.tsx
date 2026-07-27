@@ -4,9 +4,9 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  RefreshControl,
 } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import { FlatList } from 'react-native';
+import PullRefresh from '../../../components/common/PullRefresh';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval, formatDistanceToNow } from 'date-fns';
@@ -37,6 +37,11 @@ function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
 }
 
+// Single-row FlatList data for the outer scroller (VirtualizedList — the
+// ScrollView refresh path never shows the indicator on this Android/Fabric
+// build; VirtualizedList's works — see personal/Dashboard.tsx).
+const DASH_PAGE = ['page'];
+
 const OnTheRoadDashboard: React.FC = () => {
   const C = useCalm();
   const t = useT();
@@ -57,6 +62,12 @@ const OnTheRoadDashboard: React.FC = () => {
 
   const [showCostPercentage, setShowCostPercentage] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Local-only mode — no server to sync. The pull revalidates the derive from
+  // the on-device store (the accepted pattern for local dashboards).
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  };
 
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -168,22 +179,16 @@ const OnTheRoadDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              setTimeout(() => setRefreshing(false), 600);
-            }}
-            tintColor={C.accent}
-            colors={[C.accent]}
-          />
-        }
-      >
+        removeClippedSubviews={false}
+        data={DASH_PAGE}
+        keyExtractor={() => 'page'}
+        renderItem={() => (
+          <>
         <GlassModeToggle />
         {/* Zone 1 — Hero: Net Earnings */}
         <BusinessHeroNumber
@@ -336,7 +341,10 @@ const OnTheRoadDashboard: React.FC = () => {
         >
           <Text style={styles.bottomLinkText}>{t.onTheRoadDash.editDetails}</Text>
         </TouchableOpacity>
-      </ScrollView>
+          </>
+        )}
+      />
+      </PullRefresh>
 
       {/* Dual FABs — log earnings (primary) + log cost (secondary) */}
       <View style={[styles.fabContainer, { bottom: insets.bottom + 80 + SPACING.sm }]}>

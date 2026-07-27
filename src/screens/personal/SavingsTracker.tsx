@@ -471,6 +471,7 @@ const SavingsTracker: React.FC = () => {
       {/* Echo chat + paywall */}
       <EchoInlineChat
         visible={echoOpen} onClose={() => setEchoOpen(false)}
+        threadKey="savings"
         insightTitle={fmt(portfolio.totalCurrent)}
         insightSubtitle={t.savings.askEchoSub.replace('{return}', `${portfolio.totalReturn >= 0 ? '+' : ''}${portfolio.totalReturn.toFixed(1)}%`)}
         chips={savingsChips} contextSnapshot={snapshot} autoPrompt={echoAutoPrompt}

@@ -39,6 +39,7 @@
   "rewrites": [
     { "source": "/shortcut", "destination": "/get-shortcut.html" },
     { "source": "/autolog", "destination": "/get-autolog.html" },
-    { "source": "/collectz/:path*", "destination": "/collectz.html" }
+    { "source": "/collectz/:path*", "destination": "/collectz.html" },
+    { "source": "/r/:path*", "destination": "/r.html" }
   ]
 }

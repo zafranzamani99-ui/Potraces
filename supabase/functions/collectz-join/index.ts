@@ -14,10 +14,16 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  *              the group) and their own participant row if already joined.
  *   claim    — authed. Links the caller's user_id to an unclaimed roster
  *              name the organizer pre-added ("Mael" → the real Mael).
+ *              Always instant — pre-added names skip the approval queue.
  *   add_self — authed. Inserts a new active roster row for the caller
  *              (name not pre-added by the organizer). Rejects with
  *              'session_full' once actives >= max_participants — claiming a
  *              pre-added name stays allowed (that slot is already counted).
+ *              When the session has join_requires_approval, the row goes in
+ *              as join_status='requested' instead: not a roster member yet
+ *              (excluded from shares/capacity and the public roster), the
+ *              organizer is pushed by the DB trigger, and their approve /
+ *              decline flips it to 'active' / 'rejected'.
  *   set_team — authed roster member. Moves MYSELF into a team (null =
  *              unassign); refuses a team already holding team_size people.
  *   set_team_name — authed. Renames a team (organizer OR any roster member).
@@ -60,6 +66,8 @@ interface ParticipantRow {
   user_id: string | null;
   team_idx: number | null;
   reject_note: string | null;
+  /** Membership gate: 'requested'/'rejected' rows are NOT roster members. */
+  join_status: 'active' | 'requested' | 'rejected';
 }
 
 /**
@@ -165,12 +173,15 @@ Deno.serve(async (req: Request) => {
 
   const { data: participants } = await admin
     .from('collectz_participants')
-    .select('id,name,slot,status,share_amount,user_id,team_idx,reject_note')
+    .select('id,name,slot,status,share_amount,user_id,team_idx,reject_note,join_status')
     .eq('session_id', session.id)
     .order('created_at', { ascending: true })
     .order('id', { ascending: true });
   const roster: ParticipantRow[] = participants ?? [];
-  const actives = roster.filter((p) => p.slot === 'active');
+  // Only approved members count: requested/declined joins hold no slot, pay
+  // no share, and don't fill teams until the organizer says yes.
+  const members = roster.filter((p) => p.join_status === 'active');
+  const actives = members.filter((p) => p.slot === 'active');
   const shares = effectiveShares(session, actives);
 
   if (action === 'view') {
@@ -205,8 +216,12 @@ Deno.serve(async (req: Request) => {
         team_names: session.team_names,
         socials: session.socials,
         group_url: session.group_url,
+        join_requires_approval: session.join_requires_approval === true,
       },
-      participants: roster.map((p) => ({
+      // The public roster lists MEMBERS only — a requested/declined self-add
+      // was never on the roster, so it never shows here (the requester still
+      // sees their own row via my_participant below).
+      participants: members.map((p) => ({
         id: p.id,
         name: p.name,
         slot: p.slot,
@@ -229,9 +244,10 @@ Deno.serve(async (req: Request) => {
     if (userId) {
       const mine = roster.find((p) => p.user_id === userId);
       // The QR is the organizer's payment details — only hand it to people
-      // actually in the session (a linked participant or the owner), not to
-      // any signed-in link-holder who hasn't joined.
-      if (mine || session.owner_id === userId) {
+      // actually in the session (an APPROVED linked participant or the owner),
+      // not to any signed-in link-holder who hasn't joined — and not to a
+      // requester still waiting for approval.
+      if ((mine && mine.join_status === 'active') || session.owner_id === userId) {
         payload.qr_payload = session.qr_payload;
         payload.qr_image_path = session.qr_image_path;
       }
@@ -243,6 +259,7 @@ Deno.serve(async (req: Request) => {
             status: mine.status,
             effective_share: shares.get(mine.id) ?? null,
             team_idx: mine.team_idx,
+            join_status: mine.join_status,
             reject_note: mine.status === 'rejected' ? mine.reject_note : null,
           }
         : null;
@@ -261,7 +278,9 @@ Deno.serve(async (req: Request) => {
 
     if (action === 'set_team') {
       // Move MYSELF into a team (null = unassign). Reserves hold no team slot.
-      if (!mine) return json({ error: 'not_in_roster' }, 403);
+      // A join still waiting for approval holds no slot either — teams come
+      // after the organizer says yes.
+      if (!mine || mine.join_status !== 'active') return json({ error: 'not_in_roster' }, 403);
       if (mine.slot !== 'active') return json({ error: 'team_reserve' }, 409);
       const teamIdx = body.team_idx == null ? null : Number(body.team_idx);
       if (teamIdx !== null) {
@@ -269,8 +288,8 @@ Deno.serve(async (req: Request) => {
           return json({ error: 'team_invalid' }, 400);
         }
         if (session.team_size != null) {
-          const members = actives.filter((p) => p.team_idx === teamIdx && p.id !== mine.id);
-          if (members.length >= session.team_size) return json({ error: 'team_full' }, 409);
+          const teamMembers = actives.filter((p) => p.team_idx === teamIdx && p.id !== mine.id);
+          if (teamMembers.length >= session.team_size) return json({ error: 'team_full' }, 409);
         }
       }
       const { error } = await admin
@@ -282,7 +301,9 @@ Deno.serve(async (req: Request) => {
     }
 
     // set_team_name — the organizer OR any roster member may rename.
-    if (!mine && session.owner_id !== userId) return json({ error: 'not_in_roster' }, 403);
+    if ((!mine || mine.join_status !== 'active') && session.owner_id !== userId) {
+      return json({ error: 'not_in_roster' }, 403);
+    }
     const teamIdx = Number(body.team_idx);
     if (!Number.isInteger(teamIdx) || teamIdx < 1 || teamIdx > teamCount) {
       return json({ error: 'team_invalid' }, 400);
@@ -318,8 +339,8 @@ Deno.serve(async (req: Request) => {
         return json({ error: 'team_invalid' }, 400);
       }
       if (session.team_size != null) {
-        const members = actives.filter((p) => p.team_idx === teamIdx && p.id !== target.id);
-        if (members.length >= session.team_size) return json({ error: 'team_full' }, 409);
+        const teamMembers = actives.filter((p) => p.team_idx === teamIdx && p.id !== target.id);
+        if (teamMembers.length >= session.team_size) return json({ error: 'team_full' }, 409);
       }
     }
 
@@ -339,6 +360,11 @@ Deno.serve(async (req: Request) => {
   const name = String(body.name ?? '').trim();
   if (!name || name.length > MAX_NAME_LEN) return json({ error: 'name_invalid' }, 400);
 
+  // Approval mode: unknown self-adds queue as join_status='requested' instead
+  // of landing on the roster. Claims above are untouched — the organizer
+  // pre-added that name, so it skips the queue even when this is on.
+  const needsApproval = session.join_requires_approval === true;
+
   // Capacity: adding yourself creates a NEW active row, so it's rejected once
   // the roster is full. Claiming a pre-added name above stays allowed — that
   // slot is already counted in actives.
@@ -346,22 +372,29 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'session_full' }, 409);
   }
 
-  // Optional team pick — validated exactly like set_team.
-  const teamIdx = body.team_idx == null ? null : Number(body.team_idx);
+  // Optional team pick — validated exactly like set_team. A REQUESTED join
+  // skips this: the team is picked from the join page once approved.
+  const teamIdx = body.team_idx == null || needsApproval ? null : Number(body.team_idx);
   if (teamIdx !== null) {
     const teamCount: number = session.team_count ?? 0;
     if (!Number.isInteger(teamIdx) || teamIdx < 1 || teamIdx > teamCount) {
       return json({ error: 'team_invalid' }, 400);
     }
     if (session.team_size != null) {
-      const members = actives.filter((p) => p.team_idx === teamIdx);
-      if (members.length >= session.team_size) return json({ error: 'team_full' }, 409);
+      const teamMembers = actives.filter((p) => p.team_idx === teamIdx);
+      if (teamMembers.length >= session.team_size) return json({ error: 'team_full' }, 409);
     }
   }
 
   const { data: inserted, error } = await admin
     .from('collectz_participants')
-    .insert({ session_id: session.id, name, user_id: userId, team_idx: teamIdx })
+    .insert({
+      session_id: session.id,
+      name,
+      user_id: userId,
+      team_idx: teamIdx,
+      join_status: needsApproval ? 'requested' : 'active',
+    })
     .select('id')
     .single();
   if (error) {
@@ -371,5 +404,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'join_failed' }, 500);
   }
 
-  return json({ ok: true, participant_id: inserted.id, team_idx: teamIdx });
+  // A requested insert pushes the organizer via the trg_notify_collectz_join
+  // DB trigger — nothing to send from here.
+  return json({ ok: true, participant_id: inserted.id, team_idx: teamIdx, requested: needsApproval });
 });

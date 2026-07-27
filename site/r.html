@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<!--
+  Potraces — referral invite landing page.  jejakbaki.my/r/{CODE}
+  Landing page for shared invite links: reads the 6-char referral code from the
+  path (/r/CODE, via the vercel rewrite) or query (?c=CODE), validates it
+  against the app alphabet (A-Z sans I/O, 2-9 — src/services/referrals.ts), and
+  shows it big with a copy button. The "Get the app" CTA first stages
+  POTRACES-REF:{CODE} on the clipboard (best-effort, only on that explicit tap)
+  so a fresh install can attribute the invite at first boot, then goes to
+  /beta.html. Invalid/missing code gets a friendly "link looks off" state.
+  Chrome (nav/footer/lang/grain/buttons/panels) is consumed by name from
+  /tokens.css + /site.css; only the rf-* invite layout lives below.
+  No build step, no framework. Dynamic regions must NOT carry .reveal (it
+  starts at opacity:0 and the observer has already run by the time they render).
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#FEFDFB">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self'">
+
+<title>You're invited — Potraces</title>
+<meta name="description" content="A friend invited you to try Potraces — the calm money app for irregular income in Malaysia. Get the app, then enter their invite code when you sign up.">
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://jejakbaki.my/r">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Potraces">
+<meta property="og:title" content="You're invited — Potraces">
+<meta property="og:description" content="A friend invited you to try Potraces — the calm money app for irregular income in Malaysia. Get the app, then enter their invite code when you sign up.">
+<meta property="og:url" content="https://jejakbaki.my/r">
+<meta property="og:image" content="https://jejakbaki.my/assets/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+<meta property="og:locale" content="en_MY">
+<meta property="og:locale:alternate" content="ms_MY">
+
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="You're invited — Potraces">
+<meta name="twitter:description" content="Get the app, then enter your friend's invite code when you sign up.">
+<meta name="twitter:image" content="https://jejakbaki.my/assets/og-card.png">
+<meta name="twitter:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+
+<!-- Favicons -->
+<link rel="icon" href="/assets/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="/assets/icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Shared design system — tokens FIRST, then site. -->
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+
+<style>
+/* Hallmark · TENANG v5 · r.html — page-unique only: the rf-* invite layout
+   (big code card, numbered steps, CTA stack). Nav, footer, .hero-center,
+   .panel--sage, .card, .btn-pill--ink/--ghost, .mono-caps all come from
+   /tokens.css + /site.css. */
+[hidden]{display:none !important}
+
+.rf-body{padding-bottom:var(--space-4xl)}
+.rf-wrap{max-width:640px;margin:0 auto}
+
+/* invite stack — white cards floating on ONE sage panel (cz-* pattern) */
+.rf-stack{display:grid;gap:16px}
+
+/* the code, LARGE */
+.rf-codecard{text-align:center}
+.rf-code{margin:14px 0 18px;font-family:var(--font-mono);font-weight:600;
+  font-size:clamp(2.2rem,9vw,3.2rem);letter-spacing:.22em;line-height:1;
+  color:var(--ink-90);user-select:all;overflow-wrap:anywhere}
+
+/* numbered steps — honest mono numerals, prose in body font */
+.rf-steps{list-style:none;counter-reset:rfstep;margin:12px 0 0;padding:0;display:grid;gap:12px}
+.rf-steps li{counter-increment:rfstep;display:flex;gap:12px;align-items:baseline;
+  color:var(--ink-65);line-height:var(--leading-relaxed);font-size:.95rem}
+.rf-steps li::before{content:counter(rfstep,decimal-leading-zero);flex-shrink:0;
+  font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-caps);color:var(--ink-45)}
+
+/* CTA + honest mono footnote */
+.rf-cta{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:var(--space-xl)}
+.rf-note{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--ink-45);text-align:center;max-width:44ch}
+
+/* invalid-link panel */
+.rf-err{text-align:center}
+.rf-err h2{font-size:var(--text-2xl);margin-bottom:10px}
+.rf-err p{color:var(--ink-65);line-height:var(--leading-relaxed);max-width:46ch;margin:0 auto var(--space-lg)}
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<a class="skip" href="#main" data-en="Skip to content" data-bm="Terus ke kandungan">Skip to content</a>
+
+<!-- ════════════ NAV ════════════ -->
+<header class="nav" id="nav">
+  <div class="container">
+    <a class="brand" href="/#top" aria-label="Potraces home">
+      <span class="logo" aria-hidden="true" id="navlogo"></span>
+      <span>Potraces</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/" data-en="Home" data-bm="Laman utama">Home</a>
+      <a href="/quick-log.html" data-en="Quick Log" data-bm="Log Pantas">Quick Log</a>
+    </nav>
+    <div class="nav-right">
+      <div class="lang-toggle" role="group" aria-label="Language / Bahasa">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="ms" aria-pressed="false">BM</button>
+      </div>
+      <a class="btn btn-primary btn-sm btn-beta-nav" href="/beta.html" data-en="Join the beta" data-bm="Sertai beta">Join the beta</a>
+      <button class="hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false" aria-controls="mobileSheet">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- mobile sheet -->
+<div class="mobile-sheet" id="mobileSheet" aria-hidden="true">
+  <a href="/" data-en="Home" data-bm="Laman utama">Home</a>
+  <a href="/quick-log.html" data-en="Quick Log" data-bm="Log Pantas">Quick Log</a>
+  <div class="lang-toggle" role="group" aria-label="Language / Bahasa" style="margin-top:24px;align-self:flex-start">
+    <button type="button" data-lang="en" aria-pressed="true">EN</button>
+    <button type="button" data-lang="ms" aria-pressed="false">BM</button>
+  </div>
+  <a class="btn btn-primary" href="/beta.html" data-en="Join the beta" data-bm="Sertai beta">Join the beta</a>
+</div>
+
+<main id="main">
+<span id="top"></span>
+
+<!-- ════════════ HERO ════════════ -->
+<section class="hero-center">
+  <div class="container">
+    <p class="eyebrow">
+      <span class="ic" aria-hidden="true" id="herowau"></span>
+      <span data-en="Potraces — Invite" data-bm="Potraces — Jemputan">Potraces — Invite</span>
+    </p>
+    <h1>
+      <span data-en="Your friend" data-bm="Kawan kau">Your friend</span>
+      <span class="accent-word" data-en="invited you" data-bm="jemput kau">invited you</span>
+      <span data-en="to Potraces" data-bm="ke Potraces">to Potraces</span>
+    </h1>
+    <p class="lead">
+      <span data-en="Calm money tracking for irregular earners in Malaysia — log in one line, snap receipts, see what's safe to spend." data-bm="Jejak duit yang tenang untuk pencari rezeki tak tetap di Malaysia — log satu baris, snap resit, tengok berapa boleh belanja." class="block">Calm money tracking for irregular earners in Malaysia — log in one line, snap receipts, see what's safe to spend.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ════════════ INVITE (dynamic) ════════════ -->
+<section class="rf-body">
+  <div class="container">
+    <div class="rf-wrap">
+
+      <div id="rfInvite" hidden>
+        <div class="panel panel--sage">
+          <div class="rf-stack">
+            <article class="card rf-codecard">
+              <p class="mono-caps" data-en="Your invite code" data-bm="Kod jemputan kau">Your invite code</p>
+              <p class="rf-code" id="rfCode"></p>
+              <button type="button" class="btn btn-pill--ghost" id="rfCopy" data-en="Copy code" data-bm="Salin kod">Copy code</button>
+            </article>
+            <article class="card">
+              <p class="mono-caps" data-en="How to claim it" data-bm="Cara nak guna">How to claim it</p>
+              <ol class="rf-steps">
+                <li data-en="Get the app from the beta page and install it." data-bm="Dapatkan app dari halaman beta dan pasang.">Get the app from the beta page and install it.</li>
+                <li data-en="Sign up — it only takes a minute." data-bm="Daftar akaun — sekejap je.">Sign up — it only takes a minute.</li>
+                <li data-en="Enter the code when the app asks for an invite code." data-bm="Masukkan kod tu bila app tanya kod jemputan nanti.">Enter the code when the app asks for an invite code.</li>
+              </ol>
+            </article>
+          </div>
+        </div>
+        <div class="rf-cta">
+          <a class="btn btn-pill--ink btn-lg" href="/beta.html" id="rfGet" data-en="Get the app" data-bm="Dapatkan app">Get the app</a>
+          <p class="rf-note" data-en="When you tap Get the app, we copy the code so Potraces can pick it up on first launch — nothing else on your clipboard is touched." data-bm="Bila kau tap Dapatkan app, kami salin kod supaya Potraces boleh detect masa pertama kali app dibuka — benda lain pada clipboard kau tak disentuh.">When you tap Get the app, we copy the code so Potraces can pick it up on first launch — nothing else on your clipboard is touched.</p>
+        </div>
+      </div>
+
+      <div id="rfInvalid" hidden>
+        <div class="panel panel--sage rf-err">
+          <h2 data-en="This invite link looks off" data-bm="Link jemputan ni nampak pelik">This invite link looks off</h2>
+          <p data-en="There's no valid invite code in this link — it may have been copied incompletely. Ask your friend to send it again, or just get the app and sign up without a code." data-bm="Takde kod jemputan yang sah dalam link ni — mungkin tersalin tak lengkap. Minta kawan kau hantar semula, atau terus dapatkan app dan daftar tanpa kod.">There's no valid invite code in this link — it may have been copied incompletely. Ask your friend to send it again, or just get the app and sign up without a code.</p>
+          <a class="btn btn-pill--ink" href="/beta.html" data-en="Get the app" data-bm="Dapatkan app">Get the app</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ════════════ FOOTER ════════════ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="/#top" aria-label="Potraces home">
+          <span class="logo" aria-hidden="true" id="footlogo"></span>
+          <span>Potraces</span>
+        </a>
+        <p class="bline" data-en="Calm money tracking for irregular earners in Malaysia." data-bm="Jejak duit yang tenang untuk pencari rezeki tak tetap di Malaysia.">Calm money tracking for irregular earners in Malaysia.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4 data-en="Product" data-bm="Produk">Product</h4>
+          <a href="/#features" data-en="Features" data-bm="Ciri">Features</a>
+          <a href="/#how" data-en="How it works" data-bm="Cara guna">How it works</a>
+          <a href="/#who" data-en="Who it's for" data-bm="Untuk siapa">Who it's for</a>
+        </div>
+        <div class="footer-col">
+          <h4 data-en="More" data-bm="Lagi">More</h4>
+          <a href="/privacy.html" data-en="Privacy policy" data-bm="Dasar privasi">Privacy policy</a>
+          <a href="/delete-account.html" data-en="Delete account" data-bm="Padam akaun">Delete account</a>
+          <a href="/#faq" data-en="FAQ" data-bm="Soalan">FAQ</a>
+          <a href="/beta.html" data-en="Beta feedback" data-bm="Feedback beta">Beta feedback</a>
+        </div>
+        <div class="footer-col">
+          <h4 data-en="Say hi" data-bm="Tegur kami">Say hi</h4>
+          <a href="mailto:hello@jejakbaki.my" data-en="Email us" data-bm="Emel kami">Email us</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="fb-row">
+        <span class="copy">© <span id="year">2026</span> Potraces · jejakbaki.my</span>
+        <span class="made">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8B7355" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-4.5-9-9a4.8 4.8 0 0 1 9-2 4.8 4.8 0 0 1 9 2c-2 4.5-9 9-9 9z"/></svg>
+          <span data-en="Made in Malaysia" data-bm="Buatan Malaysia">Made in Malaysia</span>
+        </span>
+      </div>
+      <p class="footer-disclaimer" data-en="Potraces is a calm money tracker, not financial advice. Beta software may change without notice." data-bm="Potraces alat jejak duit yang tenang, bukan nasihat kewangan. Perisian beta boleh berubah tanpa notis.">Potraces is a calm money tracker, not financial advice. Beta software may change without notice.</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ── inline wau SVG (sage), injected into logo + watermark slots ── */
+var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" role="img" aria-label="Potraces wau kite logo">\
+<rect width="1024" height="1024" fill="#5E7B6A"/>\
+<circle cx="512" cy="490" r="350" fill="#F1E7D3" opacity="0.05"/>\
+<circle cx="512" cy="490" r="262" fill="#F1E7D3" opacity="0.05"/>\
+<g transform="translate(0 96) rotate(-6 512 420)">\
+<path d="M494 278 L512 92 L530 278 Z" fill="#DEAB22" stroke="#B2780A" stroke-width="5" stroke-linejoin="round"/>\
+<circle cx="512" cy="86" r="9" fill="#DEAB22"/><circle cx="512" cy="86" r="4" fill="#B2780A"/>\
+<rect x="486" y="268" width="52" height="14" rx="7" fill="#B2780A"/>\
+<path d="M512 428 L540 464 L512 502 L484 464 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="6" stroke-linejoin="round"/>\
+<path d="M512 460 C470 535 432 600 374 660 C416 670 466 644 494 594 C504 560 510 510 512 460 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="7" stroke-linejoin="round"/>\
+<path d="M512 460 C554 535 592 600 650 660 C608 670 558 644 530 594 C520 560 514 510 512 460 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="7" stroke-linejoin="round"/>\
+<path d="M508 480 C478 546 448 598 402 646" stroke="#DEAB22" stroke-width="5" stroke-linecap="round"/>\
+<path d="M516 480 C546 546 576 598 622 646" stroke="#DEAB22" stroke-width="5" stroke-linecap="round"/>\
+<path d="M448 596 C432 588 420 592 414 606" stroke="#4F5104" stroke-width="4" stroke-linecap="round"/>\
+<circle cx="411" cy="610" r="4" fill="#DEAB22"/>\
+<path d="M576 596 C592 588 604 592 610 606" stroke="#4F5104" stroke-width="4" stroke-linecap="round"/>\
+<circle cx="613" cy="610" r="4" fill="#DEAB22"/>\
+<path d="M130 560 C250 340 400 272 512 272 C624 272 774 340 894 560 C760 470 640 436 512 436 C384 436 264 470 130 560 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="8" stroke-linejoin="round"/>\
+<path d="M220 500 C310 370 416 310 512 310 C608 310 714 370 804 500" stroke="#DEAB22" stroke-width="7" stroke-linecap="round"/>\
+<path d="M392 372 C352 354 318 360 300 392" stroke="#4F5104" stroke-width="6" stroke-linecap="round"/>\
+<circle cx="296" cy="398" r="6" fill="#DEAB22"/>\
+<path d="M342 440 C312 428 290 432 278 454" stroke="#4F5104" stroke-width="5" stroke-linecap="round"/>\
+<circle cx="274" cy="458" r="5" fill="#DEAB22"/>\
+<ellipse cx="430" cy="340" rx="7" ry="14" fill="#B2780A" opacity="0.85" transform="rotate(-35 430 340)"/>\
+<g transform="matrix(-1 0 0 1 1024 0)">\
+<path d="M392 372 C352 354 318 360 300 392" stroke="#4F5104" stroke-width="6" stroke-linecap="round"/>\
+<circle cx="296" cy="398" r="6" fill="#DEAB22"/>\
+<path d="M342 440 C312 428 290 432 278 454" stroke="#4F5104" stroke-width="5" stroke-linecap="round"/>\
+<circle cx="274" cy="458" r="5" fill="#DEAB22"/>\
+<ellipse cx="430" cy="340" rx="7" ry="14" fill="#B2780A" opacity="0.85" transform="rotate(-35 430 340)"/>\
+</g>\
+<circle cx="133" cy="557" r="6" fill="#DEAB22"/><circle cx="891" cy="557" r="6" fill="#DEAB22"/>\
+<circle cx="512" cy="368" r="48" stroke="#DEAB22" stroke-width="4" opacity="0.6"/>\
+<g>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(60 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(120 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(180 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(240 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(300 512 368)"/>\
+</g>\
+<circle cx="512" cy="368" r="11" fill="#B2780A"/>\
+</g></svg>';
+['navlogo','footlogo','herowau'].forEach(function(id){
+  var el = document.getElementById(id);
+  if (el) el.innerHTML = WAU_SVG;
+});
+
+/* ── language toggle (persisted; shared 'potraces_lang' key across ALL pages) ── */
+(function(){
+  var STORAGE='potraces_lang';
+  function apply(lang){
+    document.documentElement.setAttribute('lang', lang);
+    document.querySelectorAll('.lang-toggle button').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang')===lang));
+    });
+    document.querySelectorAll('[data-en]').forEach(function(el){
+      if(el.children.length) return;                         /* leaf-only swap */
+      var t = lang==='ms' ? el.getAttribute('data-bm') : el.getAttribute('data-en');
+      if(t!=null) el.textContent = t;
+    });
+    try{ localStorage.setItem(STORAGE, lang); }catch(e){}
+    window.dispatchEvent(new CustomEvent('pt:lang',{detail:{lang:lang}}));  /* dynamic content re-renders */
+  }
+  window.__ptLang = function(){ return document.documentElement.getAttribute('lang')==='ms' ? 'ms' : 'en'; };
+  var saved='en';
+  try{ saved = localStorage.getItem(STORAGE) || 'en'; }catch(e){}
+  apply(saved);
+  document.querySelectorAll('.lang-toggle button').forEach(function(b){
+    b.addEventListener('click', function(){ apply(b.getAttribute('data-lang')); });
+  });
+})();
+
+/* ── nav scroll-shadow state ── */
+(function(){
+  var nav=document.getElementById('nav');
+  if(!nav || nav.classList.contains('nav--sticky')) return;
+  function onScroll(){ nav.classList.toggle('scrolled', window.scrollY>12); }
+  onScroll();
+  window.addEventListener('scroll', onScroll, {passive:true});
+})();
+
+/* ── mobile menu ── */
+(function(){
+  var btn=document.getElementById('hamburger');
+  var sheet=document.getElementById('mobileSheet');
+  if(!btn || !sheet) return;
+  function setOpen(open){
+    btn.setAttribute('aria-expanded', String(open));
+    btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    sheet.classList.toggle('open', open);
+    sheet.setAttribute('aria-hidden', String(!open));
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+  btn.addEventListener('click', function(){ setOpen(!sheet.classList.contains('open')); });
+  sheet.querySelectorAll('a').forEach(function(a){ a.addEventListener('click', function(){ setOpen(false); }); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') setOpen(false); });
+})();
+
+/* ── scroll reveal (static elements only — dynamic invite regions render later) ── */
+(function(){
+  var els=document.querySelectorAll('.reveal');
+  if(!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    els.forEach(function(el){ el.classList.add('in'); }); return;
+  }
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, {threshold:0.12, rootMargin:'0px 0px -40px 0px'});
+  els.forEach(function(el){ io.observe(el); });
+})();
+
+/* ── current year ── */
+(function(){ var y=document.getElementById('year'); if(y) y.textContent=new Date().getFullYear(); })();
+
+/* ════════════ Referral invite ════════════ */
+(function(){
+  /* Code from /r/{CODE} (or /r.html/{CODE}) path, else ?c={CODE}. Codes are
+     6 chars from the app alphabet (A-Z sans I/O, 2-9) — keep in lockstep with
+     CHARS in src/services/referrals.ts. Lowercase input is normalized. */
+  var CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/;
+  function getCode(){
+    var m = location.pathname.match(/\/r(?:\.html)?\/([^/?#]+)/i);
+    var raw = m ? m[1] : '';
+    if (!raw) {
+      try { raw = new URLSearchParams(location.search).get('c') || ''; }
+      catch (e) {
+        var q = location.search.match(/[?&]c=([^&#]+)/);
+        raw = q ? q[1] : '';
+      }
+    }
+    try { raw = decodeURIComponent(raw); } catch (e) {}
+    return String(raw).trim().toUpperCase();
+  }
+
+  var CODE = getCode();
+  var valid = CODE_RE.test(CODE);
+
+  var els = {
+    invite: document.getElementById('rfInvite'),
+    invalid: document.getElementById('rfInvalid'),
+    code: document.getElementById('rfCode'),
+    copy: document.getElementById('rfCopy'),
+    get: document.getElementById('rfGet')
+  };
+
+  els.invite.hidden = !valid;
+  els.invalid.hidden = valid;
+  if (!valid) return;
+  els.code.textContent = CODE;
+
+  /* Best-effort clipboard write: async Clipboard API first, sync legacy fallback. */
+  function legacyCopy(text){
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e) {}
+  }
+  function copyText(text){
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(function(){ legacyCopy(text); });
+        return;
+      }
+    } catch (e) {}
+    legacyCopy(text);
+  }
+
+  /* Copy-code button: copies just the code (for manual entry in the app). */
+  els.copy.addEventListener('click', function(){
+    copyText(CODE);
+    els.copy.textContent = (window.__ptLang && window.__ptLang() === 'ms') ? 'Dah salin!' : 'Copied!';
+    setTimeout(function(){
+      els.copy.textContent = (window.__ptLang && window.__ptLang() === 'ms') ? 'Salin kod' : 'Copy code';
+    }, 1600);
+  });
+
+  /* Get the app: stage the referral token POTRACES-REF:{CODE} on the clipboard
+     FIRST (best-effort — a fresh install reads it once at boot), then go to the
+     beta page. Navigation is capped at 400ms even if the async write hangs. */
+  els.get.addEventListener('click', function(e){
+    e.preventDefault();
+    var url = els.get.getAttribute('href') || '/beta.html';
+    var token = 'POTRACES-REF:' + CODE;
+    var gone = false;
+    function go(){ if (!gone) { gone = true; window.location.href = url; } }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(token).then(go, go);
+        setTimeout(go, 400);
+        return;
+      }
+    } catch (e2) {}
+    legacyCopy(token);
+    go();
+  });
+})();
+</script>
+</body>
+</html>

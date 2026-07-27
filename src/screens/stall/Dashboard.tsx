@@ -23,6 +23,12 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+// The outer scroller is a FlatList (single row), NOT a ScrollView: on this
+// Android/Fabric build the ScrollView refresh path never shows the indicator
+// (RNGH blocks it — disallowInterruption — and native ScrollView's attach is
+// broken too), while VirtualizedList's path works (proven by TransactionsList).
+import { FlatList } from 'react-native';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,6 +48,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
 import { lightTap } from '../../services/haptics';
 import GlassModeToggle from '../../components/common/GlassModeToggle';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 import OfflineBanner from '../../components/common/OfflineBanner';
 import { useNeu } from '../../components/common/neu';
 import BottomSheet from '../../components/common/BottomSheet';
@@ -229,6 +236,9 @@ const splitStyles = StyleSheet.create({
   },
 });
 
+// Single-row FlatList data for the outer scroller (see the import comment).
+const DASH_PAGE = ['page'];
+
 const StallDashboard: React.FC = () => {
   const C = useCalm();
   const t = useT();
@@ -382,6 +392,28 @@ const StallDashboard: React.FC = () => {
     ]);
   }, [editingSale, removeSale, t]);
 
+  // Initial loader — data-driven: exits once the persisted stall store has
+  // hydrated (not on a bare timer), with a hard cap so it can never stick.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (useStallStore.persist.hasHydrated()) {
+      setReady(true);
+      return;
+    }
+    const unsub = useStallStore.persist.onFinishHydration(() => setReady(true));
+    const cap = setTimeout(() => setReady(true), 1500);
+    return () => { unsub(); clearTimeout(cap); };
+  }, []);
+
+  if (!ready) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top + SPACING.md }]}>
+        <SkeletonLoader />
+        <SkeletonLoader style={{ marginTop: SPACING.md }} />
+      </View>
+    );
+  }
+
   // ─── Shared pieces ─────────────────────────────────────────
 
   const renderIdentityRow = (tappable: boolean) => (
@@ -416,18 +448,16 @@ const StallDashboard: React.FC = () => {
       : new Date(activeSession.startedAt);
     return (
       <View style={styles.container}>
-        <ScrollView
+        <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+        <FlatList
           style={styles.scrollView}
           contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={C.bronze}
-            />
-          }
-        >
+          removeClippedSubviews={false}
+          data={DASH_PAGE}
+          keyExtractor={() => 'page'}
+          renderItem={() => (
+            <>
           <GlassModeToggle />
           <OfflineBanner />
 
@@ -562,7 +592,10 @@ const StallDashboard: React.FC = () => {
               <Text style={styles.closeSessionText}>{t.stallDashboard.closeSession}</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+            </>
+          )}
+        />
+        </PullRefresh>
 
         {/* ─── Session sales modal — this session only, POS edit inside ─── */}
         <FloatingModal
@@ -730,18 +763,15 @@ const StallDashboard: React.FC = () => {
   // ─── State A: No active session — solid hero + glass bento ──
   return (
     <View style={styles.container}>
-      <ScrollView
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={C.bronze}
-          />
-        }
-      >
+        data={DASH_PAGE}
+        keyExtractor={() => 'page'}
+        renderItem={() => (
+          <>
         <GlassModeToggle />
         <OfflineBanner />
 
@@ -867,7 +897,10 @@ const StallDashboard: React.FC = () => {
         {historyInsight && (
           <Text style={styles.insightText}>{historyInsight}</Text>
         )}
-      </ScrollView>
+          </>
+        )}
+      />
+      </PullRefresh>
 
       {/* ─── Shop card modal — the business identity, as customers see it ─── */}
       <BottomSheet

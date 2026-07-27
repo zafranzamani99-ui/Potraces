@@ -2649,6 +2649,7 @@ const BudgetPlanning: React.FC = () => {
       <EchoInlineChat
         visible={echoSheetVisible}
         onClose={() => setEchoSheetVisible(false)}
+        threadKey="budget"
         insightTitle={smartInsight.title}
         insightSubtitle={smartInsight.subtitle}
         chips={greetingChips}

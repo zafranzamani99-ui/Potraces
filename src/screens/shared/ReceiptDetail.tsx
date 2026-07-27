@@ -27,7 +27,7 @@ import { exportSingleReceiptPdf, shareReceiptReplicaPdf, shareReceiptPhotoPdf, r
 import { shareCapturedReceipt } from '../../services/receiptImageExport';
 import { enhanceDocumentImage } from '../../../modules/pdf-raster/src';
 import { uploadReceiptToDrive } from '../../services/driveUpload';
-import { isGoogleSignedIn } from '../../services/googleAuth';
+import { connectGoogleDrive, hasGoogleDriveAccess, statusCodes } from '../../services/googleAuth';
 import ReceiptReplicaView from '../../components/ReceiptReplicaView';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
@@ -74,15 +74,11 @@ const ReceiptDetail: React.FC = () => {
   const [sharingImage, setSharingImage] = useState(false);
   const [hideWalletInShare, setHideWalletInShare] = useState(false);
   const [savingToDrive, setSavingToDrive] = useState(false);
-  // "Save to Drive" is Google-only — resolved once on mount; Apple/phone users
-  // never see the button.
-  const [isGoogleUser, setIsGoogleUser] = useState(false);
+  // "Save to Drive" shows for EVERY account type. Google accounts upload right
+  // away; Apple/phone users are offered a Drive-only Google connect (native
+  // sign-in, app account untouched) on first tap — see googleAuth.connectGoogleDrive.
   const captureRef = useRef<ViewShot>(null);
   const replicaRef = useRef<ViewShot>(null);
-
-  useEffect(() => {
-    setIsGoogleUser(isGoogleSignedIn());
-  }, []);
 
   if (!receipt) {
     return (
@@ -186,6 +182,12 @@ const ReceiptDetail: React.FC = () => {
     if (savingToDrive) return;
     setSavingToDrive(true);
     try {
+      // No Drive token yet (Apple/phone/email account, or signed-out Google
+      // session): run the Drive-only connect first — the app account is not
+      // touched. Then fall through to the upload.
+      if (!(await hasGoogleDriveAccess())) {
+        await connectGoogleDrive();
+      }
       const categoryNames = Object.fromEntries(MYTAX_CATEGORIES.map((c) => [c.id, c.name]));
       // Which PDF: original archived file / thermal replica / designed card.
       const fileUri = await resolveReceiptPdfUri({ receipt, currency, categoryNames, walletName: wallet?.name, hideWallet: hideWalletInShare });
@@ -193,6 +195,8 @@ const ReceiptDetail: React.FC = () => {
       await uploadReceiptToDrive({ fileUri, name: safeName, mimeType: 'application/pdf' });
       showToast(t.receiptDetail.driveSaved, 'success');
     } catch (err: any) {
+      // User backed out of the Google account picker — not an error, stay quiet.
+      if (err?.code === statusCodes.SIGN_IN_CANCELLED) return;
       showToast(err?.message || t.receiptDetail.driveSaveFailed, 'error');
     } finally {
       setSavingToDrive(false);
@@ -346,14 +350,12 @@ const ReceiptDetail: React.FC = () => {
             </View>
             <Text style={[styles.actionBtnText, { color: C.accent }]}>{t.receiptDetail.shareAsPdf}</Text>
           </TouchableOpacity>
-          {isGoogleUser && (
-            <TouchableOpacity style={[styles.actionBtn, neu.raised]} onPress={handleSaveToDrive} activeOpacity={0.7} disabled={savingToDrive}>
-              <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(C.accent, 0.08) }]}>
-                <Feather name="upload-cloud" size={16} color={C.accent} />
-              </View>
-              <Text style={[styles.actionBtnText, { color: C.accent }]}>{savingToDrive ? t.receiptDetail.savingToDrive : t.receiptDetail.saveToDrive}</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={[styles.actionBtn, neu.raised]} onPress={handleSaveToDrive} activeOpacity={0.7} disabled={savingToDrive}>
+            <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(C.accent, 0.08) }]}>
+              <Feather name="upload-cloud" size={16} color={C.accent} />
+            </View>
+            <Text style={[styles.actionBtnText, { color: C.accent }]}>{savingToDrive ? t.receiptDetail.savingToDrive : t.receiptDetail.saveToDrive}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Hide wallet toggle ── */}

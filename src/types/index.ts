@@ -695,6 +695,10 @@ export type RootStackParamList = {
   ManageCategories: { mode: 'personal' | 'business' } | undefined;
   /** Per-tier usage + upgrade screen (opened from the Settings subscription card). */
   MyPlan: undefined;
+  /** Invite friends hub (referral code, share, progress) — from the Settings gift row. */
+  InviteFriends: undefined;
+  /** Redeem an admin-minted gift code — from the Settings ticket row. */
+  RedeemCode: undefined;
   SellerSettings: undefined;
   SettingsDetail: { section?: SettingsSection; scrollTo?: string } | undefined;
   BusinessProfile: undefined;
@@ -1576,7 +1580,17 @@ export interface WalletState {
 }
 
 export interface PremiumState {
+  /** EFFECTIVE tier — every gate reads this. Derived from localTier/serverTier
+   *  by recompute() in the store; never set directly. */
   tier: PremiumTier;
+  /** What the local unlock / future RevenueCat says (setTier writes this). */
+  localTier: PremiumTier;
+  /** Server grant ledger's tier (my_entitlement); counts only while premiumUntil is live. */
+  serverTier: PremiumTier;
+  /** Server grant expiry — the server tier drops out of the effective tier past this. */
+  premiumUntil: Date | null;
+  /** Server launch gate. false = open beta: effective tier === localTier, as before. */
+  gateOn: boolean;
   subscribedAt: Date | null;
   scanCount: number;
   scanResetDate: Date;
@@ -1584,8 +1598,12 @@ export interface PremiumState {
   aiCallsResetDate: Date;
   /** Back-compat local unlock → top tier ('premium'). Paywall uses setTier once billed. */
   subscribe: () => void;
-  /** Set the active tier directly (basic/pro/premium/free). The paywall's wiring seam. */
+  /** Set the LOCAL tier directly (basic/pro/premium/free). The paywall's wiring seam. */
   setTier: (tier: PremiumTier) => void;
+  /** Server told us the entitlement (my_entitlement) — store it + recompute the effective tier. */
+  reconcileEntitlement: (server: { tier: PremiumTier; premiumUntil: Date | null; gateOn: boolean }) => void;
+  /** Signed out: drop the server fields (the local unlock is untouched). */
+  resetServerEntitlement: () => void;
   unsubscribe: () => void;
   incrementScanCount: () => void;
   resetScanCountIfNeeded: () => void;
@@ -1593,6 +1611,7 @@ export interface PremiumState {
   resetAiCallsIfNeeded: () => void;
   // Count gates (tier-aware; grandfather over-cap existing counts — block create only)
   canCreateWallet: (currentCount: number) => boolean;
+  canCreatePaymentQr: (currentCount: number) => boolean;
   canCreateBudget: (currentCount: number) => boolean;
   canCreateSavingsAccount: (currentCount: number) => boolean;
   canCreateGoal: (currentCount: number) => boolean;

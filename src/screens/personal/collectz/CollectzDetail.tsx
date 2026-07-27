@@ -31,6 +31,7 @@ import PageScrollView from '../../../components/common/PageScrollView';
 import FloatingModal from '../../../components/common/FloatingModal';
 import ConfirmDialog from '../../../components/common/ConfirmDialog';
 import NeuButton from '../../../components/common/NeuButton';
+import { newstOutline } from '../../../components/business/NewstInput';
 import KeyboardDoneFab from '../../../components/common/KeyboardDoneFab';
 import { useNeu } from '../../../components/common/neu';
 import { useKeyboardVisible } from '../../../hooks/useKeyboardVisible';
@@ -46,6 +47,8 @@ import {
   confirmParticipant,
   rejectParticipant,
   resetParticipantToUnpaid,
+  approveJoinRequest,
+  rejectJoinRequest,
   remindUnpaid,
   proofSignedUrl,
   subscribeToSession,
@@ -53,6 +56,7 @@ import {
   computeProgress,
   buildWhatsappAnnouncement,
   collectzUrl,
+  ensureCollectzLinkReferralCode,
   fetchRosterProfiles,
   deleteSession,
   cancelSession,
@@ -115,6 +119,7 @@ const CollectzDetail: React.FC = () => {
   const [actionFor, setActionFor] = useState<CollectzParticipant | null>(null);
   // Team rename: which team is being renamed, and the draft label.
   const [renameTeamIdx, setRenameTeamIdx] = useState<number | null>(null);
+  const [renameFocused, setRenameFocused] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   // Screen-level confirm (duplicate / new link / cancel / delete / settle) and a
   // separate participant-level one that renders INSIDE the action FloatingModal.
@@ -177,6 +182,10 @@ const CollectzDetail: React.FC = () => {
   // Live roster: refetch on any participant/session change for this session.
   useEffect(() => subscribeToSession(sessionId, () => load()), [sessionId, load]);
 
+  // Warm the organizer's referral code so every share link built on this screen
+  // carries ?r= (see collectzService.ensureCollectzLinkReferralCode).
+  useEffect(() => { void ensureCollectzLinkReferralCode(); }, []);
+
   const shares = useMemo(
     () => (session ? computeShares(session, participants) : new Map<string, number | null>()),
     [session, participants],
@@ -186,8 +195,14 @@ const CollectzDetail: React.FC = () => {
     [session, participants],
   );
 
-  const actives = participants.filter((p) => p.slot === 'active');
-  const reserves = participants.filter((p) => p.slot === 'reserve');
+  // Join requests sit OUTSIDE the roster: requested rows wait for the
+  // organizer's call, declined rows linger only so the requester can see the
+  // outcome. Neither pays, holds a slot, or appears in the roster lists.
+  const joinRequests = participants.filter((p) => p.join_status === 'requested');
+  const declinedRequests = participants.filter((p) => p.join_status === 'rejected');
+  const members = participants.filter((p) => p.join_status === 'active');
+  const actives = members.filter((p) => p.slot === 'active');
+  const reserves = members.filter((p) => p.slot === 'reserve');
   // Teams are on only when the organizer set capacity BY TEAMS. Reserves never
   // hold a team slot, so grouping only ever covers the active roster.
   const teamCount = session?.team_count ?? 0;
@@ -533,6 +548,88 @@ const CollectzDetail: React.FC = () => {
     closeProof();
     run(() => rejectParticipant(p.id, note), t.collectz.rejectedToast);
   };
+
+  // ── Join requests (approval-gated sessions) ──
+  // Approve → roster member; decline → row stays as 'rejected' so the
+  // requester sees the outcome. Both pushes ride the DB trigger.
+  const approveRequest = (p: CollectzParticipant) =>
+    run(() => approveJoinRequest(p.id), fill(t.collectz.requestApprovedToast, { name: p.name }));
+
+  const declineRequest = (p: CollectzParticipant) =>
+    run(() => rejectJoinRequest(p.id), fill(t.collectz.requestDeclinedToast, { name: p.name }));
+
+  // Clearing a declined row frees the requester to ask again — no push (they
+  // were already told), just the confirm dialog.
+  const removeDeclined = (p: CollectzParticipant) => {
+    lightTap();
+    setConfirm({
+      title: fill(t.collectz.removeTitle, { name: p.name }),
+      message: t.collectz.requestDeclinedRemoveBody,
+      confirmLabel: t.common.delete,
+      destructive: true,
+      onConfirm: () => {
+        setConfirm(null);
+        run(() => removeParticipant(p.id), fill(t.collectz.removedToast, { name: p.name }));
+      },
+    });
+  };
+
+  const renderRequestRow = (p: CollectzParticipant) => (
+    <View key={p.id} style={[styles.rowCard, neu.raisedSoft]}>
+      <AvatarView
+        size={36}
+        uri={p.user_id ? profiles[p.user_id]?.avatar_uri : null}
+        presetId={p.user_id ? profiles[p.user_id]?.avatar_id : null}
+        name={p.name}
+      />
+      <View style={styles.rowMain}>
+        <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
+        <Text style={styles.rowShare}>{t.collectz.requestWantsJoin}</Text>
+      </View>
+      <Pressable
+        style={({ pressed }) => [styles.requestBtn, styles.requestApproveBtn, pressed && { opacity: 0.85 }]}
+        onPress={() => approveRequest(p)}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel={t.collectz.actionApprove}
+      >
+        <Feather name="check" size={15} color={C.onAccent} />
+      </Pressable>
+      <Pressable
+        style={({ pressed }) => [styles.requestBtn, pressed && { opacity: 0.85 }]}
+        onPress={() => declineRequest(p)}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel={t.collectz.actionReject}
+      >
+        <Feather name="x" size={15} color={C.overdue} />
+      </Pressable>
+    </View>
+  );
+
+  const renderDeclinedRow = (p: CollectzParticipant) => (
+    <View key={p.id} style={[styles.rowCard, neu.raisedSoft, styles.declinedRow]}>
+      <AvatarView
+        size={36}
+        uri={p.user_id ? profiles[p.user_id]?.avatar_uri : null}
+        presetId={p.user_id ? profiles[p.user_id]?.avatar_id : null}
+        name={p.name}
+      />
+      <View style={styles.rowMain}>
+        <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
+        <Text style={styles.rowShare}>{t.collectz.requestDeclinedTag}</Text>
+      </View>
+      <Pressable
+        onPress={() => removeDeclined(p)}
+        hitSlop={8}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel={t.collectz.actionRemove}
+      >
+        <Feather name="trash-2" size={16} color={C.overdue} />
+      </Pressable>
+    </View>
+  );
 
   // ── Request payment (per participant) ──
   const openRequest = (p: CollectzParticipant) => {
@@ -926,6 +1023,28 @@ const CollectzDetail: React.FC = () => {
           )}
         </View>
 
+        {/* Join requests — approval-gated sessions only. Approve puts the
+            requester on the roster; decline keeps the row so they see the
+            outcome (trash clears it and lets them ask again). */}
+        {joinRequests.length > 0 && (
+          <>
+            <View style={styles.attentionHeader}>
+              <View style={styles.attentionDot} />
+              <Text style={styles.attentionTitle}>{fill(t.collectz.requestsTitle, { n: joinRequests.length })}</Text>
+            </View>
+            <View style={[styles.rosterList, styles.attentionList]}>
+              {joinRequests.map(renderRequestRow)}
+              {declinedRequests.map(renderDeclinedRow)}
+            </View>
+          </>
+        )}
+        {joinRequests.length === 0 && declinedRequests.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>{fill(t.collectz.requestsDeclinedTitle, { n: declinedRequests.length })}</Text>
+            <View style={[styles.rosterList, styles.attentionList]}>{declinedRequests.map(renderDeclinedRow)}</View>
+          </>
+        )}
+
         {/* Needs attention — pending proofs pulled above the roster so the
             organizer reviews them first. Flat mode only: in teams mode the
             rows stay inside their team blocks (context beats triage there). */}
@@ -1042,9 +1161,11 @@ const CollectzDetail: React.FC = () => {
         <View style={styles.renameWrap}>
           <Text style={styles.renameTitle}>{t.collectz.teamRename}</Text>
           <TextInput
-            style={styles.renameInput}
+            style={[styles.renameInput, newstOutline(C, renameFocused)]}
             value={renameDraft}
             onChangeText={setRenameDraft}
+            onFocus={() => setRenameFocused(true)}
+            onBlur={() => setRenameFocused(false)}
             placeholder={renameTeamIdx != null ? fill(t.collectz.teamN, { n: renameTeamIdx }) : ''}
             placeholderTextColor={withAlpha(C.textMuted, 0.55)}
             maxLength={40}
@@ -1358,7 +1479,7 @@ const CollectzDetail: React.FC = () => {
       >
         {confirm?.summary && (() => {
           // Who has actually paid, before settling closes the session.
-          const active = participants.filter((p) => p.slot === 'active');
+          const active = members.filter((p) => p.slot === 'active');
           const paid = active.filter((p) => p.status === 'confirmed');
           const owing = active.filter((p) => p.status !== 'confirmed');
           // Pending = proof uploaded but unreviewed. Settling parks those people
@@ -1583,6 +1704,18 @@ const makeStyles = (C: typeof CALM) =>
     attentionDot: { width: 7, height: 7, borderRadius: RADIUS.full, backgroundColor: C.gold },
     attentionTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.gold },
     attentionList: { marginBottom: SPACING.lg },
+    // Join-request rows — round approve/decline buttons on the right (same
+    // 36px circle idiom as the participant action modal's chips).
+    requestBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: withAlpha(C.textPrimary, 0.06),
+    },
+    requestApproveBtn: { backgroundColor: C.accent },
+    declinedRow: { opacity: 0.6 },
     emptyRoster: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, lineHeight: 19 },
     // Roster rows are standalone neu cards (spaced, not divided) — Onyx row standard.
     rosterList: { gap: SPACING.sm },
@@ -1652,13 +1785,11 @@ const makeStyles = (C: typeof CALM) =>
     teamChipFull: { opacity: 0.4 },
     teamChipText: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium },
     teamChipTextActive: { color: C.onAccent, fontWeight: TYPOGRAPHY.weight.bold },
-    renameWrap: { gap: SPACING.md },
+    renameWrap: { gap: SPACING.md, padding: SPACING.xl },
     renameTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, textAlign: 'center' },
+    // Layout + type only — the ONE input border comes from newstOutline in the JSX.
     renameInput: {
       minHeight: 46,
-      borderRadius: RADIUS.md,
-      borderWidth: 1,
-      borderColor: C.inputBorder,
       paddingHorizontal: SPACING.md,
       color: C.textPrimary,
       fontSize: TYPOGRAPHY.size.sm,

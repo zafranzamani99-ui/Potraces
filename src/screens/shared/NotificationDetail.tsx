@@ -69,7 +69,10 @@ const NotificationDetail: React.FC = () => {
       (navigation as any).navigate('CollectzHome');
       return;
     }
-    const organizer = collectzType === 'collectz_pending' || collectzType === 'collectz_team_change';
+    const organizer =
+      collectzType === 'collectz_pending' ||
+      collectzType === 'collectz_team_change' ||
+      collectzType === 'collectz_join_requested';
     (navigation as any).navigate(organizer ? 'CollectzDetail' : 'CollectzJoin', { sessionId: collectzSessionId });
   };
 

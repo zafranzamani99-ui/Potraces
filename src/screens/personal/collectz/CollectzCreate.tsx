@@ -144,6 +144,9 @@ const CollectzCreate: React.FC = () => {
   const [capMode, setCapMode] = useState<'none' | 'total' | 'teams'>('none');
   const [maxPlayers, setMaxPlayers] = useState(10);
   const [teamCount, setTeamCount] = useState(2);
+  // Join approval — unknown self-adds queue for the organizer's OK. Pre-added
+  // names always claim instantly; turning this on never touches the roster.
+  const [joinApproval, setJoinApproval] = useState(false);
   // Editable team labels, index-aligned with teamCount. '' = fall back to "Team 1".
   const [teamNames, setTeamNames] = useState<string[]>([]);
   const [teamSize, setTeamSize] = useState(5);
@@ -268,6 +271,7 @@ const CollectzCreate: React.FC = () => {
         } else {
           setCapMode('none');
         }
+        setJoinApproval(s.join_requires_approval ?? false);
         const preset = presetClubIcon(s.image_path);
         setImagePreset(preset ? preset.id : null);
         setIconColor(presetClubColor(s.image_path)?.slice(1) ?? null);
@@ -278,7 +282,10 @@ const CollectzCreate: React.FC = () => {
           linkedUserIds.current = map;
         }
         setRoster(
-          participants.map((p) => ({
+          // Join requests (pending/declined) are NOT roster rows — they're
+          // managed from the detail screen's Requests section. Loading them
+          // here would rewrite or duplicate them on save.
+          participants.filter((p) => p.join_status === 'active').map((p) => ({
             key: nextKey(),
             id: isEdit ? p.id : undefined,
             name: p.name,
@@ -335,6 +342,7 @@ const CollectzCreate: React.FC = () => {
     setTeamCount(d.teamCount ?? 2);
     setTeamNames(Array.isArray(d.teamNames) ? d.teamNames : []);
     setTeamSize(d.teamSize ?? 5);
+    setJoinApproval(d.joinApproval ?? false);
     setQrPayload(d.qrPayload ?? null);
     setQrLabel(d.qrLabel ?? null);
     setQrImagePath(d.qrImagePath ?? null);
@@ -370,7 +378,7 @@ const CollectzCreate: React.FC = () => {
     shareAmount, totalAmount,
     payBy: payBy ? payBy.toISOString() : null,
     rules, roster, capMode, maxPlayers, teamCount, teamNames, teamSize,
-    skillLevel, ageReq, genderReq, bookingStatus,
+    skillLevel, ageReq, genderReq, bookingStatus, joinApproval,
     qrPayload, qrLabel, qrImagePath, currency, imagePreset, iconColor, oldImagePath,
     removedIds,
   });
@@ -419,7 +427,7 @@ const CollectzCreate: React.FC = () => {
     }, 600);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefilling, draftKey, title, category, eventAt, eventEnd, venue, mapsUrl, socialHandles, groupUrl, details, scheme, shareAmount, totalAmount, payBy, rules, roster, capMode, maxPlayers, teamCount, teamNames, teamSize, skillLevel, ageReq, genderReq, bookingStatus, qrPayload, qrLabel, qrImagePath, currency, imagePreset, iconColor, oldImagePath, removedIds]);
+  }, [prefilling, draftKey, title, category, eventAt, eventEnd, venue, mapsUrl, socialHandles, groupUrl, details, scheme, shareAmount, totalAmount, payBy, rules, roster, capMode, maxPlayers, teamCount, teamNames, teamSize, skillLevel, ageReq, genderReq, bookingStatus, joinApproval, qrPayload, qrLabel, qrImagePath, currency, imagePreset, iconColor, oldImagePath, removedIds]);
 
   const catLabels: Record<CategoryKey, string> = {
     sport: t.collectz.catSport,
@@ -880,6 +888,7 @@ const CollectzCreate: React.FC = () => {
           team_count: capMode === 'teams' ? teamCount : null,
           team_size: capMode === 'teams' ? teamSize : null,
           team_names: teamNamesPayload(),
+          join_requires_approval: joinApproval,
           image_path: null as string | null,
           qr_image_path: null as string | null,
         };
@@ -960,6 +969,7 @@ const CollectzCreate: React.FC = () => {
         team_count: capMode === 'teams' ? teamCount : null,
         team_size: capMode === 'teams' ? teamSize : null,
         team_names: teamNamesPayload(),
+        join_requires_approval: joinApproval,
         image_path: imagePreset ? `${CLUB_PRESET_PREFIX}${imagePreset}${iconColor ? `:${iconColor}` : ''}` : oldImagePath,
         qr_image_path: qrImagePath,
       });
@@ -1015,7 +1025,7 @@ const CollectzCreate: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [saving, isEdit, editSessionId, title, category, eventAt, eventEnd, venue, mapsUrl, socialHandles, groupUrl, details, rules, scheme, totalAmount, shareAmount, currency, payBy, qrPayload, qrImageUri, qrImagePath, imagePreset, imageUpload, oldImagePath, removedIds, roster, notifyChanges, capacityMax, capMode, teamCount, teamSize, teamNames, skillLevel, ageReq, genderReq, bookingStatus, navigation, showToast, t]);
+  }, [saving, isEdit, editSessionId, title, category, eventAt, eventEnd, venue, mapsUrl, socialHandles, groupUrl, details, rules, scheme, totalAmount, shareAmount, currency, payBy, qrPayload, qrImageUri, qrImagePath, imagePreset, imageUpload, oldImagePath, removedIds, roster, notifyChanges, capacityMax, capMode, teamCount, teamSize, teamNames, joinApproval, skillLevel, ageReq, genderReq, bookingStatus, navigation, showToast, t]);
 
   const handleSave = () => {
     if (!title.trim()) {
@@ -1296,6 +1306,23 @@ const CollectzCreate: React.FC = () => {
                 : fill(t.collectz.capacityCount, { n: activeFilled, max: capacityMax })}
             </Text>
           )}
+        </View>
+
+        {/* Join approval — self-adds queue for the organizer's OK. Off by
+            default; names the organizer adds below always join instantly. */}
+        <View style={[styles.gCard, neuF.raisedSoft]}>
+          <Pressable
+            style={styles.cardRow}
+            onPress={() => { selectionChanged(); setJoinApproval((v) => !v); }}
+            accessibilityRole="button"
+            accessibilityState={{ checked: joinApproval }}
+          >
+            <Text style={styles.rowLabel}>{t.collectz.joinApproval}</Text>
+            <View style={styles.rowValueWrap}>
+              <Feather name={joinApproval ? 'check-square' : 'square'} size={16} color={joinApproval ? C.accent : C.textMuted} />
+            </View>
+          </Pressable>
+          <Text style={styles.cardHint}>{t.collectz.joinApprovalHint}</Text>
         </View>
 
         {/* Roster editor — names stay inline; everything else moved to sheets */}

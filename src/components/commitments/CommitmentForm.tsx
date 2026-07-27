@@ -1364,6 +1364,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, initialValues,
 
               <NeuButton
                 label="done"
+                style={{ marginTop: SPACING.xl }}
                 onPress={() => {
                   const rawTotal = durationUnit === 'years'
                     ? (parseInt(durationValue) || 0) * 12

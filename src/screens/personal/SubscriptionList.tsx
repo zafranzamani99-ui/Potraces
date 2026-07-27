@@ -2923,6 +2923,7 @@ const SubscriptionList: React.FC = () => {
       <EchoInlineChat
         visible={echoSheetVisible}
         onClose={() => setEchoSheetVisible(false)}
+        threadKey="subscriptions"
         insightTitle={smartCommitmentInsight.title}
         insightSubtitle={smartCommitmentInsight.subtitle}
         chips={greetingChips}

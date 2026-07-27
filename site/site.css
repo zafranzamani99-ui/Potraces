@@ -461,6 +461,12 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .badge-link{display:inline-block;border-radius:var(--radius-md);transition:transform .4s var(--spring);line-height:0;padding:0;box-shadow:var(--shadow-sm)}
 .badge-link:hover{transform:translateY(-3px)}
 .badge-link svg{height:54px;width:auto;display:block;border-radius:var(--radius-md)}
+/* Phone: share one row — never stack the two store badges. */
+@media (max-width:560px){
+  .badges{flex-wrap:nowrap}
+  .badge-link{flex:1}
+  .badge-link svg{height:auto;width:100%}
+}
 
 /* ═══════════════ FLASH TOAST — quiet ink pill ═══════════════ */
 .flash{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);z-index:var(--z-skip);background:var(--ink);color:var(--on-ink);font-size:.88rem;font-weight:var(--fw-medium);padding:12px 24px;border-radius:var(--radius-pill);box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:opacity var(--dur-base) var(--ease-out),transform .45s var(--spring-soft)}

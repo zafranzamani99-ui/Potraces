@@ -4,7 +4,6 @@ import {
   Text,
   Image,
   StyleSheet,
-  RefreshControl,
   TouchableOpacity,
   Pressable,
   Modal,
@@ -13,13 +12,14 @@ import {
   Keyboard,
   Dimensions,
   StatusBar,
-  InteractionManager,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-// RN's ScrollView is required for the OUTER pull-to-refresh: RNGH's ScrollView sets
-// disallowInterruption=true, which blocks Android's SwipeRefreshLayout so onRefresh
-// never fires. The horizontal card rows below stay on RNGH's ScrollView.
-import { ScrollView as RNScrollView } from 'react-native';
+// The outer scroller is a FlatList (single row), NOT a ScrollView: on this
+// Android/Fabric build the ScrollView refresh path never shows the indicator
+// (RNGH blocks it — disallowInterruption — and native ScrollView's attach is
+// broken too), while VirtualizedList's path works (proven by TransactionsList).
+// Inner horizontal rows stay on RNGH's ScrollView.
+import { FlatList } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import {
@@ -41,10 +41,12 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import GlassModeToggle from '../../components/common/GlassModeToggle';
+import PullRefresh from '../../components/common/PullRefresh';
 import Avatar from '../../components/common/Avatar';
 import ProfileCardModal from '../../components/common/ProfileCardModal';
 import QuickActions from '../../components/common/QuickActions';
 import { listFailedReceipts } from '../../services/receiptQueue';
+import { syncPersonal } from '../../services/personalSync';
 import NeuIconButton from '../../components/common/NeuIconButton';
 import { useNeu } from '../../components/common/neu';
 import TransactionItem from '../../components/common/TransactionItem';
@@ -62,6 +64,7 @@ import { useBusinessStore } from '../../store/businessStore';
 import { usePlaybookStore } from '../../store/playbookStore';
 import { useLearningStore } from '../../store/learningStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Sharing from 'expo-sharing';
 import { useToast } from '../../context/ToastContext';
 import { Transaction, CategoryOption } from '../../types';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -185,6 +188,9 @@ const WeekTicks: React.FC<{ flags: boolean[]; color: string; C: typeof CALM }> =
   </View>
 );
 
+// Single-row FlatList data for the outer scroller (see the import comment).
+const DASH_PAGE = ['page'];
+
 const PersonalDashboard: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
@@ -216,7 +222,7 @@ const PersonalDashboard: React.FC = () => {
   const isFocused = useIsFocused(); // pauses the strip's ambient ECG on other tabs
   // Tap the already-active Home tab → scroll back to top (first tap from
   // another tab just navigates here, scroll position preserved).
-  const scrollRef = React.useRef<InstanceType<typeof RNScrollView>>(null);
+  const scrollRef = React.useRef<FlatList<string>>(null);
   useScrollToTop(scrollRef);
   const unreadCount = useNotificationStore((s) => s.items.filter((n) => !n.read).length);
 
@@ -246,6 +252,19 @@ const PersonalDashboard: React.FC = () => {
   // QR modal
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [qrViewIndex, setQrViewIndex] = useState(0);
+
+  // Share the previewed QR image via the native share sheet.
+  const handleShareQr = useCallback(async () => {
+    const qr = paymentQrs[qrViewIndex];
+    if (!qr) return;
+    lightTap();
+    try {
+      await Sharing.shareAsync(qr.uri, {
+        mimeType: qr.uri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg',
+        dialogTitle: qr.label,
+      });
+    } catch { /* share cancelled or unavailable */ }
+  }, [paymentQrs, qrViewIndex]);
 
   // Profile card (tap greeting avatar → view/change avatar + name)
   const [profileVisible, setProfileVisible] = useState(false);
@@ -540,9 +559,9 @@ const PersonalDashboard: React.FC = () => {
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    // Real refresh: full personal cloud sync (guards internally — no-ops when
+    // signed out or backup disabled). Spinner holds for the actual sync duration.
+    syncPersonal().finally(() => setRefreshing(false));
   }, []);
 
   // Failed-scan count for the Receipts tile badge. Loaded from the queue (async)
@@ -797,10 +816,17 @@ const PersonalDashboard: React.FC = () => {
     [navigation]
   );
 
+  // Loader is data-driven: it exits as soon as the persisted store has
+  // hydrated, with a hard cap so it can never stick.
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => setReady(true));
-    return () => task.cancel();
+    if (usePersonalStore.persist.hasHydrated()) {
+      setReady(true);
+      return;
+    }
+    const unsub = usePersonalStore.persist.onFinishHydration(() => setReady(true));
+    const cap = setTimeout(() => setReady(true), 1500);
+    return () => { unsub(); clearTimeout(cap); };
   }, []);
 
   if (!ready) {
@@ -815,7 +841,8 @@ const PersonalDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <RNScrollView
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+      <FlatList
         ref={scrollRef}
         style={styles.scrollView}
         contentContainerStyle={[
@@ -826,16 +853,11 @@ const PersonalDashboard: React.FC = () => {
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
         scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={C.accent}
-            colors={[C.accent]}
-            progressViewOffset={insets.top + SPACING.md}
-          />
-        }
-      >
+        removeClippedSubviews={false}
+        data={DASH_PAGE}
+        keyExtractor={() => 'page'}
+        renderItem={() => (
+          <>
         <View style={styles.modeRow}>
           <View style={styles.modeSide} />
           <GlassModeToggle />
@@ -1297,7 +1319,10 @@ const PersonalDashboard: React.FC = () => {
             )}
           </View>
         </CollapsibleSection>
-      </RNScrollView>
+          </>
+        )}
+      />
+      </PullRefresh>
 
       {/* Transaction Edit Modal */}
       {editModalVisible && (
@@ -1482,17 +1507,6 @@ const PersonalDashboard: React.FC = () => {
         >
           <View style={styles.qrModalOverlay}>
             <StatusBar barStyle="light-content" />
-            {/* Close button */}
-            <TouchableOpacity
-              style={styles.qrCloseBtn}
-              onPress={() => setQrModalVisible(false)}
-              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-              accessibilityRole="button"
-              accessibilityLabel={t.common.close}
-            >
-              <Feather name="x" size={28} color="#fff" />
-            </TouchableOpacity>
-
             {/* QR label */}
             {paymentQrs[qrViewIndex] && (
               <Text style={styles.qrLabel}>{paymentQrs[qrViewIndex].label}</Text>
@@ -1529,6 +1543,27 @@ const PersonalDashboard: React.FC = () => {
                 ))}
               </View>
             )}
+
+            {/* Bottom-center actions — share + close */}
+            <View style={[styles.qrActionsRow, { bottom: insets.bottom + SPACING['2xl'] }]}>
+              <TouchableOpacity
+                style={styles.qrActionBtn}
+                onPress={handleShareQr}
+                accessibilityRole="button"
+                accessibilityLabel={t.settings.qrShare}
+              >
+                <Feather name="share-2" size={22} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.qrActionBtn}
+                onPress={() => setQrModalVisible(false)}
+                hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.common.close}
+              >
+                <Feather name="x" size={26} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
           <ModalToastHost />
         </Modal>
@@ -1845,17 +1880,22 @@ const makeStyles = (C: typeof CALM) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    qrCloseBtn: {
+    qrActionsRow: {
       position: 'absolute',
-      top: 72,
-      right: SPACING.xl,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: SPACING.xl,
+      zIndex: 20,
+    },
+    qrActionBtn: {
       width: 48,
       height: 48,
       borderRadius: 24,
       backgroundColor: 'rgba(255,255,255,0.2)',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 20,
     },
     qrLabel: {
       position: 'absolute',
@@ -1870,7 +1910,7 @@ const makeStyles = (C: typeof CALM) =>
     },
     qrTabs: {
       position: 'absolute',
-      bottom: 60,
+      bottom: 116,
       left: 0,
       right: 0,
       flexDirection: 'row',

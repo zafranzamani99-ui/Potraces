@@ -1,6 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform, Appearance, NativeModules, NativeEventEmitter } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform, Appearance, NativeModules, NativeEventEmitter, Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -39,6 +41,8 @@ import ErrorBoundary from './src/components/common/ErrorBoundary';
 import ForcedUpdateGate from './src/components/common/ForcedUpdateGate';
 import PersonalSyncManager from './src/components/common/PersonalSyncManager';
 import { initBilling } from './src/services/billing';
+import { refreshEntitlement, claimStagedReferral, stagePendingReferral } from './src/services/entitlements';
+import { usePremiumStore } from './src/store/premiumStore';
 import TapToPayProvider from './src/components/common/TapToPayProvider';
 import { checkStorageIntegrity, clearCorruptedStores } from './src/services/storageIntegrity';
 import { usePersonalStore } from './src/store/personalStore';
@@ -59,6 +63,8 @@ import { maybeCheckStorage } from './src/utils/storageMonitor';
 import { configureGoogleSignIn } from './src/services/googleAuth';
 import { checkForcedUpdate, UpdateStatus } from './src/services/appConfig';
 import { useNotificationStore, BroadcastRow } from './src/store/notificationStore';
+import { flushInlineThreadsToHistory } from './src/store/echoInlineStore';
+import QuickLogPromoModal from './src/components/common/QuickLogPromoModal';
 import { en } from './src/i18n/en';
 import { ms } from './src/i18n/ms';
 import * as Sentry from '@sentry/react-native';
@@ -100,10 +106,46 @@ async function refreshBroadcasts() {
   }
 }
 
+// Clipboard invite token (copied from the invite landing / collectz pages):
+// POTRACES-REF:{CODE} or POTRACES-REF:{CODE}:collectz:{SHARE}. Read ONCE per
+// launch, and only ever STAGED after the user confirms — never a silent claim.
+// The seen-key stops the same token re-prompting on every launch.
+const CLIPBOARD_REF_SEEN_KEY = 'potraces.clipboardRefSeen';
+async function checkClipboardReferral() {
+  try {
+    const text = (await Clipboard.getStringAsync()).trim();
+    const m = text.match(/^POTRACES-REF:([A-Za-z0-9]+)(?::collectz:([A-Za-z0-9]+))?$/);
+    if (!m) return;
+    const [, code, share] = m;
+    if ((await AsyncStorage.getItem(CLIPBOARD_REF_SEEN_KEY)) === m[0]) return;
+    await AsyncStorage.setItem(CLIPBOARD_REF_SEEN_KEY, m[0]);
+    const tr = useSettingsStore.getState().language === 'ms' ? ms : en;
+    Alert.alert(
+      tr.rewards.clipboardTitle,
+      tr.rewards.clipboardBody.replace('{code}', code),
+      [
+        { text: tr.common.cancel, style: 'cancel' },
+        {
+          text: tr.rewards.clipboardYes,
+          onPress: () => {
+            void stagePendingReferral({ code, source: share ? 'collectz' : 'link', session: share ?? null })
+              .then(() => claimStagedReferral());
+          },
+        },
+      ],
+    );
+  } catch {
+    // best-effort
+  }
+}
+
 function App() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [update, setUpdate] = React.useState<UpdateStatus | null>(null);
+  // Quick-log promo — one-shot, fires after the 3rd manual log (when the user
+  // has felt the friction quick-logging removes). Skipped if already set up.
+  const [promoVisible, setPromoVisible] = React.useState(false);
   const mode = useAppStore((s) => s.mode);
   const isDark = useIsDark();
   const themePreference = useSettingsStore((s) => s.themePreference);
@@ -197,7 +239,18 @@ function App() {
         useAppStore.getState().setMode('business');
       }
 
+      // Server entitlement (premium grants/rewards) — one call per launch, after
+      // the mode pick so it reads the ACTIVE account. Fail-soft.
+      refreshEntitlement().catch(() => {});
+      // A referral staged from a deep link / clipboard / onboarding is claimed once
+      // there's a session (no-op while signed out — it stays staged).
+      claimStagedReferral().catch(() => {});
+
       if (!cancelled) setIsLoading(false);
+
+      // Clipboard invite token — read once per launch, user-confirmed before
+      // staging. Delayed so the prompt doesn't fight first paint / biometric gate.
+      setTimeout(() => { void checkClipboardReferral(); }, 1500);
 
       // Async storage size check — once per day, after a short delay so it
       // doesn't compete with startup rendering. Warns if approaching 6MB limit.
@@ -342,8 +395,11 @@ function App() {
           .then(() => pullOrderLinkOrders())
           .catch(() => {})
           .finally(() => useSellerStore.getState().setSyncing(false));
+        // Server entitlement for the account that just signed in. Fail-soft.
+        refreshEntitlement().catch(() => {});
       } else if (event === 'SIGNED_OUT') {
         auth.resetBusiness();
+        usePremiumStore.getState().resetServerEntitlement();
         clearProfileCache();
         // Clear business-mode local data so a forced/expired sign-out (not just
         // the explicit Settings one) can't leave the previous seller's data for
@@ -364,8 +420,12 @@ function App() {
         auth.setPersonalAuth({ isAuthenticated: true, userId: session.user.id });
         // Pull/push personal data immediately, only if the user opted into backup.
         if (useSettingsStore.getState().personalSyncEnabled) syncPersonal().catch(() => {});
+        // Server entitlement + any referral staged before this account existed.
+        refreshEntitlement().catch(() => {});
+        claimStagedReferral().catch(() => {});
       } else if (event === 'SIGNED_OUT') {
         auth.resetPersonal();
+        usePremiumStore.getState().resetServerEntitlement();
         // Personal sync can't run without a session.
         useSettingsStore.getState().setPersonalSyncEnabled(false);
       }
@@ -410,6 +470,8 @@ function App() {
         supabasePersonal.auth.startAutoRefresh();
         // Spending alerts — daily cadence, no-op if disabled or recent.
         maybeRunSpendingAlertCheck().catch(() => {});
+        // Server entitlement refresh on foreground (same fail-soft call as launch).
+        refreshEntitlement().catch(() => {});
         // Retry any queued receipt scans.
         withBackoff('receiptDrain', runReceiptDrain).catch(() => {});
 
@@ -426,9 +488,31 @@ function App() {
         // Backgrounded / inactive: stop the refresh timers (Supabase RN guidance).
         supabaseBusiness.auth.stopAutoRefresh();
         supabasePersonal.auth.stopAutoRefresh();
+        // Archive any open Ask-Echo (inline) threads into the main Echo history —
+        // the last reliable signal before a kill; threads are in-memory otherwise.
+        flushInlineThreadsToHistory();
       }
     });
     return () => sub.remove();
+  }, []);
+
+  // Quick-log promo trigger — after the 3rd manual transaction, one time ever.
+  const promoTxnCount = usePersonalStore((s) => s.transactions.length);
+  const promoSeen = useSettingsStore((s) => s.quickLogPromoSeen);
+  const promoConfigured = useSettingsStore((s) => s.quickLogConfigured);
+  React.useEffect(() => {
+    if (promoVisible || promoSeen || promoConfigured) return;
+    if (promoTxnCount >= 3) {
+      setPromoVisible(true);
+      useSettingsStore.getState().setQuickLogPromoSeen(true);
+    }
+  }, [promoTxnCount, promoVisible, promoSeen, promoConfigured]);
+
+  const handlePromoSetUp = React.useCallback(() => {
+    setPromoVisible(false);
+    if (navigationRef.isReady()) {
+      (navigationRef as any).navigate('QuickLogSetup');
+    }
   }, []);
 
   // Drain any entries the Back Tap Shortcut logged while the app was closed.
@@ -503,6 +587,9 @@ function App() {
   //   potraces://quick-add                            → legacy alias (open, expense)
   //   potraces://collectz/{CODE}                      → open the Collectz join screen
   //   https://jejakbaki.my/collectz/{CODE}            → same (universal link; also ?c={CODE})
+  //   .../collectz/{CODE}?r={REFCODE}                 → join + stage the referral (source=collectz)
+  //   https://jejakbaki.my/r/{CODE} / potraces://r/{CODE}
+  //                                                   → stage an invite code, claim after sign-in
   // A Shortcut collects amount/category/date with native prompts, then hands the
   // values here. With an amount we log straight away (the Shortcut already
   // confirmed the details) and show an Undo toast; without one we just open the
@@ -538,6 +625,13 @@ function App() {
       if (head === 'collectz' || isWebCollectz) {
         const code = (segs[isWebCollectz ? 2 : 1] || params.c || '').trim();
         if (!code) return;
+        // Invite code carried on a Collectz link (?r=) — stage it with the session
+        // code so the organizer's referral is attributed when the joiner claims.
+        const ref = (params.r || '').trim();
+        if (ref) {
+          void stagePendingReferral({ code: ref, source: 'collectz', session: code })
+            .then(() => claimStagedReferral());
+        }
         if (useAppStore.getState().mode !== 'personal') {
           useAppStore.getState().setMode('personal');
         }
@@ -553,6 +647,20 @@ function App() {
           }
         };
         setTimeout(go, 300);
+        return;
+      }
+
+      // Invite link (custom scheme or jejakbaki.my universal link) — stage the
+      // code; claimStagedReferral claims it now if signed in, else after sign-in.
+      const isWebInvite =
+        (head === 'jejakbaki.my' || head === 'www.jejakbaki.my') &&
+        segs[1]?.toLowerCase() === 'r';
+      if (head === 'r' || isWebInvite) {
+        const code = (segs[isWebInvite ? 2 : 1] || '').trim();
+        if (code) {
+          void stagePendingReferral({ code, source: 'link', session: null })
+            .then(() => claimStagedReferral());
+        }
         return;
       }
 
@@ -847,7 +955,14 @@ function App() {
                     <BiometricGate>
                       <PersonalSyncManager />
                       <TapToPayProvider>
-                        <RootNavigator />
+                        <>
+                          <RootNavigator />
+                          <QuickLogPromoModal
+                            visible={promoVisible}
+                            onClose={() => setPromoVisible(false)}
+                            onSetUp={handlePromoSetUp}
+                          />
+                        </>
                       </TapToPayProvider>
                     </BiometricGate>
                   </ToastProvider>

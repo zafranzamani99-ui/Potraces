@@ -56,6 +56,25 @@ export async function signOutGoogle() {
 }
 
 /**
+ * Drive-only connect — for Apple/phone/email accounts. Runs the NATIVE Google
+ * sign-in purely to obtain the Drive access token: NO Supabase call, so the
+ * app account (provider, data, session) is untouched. The native SDK keeps its
+ * own session, so afterwards getGoogleAccessToken() succeeds and "Save to
+ * Drive" works for non-Google accounts too.
+ */
+export async function connectGoogleDrive(): Promise<void> {
+  if (!GoogleSignin) throw new Error('Google Sign-In not available (dev build required)');
+  if (!WEB_CLIENT_ID) throw new Error('Google Sign-In is not configured (missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID).');
+  await GoogleSignin.hasPlayServices();
+  await GoogleSignin.signIn();
+}
+
+/** True when a native Google session exists — i.e. Drive calls will work. */
+export async function hasGoogleDriveAccess(): Promise<boolean> {
+  return (await getGoogleAccessToken()) != null;
+}
+
+/**
  * Access token from the last native Google sign-in, for calling Google APIs
  * (Drive upload). Null when the native module is missing, nobody is signed in
  * natively, or token retrieval fails for any reason.

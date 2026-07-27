@@ -2594,7 +2594,7 @@ const MoneyChat: React.FC = () => {
       {/* Conversation history modal */}
       <Modal
         visible={showHistory}
-        animationType="fade"
+        animationType="none"
         transparent
         onRequestClose={() => setShowHistory(false)}
       >
@@ -2617,7 +2617,8 @@ const MoneyChat: React.FC = () => {
               <Text style={styles.historyEmpty}>{t.chat.noPastConversations}</Text>
             ) : (
               <FlatList
-                style={styles.historyList}
+                style={[styles.historyList, styles.historyListBleed]}
+                contentContainerStyle={styles.historyListContent}
                 showsVerticalScrollIndicator={false}
                 data={conversations}
                 keyExtractor={(item) => item.id}
@@ -3626,7 +3627,9 @@ const makeStyles = (
     backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    ...SHADOWS.lg,
+    // Established modal-card treatment (same as the QR label/action modals) —
+    // neu separation instead of a shadow blob.
+    ...neu.raisedModal,
   },
   historyHeader: {
     flexDirection: 'row',
@@ -3641,6 +3644,17 @@ const makeStyles = (
   },
   historyList: {
     maxHeight: 400,
+  },
+  // Neu-seam fix (docs/neu-vertical-error.md): the FlatList clips the rows'
+  // raisedSoft shadows into a hard vertical line at its bounds. Bleed the
+  // viewport and pad the CONTENT so shadows fade into slack before the clip.
+  historyListBleed: {
+    marginHorizontal: -SPACING.lg,
+    marginVertical: -12,
+  },
+  historyListContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 12,
   },
   historyEmpty: {
     fontSize: TYPOGRAPHY.size.sm,

@@ -34,6 +34,7 @@ import { useNeu } from '../../../components/common/neu';
 import FloatingModal from '../../../components/common/FloatingModal';
 import PageScrollView from '../../../components/common/PageScrollView';
 import NeuButton from '../../../components/common/NeuButton';
+import { newstOutline } from '../../../components/business/NewstInput';
 import { supabasePersonal } from '../../../services/supabase';
 import { embedAmount } from '../../../services/emvQr';
 import {
@@ -87,6 +88,7 @@ const CollectzJoin: React.FC = () => {
   const [busy, setBusy] = useState(false);
   // Team rename: which team is being renamed, plus the draft label.
   const [renameTeamIdx, setRenameTeamIdx] = useState<number | null>(null);
+  const [renameFocused, setRenameFocused] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [selfName, setSelfName] = useState('');
   // Teams sessions: joining requires picking a team up front (claim + add-self
@@ -340,12 +342,19 @@ const CollectzJoin: React.FC = () => {
 
   const addMyself = async () => {
     const name = selfName.trim();
-    if (!code || !name || busy || !teamGate()) return;
+    if (!code || !name || busy) return;
+    // Teams gate: adding yourself into a TEAMS session needs a team pick —
+    // unless the join queues for approval anyway (the team is picked from the
+    // join page once the organizer approves).
+    if (!session?.join_requires_approval && !teamGate()) return;
     setBusy(true);
     try {
-      await addSelf(code, name, joinTeamIdx ?? undefined);
+      const { requested } = await addSelf(code, name, joinTeamIdx ?? undefined);
       setSelfName('');
       successNotification();
+      // Queued for approval — say so, or the silent roster-less state reads
+      // like the join failed.
+      if (requested) showToast(t.collectz.requestSentToast, 'success');
       await load();
     } catch (err) {
       if (isCollectzAuthError(err)) {
@@ -557,6 +566,8 @@ const CollectzJoin: React.FC = () => {
   // "due later today" reads 'due today', never '1d left'.
   const payByChipLabel = (() => {
     if (!session.pay_by || !isOpen) return null;
+    // A queued/declined join owes nothing — no deadline nudge until they're in.
+    if (my && my.join_status !== 'active') return null;
     if (my && my.status !== 'unpaid' && my.status !== 'rejected') return null;
     const due = new Date(session.pay_by);
     if (isNaN(due.getTime())) return null;
@@ -826,6 +837,11 @@ const CollectzJoin: React.FC = () => {
               />
             </View>
           )}
+          {/* Approval-gated: self-adds queue for the organizer, so say it up
+              front instead of letting the silent queue surprise people. */}
+          {!isFull && !!session?.join_requires_approval && (
+            <Text style={styles.myHint}>{t.collectz.joinApprovalNote}</Text>
+          )}
         </View>
       )}
 
@@ -834,10 +850,31 @@ const CollectzJoin: React.FC = () => {
           <View style={styles.joinedRow}>
             <Feather name="user-check" size={14} color={C.accent} />
             <Text style={styles.joinedText}>{fill(t.collectz.joinedAs, { name: my.name })}</Text>
-            <StatusChip status={my.status} label={statusLabel(my.status)} />
+            {my.join_status === 'requested' ? (
+              <StatusChip status="pending" label={t.collectz.statusRequested} />
+            ) : my.join_status === 'rejected' ? (
+              <StatusChip status="rejected" label={statusLabel('rejected')} />
+            ) : (
+              <StatusChip status={my.status} label={statusLabel(my.status)} />
+            )}
           </View>
 
-          {my.slot === 'reserve' ? (
+          {my.join_status === 'requested' ? (
+            // Self-add on an approval-gated session — queued until the
+            // organizer approves (realtime refetch flips this automatically).
+            <View style={styles.stateBox}>
+              <ActivityIndicator size="small" color={C.gold} />
+              <Text style={styles.stateTitle}>{t.collectz.requestedTitle}</Text>
+              <Text style={styles.myHint}>{t.collectz.requestedBody}</Text>
+            </View>
+          ) : my.join_status === 'rejected' ? (
+            // Declined — the row is kept precisely so the requester sees this.
+            <View style={styles.stateBox}>
+              <Feather name="x-circle" size={28} color={C.overdue} />
+              <Text style={styles.stateTitle}>{t.collectz.joinRequestDeclinedTitle}</Text>
+              <Text style={styles.myHint}>{t.collectz.joinRequestDeclinedBody}</Text>
+            </View>
+          ) : my.slot === 'reserve' ? (
             <Text style={styles.myHint}>{t.collectz.reserveNote}</Text>
           ) : (
             <>
@@ -995,8 +1032,9 @@ const CollectzJoin: React.FC = () => {
                   <Text style={styles.teamHeaderCount}>
                     {teamSize != null ? `${g.members.length}/${teamSize}` : String(g.members.length)}
                   </Text>
-                  {/* Any roster member may rename the team — it's just a label. */}
-                  {!!my && (
+                  {/* Any roster member may rename the team — it's just a label.
+                      (A queued join request isn't a member yet.) */}
+                  {!!my && my.join_status === 'active' && (
                     <Pressable
                       onPress={() => { lightTap(); setRenameDraft(teamNames?.[g.idx - 1] ?? ''); setRenameTeamIdx(g.idx); }}
                       hitSlop={8}
@@ -1007,8 +1045,9 @@ const CollectzJoin: React.FC = () => {
                     </Pressable>
                   )}
                   {/* Move myself — only into a team that still has room, and only
-                      if I'm actually playing (reserves hold no team slot). */}
-                  {!!my && my.slot === 'active' && isOpen && !here && (
+                      if I'm actually playing (reserves hold no team slot, and a
+                      queued join request isn't on the roster yet). */}
+                  {!!my && my.join_status === 'active' && my.slot === 'active' && isOpen && !here && (
                     <Pressable
                       disabled={full || busy}
                       style={[styles.teamJoinChip, neu.raised, (full || busy) && { opacity: 0.4 }]}
@@ -1043,7 +1082,7 @@ const CollectzJoin: React.FC = () => {
               <View style={styles.teamHeader}>
                 <Text style={styles.teamHeaderName}>{t.collectz.teamNoneLabel}</Text>
                 <Text style={styles.teamHeaderCount}>{String(unassigned.length)}</Text>
-                {!!my && my.slot === 'active' && isOpen && myTeam != null && (
+                {!!my && my.join_status === 'active' && my.slot === 'active' && isOpen && myTeam != null && (
                   <Pressable
                     disabled={busy}
                     style={[styles.teamJoinChip, neu.raised, busy && { opacity: 0.4 }]}
@@ -1092,9 +1131,11 @@ const CollectzJoin: React.FC = () => {
         <View style={styles.renameWrap}>
           <Text style={styles.renameTitle}>{t.collectz.teamRename}</Text>
           <TextInput
-            style={styles.renameInput}
+            style={[styles.renameInput, newstOutline(C, renameFocused)]}
             value={renameDraft}
             onChangeText={setRenameDraft}
+            onFocus={() => setRenameFocused(true)}
+            onBlur={() => setRenameFocused(false)}
             placeholder={renameTeamIdx != null ? fill(t.collectz.teamN, { n: renameTeamIdx }) : ''}
             placeholderTextColor={withAlpha(C.textMuted, 0.55)}
             maxLength={40}
@@ -1328,13 +1369,11 @@ const makeStyles = (C: typeof CALM) =>
       backgroundColor: withAlpha(C.accent, 0.18),
     },
     teamMineChipText: { fontSize: TYPOGRAPHY.size.xs, color: C.accent, fontWeight: TYPOGRAPHY.weight.bold },
-    renameWrap: { gap: SPACING.md },
+    renameWrap: { gap: SPACING.md, padding: SPACING.xl },
     renameTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, textAlign: 'center' },
+    // Layout + type only — the ONE input border comes from newstOutline in the JSX.
     renameInput: {
       minHeight: 46,
-      borderRadius: RADIUS.md,
-      borderWidth: 1,
-      borderColor: C.inputBorder,
       paddingHorizontal: SPACING.md,
       color: C.textPrimary,
       fontSize: TYPOGRAPHY.size.sm,

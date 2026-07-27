@@ -196,7 +196,8 @@ const CollectzHome: React.FC = () => {
     0,
   );
   const statToPay = Object.values(myJoinedRows).filter(
-    (r) => (r.status === 'unpaid' || r.status === 'rejected') && !r.archived_at,
+    // join_status gate: a queued/declined join request owes nothing yet.
+    (r) => r.join_status === 'active' && (r.status === 'unpaid' || r.status === 'rejected') && !r.archived_at,
   ).length;
   // "To collect" = Σ(target − confirmed) over open organized sessions with a
   // money target. Only shown when every contributing session shares one

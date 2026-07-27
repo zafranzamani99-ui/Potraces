@@ -27,6 +27,7 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
 import { sendChatMessage } from '../../services/moneyChat';
+import { useEchoInlineStore } from '../../store/echoInlineStore';
 import type { AIMessage } from '../../types';
 
 export interface EchoChip {
@@ -41,12 +42,18 @@ interface Props {
   insightSubtitle: string;
   chips: EchoChip[];
   contextSnapshot: string;
+  /** Stable per-screen thread id ('goals', 'budget'…) — the conversation lives
+   * in echoInlineStore, so it survives close + navigation for the app session. */
+  threadKey: string;
   topInset?: number;
   bottomInset?: number;
   autoPrompt?: string;
 }
 
 type Msg = { role: 'user' | 'assistant'; content: string; pending?: boolean };
+
+// Stable empty ref for the store selector (avoids re-renders on untouched threads).
+const EMPTY_THREAD: Msg[] = [];
 
 const DEFAULT_CHIPS: EchoChip[] = [
   { label: 'where did my money go?', question: 'where did my money go this month?' },
@@ -82,6 +89,7 @@ const EchoInlineChat: React.FC<Props> = ({
   insightSubtitle,
   chips,
   contextSnapshot,
+  threadKey,
   topInset = 20,
   bottomInset = 20,
   autoPrompt,
@@ -147,7 +155,14 @@ const EchoInlineChat: React.FC<Props> = ({
     [DETENT_MED, DETENT_LG, DISMISS_H, onClose]
   );
 
-  const [messages, setMessages] = useState<Msg[]>([]);
+  // Messages live in echoInlineStore (per-screen thread) — they survive the
+  // sheet closing AND the screen unmounting on navigation, for the app session.
+  const messages = useEchoInlineStore((s) => s.threads[threadKey] ?? EMPTY_THREAD);
+  const updateThread = useEchoInlineStore((s) => s.updateThread);
+  const setMessages = useCallback(
+    (updater: Msg[] | ((prev: Msg[]) => Msg[])) => updateThread(threadKey, updater),
+    [threadKey, updateThread],
+  );
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const listRef = useRef<FlatList<Msg>>(null);

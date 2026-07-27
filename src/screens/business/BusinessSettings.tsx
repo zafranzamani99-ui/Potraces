@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  Share,
   InteractionManager,
   LayoutAnimation,
 } from 'react-native';
@@ -33,7 +32,6 @@ import { useSellerStore } from '../../store/sellerStore';
 import { signOut, supabaseBusiness } from '../../services/supabase';
 import { clearProfileCache, syncAll } from '../../services/sellerSync';
 import { tapToPayAvailable } from '../../services/tapToPay';
-import { getOrCreateReferralCode, referralMessage } from '../../services/referrals';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { RootStackParamList, SettingsSection } from '../../types';
 import { useToast } from '../../context/ToastContext';
@@ -214,19 +212,13 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 icon="i/gift"
                 chipColor="#4F5104"
                 label={t.settings.inviteFriends}
-                onPress={async () => {
-                  lightTap();
-                  const code = await getOrCreateReferralCode();
-                  if (!code) {
-                    Alert.alert(t.settings.signInRequired, t.settings.signInRequiredInvite);
-                    return;
-                  }
-                  try {
-                    await Share.share({ message: referralMessage(code) });
-                  } catch {
-                    // ignore user-cancelled
-                  }
-                }}
+                onPress={() => { lightTap(); navigation.navigate('InviteFriends'); }}
+              />
+              <SettingRow
+                icon="i/ticket-outline"
+                chipColor="#9A6400"
+                label={t.settings.redeemCode}
+                onPress={() => { lightTap(); navigation.navigate('RedeemCode'); }}
                 last
               />
 

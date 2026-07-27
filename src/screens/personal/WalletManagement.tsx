@@ -1800,6 +1800,7 @@ const WalletManagement: React.FC = () => {
       <EchoInlineChat
         visible={echoSheetVisible}
         onClose={() => setEchoSheetVisible(false)}
+        threadKey="wallets"
         insightTitle={smartWalletInsight.title}
         insightSubtitle={smartWalletInsight.subtitle}
         chips={greetingChips}

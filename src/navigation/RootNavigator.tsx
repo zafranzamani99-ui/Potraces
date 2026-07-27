@@ -49,6 +49,8 @@ import { useBusinessStore } from '../store/businessStore';
 import BusinessSetup from '../screens/business/Setup';
 import Settings from '../screens/shared/Settings';
 import MyPlan from '../screens/shared/MyPlan';
+import InviteFriends from '../screens/shared/InviteFriends';
+import RedeemCode from '../screens/shared/RedeemCode';
 import ManageCategories from '../screens/shared/ManageCategories';
 import BusinessProfile from '../screens/business/BusinessProfile';
 import LogIncome from '../screens/business/LogIncome';
@@ -525,6 +527,16 @@ const RootNavigator: React.FC = () => {
           name="MyPlan"
           component={MyPlan}
           options={makeBackHeader(C, mode, 'My Plan')}
+        />
+        <Stack.Screen
+          name="InviteFriends"
+          component={InviteFriends}
+          options={makeBackHeader(C, mode, 'Invite friends')}
+        />
+        <Stack.Screen
+          name="RedeemCode"
+          component={RedeemCode}
+          options={makeBackHeader(C, mode, 'Redeem code')}
         />
         <Stack.Screen
           name="ManageCategories"

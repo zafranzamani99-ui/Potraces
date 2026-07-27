@@ -9,7 +9,6 @@ import {
   Linking,
   Platform,
   Alert,
-  RefreshControl,
   Modal,
   TextInput,
   Keyboard,
@@ -19,6 +18,12 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+// The outer scroller is a FlatList (single row), NOT a ScrollView: on this
+// Android/Fabric build the ScrollView refresh path never shows the indicator
+// (RNGH blocks it — disallowInterruption — and native ScrollView's attach is
+// broken too), while VirtualizedList's path works (proven by TransactionsList).
+import { FlatList } from 'react-native';
+import PullRefresh from '../../components/common/PullRefresh';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -34,7 +39,8 @@ import { lightTap, mediumTap } from '../../services/haptics';
 import GlassModeToggle from '../../components/common/GlassModeToggle';
 import NeuIconButton from '../../components/common/NeuIconButton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getSellerProfile, updateSellerProfile, uploadShopLogo, getSyncStatus, getLastSyncAt, subscribeSyncStatus, SyncStatus } from '../../services/sellerSync';
+import * as Sharing from 'expo-sharing';
+import { getSellerProfile, updateSellerProfile, uploadShopLogo, getSyncStatus, getLastSyncAt, subscribeSyncStatus, syncAll, SyncStatus } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
@@ -58,6 +64,9 @@ function useSyncStatus(): { status: SyncStatus; lastSyncAt: Date | null } {
 }
 
 // ─── Component ───────────────────────────────────────────────
+// Single-row FlatList data for the outer scroller (see the import comment).
+const DASH_PAGE = ['page'];
+
 const SellerDashboard: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
@@ -67,6 +76,17 @@ const SellerDashboard: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { orders, products, ingredientCosts, seasons, sellerCustomers, skippedOnboardingSteps, skipOnboardingStep } = useSellerStore();
   const isSyncing = useSellerStore((s) => s.isSyncing);
+  // Hard cap on the initial-sync loader: if a sync stalls (offline, hung
+  // request), the dashboard still renders instead of spinning forever.
+  const [syncTimedOut, setSyncTimedOut] = useState(false);
+  useEffect(() => {
+    if (!isSyncing) {
+      setSyncTimedOut(false);
+      return;
+    }
+    const cap = setTimeout(() => setSyncTimedOut(true), 8000);
+    return () => clearTimeout(cap);
+  }, [isSyncing]);
   const { businessSetupComplete, incomeType } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
   const paymentQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
@@ -289,6 +309,19 @@ const SellerDashboard: React.FC = () => {
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [qrViewIndex, setQrViewIndex] = useState(0);
 
+  // Share the previewed QR image via the native share sheet.
+  const handleShareQr = useCallback(async () => {
+    const qr = paymentQrs[qrViewIndex];
+    if (!qr) return;
+    lightTap();
+    try {
+      await Sharing.shareAsync(qr.uri, {
+        mimeType: qr.uri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg',
+        dialogTitle: qr.label,
+      });
+    } catch { /* share cancelled or unavailable */ }
+  }, [paymentQrs, qrViewIndex]);
+
   // Guard: close all modals before opening a new one (prevents iOS stacking)
   const closeAllModals = useCallback(() => {
     setShowShopModal(false);
@@ -311,7 +344,10 @@ const SellerDashboard: React.FC = () => {
   }, []);
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 800);
+    // Real refresh: full seller sync (pull + push, same as the app-foreground
+    // sync). Spinner holds for the actual sync duration.
+    const { products: p, orders: o, seasons: s, sellerCustomers: c } = useSellerStore.getState();
+    syncAll(p, o, s, c).finally(() => setRefreshing(false));
   }, []);
 
   // ── Production checklist state ────────────────────────────
@@ -619,7 +655,8 @@ const SellerDashboard: React.FC = () => {
   }
 
   // Show loading indicator when initial sync is in progress and store is empty
-  if (isSyncing && orders.length === 0 && products.length === 0) {
+  // (capped by syncTimedOut so a stalled sync can never trap the screen).
+  if (isSyncing && !syncTimedOut && orders.length === 0 && products.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: C.background, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator size="large" color={C.bronze} />
@@ -632,16 +669,18 @@ const SellerDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={false}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze} colors={[C.bronze]} />
-        }
-      >
+        data={DASH_PAGE}
+        keyExtractor={() => 'page'}
+        renderItem={() => (
+          <>
         <View style={styles.topRow}>
           <GlassModeToggle />
         </View>
@@ -1269,7 +1308,10 @@ const SellerDashboard: React.FC = () => {
         )}
 
         <View style={{ height: SPACING.xl }} />
-      </ScrollView>
+          </>
+        )}
+      />
+      </PullRefresh>
 
       {/* ── Shop link modal ──────────────────────────────── */}
       {showShopModal && (
@@ -1598,13 +1640,6 @@ const SellerDashboard: React.FC = () => {
       >
         <View style={styles.qrModalOverlay}>
           <StatusBar barStyle="light-content" />
-          <Pressable
-            style={styles.qrCloseBtn}
-            onPress={() => setQrModalVisible(false)}
-            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-          >
-            <Feather name="x" size={28} color="#fff" />
-          </Pressable>
 
           {paymentQrs[qrViewIndex] && (
             <Text style={styles.qrLabel}>{paymentQrs[qrViewIndex].label}</Text>
@@ -1636,6 +1671,27 @@ const SellerDashboard: React.FC = () => {
               ))}
             </View>
           )}
+
+          {/* Bottom-center actions — share + close */}
+          <View style={[styles.qrActionsRow, { bottom: insets.bottom + SPACING['2xl'] }]}>
+            <Pressable
+              style={styles.qrActionBtn}
+              onPress={handleShareQr}
+              accessibilityRole="button"
+              accessibilityLabel={t.settings.qrShare}
+            >
+              <Feather name="share-2" size={22} color="#fff" />
+            </Pressable>
+            <Pressable
+              style={styles.qrActionBtn}
+              onPress={() => setQrModalVisible(false)}
+              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.common.close}
+            >
+              <Feather name="x" size={26} color="#fff" />
+            </Pressable>
+          </View>
         </View>
         <ModalToastHost />
       </Modal>
@@ -3130,10 +3186,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── QR modal ──
   qrModalOverlay: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
-  qrCloseBtn: { position: 'absolute', top: 72, right: SPACING.xl, width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', zIndex: 20 },
+  qrActionsRow: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: SPACING.xl, zIndex: 20 },
+  qrActionBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   qrLabel: { position: 'absolute', top: 80, left: 0, right: 0, textAlign: 'center', fontSize: TYPOGRAPHY.size['2xl'], fontWeight: TYPOGRAPHY.weight.bold, color: '#fff', zIndex: 10 },
   qrFullImage: { width: SCREEN_WIDTH - SPACING['2xl'] * 2, height: SCREEN_WIDTH - SPACING['2xl'] * 2, borderRadius: RADIUS.lg, backgroundColor: '#fff' },
-  qrTabs: { position: 'absolute', bottom: 60, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm, zIndex: 10 },
+  qrTabs: { position: 'absolute', bottom: 116, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm, zIndex: 10 },
   qrTab: { paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md, borderRadius: RADIUS.full, backgroundColor: 'rgba(255,255,255,0.1)' },
   qrTabActive: { backgroundColor: 'rgba(255,255,255,0.25)' },
   qrTabText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: 'rgba(255,255,255,0.5)' },

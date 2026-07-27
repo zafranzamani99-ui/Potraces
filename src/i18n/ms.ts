@@ -43,6 +43,22 @@ export const ms: Translations = {
     dismissHint: 'Tutup petunjuk ini',
   },
 
+  quickLogPromo: {
+    titleA: 'log dengan ',
+    titleEm: '1 sentuhan',
+    subtitle: '3 cara lebih pantas untuk catat perbelanjaan — setel sekali, lepas tu log tanpa buka app.',
+    shareTitle: 'kongsi tangkapan skrin',
+    shareDesc: 'hantar ss pembayaran ke Potraces — kami baca dan catatkan untuk anda.',
+    noSetup: 'tiada setup',
+    backTapTitle: 'ketik belakang 2 kali',
+    backTapDesc: 'ketik belakang iphone dua kali — log serta-merta, dari mana saja.',
+    autoTitle: 'auto log apple pay',
+    autoDesc: 'tercatat sendiri sebaik sahaja anda bayar — sifar sentuhan.',
+    advanced: 'lanjutan',
+    cta: 'setel yang pertama',
+    later: 'lain kali',
+  },
+
   common: {
     // ── debt i18n pass (2026-07-16) — auto-added localized strings ──
     settings: 'tetapan',
@@ -514,6 +530,7 @@ export const ms: Translations = {
 
     quickLog: {
       row: 'Log Pantas',
+      rowSub: 'Apple Pay, ketik belakang, atau share screenshot',
       title: 'Log Pantas',
       // Hero block — the screen's headline + value prop (deep-olive branded band).
       heroHeadline: 'Log perbelanjaan tanpa membuka aplikasi.',
@@ -4833,6 +4850,7 @@ export const ms: Translations = {
     statusPending: 'menunggu',
     statusConfirmed: 'disahkan',
     statusRejected: 'ditolak',
+    statusRequested: 'dimohon',
     claimed: 'Verified',
     waitingList: 'Senarai menunggu',
     roster: 'Senarai nama',
@@ -4957,6 +4975,9 @@ export const ms: Translations = {
     capacityCount: '{n} daripada {max} tempat diisi',
     capacityOver: '{n} daripada {max} — melebihi kapasiti',
     sessionFull: 'Sesi ini sudah penuh.',
+    joinApproval: 'Perlukan kelulusan saya untuk sertai',
+    joinApprovalHint:
+      'Orang yang tambah diri sendiri menunggu kelulusan anda. Nama yang anda tambah sendiri tetap masuk serta-merta.',
     rosterAdd: 'Tambah nama',
     rosterNamePlaceholder: 'Nama',
     rosterReserve: 'simpanan',
@@ -5122,6 +5143,16 @@ export const ms: Translations = {
     emptyRoster: 'Belum ada nama — kongsi pautan supaya mereka boleh tuntut slot.',
     reserveShare: 'tiada bayaran',
     shareUnknown: '—',
+    // permintaan sertai (sesi berkelulusan)
+    requestsTitle: 'Permintaan ({n})',
+    requestsDeclinedTitle: 'Ditolak ({n})',
+    requestWantsJoin: 'nak sertai',
+    requestDeclinedTag: 'ditolak',
+    actionApprove: 'Luluskan',
+    requestApprovedToast: '{name} diluluskan — mereka dah masuk.',
+    requestDeclinedToast: '{name} ditolak.',
+    requestDeclinedRemoveBody:
+      'Mereka sudah dimaklumkan permintaan ditolak. Membuang mereka membolehkan mereka memohon semula.',
     // sertai
     joinOpen: 'Buka',
     joinCodePlaceholder: 'Kod kongsi',
@@ -5177,6 +5208,13 @@ export const ms: Translations = {
     reserveNote: 'Anda dalam senarai menunggu — tiada bayaran diperlukan sehingga anda dinaikkan.',
     joinedAs: 'disertai sebagai {name}',
     sessionClosed: 'Sesi ini tidak lagi dibuka.',
+    // kelulusan sertai — pihak pemohon
+    joinApprovalNote: 'Penganjur meluluskan penyertaan baharu',
+    requestedTitle: 'Menunggu kelulusan penganjur',
+    requestedBody: 'Permintaan anda sudah dihantar. Anda masuk sebaik sahaja mereka meluluskan.',
+    requestSentToast: 'Permintaan dihantar — penganjur akan meluluskan anda.',
+    joinRequestDeclinedTitle: 'Permintaan ditolak',
+    joinRequestDeclinedBody: 'Penganjur menolak permintaan anda untuk sertai sesi ini.',
     loading: 'Memuatkan…',
   },
 

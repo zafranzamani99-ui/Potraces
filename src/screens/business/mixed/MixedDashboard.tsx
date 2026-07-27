@@ -4,9 +4,9 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  RefreshControl,
 } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import { FlatList } from 'react-native';
+import PullRefresh from '../../../components/common/PullRefresh';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval, formatDistanceToNow } from 'date-fns';
@@ -37,6 +37,11 @@ const CATEGORY_EMOJIS: Record<string, string> = {
   other: '\u270F\uFE0F',
 };
 
+// Single-row FlatList data for the outer scroller (VirtualizedList — the
+// ScrollView refresh path never shows the indicator on this Android/Fabric
+// build; VirtualizedList's works — see personal/Dashboard.tsx).
+const DASH_PAGE = ['page'];
+
 const MixedDashboard: React.FC = () => {
   const C = useCalm();
   const t = useT();
@@ -55,6 +60,12 @@ const MixedDashboard: React.FC = () => {
 
   const [showCostPercentage, setShowCostPercentage] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Local-only mode — no server to sync. The pull revalidates the derive from
+  // the on-device store (the accepted pattern for local dashboards).
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  };
 
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -187,22 +198,16 @@ const MixedDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              setTimeout(() => setRefreshing(false), 600);
-            }}
-            tintColor={C.accent}
-            colors={[C.accent]}
-          />
-        }
-      >
+        removeClippedSubviews={false}
+        data={DASH_PAGE}
+        keyExtractor={() => 'page'}
+        renderItem={() => (
+          <>
         <GlassModeToggle />
         {/* Zone 1 — Hero: Total Income */}
         <BusinessHeroNumber
@@ -358,7 +363,10 @@ const MixedDashboard: React.FC = () => {
         >
           <Text style={styles.bottomLinkText}>{t.mixedDash.editStreams}</Text>
         </TouchableOpacity>
-      </ScrollView>
+          </>
+        )}
+      />
+      </PullRefresh>
 
       {/* FABs — dual if hasRoadCosts, single if not */}
       <View style={[styles.fabContainer, { bottom: insets.bottom + 80 + SPACING.sm }]}>

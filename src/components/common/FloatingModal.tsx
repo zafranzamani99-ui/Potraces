@@ -5,6 +5,7 @@ import {
   Pressable,
   StyleSheet,
   useWindowDimensions,
+  Keyboard,
 } from 'react-native';
 import { KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -19,6 +20,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { lightTap } from '../../services/haptics';
 import { useCalm } from '../../hooks/useCalm';
+import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
 import { SPACING, RADIUS, withAlpha } from '../../constants';
 import ModalToastHost from './ModalToastHost';
 
@@ -61,6 +63,10 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
 }) => {
   const C = useCalm();
   const { height: SCREEN_H } = useWindowDimensions();
+  // Keyboard-aware dismiss semantics: backdrop tap closes the KEYBOARD first
+  // (modal stays), a second tap closes the modal; tapping empty card space
+  // dismisses the keyboard without touching the modal's buttons.
+  const { keyboardVisible } = useKeyboardVisible();
   const styles = useMemo(() => makeStyles(C), [C]);
   const fadeMode = entrance === 'fade';
 
@@ -145,8 +151,9 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
     <View
       style={[styles.card, { maxWidth }]}
       onStartShouldSetResponder={() => true}
+      onResponderRelease={Keyboard.dismiss}
     >
-      {showDragHandle && (
+      {showDragHandle && !fadeMode && (
         <GestureDetector gesture={panGesture}>
           <View style={styles.handleHit}>
             <View style={styles.handle} />
@@ -167,7 +174,10 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
       <Reanimated.View style={[styles.backdrop, backdropAnimatedStyle]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={keyboardVisible ? () => Keyboard.dismiss() : dismiss}
+        />
       </Reanimated.View>
 
       <Reanimated.View
@@ -180,7 +190,14 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
             activity's adjustResize never resizes that window either. The old
             iOS-only branch left Android cards centred under the keyboard. Same
             recipe as BottomSheet. */}
-        <KAView behavior="padding" style={styles.centerWrap} pointerEvents="box-none">
+        <KAView
+          behavior="padding"
+          // Fade cards get a static downward bias (centers ~60px below true
+          // center, both keyboard states) — with the keyboard up, dead-center
+          // of the shrunk space read as "too high". Static, so nothing flips.
+          style={[styles.centerWrap, fadeMode && { paddingTop: 120 }]}
+          pointerEvents="box-none"
+        >
           {card}
         </KAView>
       </Reanimated.View>

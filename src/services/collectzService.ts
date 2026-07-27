@@ -28,6 +28,12 @@ export type CollectzScheme = 'flat' | 'equal' | 'custom';
 export type CollectzSlot = 'active' | 'reserve';
 export type CollectzParticipantStatus = 'unpaid' | 'pending' | 'confirmed' | 'rejected';
 export type CollectzSessionStatus = 'open' | 'settled' | 'cancelled';
+/**
+ * Membership gate, orthogonal to the payment status: 'requested'/'rejected'
+ * rows came from a self-add on an approval-gated session and are NOT roster
+ * members (no share, no capacity slot, hidden from the public roster).
+ */
+export type CollectzJoinStatus = 'active' | 'requested' | 'rejected';
 
 /** Platforms an organizer can link on a session (order = display order). */
 export type CollectzSocialKey = 'ig' | 'x' | 'threads' | 'fb' | 'telegram';
@@ -76,6 +82,9 @@ export interface CollectzSession {
   socials: CollectzSocials | null;
   /** WhatsApp group invite link (chat.whatsapp.com) — participants' way in. */
   group_url: string | null;
+  /** When true, unknown self-adds queue as join requests for the organizer.
+   *  Claims of pre-added names always skip the queue. Default false. */
+  join_requires_approval: boolean;
   share_code: string;
   status: CollectzSessionStatus;
   created_at: string;
@@ -90,6 +99,8 @@ export interface CollectzParticipant {
   slot: CollectzSlot;
   share_amount: number | null;
   status: CollectzParticipantStatus;
+  /** Join-approval state. Anything but 'active' is not a roster member. */
+  join_status: CollectzJoinStatus;
   proof_path: string | null;
   reject_note: string | null;
   marked_at: string | null;
@@ -141,6 +152,7 @@ export interface CollectzJoinView {
     | 'team_names'
     | 'socials'
     | 'group_url'
+    | 'join_requires_approval'
   >;
   participants: CollectzRosterEntry[];
   progress: {
@@ -158,6 +170,8 @@ export interface CollectzJoinView {
     slot: CollectzSlot;
     status: CollectzParticipantStatus;
     effective_share: number | null;
+    /** 'requested' = waiting for the organizer; 'rejected' = declined. */
+    join_status: CollectzJoinStatus;
   } | null;
 }
 
@@ -189,6 +203,7 @@ export interface CollectzSessionInput {
   team_count?: number | null;
   team_size?: number | null;
   team_names?: string[] | null;
+  join_requires_approval?: boolean;
 }
 
 const PROOFS_BUCKET = 'collectz-proofs';
@@ -551,6 +566,32 @@ export async function resetParticipantToUnpaid(id: string): Promise<void> {
   throwIfError(error, 'Could not reset the participant.');
 }
 
+// ── Organizer: join requests (approval-gated sessions) ─────────────────────
+// Both pushes ride the trg_notify_collectz_join DB trigger — approving or
+// declining here is the ONLY thing the client has to do.
+
+/** Approve a join request — the requester becomes a full roster member. */
+export async function approveJoinRequest(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('collectz_participants')
+    .update({ join_status: 'active' })
+    .eq('id', id);
+  throwIfError(error, 'Could not approve the request.');
+}
+
+/**
+ * Decline a join request. The row is KEPT (join_status='rejected') so the
+ * requester can see the outcome — the organizer deletes it to let them ask
+ * again (removeParticipant).
+ */
+export async function rejectJoinRequest(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('collectz_participants')
+    .update({ join_status: 'rejected' })
+    .eq('id', id);
+  throwIfError(error, 'Could not decline the request.');
+}
+
 // ── Participant: join / pay flow ─────────────────────────────────────────────
 
 /**
@@ -657,15 +698,17 @@ export async function setParticipantTeam(participantId: string, teamIdx: number 
   throwIfError(error, 'Could not change the team.');
 }
 
-/** Add myself to the roster (my name wasn't pre-added by the organizer). */
-export async function addSelf(shareCode: string, name: string, teamIdx?: number): Promise<string> {
-  const res = await invokeJoin<{ ok: boolean; participant_id: string }>({
+/** Add myself to the roster (my name wasn't pre-added by the organizer).
+ *  On approval-gated sessions the row queues instead: `requested` comes back
+ *  true and the join only completes when the organizer approves. */
+export async function addSelf(shareCode: string, name: string, teamIdx?: number): Promise<{ id: string; requested: boolean }> {
+  const res = await invokeJoin<{ ok: boolean; participant_id: string; requested?: boolean }>({
     share_code: shareCode,
     action: 'add_self',
     name,
     ...(teamIdx != null ? { team_idx: teamIdx } : {}),
   });
-  return res.participant_id;
+  return { id: res.participant_id, requested: res.requested === true };
 }
 
 /**
@@ -880,6 +923,7 @@ export interface JoinedRow {
   id: string;
   session_id: string;
   status: CollectzParticipantStatus;
+  join_status: CollectzJoinStatus;
   archived_at: string | null;
 }
 
@@ -888,7 +932,7 @@ export async function listMyJoinedParticipantRows(): Promise<JoinedRow[]> {
   const uid = await requireUserId();
   const { data, error } = await supabase
     .from('collectz_participants')
-    .select('id, session_id, status, archived_at')
+    .select('id, session_id, status, join_status, archived_at')
     .eq('user_id', uid);
   if (error) return [];
   return (data ?? []) as JoinedRow[];
@@ -942,6 +986,7 @@ export async function duplicateSession(sourceId: string): Promise<CollectzSessio
     team_count: src.team_count,
     team_size: src.team_size,
     team_names: src.team_names,
+    join_requires_approval: src.join_requires_approval,
   });
   // Uploaded images live under the OLD session folder — copy, don't share the
   // path (deleting the old session would orphan the duplicate's image).
@@ -959,6 +1004,9 @@ export async function duplicateSession(sourceId: string): Promise<CollectzSessio
   }
   if (src.qr_image_path) await copyImage(src.qr_image_path, 'qr_image_path');
   for (const p of participants) {
+    // Pending/declined join requests are last week's queue, not roster setup —
+    // only approved members carry into the duplicate.
+    if (p.join_status !== 'active') continue;
     await addParticipant(created.id, p.name, {
       slot: p.slot,
       // Confirm-time share LOCKS are last week's money, not setup — carrying

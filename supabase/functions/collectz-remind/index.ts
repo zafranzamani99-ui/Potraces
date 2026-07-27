@@ -69,6 +69,9 @@ Deno.serve(async (req: Request) => {
     .from('collectz_participants')
     .select('id,user_id,slot,share_amount')
     .eq('session_id', sessionId)
+    // join_status gate: a queued join request isn't a member yet — reminding
+    // them to pay before the organizer even approved would be nonsense.
+    .eq('join_status', 'active')
     .in('status', ['unpaid', 'rejected']);
   const unpaidActives = (participants ?? []).filter((p) => p.slot === 'active');
   const targets = unpaidActives.filter((p) => p.user_id != null);
@@ -90,12 +93,13 @@ Deno.serve(async (req: Request) => {
   }
 
   // Divisor for an equal split is ALL active participants, not just the
-  // unpaid ones — fetch the full active roster count.
+  // unpaid ones — fetch the full active roster count (approved members only).
   const { data: allActive } = await admin
     .from('collectz_participants')
     .select('id')
     .eq('session_id', sessionId)
-    .eq('slot', 'active');
+    .eq('slot', 'active')
+    .eq('join_status', 'active');
   const activeCount = allActive?.length ?? 0;
 
   const shareFor = (p: { share_amount: number | null }): number | null => {

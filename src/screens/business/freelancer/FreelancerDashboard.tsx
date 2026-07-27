@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import { FlatList } from 'react-native';
+import PullRefresh from '../../../components/common/PullRefresh';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval, differenceInDays, formatDistanceToNow } from 'date-fns';
@@ -15,17 +16,27 @@ import { explainFreelancerMonth } from '../../../utils/explainFreelancerMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import GlassModeToggle from '../../../components/common/GlassModeToggle';
 import BusinessHeroNumber from '../../../components/business/BusinessHeroNumber';
-import { RefreshControl } from 'react-native';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
 }
+
+// Single-row FlatList data for the outer scroller (VirtualizedList — the
+// ScrollView refresh path never shows the indicator on this Android/Fabric
+// build; VirtualizedList's works — see personal/Dashboard.tsx).
+const DASH_PAGE = ['page'];
 
 const FreelancerDashboard: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [refreshing, setRefreshing] = React.useState(false);
+  // Local-only mode — no server to sync. The pull revalidates the derive from
+  // the on-device store (the accepted pattern for local dashboards).
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  };
   const { businessTransactions } = useBusinessStore();
   const {
     clients,
@@ -135,22 +146,16 @@ const FreelancerDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              setTimeout(() => setRefreshing(false), 600);
-            }}
-            tintColor={C.accent}
-            colors={[C.accent]}
-          />
-        }
-      >
+        removeClippedSubviews={false}
+        data={DASH_PAGE}
+        keyExtractor={() => 'page'}
+        renderItem={() => (
+          <>
         <GlassModeToggle />
         {/* Zone 1 — Hero Number */}
         <BusinessHeroNumber
@@ -236,7 +241,10 @@ const FreelancerDashboard: React.FC = () => {
             {t.businessDashboard.changeSetup}
           </Text>
         </TouchableOpacity>
-      </ScrollView>
+          </>
+        )}
+      />
+      </PullRefresh>
 
       {/* FAB — Log Payment */}
       <TouchableOpacity

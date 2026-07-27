@@ -1,6 +1,11 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, InteractionManager, RefreshControl } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+// The outer scroller is a FlatList (single row), NOT a ScrollView: on this
+// Android/Fabric build the ScrollView refresh path never shows the indicator
+// (RNGH blocks it — disallowInterruption — and native ScrollView's attach is
+// broken too), while VirtualizedList's path works (proven by TransactionsList).
+import { FlatList } from 'react-native';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useNavigation } from '@react-navigation/native';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { Feather } from '@expo/vector-icons';
@@ -16,6 +21,9 @@ import WeekBar from '../../components/common/WeekBar';
 import GlassModeToggle from '../../components/common/GlassModeToggle';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
+
+// Single-row FlatList data for the outer scroller (see the import comment).
+const DASH_PAGE = ['page'];
 
 const BusinessDashboard: React.FC = () => {
   const C = useCalm();
@@ -126,9 +134,22 @@ const BusinessDashboard: React.FC = () => {
 
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Local-only mode — no server to sync. The pull revalidates the derive from
+  // the on-device store (the accepted pattern for local dashboards).
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  };
+  // Loader is data-driven: it exits as soon as the persisted store has
+  // hydrated, with a hard cap so it can never stick.
   useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => setReady(true));
-    return () => task.cancel();
+    if (useBusinessStore.persist.hasHydrated()) {
+      setReady(true);
+      return;
+    }
+    const unsub = useBusinessStore.persist.onFinishHydration(() => setReady(true));
+    const cap = setTimeout(() => setReady(true), 1500);
+    return () => { unsub(); clearTimeout(cap); };
   }, []);
 
   if (!ready) {
@@ -260,22 +281,16 @@ const BusinessDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              setTimeout(() => setRefreshing(false), 600);
-            }}
-            tintColor={C.accent}
-            colors={[C.accent]}
-          />
-        }
-      >
+        removeClippedSubviews={false}
+        data={DASH_PAGE}
+        keyExtractor={() => 'page'}
+        renderItem={() => (
+          <>
         <GlassModeToggle />
         {/* Zone 1 — Net (canonical hero) */}
         <BusinessHeroNumber
@@ -358,7 +373,10 @@ const BusinessDashboard: React.FC = () => {
         >
           <Text style={styles.changeSetupText}>{t.businessDashboard.changeSetup}</Text>
         </TouchableOpacity>
-      </ScrollView>
+          </>
+        )}
+      />
+      </PullRefresh>
     </View>
   );
 };

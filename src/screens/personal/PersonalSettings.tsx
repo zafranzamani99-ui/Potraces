@@ -12,7 +12,6 @@ import {
   Pressable,
   InteractionManager,
   Platform,
-  Share,
   LayoutAnimation,
   useWindowDimensions,
 } from 'react-native';
@@ -42,7 +41,6 @@ import { useAuthStore } from '../../store/authStore';
 import { exportTransactionsCsv, exportWalletsCsv, exportSubscriptionsCsv, exportReceiptsCsv } from '../../services/exportService';
 import { exportMonthlyStatement, exportTaxYearPdf } from '../../services/pdfExport';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
-import { getOrCreateReferralCode, referralMessage } from '../../services/referrals';
 import { syncCheckinReminders, formatCheckinTime } from '../../services/checkinReminders';
 import { loadSampleData, SAMPLE_PROFILES, type SampleBracket } from '../../utils/sampleData';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
@@ -374,19 +372,13 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 icon="i/gift"
                 chipColor="#4F5104"
                 label={t.settings.inviteFriends}
-                onPress={async () => {
-                  lightTap();
-                  const code = await getOrCreateReferralCode();
-                  if (!code) {
-                    Alert.alert(t.settings.signInRequired, t.settings.signInRequiredInvite);
-                    return;
-                  }
-                  try {
-                    await Share.share({ message: referralMessage(code) });
-                  } catch {
-                    // ignore user-cancelled
-                  }
-                }}
+                onPress={() => { lightTap(); navigation.navigate('InviteFriends'); }}
+              />
+              <SettingRow
+                icon="i/ticket-outline"
+                chipColor="#9A6400"
+                label={t.settings.redeemCode}
+                onPress={() => { lightTap(); navigation.navigate('RedeemCode'); }}
                 last
               />
 
@@ -448,6 +440,7 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                   icon="i/flash"
                   chipColor="#DEAB22"
                   label={t.settings.quickLog.row}
+                  sublabel={t.settings.quickLog.rowSub}
                   onPress={() => { lightTap(); navigation.navigate('QuickLogSetup' as never); }}
                 />
               )}

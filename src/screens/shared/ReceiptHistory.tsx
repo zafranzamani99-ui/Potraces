@@ -12,7 +12,7 @@ import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handl
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { format, getYear } from 'date-fns';
+import { format, getYear, getMonth } from 'date-fns';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReceiptStore } from '../../store/receiptStore';
@@ -24,6 +24,7 @@ import { useNeu } from '../../components/common/neu';
 import { resolveReceiptImageUri } from '../../utils/receiptImage';
 import NeuButton from '../../components/common/NeuButton';
 import FAB from '../../components/common/FAB';
+import FloatingModal from '../../components/common/FloatingModal';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
 import { listFailedReceipts, clearFailedReceipt, retryFailedReceipt, type PendingReceipt } from '../../services/receiptQueue';
@@ -54,16 +55,28 @@ const ReceiptHistory: React.FC = () => {
 
   const [selectedYear, setSelectedYear] = useState(getYear(new Date()));
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  // Month filter — null = all months. Picked via the floating month picker.
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
 
   const yearReceipts = useMemo(
     () => receipts.filter((r) => r.year === selectedYear),
     [receipts, selectedYear]
   );
 
+  // Per-month receipt counts for the picker cells
+  const monthCounts = useMemo(() => {
+    const counts = new Array<number>(12).fill(0);
+    for (const r of yearReceipts) counts[getMonth(r.date)] += 1;
+    return counts;
+  }, [yearReceipts]);
+
   const filteredReceipts = useMemo(() => {
-    if (!filterCategory) return yearReceipts;
-    return yearReceipts.filter((r) => r.myTaxCategory === filterCategory);
-  }, [yearReceipts, filterCategory]);
+    let list = yearReceipts;
+    if (selectedMonth != null) list = list.filter((r) => getMonth(r.date) === selectedMonth);
+    if (filterCategory) list = list.filter((r) => r.myTaxCategory === filterCategory);
+    return list;
+  }, [yearReceipts, selectedMonth, filterCategory]);
 
   const taxSummary = useMemo(() => getTaxSummary(selectedYear), [getTaxSummary, selectedYear]);
 
@@ -149,6 +162,30 @@ const ReceiptHistory: React.FC = () => {
               </Text>
             </TouchableOpacity>
           ))}
+          {/* ── Month pill — opens the floating month-only picker ── */}
+          <TouchableOpacity
+            style={[
+              styles.tab,
+              neu.raised,
+              styles.monthPill,
+              selectedMonth != null && styles.tabActive,
+            ]}
+            onPress={() => { lightTap(); setMonthPickerOpen(true); }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t.receipts.pickMonth}
+          >
+            <Feather
+              name="calendar"
+              size={13}
+              color={selectedMonth != null ? C.onAccent : C.textSecondary}
+            />
+            <Text style={[styles.tabText, selectedMonth != null && styles.tabTextActive]}>
+              {selectedMonth == null
+                ? t.receipts.allMonths
+                : format(new Date(selectedYear, selectedMonth), 'MMM')}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Failed-scan recovery (couldn't be scanned; image kept) ── */}
@@ -369,6 +406,57 @@ const ReceiptHistory: React.FC = () => {
         icon="camera"
         style={{ bottom: 24 + insets.bottom }}
       />
+
+      {/* ── Floating month picker (month-only) ── */}
+      <FloatingModal
+        visible={monthPickerOpen}
+        onClose={() => setMonthPickerOpen(false)}
+        maxWidth={420}
+        entrance="fade"
+      >
+        <View style={styles.pickerBody}>
+          <View style={styles.pickerHeader}>
+            <Text style={styles.pickerYear}>{selectedYear}</Text>
+            <TouchableOpacity
+              style={[styles.tab, neu.raised, selectedMonth == null && styles.tabActive]}
+              onPress={() => { lightTap(); setSelectedMonth(null); setMonthPickerOpen(false); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, selectedMonth == null && styles.tabTextActive]}>
+                {t.receipts.allMonths} ({yearReceipts.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.monthGrid}>
+            {monthCounts.map((count, m) => {
+              const active = selectedMonth === m;
+              return (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.monthCell, neu.raised, active && styles.tabActive]}
+                  onPress={() => { lightTap(); setSelectedMonth(m); setMonthPickerOpen(false); }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={format(new Date(selectedYear, m), 'MMMM yyyy')}
+                >
+                  <Text
+                    style={[
+                      styles.monthCellText,
+                      active && styles.tabTextActive,
+                      count === 0 && !active && { color: C.textMuted },
+                    ]}
+                  >
+                    {format(new Date(selectedYear, m), 'MMM')}
+                  </Text>
+                  <Text style={[styles.monthCellCount, active && styles.monthCellCountActive]}>
+                    {count > 0 ? count : '·'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </FloatingModal>
     </View>
   );
 };
@@ -443,6 +531,56 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   tabTextActive: {
     color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.bold,
+  },
+  monthPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  // ── Floating month picker ──
+  pickerBody: {
+    padding: SPACING.xl,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.lg,
+  },
+  pickerYear: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.light,
+    color: C.textPrimary,
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  monthCell: {
+    width: '31%',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+  },
+  monthCellText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: 0.2,
+  },
+  monthCellCount: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: 2,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  monthCellCountActive: {
+    color: C.onAccent,
+    opacity: 0.75,
   },
 
   // ── Failed-scan recovery ──

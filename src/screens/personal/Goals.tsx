@@ -2700,6 +2700,7 @@ const Goals: React.FC = () => {
       {echoGoal && (
         <EchoInlineChat
           visible={echoSheetVisible}
+          threadKey="goals"
           onClose={() => {
             setEchoSheetVisible(false);
             const saved = echoGoal;

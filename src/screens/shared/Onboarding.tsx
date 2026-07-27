@@ -35,6 +35,12 @@ import { useAppStore } from '../../store/appStore';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
 import { loadSampleData, SAMPLE_PROFILES, DEFAULT_SAMPLE_BRACKET, type SampleBracket } from '../../utils/sampleData';
+import {
+  peekPendingReferral,
+  stagePendingReferral,
+  claimStagedReferral,
+  clearPendingReferral,
+} from '../../services/entitlements';
 import { SkyBackdrop, FlyingWau } from '../../components/common/WauScene';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
@@ -760,6 +766,67 @@ const StartChoicePage = React.memo<{
 });
 StartChoicePage.displayName = 'StartChoicePage';
 
+// Skippable invite-code page: a friend's code pays the welcome grant on claim
+// (server enforces the new-account window). Prefilled when a referral was staged
+// by a deep link; leaving it empty just moves on — the claim happens on complete.
+const InvitePage = React.memo<{
+  active: boolean;
+  listW: number;
+  sky: SkyPalette;
+  skyDark: boolean;
+  styles: Styles;
+  t: Translations;
+  code: string;
+  onChangeCode: (v: string) => void;
+}>(({ active, listW, sky, skyDark, styles, t, code, onChangeCode }) => {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={[styles.page, { width: listW }]}>
+      <KeyboardAwareScrollView
+        style={styles.welcomeScroll}
+        contentContainerStyle={styles.welcomeScrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+        bounces={false}
+        bottomOffset={24}
+      >
+        <View style={styles.pageInner}>
+          <Reveal active={active} delay={40} from={20}>
+            <View style={styles.inviteIconWrap}>
+              <Feather name="gift" size={28} color={sky.accent} />
+            </View>
+          </Reveal>
+          <Reveal active={active} delay={140} from={14} style={{ alignSelf: 'stretch' }}>
+            <Text style={styles.title} accessibilityRole="header">{t.onboarding.inviteTitle}</Text>
+            <Text style={styles.description}>{t.onboarding.inviteDesc}</Text>
+          </Reveal>
+          <Reveal active={active} delay={240} from={14} style={{ alignSelf: 'stretch' }}>
+            <View style={[styles.inputCard, focused && styles.inputCardFocused]}>
+              <TextInput
+                style={[styles.inputCardField, styles.inviteField]}
+                value={code}
+                onChangeText={onChangeCode}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder={t.onboarding.invitePlaceholder}
+                placeholderTextColor={sky.faint}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                returnKeyType="done"
+                accessibilityLabel={t.onboarding.inviteTitle}
+                keyboardAppearance={skyDark ? 'dark' : 'light'}
+                selectionColor={sky.accent}
+              />
+            </View>
+          </Reveal>
+        </View>
+      </KeyboardAwareScrollView>
+    </View>
+  );
+});
+InvitePage.displayName = 'InvitePage';
+
 const Onboarding: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
@@ -779,6 +846,20 @@ const Onboarding: React.FC = () => {
   const indexRef = useRef(0);
   const [startChoice, setStartChoice] = useState<StartChoice | null>(null);
   const [sampleBracket, setSampleBracket] = useState<SampleBracket>(DEFAULT_SAMPLE_BRACKET);
+  // Invite-code page: prefilled once from a staged referral (deep link /
+  // clipboard). prefilledCodeRef remembers that a code was SHOWN, so clearing
+  // the field on complete means "declined" — not "never saw it".
+  const [inviteCode, setInviteCode] = useState('');
+  const prefilledCodeRef = useRef<string | null>(null);
+  useEffect(() => {
+    peekPendingReferral()
+      .then((ref) => {
+        if (!ref) return;
+        prefilledCodeRef.current = ref.code;
+        setInviteCode((cur) => cur || ref.code);
+      })
+      .catch(() => {});
+  }, []);
   const setHasCompletedOnboarding = useSettingsStore((s) => s.setHasCompletedOnboarding);
   const setDefaultMode = useSettingsStore((s) => s.setDefaultMode);
   const setMode = useAppStore((s) => s.setMode);
@@ -812,11 +893,11 @@ const Onboarding: React.FC = () => {
     { ...SLIDE_META[2], title: t.onboarding.notesEcho, description: t.onboarding.notesEchoDesc },
   ], [t]);
 
-  // welcome + 3 slides + start-choice
-  const PAGE_COUNT = PAGES.length + 2;
+  // welcome + 3 slides + invite + start-choice
+  const PAGE_COUNT = PAGES.length + 3;
 
   const DOT_COLORS = useMemo(
-    () => [sky.accent, ...PAGES.map((p) => accentFor(p.accentColor, skyDark)), sky.accent],
+    () => [sky.accent, ...PAGES.map((p) => accentFor(p.accentColor, skyDark)), sky.accent, sky.accent],
     [sky, skyDark, PAGES],
   );
 
@@ -870,11 +951,21 @@ const Onboarding: React.FC = () => {
     setMode('personal');
     // Same engine as Settings → Load Sample Data; seeds the chosen persona.
     if (choice === 'demo') loadSampleData(bracket);
+    // Invite-code page: a code claims now if signed in, else stays staged and
+    // App.tsx claims it right after sign-up/sign-in. An emptied PREFILL means
+    // the user saw the staged code and declined — drop it so it can't claim later.
+    const code = inviteCode.trim();
+    if (code) {
+      void stagePendingReferral({ code, source: 'link', session: null })
+        .then(() => claimStagedReferral());
+    } else if (prefilledCodeRef.current) {
+      void clearPendingReferral();
+    }
     setHasCompletedOnboarding(true);
     // Notification prompt is fired from App.tsx keyed on hasCompletedOnboarding —
     // not here — so it still runs when a fresh install's first onboarding used
     // the old embedded bundle and the OTA applies only on the next launch.
-  }, [setDefaultMode, setMode, setHasCompletedOnboarding]);
+  }, [setDefaultMode, setMode, setHasCompletedOnboarding, inviteCode]);
 
   const handleNext = useCallback(() => {
     if (indexRef.current < PAGE_COUNT - 1) {
@@ -1005,6 +1096,16 @@ const Onboarding: React.FC = () => {
               styles={styles}
             />
           ))}
+          <InvitePage
+            active={currentIndex === PAGES.length + 1}
+            listW={listW}
+            sky={sky}
+            skyDark={skyDark}
+            styles={styles}
+            t={t}
+            code={inviteCode}
+            onChangeCode={setInviteCode}
+          />
           <StartChoicePage
             active={isLastPage}
             selected={startChoice}
@@ -1248,6 +1349,23 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.lg,
     color: sky.ink,
+  },
+
+  // ── Invite-code page ──
+  inviteIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: sky.fieldBg,
+    borderWidth: 1.5,
+    borderColor: sky.fieldBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xl,
+  },
+  inviteField: {
+    textAlign: 'center',
+    letterSpacing: 3,
   },
   // Liquid-glass language toggle. iOS 26 → the genuine system segmented control.
   // Fallback capsule (Android / iOS<26): a single glass surface (GlassView or

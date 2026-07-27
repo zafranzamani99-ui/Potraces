@@ -5,7 +5,7 @@
 // the join CODE and LINK as two tap-to-copy cards, a "Share to WhatsApp" CTA, and
 // a "View session" way out. Self-contained: it builds the announcement and copies
 // to the clipboard itself; the parent only says where "View session" goes.
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, Share } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -21,6 +21,7 @@ import {
   CollectzSession,
   collectzUrl,
   buildWhatsappAnnouncement,
+  ensureCollectzLinkReferralCode,
 } from '../../services/collectzService';
 import { fmtEventRange, fmtMoney, fill } from '../../screens/personal/collectz/collectzFormat';
 
@@ -43,6 +44,12 @@ const CollectzCreatedModal: React.FC<Props> = ({ visible, session, activeCount, 
   const neuF = useNeu(undefined, { faintDark: true }); // cards/wells (Onyx rule 3)
   const neuFull = useNeu(); // full neu — the success icon LIFTS off the surface
   const [copied, setCopied] = useState<null | 'code' | 'link'>(null);
+
+  // Warm the organizer's referral code so the link below carries ?r= when copied
+  // or shared (see collectzService.ensureCollectzLinkReferralCode).
+  useEffect(() => {
+    if (visible) void ensureCollectzLinkReferralCode();
+  }, [visible]);
 
   if (!session) return null;
   const url = collectzUrl(session.share_code);

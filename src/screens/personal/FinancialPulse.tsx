@@ -910,6 +910,7 @@ const FinancialPulse: React.FC = () => {
       />
       <EchoInlineChat
         visible={echoOpen}
+        threadKey="pulse"
         onClose={() => setEchoOpen(false)}
         insightTitle={`${score.score}/100`}
         insightSubtitle={t.pulse.echoSubtitle}
