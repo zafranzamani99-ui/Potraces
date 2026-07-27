@@ -3,6 +3,32 @@
 Living document. Every rule here was corrected by the user the hard way —
 do NOT regress them. Update this file whenever the user corrects something new.
 
+## RESUME HERE
+
+**State** (end of Mac session, 2026-07-25): HutangPromo v7.1 is rendered and
+QA-green — `out/debt-promo.mp4` (41.1s, 2460+ frames @60fps). All 14 VO
+clips natural takes, overlap/containment checks PASS, 108 BPM ducked bed,
+rapid roll-call (rows 6/66/126 + pings, pile collapses at 3.6s), RM 140 beat
+stop, black halal interrupt, RM 456 money story, WhatsApp remind, finale
+with store badges.
+
+**Comp**: `HutangPromo` (NOT `DebtPromo` — that's the separate v7
+problem→tour video). Render: `npm run render:debt` → `out/debt-promo.mp4`.
+
+**Next**:
+1. Watch the render; fix any beat that feels off — per the rules below
+   (never regress them). Log every new user correction in the log at the
+   bottom of this file.
+2. Google Cloud (for the app's Save-to-Drive + Google sign-in): add tester
+   Gmail(s) to OAuth consent screen Test users; then publish the consent
+   screen (privacy/terms pages exist at jejakbaki.my/privacy.html and
+   /terms.html — `drive.file` scope justification + unlisted demo video
+   required).
+3. Windows note: audio QA scripts that used macOS `afconvert` need ffmpeg
+   or the venv python instead.
+
+---
+
 ## The rules (non-negotiable)
 
 1. **Voice finishes inside its own scene.**

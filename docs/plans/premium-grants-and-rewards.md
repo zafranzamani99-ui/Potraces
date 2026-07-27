@@ -1,6 +1,16 @@
 # Premium Grants, Redeem Codes & Referral Rewards — Implementation Spec
 
-Status: implementation in progress. DB layer: `supabase/migrations/20260726000000_premium_grants_and_rewards.sql` (applied = source of truth).
+## ⏩ RESUME HERE (status as of 2026-07-25)
+
+**Built and verified, not yet deployed.** If you are a new session picking this up:
+1. Read this whole file first — it is the design contract.
+2. Code is complete: migration `supabase/migrations/20260726000000_premium_grants_and_rewards.sql` (fresh-eyes reviewed, 15 findings fixed), admin Rewards tab in `site/admin.html`, app wiring (`src/services/entitlements.ts`, `premiumStore` recompute, `RedeemCode`/`InviteFriends` screens, onboarding invite step, deep-link + clipboard attribution), site (`site/r.html`, `collectz.html ?r=`, `vercel.json`), smoke test `supabase/smoke/20260726_grants_smoke.sql`.
+3. Verification already done: `npx tsc --noEmit` clean (2 pre-existing errors in the untracked `PurchaseResultModal.tsx` — not ours), `npx tsx scripts/test-entitlement-recompute.ts` 16/16, all RPC call sites match signatures. **Not yet done: the migration has never been EXECUTED against a live DB.**
+4. Remaining work = the deploy runbook at the bottom of this file, in order. Start with `supabase db push`, then run the smoke script (must end `SMOKE OK`), then Vercel/site, then app build. On a machine without the Supabase CLI, paste the migration into the dashboard SQL editor instead of `db push`.
+
+---
+
+Status: implementation complete, pending deployment. DB layer: `supabase/migrations/20260726000000_premium_grants_and_rewards.sql` (applied = source of truth).
 Design discussion origin: redeem codes (admin-minted, plan + duration + expiry, fully customizable), invite-friends rewards, Collectz share rewards — all three are **one primitive**: a row in the server-side grant ledger ("membership book").
 
 ## Locked decisions (owner-approved)
