@@ -35,7 +35,7 @@ Grouped by who does it: **🟢 Claude can do · 🟡 needs you · 🔴 bigger bu
 - [x] Order double-tap protection — fail-open dedup in place-order (deployed); identical order within 45s returns the same order, no duplicate. ✅
 - [x] Malay paywall — already fully translated in `ms.ts` (tiers/features/roadmap/legal); audit finding was stale. ✅
 - [x] Bilingual "not financial advice" note — added under SavingsTracker's coaching/projections. ✅ *(Goals/Pulse can get it too if wanted)*
-- [ ] Biometric app-lock.
+- [x] Biometric app-lock — already built (`BiometricGate`, wired in App.tsx, fail-open, settings toggle). ✅ *(lock-screen strings are hardcoded EN — minor i18n polish if wanted)*
 - [ ] Sentry crash reporting — actually **needs your Sentry DSN key** (🟡, not green).
 - [x] 5 hardcoded-string i18n fixes — already clean, lint passes. ✅ · `console.log` cleanup deferred (53 hits, mostly test/dev files — harmless in RN).
 - [x] `eas.json` production submit profile added. ✅
