@@ -97,7 +97,7 @@ const QUERY_PATTERNS = [
 
 // Savings keywords
 const SAVINGS_KEYWORDS = [
-  'simpan', 'save', 'saving', 'nabung', 'tabung', 'tabung haji', 'invest', 'pelaburan',
+  'simpan', 'save', 'saving', 'nabung', 'tabung', 'tabung haji', 'invest', 'pelaburan', 'labur', 'melabur',
   'tng+', 'esa', 'asb', 'kwsp', 'epf',
   // modern savings/investment vehicles
   'crypto', 'bitcoin', 'stashaway', 'versa', 'wise', 'robo', 'emas', 'gold', 'saham', 'stocks', 'fixed deposit',
@@ -107,10 +107,10 @@ const SAVINGS_KEYWORDS = [
 // the text is a "save FOR a purpose" and should become a GOAL, not a vehicle.
 const SAVINGS_VEHICLES: { type: string; keywords: string[] }[] = [
   { type: 'asb', keywords: ['asb', 'asnb', 'asn '] },
-  { type: 'tabung_haji', keywords: ['tabung haji'] },
+  { type: 'tabung_haji', keywords: ['tabung haji', 'tabunghaji'] },
   { type: 'tng_plus', keywords: ['tng+', 'tng plus', 'go+', 'gopay'] },
-  { type: 'esa', keywords: ['epf', 'kwsp', 'esa'] },
-  { type: 'robo_crypto', keywords: ['crypto', 'bitcoin', 'stashaway', 'versa', 'wise', 'robo', 'akru'] },
+  { type: 'esa', keywords: ['epf', 'kwsp', ' esa '] }, // padded: whole-word only, so "desa"/"mesa" don't false-match
+  { type: 'robo_crypto', keywords: ['crypto', 'bitcoin', 'stashaway', 'stash away', 'versa', 'versah', 'wise', 'robo', 'akru'] },
   { type: 'gold', keywords: ['gold', 'emas'] },
   { type: 'stocks', keywords: ['stocks', 'saham', 'shares'] },
 ];

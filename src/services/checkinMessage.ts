@@ -21,6 +21,10 @@ export async function generateCheckinMessage(input: {
   /** Back-Tap auto-log already set up (cached server truth). Shapes the nudge:
    *  not set up + nothing logged → gently mention it; set up → acknowledge. */
   autoLogSetup?: boolean;
+  /** ONE real, pre-rendered personal line (a bill due, a goal's remaining, a
+   *  remembered fact) that ALREADY carries its ringgit figure — Echo weaves it in
+   *  verbatim, never inventing numbers around it. */
+  personalNote?: string;
 }): Promise<string | null> {
   try {
     // Shared cooldown + AI quota headroom — background AI never burns a call
@@ -28,7 +32,7 @@ export async function generateCheckinMessage(input: {
     if (!isGeminiAvailable()) return null;
     if (!usePremiumStore.getState().canUseAI()) return null;
 
-    const { count, total, streak, currency, language, autoLogSetup } = input;
+    const { count, total, streak, currency, language, autoLogSetup, personalNote } = input;
     // Auto-log context: buttons under the message do the actual navigation —
     // the text just sets the scene (never instructs taps it can't render).
     const autoLogLine = autoLogSetup
@@ -53,6 +57,7 @@ Rules:
 - Mention today's tally (count + amount) if there is one; if nothing is recorded yet, keep it light — never pushy.
 - If told about a day streak, weave it in as a calm rhythm note.
 - If auto-log is set up, you may acknowledge it in passing ("auto log jalan"). If it is NOT set up and nothing is logged yet, a light "boleh catat bila sempat" energy is fine — buttons under your message handle the actions, so never tell the user to tap anything.
+- If given "One real thing from their data", weave THAT into the check-in as the main hook — keep its exact ringgit figure, never invent or change numbers around it.
 ${languageLine}
 - No advice. No "you should", no questions, no judgment on the amounts.
 - At most ONE emoji, or none at all.
@@ -61,7 +66,7 @@ ${languageLine}
 
     const data = await callGeminiAPI({
       system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: 'user', parts: [{ text: `${facts}${streakLine}${autoLogLine}` }] }],
+      contents: [{ role: 'user', parts: [{ text: `${facts}${streakLine}${autoLogLine}${personalNote ? ` One real thing from their data (keep this figure exactly, do NOT invent numbers): ${personalNote}` : ''}` }] }],
       generationConfig: {
         temperature: 0.7,
         maxOutputTokens: 256,

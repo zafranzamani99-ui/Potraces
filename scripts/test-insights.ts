@@ -9,7 +9,7 @@
 import {
   getRange, previousRange, monthsInRange,
   incomeRollup, categoryRollup, biggestExpenses, categoryMovers,
-  cashFlow, recurringShare, monthlyEquivalent, keptAcrossBooks,
+  cashFlow, recurringShare, monthlyEquivalent, keptAcrossBooks, detectRecurringCandidates,
 } from '../src/utils/insights';
 import { Transaction, Subscription, CategoryOption } from '../src/types';
 
@@ -152,6 +152,24 @@ console.log('\nrecurring share is per-month vs per-month (bug fix)');
   const neg = keptAcrossBooks(spendThisMonth, -50, NOW);
   close('kept: negative transfer floored to 0', neg.settledIn, 0);
   check('kept: crossBook false when floored', neg.crossBook === false);
+}
+
+// ── detectRecurringCandidates — offer high-confidence monthly charges only ──
+{
+  const R = (mo: number, day: number, amount: number, desc: string): Transaction =>
+    tx('expense', amount, 'subscription', new Date(`2026-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}T10:00:00Z`), desc);
+  const txnsR: Transaction[] = [
+    R(5, 5, 55, 'Netflix'), R(6, 5, 55, 'Netflix'), R(7, 5, 55, 'Netflix'),   // stable monthly → candidate
+    R(5, 3, 12, 'grab'), R(6, 9, 40, 'grab'), R(7, 2, 7, 'grab'),             // variable amount → excluded
+    R(5, 1, 30, 'Spotify'), R(6, 1, 30, 'Spotify'), R(7, 1, 30, 'Spotify'),   // stable but already a sub → excluded
+    R(6, 5, 25, 'HBO'), R(7, 5, 25, 'HBO'),                                    // only 2 months → excluded
+  ];
+  const subsR = [{ id: 's1', name: 'Spotify', amount: 30, billingCycle: 'monthly', isActive: true } as Subscription];
+  const cands = detectRecurringCandidates(txnsR, subsR, NOW);
+  check('recurring: stable monthly Netflix detected', cands.some((c) => c.merchant.toLowerCase().includes('netflix') && Math.abs(c.amount - 55) < 0.5));
+  check('recurring: variable "grab" excluded', !cands.some((c) => c.merchant.toLowerCase().includes('grab')));
+  check('recurring: already-tracked Spotify excluded', !cands.some((c) => c.merchant.toLowerCase().includes('spotify')));
+  check('recurring: only-2-months HBO excluded', !cands.some((c) => c.merchant.toLowerCase().includes('hbo')));
 }
 
 console.log(`\n${failures === 0 ? 'PASS' : `FAIL (${failures})`}`);

@@ -195,6 +195,13 @@ console.log('\n8b) NAMED "aku hutang <name>" → i_owe that person; generics sti
   check('save for house → null (goal)', detectSavingsVehicle('save 5000 for depo rumah') === null);
   check('nak simpan untuk kahwin → null (goal)', detectSavingsVehicle('nak simpan untuk kahwin') === null);
   check('emergency fund → null (goal)', detectSavingsVehicle('saving for emergency fund') === null);
+  // typo/spacing tolerance
+  check('versah (typo) → robo_crypto', detectSavingsVehicle('masuk versah 200') === 'robo_crypto');
+  check('stash away (spaced) → robo_crypto', detectSavingsVehicle('put in stash away') === 'robo_crypto');
+  check('tabunghaji (no space) → tabung_haji', detectSavingsVehicle('tabunghaji 300') === 'tabung_haji');
+  check('epf → esa', detectSavingsVehicle('topup epf 100') === 'esa');
+  // esa must be whole-word — "desa" must NOT false-match
+  check('"makan kat desa" → null (no esa false-positive)', detectSavingsVehicle('makan kat desa') === null);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

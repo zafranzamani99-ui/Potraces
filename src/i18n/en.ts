@@ -3261,12 +3261,16 @@ export const en = {
     flagLarge: 'large amount — double-check',
     removeA11y: 'remove',
     recurringNudge: '{name} again — make it recurring?',
+    recurringFound: '{name} shows up about monthly ({amount}) — track it?',
     makeRecurring: 'make recurring',
     recurringQueued: 'lined up — tap to confirm',
     pickedUpNote: 'picked up your unsent note',
     dailyCheckinSome: '{amount} across {n} today — anything before the day closes?',
     dailyCheckinNone: 'nothing logged yet today — anything to add?',
     rhythmNote: '{n} days in a row — nice rhythm.',
+    // proactive check-in — one real personal fact (always carries a ringgit figure)
+    checkinBillNote: '{name} ({amount}) is due around now — sorted it?',
+    checkinGoalNote: '{amount} to go on {name} — you\'re getting there.',
     // crisis help card — shown on-device, never sent anywhere
     crisisLead: "you're not alone",
     crisisBody: "if things feel really heavy right now, please reach out — someone's ready to listen, any time.",

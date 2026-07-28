@@ -572,6 +572,66 @@ export function upcomingBills(
   return { items, total };
 }
 
+export interface RecurringCandidate {
+  merchant: string;
+  amount: number;
+  cadence: 'monthly';
+  lastDate: Date;
+  count: number;
+}
+
+const normMerchant = (s: string): string =>
+  (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * Scan the owner's OWN expenses for high-confidence MONTHLY recurring charges that
+ * aren't already tracked as a Subscription — candidates to OFFER (never auto-create).
+ * Pure + store-free. Gates (all must hold): appears in >= minMonths distinct months,
+ * amount stable (~70%+ of charges within ±15% of the median — rejects Grab/food),
+ * roughly one charge per month (not a burst), and still live (last charge within
+ * ~45 days). Transfers + goal-moves excluded.
+ * ponytail: monthly-only + naive merchant grouping; add weekly/yearly when a real case needs it.
+ */
+export function detectRecurringCandidates(
+  txns: Transaction[],
+  subs: Subscription[],
+  now: Date = new Date(),
+  minMonths = 3,
+): RecurringCandidate[] {
+  const subKeys = subs.map((s) => normMerchant(s.name)).filter(Boolean);
+  const groups = new Map<string, { raws: string[]; amounts: number[]; dates: Date[]; months: Set<string> }>();
+  for (const t of realTxns(txns)) {
+    if (t.type !== 'expense' || isGoalMove(t)) continue;
+    const key = normMerchant(t.description || '');
+    if (key.length < 3) continue;
+    const d = toDate(t.date);
+    if (!isValid(d)) continue;
+    let g = groups.get(key);
+    if (!g) { g = { raws: [], amounts: [], dates: [], months: new Set() }; groups.set(key, g); }
+    g.raws.push(t.description || key);
+    g.amounts.push(t.amount);
+    g.dates.push(d);
+    g.months.add(`${d.getFullYear()}-${d.getMonth()}`);
+  }
+  const out: RecurringCandidate[] = [];
+  for (const [key, g] of groups) {
+    const months = g.months.size;
+    if (months < minMonths) continue;
+    if (g.amounts.length > months * 1.5) continue; // a burst, not ~monthly
+    if (subKeys.some((sk) => sk === key || sk.includes(key) || key.includes(sk))) continue; // already tracked
+    const sorted = [...g.amounts].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    if (median <= 0) continue;
+    const stable = g.amounts.filter((a) => Math.abs(a - median) <= median * 0.15).length;
+    if (stable / g.amounts.length < 0.7) continue; // variable spend → skip
+    const lastDate = g.dates.reduce((m, d) => (d > m ? d : m), g.dates[0]);
+    if (differenceInDays(startOfDay(now), startOfDay(lastDate)) > 45) continue; // gone quiet
+    const lastRaw = g.raws[g.dates.indexOf(lastDate)] || key;
+    out.push({ merchant: lastRaw, amount: Math.round(median * 100) / 100, cadence: 'monthly', lastDate, count: g.amounts.length });
+  }
+  return out.sort((a, b) => b.count - a.count || b.lastDate.getTime() - a.lastDate.getTime());
+}
+
 export interface RecurringShare {
   monthlyRecurring: number;
   ofSpendPercent: number;

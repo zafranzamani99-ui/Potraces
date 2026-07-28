@@ -3235,12 +3235,16 @@ export const ms: Translations = {
     flagLarge: 'jumlah besar — semak semula',
     removeA11y: 'buang',
     recurringNudge: '{name} lagi — jadikan langganan?',
+    recurringFound: '{name} masuk tiap bulan ({amount}) — nak track?',
     makeRecurring: 'jadikan langganan',
     recurringQueued: 'dah sedia — tekan untuk sahkan',
     pickedUpNote: 'nota tadi dah kembali',
     dailyCheckinSome: '{amount} dalam {n} hari ni — nak tambah apa-apa sebelum hari tutup?',
     dailyCheckinNone: 'belum catat apa-apa hari ni — nak tambah?',
     rhythmNote: '{n} hari berturut — mantap.',
+    // check-in proaktif — satu fakta peribadi betul (mesti ada angka ringgit)
+    checkinBillNote: '{name} ({amount}) dah nak kena bayar — dah settle?',
+    checkinGoalNote: 'tinggal {amount} je untuk {name} — dah nak sampai dah.',
     // kad bantuan krisis — papar dalam telefon je, tak hantar ke mana-mana
     crisisLead: 'kau tak keseorangan',
     crisisBody: 'kalau rasa berat sangat sekarang, reach out ye — ada orang sedia dengar, bila-bila masa.',

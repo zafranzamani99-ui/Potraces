@@ -86,6 +86,7 @@ import { normalizeSpokenAmount } from '../../utils/spokenAmount';
 import { getMalayVoiceState, type MalayVoiceState } from '../../services/voiceModel';
 import { transcribeAudio } from '../../services/aiService';
 import { generateCheckinMessage } from '../../services/checkinMessage';
+import { detectRecurringCandidates, upcomingBills } from '../../utils/insights';
 
 // Static MY money/merchant lexicon — merged with the user's real merchants/wallets/categories to
 // bias the speech recognizer toward what Malaysians actually say. Best-effort (≤100 total, capped below).
@@ -380,9 +381,12 @@ const SWITCHABLE_TYPE_KEYS: { key: ChatActionType; icon: keyof typeof Feather.gl
 // as new confusions surface. Extras already in the base 4 are ignored.
 type TypeOpt = { key: ChatActionType; icon: keyof typeof Feather.glyphMap };
 const SAVINGS_FAMILY: ChatActionType[] = ['create_goal', 'add_goal_contribution', 'add_savings_account'];
-const AMBIG_SAVE_RE = /\b(sav(?:e|ing)|simpan|nabung|tabung|invest)\b/i;
+// Inflected forms too: "savings", "simpanan", "investment", "melabur".
+const AMBIG_SAVE_RE = /\b(sav(?:e|ings?)|simpan(?:an)?|nabung|tabung|melabur|labur|invest(?:ment)?)\b/i;
 // pay-later can look like a plain expense — offer the BNPL type as a correction.
 const AMBIG_BNPL_RE = /\b(spay\s?later|spaylater|atome|pay\s?later|ansuran|installment|instalment|payflex)\b|(?:grab|shopee|tiktok)\s?(?:pay)?later/i;
+// Big-ticket items read as an expense but might be a savings GOAL (saving up for one).
+const AMBIG_BIGITEM_RE = /\b(kereta|motosikal|motor|rumah|iphone|ipad|macbook|laptop|umrah|kahwin|wedding|honeymoon|deposit|downpayment|down payment)\b/i;
 const AMBIGUITY_RULES: { test: (a: ChatAction) => boolean; extras: TypeOpt[] }[] = [
   {
     // "saving" → a GOAL (save for a purpose) vs a SAVINGS/INVESTMENT account (ASB, Versa, crypto…).
@@ -393,6 +397,11 @@ const AMBIGUITY_RULES: { test: (a: ChatAction) => boolean; extras: TypeOpt[] }[]
     // pay-later purchase vs a plain expense.
     test: (a) => a.type !== 'add_bnpl' && AMBIG_BNPL_RE.test(a.description || ''),
     extras: [{ key: 'add_bnpl', icon: 'credit-card' }],
+  },
+  {
+    // a big-ticket item logged as an expense might actually be a goal to save toward.
+    test: (a) => a.type === 'add_expense' && AMBIG_BIGITEM_RE.test(a.description || ''),
+    extras: [{ key: 'create_goal', icon: 'target' }],
   },
 ];
 
@@ -1342,6 +1351,36 @@ const MoneyChat: React.FC = () => {
     while (days.has(dayKey(cursor))) { streak += 1; cursor.setDate(cursor.getDate() - 1); }
     if (streak >= 3) msg += ' ' + t.moneyChat.rhythmNote.replace('{n}', String(streak));
 
+    // One real, personal thing (always carries a ringgit figure): a bill due now,
+    // else a goal's remaining, else a recent memory that has a number. Fed to the
+    // check-in so it's specific, not generic.
+    const subs = usePersonalStore.getState().subscriptions || [];
+    let personalNote: string | undefined;
+    const bill = upcomingBills(subs, 3).items[0];
+    if (bill) {
+      personalNote = t.moneyChat.checkinBillNote.replace('{name}', bill.name).replace('{amount}', `RM ${bill.amount.toFixed(2)}`);
+    } else {
+      const goal = [...usePersonalStore.getState().goals]
+        .filter((g) => g.targetAmount > g.currentAmount)
+        .sort((a, b) => (a.targetAmount - a.currentAmount) - (b.targetAmount - b.currentAmount))[0];
+      if (goal) {
+        personalNote = t.moneyChat.checkinGoalNote.replace('{amount}', `RM ${(goal.targetAmount - goal.currentAmount).toFixed(2)}`).replace('{name}', goal.name);
+      } else {
+        const mem = [...useLearningStore.getState().memories]
+          .sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : b.updatedAt - a.updatedAt))
+          .find((m) => /\d/.test(m.text));
+        if (mem) personalNote = mem.text;
+      }
+    }
+    if (personalNote) msg += ' ' + personalNote;
+
+    // A recurring charge Echo spotted in history but isn't tracked yet — offered
+    // (never auto-created) after the greeting settles, once per merchant.
+    const recurPick = detectRecurringCandidates(txns, subs).find((c) => {
+      const k = c.merchant.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+      return !ai.recurringNudged.includes(k);
+    });
+
     // Let Echo WRITE the check-in in its own words (background AI, doesn't spend
     // the chat quota); the template `msg` above stays the offline/over-quota/slow
     // fallback. Kick the AI call off now, race it against 4s at post time so the
@@ -1350,6 +1389,7 @@ const MoneyChat: React.FC = () => {
       count, total, streak, currency,
       language: useSettingsStore.getState().language,
       autoLogSetup: useSettingsStore.getState().quickLogConfigured,
+      personalNote,
     }).catch(() => null);
     let cancelled = false;
     const id = setTimeout(async () => {
@@ -1363,6 +1403,19 @@ const MoneyChat: React.FC = () => {
         // Action chips (Log manual / Set up auto log) render under this message
         // while it stays the latest bubble.
         setCheckinStamp(stamp);
+        // Offer the recurring charge (toast → add_subscription chip, double-confirm).
+        if (recurPick) {
+          const k = recurPick.merchant.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+          ai.markRecurringNudged(k);
+          showToast(
+            t.moneyChat.recurringFound.replace('{name}', recurPick.merchant).replace('{amount}', `RM ${recurPick.amount.toFixed(2)}`),
+            'info',
+            { label: t.moneyChat.makeRecurring, onPress: () => {
+              addPendingActions([{ type: 'add_subscription', amount: recurPick.amount, description: recurPick.merchant, billingCycle: 'monthly', category: 'subscription' } as ChatAction]);
+              showToast(t.moneyChat.recurringQueued, 'info');
+            } },
+          );
+        }
       }
     }, 500);
     return () => { cancelled = true; clearTimeout(id); };

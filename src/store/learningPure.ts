@@ -303,7 +303,7 @@ export function renderMemoryHints(memories: EchoMemory[]): string {
   const ordered = [...memories]
     .sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : b.updatedAt - a.updatedAt))
     .slice(0, MEMORY_PROMPT_LINES);
-  return `\n\nWHAT ECHO REMEMBERS ABOUT YOU (durable facts — use them naturally, never list them back):\n${ordered.map((m) => `- [${m.kind}] ${m.text}`).join('\n')}`;
+  return `\n\nWHAT ECHO REMEMBERS ABOUT YOU (durable facts — when one is relevant to what they just asked, weave it into your reply in one natural clause; never list them back):\n${ordered.map((m) => `- [${m.kind}] ${m.text}`).join('\n')}`;
 }
 
 export interface LearningBlob {
