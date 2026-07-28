@@ -373,6 +373,12 @@ deno_version = 2
 [functions.telegram-webhook]
 verify_jwt = false
 
+# Public webhook called by the PSP (Fiuu / HitPay) when a QR is paid. Must be
+# JWT-free (the PSP cannot send a JWT). Security is enforced inside the
+# function via the provider signature check.
+[functions.qr-payment-webhook]
+verify_jwt = false
+
 # Public order page endpoint hit by browsers without auth.
 [functions.order-page]
 verify_jwt = false

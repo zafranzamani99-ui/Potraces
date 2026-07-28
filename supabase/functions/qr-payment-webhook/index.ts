@@ -13,7 +13,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  *   https://<project>.functions.supabase.co/qr-payment-webhook?provider=hitpay
  *
  * Secrets (Supabase edge-function secrets, never bundled):
- *   HITPAY_WEBHOOK_SALT / FIUU_WEBHOOK_SECRET — per-provider signing secret.
+ *   HITPAY_WEBHOOK_SALT / FIUU_SECRET_KEY — per-provider signing secret.
  */
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;

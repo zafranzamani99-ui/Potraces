@@ -135,15 +135,21 @@ export function useIntentEngine({
         // Add new extractions to the store (skip if already added)
         let addedCount = 0;
         if (intentResult?.extractions) {
-          const existingIds = new Set(
+          // Dedup key MUST include the amount: in the AI path rawText is the
+          // description only (amount stripped), so "makan mamak 33" and
+          // "makan mamak 25" share a rawText — the 2nd got wrongly skipped as
+          // "nothing new". Key on amount + description + person instead.
+          const sig = (e: AIExtraction) =>
+            `${e.extractedData.amount}|${(e.extractedData.description || e.rawText || '').toLowerCase().trim()}|${(e.extractedData.person || '').toLowerCase().trim()}`;
+          const existingSigs = new Set(
             (page?.extractions || [])
               .filter((e) => e.status === 'confirmed' || e.status === 'pending')
-              .map((e) => e.rawText)
+              .map(sig)
           );
           for (const extraction of intentResult.extractions) {
             const hasAmount = extraction.extractedData.amount > 0;
             const isQuery = extraction.type === 'query';
-            if (!existingIds.has(extraction.rawText) && (hasAmount || isQuery)) {
+            if (!existingSigs.has(sig(extraction)) && (hasAmount || isQuery)) {
               addExtraction(pageId, extraction);
               addedCount++;
             }

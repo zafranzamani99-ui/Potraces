@@ -1,13 +1,37 @@
 # Fiuu DuitNow QR integration — handoff (2026-07-24)
 
 > ## RESUME HERE
-> **Status: code complete, not deployed. Remaining work is ops/config, no coding expected.**
-> 1. Fiuu sandbox portal → get merchant **applicationCode** + **secret key**; register notification URL `https://jngmanwvhbpkpkeklfiv.supabase.co/functions/v1/qr-payment-webhook?provider=fiuu`
-> 2. `supabase secrets set FIUU_APPLICATION_CODE=... FIUU_SECRET_KEY=... FIUU_STORE_ID=STALL01 FIUU_TERMINAL_ID=TERM01 FIUU_BASE_URL=https://sandbox-payment.fiuu.com`
-> 3. `supabase functions deploy qr-create-charge qr-payment-webhook`
-> 4. `.env` → add `EXPO_PUBLIC_QR_PROVIDER=fiuu`, rebuild the app
-> 5. Verify: stall session → QR checkout → pay in sandbox → sheet auto-completes + push lands
-> Details + prod-swap notes below.
+> **Status: fully wired; blocked on Fiuu provisioning (2026-07-28).**
+> Done: functions deployed; webhook `verify_jwt=false` (config.toml); all 5
+> `FIUU_*` secrets set (creds from portal → Store Management → Store List);
+> webhook URL registered in portal (Notification URL + IPN on);
+> `EXPO_PUBLIC_QR_PROVIDER=fiuu` in `.env`. Verified live: app tap →
+> qr-create-charge → Fiuu precreate round-trip works; Fiuu rejects with
+> **HTTP 401 (40104) "Channel not enabled or account inactive"** — the
+> DuitNow QR channel (channelId 24) is not enabled on sandbox merchant
+> SB_jejakbaki. Creds/signature are accepted; this is Fiuu-side provisioning.
+> 2026-07-28 update: Fiuu enabled the channel (40104 gone), but precreate now
+> returns statusCode 99 + **errorCode 1011 "Merchant account unauthorized —
+> merchant account not found or invalid merchant account info at channel
+> side"** (§11 p.63): the DuitNow QR acquiring-side merchant record is
+> missing/incomplete. Also Fiuu-side; user replied to the support thread
+> asking them to complete the channel-side merchant setup (evidence:
+> molTransactionId 169379). CLI check script used: signed precreate POST
+> direct to sandbox (same params as qr-create-charge) — re-run it after
+> Fiuu's next reply; success = statusCode 00 + non-empty authorizationCode.
+> Next: user emailed support@fiuu.com to enable the DuitNow QR channel
+> (store jejakbaki, applicationCode 0d9cdbb9f8d90f15da8c183196bb17fa).
+> Faster alt channel: Telegram dev forum t.me/FiuuDeveloperForum (spec cover
+> page). Spec confirms: channels are Fiuu-provisioned per application account
+> (§3.1), no self-serve portal toggle exists; 40104 defined §11 p.64;
+> storeId/terminalId are merchant-assigned, no pre-registration (§5.6);
+> portal Notification URL is the only webhook mechanism (§5.7 p.48) — already
+> set. Once enabled: no redeploy/rebuild needed — retest QR checkout, pay via
+> the portal's Bank Simulator, sheet should auto-complete + push lands.
+> Note: the portal's "Check" button always shows an error by design (unsigned
+> test call → 401 Invalid signature). Prod swap: new secrets +
+> `FIUU_BASE_URL=https://opa.fiuu.com` + re-register webhook on prod portal.
+> Details below.
 
 Status: **code complete, not yet deployed.** The remaining work is ops/config,
 not code. Read this before continuing on any machine.

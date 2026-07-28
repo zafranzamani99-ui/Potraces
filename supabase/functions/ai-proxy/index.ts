@@ -76,6 +76,15 @@ const MONTHLY_TOKEN_CAP = 1_500_000;
 // call increments `calls`, so this holds regardless of token accounting accuracy.
 const MONTHLY_CALL_CAP = 3_000;
 
+// Dev escape hatch: identities listed here (env var, comma-separated) skip the
+// monthly cap entirely — for internal testing. Default empty → prod stays fully
+// capped. Use a SIGNED-IN identity (user.id, server-verified) here; a
+// `dev:<device-id>` entry is spoofable via the x-device-id header.
+const DEV_UNLIMITED_IDENTITIES = new Set(
+  (Deno.env.get('DEV_UNLIMITED_IDENTITIES') ?? '')
+    .split(',').map((s) => s.trim()).filter(Boolean)
+);
+
 // Anti-runaway ceilings on a SINGLE call. Deliberately generous — the real cost
 // control is MONTHLY_TOKEN_CAP. These only stop one pathological huge-output call.
 const MAX_OUTPUT_TOKENS = 4096;
@@ -165,18 +174,20 @@ Deno.serve(async (req: Request) => {
 
   // ── Budget check (pre-call) ───────────────────────────────────────────────
   const period = utcPeriod();
-  try {
-    const { data: usage } = await admin
-      .from('ai_proxy_usage')
-      .select('input_tokens, output_tokens, calls')
-      .eq('identity', identity)
-      .eq('period', period)
-      .maybeSingle();
-    const used = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
-    if (used >= MONTHLY_TOKEN_CAP || (usage?.calls ?? 0) >= MONTHLY_CALL_CAP) {
-      return json({ error: 'BUDGET_EXCEEDED' }, 403);
-    }
-  } catch { /* if the usage read fails, fail open (don't block the user on a DB hiccup) */ }
+  if (!DEV_UNLIMITED_IDENTITIES.has(identity)) {
+    try {
+      const { data: usage } = await admin
+        .from('ai_proxy_usage')
+        .select('input_tokens, output_tokens, calls')
+        .eq('identity', identity)
+        .eq('period', period)
+        .maybeSingle();
+      const used = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
+      if (used >= MONTHLY_TOKEN_CAP || (usage?.calls ?? 0) >= MONTHLY_CALL_CAP) {
+        return json({ error: 'BUDGET_EXCEEDED' }, 403);
+      }
+    } catch { /* if the usage read fails, fail open (don't block the user on a DB hiccup) */ }
+  }
 
   // Coarse feature tag for the ops dashboard: receipt/statement scans send images
   // inline; chat and text features don't. Computed once from the raw payload.
