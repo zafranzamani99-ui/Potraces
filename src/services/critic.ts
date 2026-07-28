@@ -1,15 +1,18 @@
 /**
- * critic.ts — the deterministic critic. Two jobs, both pure & un-wired:
+ * critic.ts — the deterministic critic. Two pure jobs:
  *
  *   1. reviewPlan()  — challenge a proposed budget plan against the anti-pattern
  *                      library (echoKnowledge.ts) + the user's tracked reality.
+ *                      Wired into the planner loop (planner.ts).
  *   2. reviewReply() — make ECHO CHAT smarter & safer: gate any reply text for the
  *                      banned advice phrases / banned words / orphan confirmations
  *                      that the system prompt forbids (moneyChat.ts:55-56, 62-63).
+ *                      Wired log-only into MoneyChat.processResponse (telemetry
+ *                      first — never blocks a reply).
  *
- * SAFE: imports only the (un-wired) budgetModels.ts + echoKnowledge.ts. Imported by
- * nothing in the app. Every objection is EVIDENCE-GATED — no figure/source, no
- * objection — so the critic can never raise a vague or hallucinated complaint.
+ * SAFE: imports only budgetModels.ts + echoKnowledge.ts. Every objection is
+ * EVIDENCE-GATED — no figure/source, no objection — so the critic can never raise
+ * a vague or hallucinated complaint.
  */
 
 import type { TailoredPlan, TailorInput } from './budgetModels';

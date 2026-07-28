@@ -26,7 +26,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, AccessibilityInfo } from 'react-native';
 import { deleteAsync } from 'expo-file-system/legacy';
 import {
   ExpoSpeechRecognitionModule,
@@ -91,6 +91,8 @@ export interface UseVoiceInputOptions {
    * mid-session it degrades to the server (clip→Gemini) path — never a dead mic.
    */
   preferStreaming?: boolean;
+  /** Screen-reader announcements fired on state transitions (a11y). No-op without a reader. */
+  announce?: { listening?: string; writing?: string; ready?: string };
 }
 
 interface UseVoiceInputReturn {
@@ -118,6 +120,7 @@ const SERVER_AUDIO_MIME = 'audio/wav'; // expo-speech-recognition persists WAV o
 const MAX_EMPTY_RESTARTS = 3; // consecutive silent restarts before we give up (battery/loop guard)
 const RESTART_DELAY_MS = 180; // let the native recognizer tear down before re-start() (avoid ERROR_RECOGNIZER_BUSY)
 const STREAM_FLUSH_TIMEOUT_MS = 5000; // after a manual stop, give Soniox this long (re-armed on each final) to flush
+const MAX_SESSION_MS = 60_000; // safety cap: auto-stop a listening session at ~60s (delivers what it heard, never discards)
 const ON_DEVICE_PKG = 'com.google.android.as'; // Android System Intelligence (on-device recognition)
 const LOCALE_PROBE_TIMEOUT_MS = 2000; // getSupportedLocales has been observed to HANG — must race a timeout
 const START_WATCHDOG_MS = 12_000; // start() emitted NO 'start' event this long → recognizer is dead; give up
@@ -266,6 +269,8 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
   // ── Control refs (native callbacks read current values — no stale closures) ─
   const onResultRef = useRef(opts?.onResult);
   onResultRef.current = opts?.onResult;
+  const announceRef = useRef(opts?.announce);
+  announceRef.current = opts?.announce;
   const contextualStringsRef = useRef(opts?.contextualStrings);
   contextualStringsRef.current = opts?.contextualStrings;
   const transcribeAudioRef = useRef(opts?.transcribeAudio);
@@ -443,6 +448,7 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
     if (cancelledRef.current) return; // discarded → nothing
     const text = composeLive().trim();
     if (text) {
+      if (announceRef.current?.ready) AccessibilityInfo.announceForAccessibility(announceRef.current.ready);
       onResultRef.current?.(text);
       return;
     }
@@ -1121,6 +1127,22 @@ export function useVoiceInput(opts?: UseVoiceInputOptions): UseVoiceInputReturn 
     setIsTranscribing(false);
     // hasCommittedRef stays false; the trailing 'end' (if any) short-circuits on cancelledRef.
   }, []);
+
+  // ── a11y: announce state transitions for screen readers (no-op without one) ──
+  useEffect(() => {
+    if (isRecording && announceRef.current?.listening) AccessibilityInfo.announceForAccessibility(announceRef.current.listening);
+  }, [isRecording]);
+  useEffect(() => {
+    if (isTranscribing && announceRef.current?.writing) AccessibilityInfo.announceForAccessibility(announceRef.current.writing);
+  }, [isTranscribing]);
+
+  // ── Safety cap: auto-stop a listening session at ~60s. Delivers whatever was
+  // heard into the composer (same as a manual stop) — never discards, never sends.
+  useEffect(() => {
+    if (!isRecording) return;
+    const timer = setTimeout(() => stopAndTranscribe(), MAX_SESSION_MS);
+    return () => clearTimeout(timer);
+  }, [isRecording, stopAndTranscribe]);
 
   // ── Lifecycle guards ──────────────────────────────────────────────────────
   // Background → stop the mic (privacy + battery). Cover both an active session AND the Android

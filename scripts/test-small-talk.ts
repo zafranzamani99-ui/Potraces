@@ -3,7 +3,7 @@
  * with money signals must keep it. Pure module, so tsx can run it.
  * Run: npm run test:smalltalk
  */
-import { isSmallTalk } from '../src/services/smallTalk';
+import { isSmallTalk, isCrisisMessage } from '../src/services/smallTalk';
 
 const failures: string[] = [];
 let passed = 0;
@@ -36,6 +36,22 @@ check('open-ended summary', !isSmallTalk('macam mana bulan ni?'));
 check('hello with a question', !isSmallTalk('hello, where does my money go?'));
 check('empty-ish input', !isSmallTalk('   '));
 check('emoji only', !isSmallTalk('👋'));
+
+// ── Crisis detection → on-device help card, never sent to Gemini ──
+check('en: kill myself', isCrisisMessage('i want to kill myself'));
+check('en: end my life', isCrisisMessage('i think about ending my life'));
+check('en: suicidal', isCrisisMessage('been feeling suicidal lately'));
+check('en: hurt myself', isCrisisMessage('i might hurt myself'));
+check('en: no reason to live', isCrisisMessage('theres no reason to live anymore'));
+check('bm: bunuh diri', isCrisisMessage('rasa nak bunuh diri'));
+check('bm: cederakan diri', isCrisisMessage('aku nak cederakan diri'));
+check('bm: tak nak hidup', isCrisisMessage('dah tak nak hidup dah'));
+// False positives — money-app hyperbole must NOT trip the check
+check('not crisis: penat nak mati settle bil', !isCrisisMessage('penat nak mati settle bil ni'));
+check('not crisis: bill is killing me', !isCrisisMessage('this bill is killing me'));
+check('not crisis: mamak spend', !isCrisisMessage('rm50 makan mamak'));
+check('not crisis: dying to buy', !isCrisisMessage('im dying to buy that phone'));
+check('not crisis: empty', !isCrisisMessage('   '));
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) {

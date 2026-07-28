@@ -69,7 +69,7 @@ CONFIRMATION MODEL (CRITICAL — NEVER BREAK):
 - Instead, say you've PREPARED it and ask them to tap to confirm: EN "Lined up ${currency} 40 for Jaya Grocer — tap to confirm and I'll save it." / MS "Dah sedia RM40 Jaya Grocer — tekan untuk sahkan & simpan." — and in that SAME reply emit the matching [ACTION] block.
 - A chip exists ONLY because you emitted its [ACTION] block. So EVERY time you say "lined up" / "dah sedia" / "tap to confirm", you MUST include the matching [ACTION] block in that same reply — one block per entry. If you mention two entries (e.g. ${currency} 50 Jaya Grocer AND ${currency} 30 makanan), emit TWO [ACTION] blocks. Confirmation words with NO [ACTION] block create no chip and will confuse the user — this is a critical failure, never do it.
 - If the user mentions something they "forgot to record": it is NOT saved unless they tapped to confirm. Don't claim you saved it earlier. Ask for the amount and what it was for, and prepare the chip again.
-- To change an entry that's still waiting (shown under UNSAVED), re-emit its [ACTION] block with "amend":true and the SAME description — that updates the existing chip instead of adding a new one.
+- To change an entry that's still waiting (shown under UNSAVED), re-emit its [ACTION] block with "amend":true and the SAME "clientId" shown next to it in [ref:...] — that updates the existing chip instead of adding a new one. (If you don't have the clientId, keep the SAME description so it still matches.)
 - The owner always commits the entry. Your job is to prepare it accurately and remind them to tap — never to assert it's done.
 
 ABSOLUTE RULES:
@@ -313,11 +313,13 @@ Savings & Investment coaching — when user asks "how's my investment?" or "maca
 Emotional support — when user sounds stressed about money:
 - Acknowledge the feeling first, then show numbers
 - Frame positively where possible: "you've kept ${currency} 580 this month — that's real"
-- Never minimize their feelings or give generic advice`;
+- Never minimize their feelings or give generic advice
+- If they express self-harm, hopelessness, or wanting to not be here, respond gently, never dismiss it, and point them to real help — Befrienders KL 03-7627 2929 or Talian HEAL 15555 — before anything about money`;
 }
 
 let _cachedContext: string | null = null;
 let _cachedAt = 0;
+let _cachedKey = ''; // mode|message — scope is derived from both, so both must match
 const CONTEXT_CACHE_MS = 2000; // reuse for 2s
 
 // ─── Intent-driven context scope ────────────────────────────
@@ -423,10 +425,14 @@ function classifyScope(message?: string, debtNames?: string[]): ContextScope {
 
 function buildFinancialContext(userMessage?: string): string {
   const ts = Date.now();
-  if (_cachedContext && ts - _cachedAt < CONTEXT_CACHE_MS) return _cachedContext;
+  const mode = useAppStore.getState().mode;
+  // Key the cache on mode + message: classifyScope is fully determined by both,
+  // so a time-only cache could hand a debt-scoped context back to a goal question
+  // fired within 2s (or personal context to a business turn). Both must match.
+  const cacheKey = `${mode}|${userMessage || ''}`;
+  if (_cachedContext && _cachedKey === cacheKey && ts - _cachedAt < CONTEXT_CACHE_MS) return _cachedContext;
 
   const currency = useSettingsStore.getState().currency;
-  const mode = useAppStore.getState().mode;
   const { transactions, subscriptions, budgets, goals } = usePersonalStore.getState();
   const wallets = useWalletStore.getState().wallets;
   const debts = useDebtStore.getState().debts;
@@ -835,6 +841,21 @@ Kept: ${currency} ${(bizIncome - bizCosts).toFixed(2)}`;
     }
   }
 
+  // Both books (affordability) — so PERSONAL Echo can answer "can I afford X":
+  // hustle take-home settled INTO personal this month + orders still owed to you.
+  // Read-only getters; the rich business block above stays gated to business mode,
+  // so this only fills the gap when the owner is in personal mode.
+  if (mode !== 'business') {
+    const _settledIn = useBusinessStore.getState().getTotalTransferredToPersonal(new Date());
+    const _season = useSellerStore.getState().getActiveSeason();
+    const _unpaid = _season ? useSellerStore.getState().getSeasonStats(_season.id).unpaidAmount : 0;
+    if (_settledIn > 0 || _unpaid > 0) {
+      ctx += `\n\nBoth books (affordability):`;
+      if (_settledIn > 0) ctx += `\n  Hustle settled into personal this month: ${currency} ${_settledIn.toFixed(2)}`;
+      if (_unpaid > 0) ctx += `\n  Unpaid orders (owed to you, not cash yet — don't treat as spendable): ${currency} ${_unpaid.toFixed(2)}`;
+    }
+  }
+
   // Budget profile — take-home + locked must-pays (what Echo remembers for planning).
   // Previously Echo was blind to these even though the whole Budget planner runs on them.
   const _bp = useBudgetProfileStore.getState();
@@ -862,6 +883,7 @@ Kept: ${currency} ${(bizIncome - bizCosts).toFixed(2)}`;
 
   _cachedContext = ctx;
   _cachedAt = Date.now();
+  _cachedKey = cacheKey;
   return ctx;
 }
 
@@ -937,6 +959,9 @@ function _buildChatBody(message: string, history: AIMessage[], imageBase64?: str
     ? '(Small talk — no financial data this turn. Reply briefly and warmly; never invent numbers.)'
     : buildFinancialContext(imageBase64 ? undefined : message);
   const learnedHints = useLearningStore.getState().getPromptHints();
+  // Echo's memory of YOU — durable facts it carries into every chat so it never
+  // starts blank ("still saving for the house?"). Pinned-first + recent, capped.
+  const memoryHints = useLearningStore.getState().getMemoryHints();
   // ONE BRAIN: the same Malaysian money/debt knowledge the budgeting critic reads
   // (PTPTN/MARA/JPA, BNPL, lending apps, MY economics). Scope-gated — returns '' on
   // non-money turns, so casual chat keeps the exact same prompt it has today. Mirrors
@@ -947,11 +972,11 @@ function _buildChatBody(message: string, history: AIMessage[], imageBase64?: str
   // them on request (see the amend rule).
   const pending = useAIInsightsStore.getState().pendingActions;
   const pendingBlock = pending.length
-    ? `\n\nUNSAVED — entries you already prepared, waiting for the owner's tap (do NOT propose these again; to change one, re-emit it with "amend":true and the SAME description):\n${pending
-        .map((p) => `- ${p.type} · ${p.description}${p.amount ? ` · ${currency} ${p.amount}` : ''}`)
+    ? `\n\nUNSAVED — entries you already prepared, waiting for the owner's tap (do NOT propose these again; to change one, re-emit it with "amend":true and the SAME "clientId" shown in [ref:...]):\n${pending
+        .map((p) => `- [ref:${p.clientId}] ${p.type} · ${p.description}${p.amount ? ` · ${currency} ${p.amount}` : ''}`)
         .join('\n')}`
     : '';
-  const fullSystem = `${buildSystemPrompt(currency)}\n\n${ACTION_PROMPT}${learnedHints}${knowledgeHints}${pendingBlock}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
+  const fullSystem = `${buildSystemPrompt(currency)}\n\n${ACTION_PROMPT}${learnedHints}${memoryHints}${knowledgeHints}${pendingBlock}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
 
   // Build conversation history — Echo's MEMORY window, tiered (owner-locked
   // 2026-07-22): Free 15 · Basic 30 · Pro 45 · Premium 90 recent bubbles.

@@ -820,6 +820,8 @@ export interface AIMessage {
   timestamp: string;
   actions?: AIMessageAction[];
   imageUri?: string;
+  // 'crisis' → rendered as an on-device help card instead of a normal reply.
+  kind?: 'crisis';
 }
 
 export interface ChatConversation {

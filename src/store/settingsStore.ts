@@ -481,6 +481,7 @@ const wipePersonalStores = async ({
     walletPreferences: [],
     typeCorrections: [],
     skippedKeywords: {},
+    memories: [], // privacy: never leak one owner's distilled facts into the next account
   });
   usePlaybookStore.setState({
     playbooks: [],

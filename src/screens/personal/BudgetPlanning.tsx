@@ -71,7 +71,9 @@ import ModalToastHost from '../../components/common/ModalToastHost';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { lightTap, mediumTap } from '../../services/haptics';
 import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
-import EchoInlineChat from '../../components/common/EchoInlineChat';
+import EchoInlineChat, { EchoChip } from '../../components/common/EchoInlineChat';
+import { useAIInsightsStore } from '../../store/aiInsightsStore';
+import type { ChatAction } from '../../services/chatActions';
 import TypewriterText from '../../components/common/TypewriterText';
 import { usePlaybookStore } from '../../store/playbookStore';
 import { computePlaybookStats, isOverspent, getOverspentAmount, isPlaybookStale } from '../../utils/playbookStats';
@@ -154,10 +156,15 @@ const BudgetPlanning: React.FC = () => {
   const [greetingDismissed, setGreetingDismissed] = useState(false);
   const [greetingHiddenDuringDrag, setGreetingHiddenDuringDrag] = useState(false);
   const [greetingText, setGreetingText] = useState('');
-  const [greetingChips, setGreetingChips] = useState<{ label: string; question: string }[]>([]);
+  const [greetingChips, setGreetingChips] = useState<EchoChip[]>([]);
   const [echoAutoPrompt, setEchoAutoPrompt] = useState<string | undefined>(undefined);
   const [fabSide, setFabSide] = useState<'left' | 'right'>('right');
   const [chipRotation, setChipRotation] = useState(0);
+  // Payday re-tailor nudge — fires once per new income txn (marker id). A ref, not
+  // state, so marking it seen doesn't re-render the greeting (no flash) and the
+  // greeting effect never re-runs just because the marker changed.
+  const INCOME_SEEN_KEY = 'potraces_budget_income_seen';
+  const incomeSeenRef = useRef<string | null>(null);
 
   // ── Once-per-day delight gate ──
   const HERO_ANIM_KEY = 'potraces_budget_hero_last_anim_date';
@@ -438,6 +445,7 @@ const BudgetPlanning: React.FC = () => {
         setShouldRunWakeUp(true);
       }
     }).catch(() => {});
+    AsyncStorage.getItem(INCOME_SEEN_KEY).then((stored) => { incomeSeenRef.current = stored; }).catch(() => {});
   }, []);
 
   // ── Glow animated style ──
@@ -1035,6 +1043,58 @@ const BudgetPlanning: React.FC = () => {
     setChipRotation((prev) => prev + 1);
   }, [navigation, buildBudgetSnapshot]);
 
+  // Tapping a re-balance action chip seeds edit_budget CONFIRMATION chips in Echo
+  // (never auto-applied — the owner still taps to confirm). No budgetContext is
+  // passed so MoneyChat does NOT fire an LLM send; it just shows the chips.
+  const handleEchoActionChip = useCallback((actions: ChatAction[]) => {
+    lightTap();
+    setEchoSheetVisible(false);
+    useAIInsightsStore.getState().addPendingActions(actions);
+    navigation.navigate('MoneyChat', {});
+  }, [navigation]);
+
+  // Concrete pull/stretch re-balance chip (over mode only). Amounts read from the
+  // real allocatedAmount (never effectiveAmount, so rollover isn't baked in) and
+  // whole-RM rounded. Prefer pulling from the most underspent category; else
+  // stretch the over-category's limit up to what was actually spent.
+  const rebalanceChip = useMemo<EchoChip | null>(() => {
+    if (smartInsight.mode !== 'over') return null;
+    const overs = budgetsWithSpent.filter((b) => b.spentAmount > b.effectiveAmount);
+    if (overs.length === 0) return null;
+    const worst = [...overs].sort((a, b) => (b.spentAmount - b.effectiveAmount) - (a.spentAmount - a.effectiveAmount))[0];
+    const overBy = Math.round(worst.spentAmount - worst.effectiveAmount);
+    if (overBy <= 0) return null;
+    const worstName = categoryMap.get(worst.category)?.name || worst.category;
+    const desc = (cat: string, amt: number) =>
+      t.budget.rebalanceDesc.replace('{{cat}}', cat).replace('{{currency}}', currency).replace('{{amt}}', String(amt));
+    // amount:0 satisfies ChatAction; edit_budget reads newAmount (amount only if >0).
+    const mk = (budgetCategory: string, newAmount: number, description: string): ChatAction =>
+      ({ type: 'edit_budget', amount: 0, budgetCategory, newAmount, description });
+
+    const cushion = [...budgetsWithSpent]
+      .filter((b) => b.id !== worst.id)
+      .sort((a, b) => (b.allocatedAmount - b.spentAmount) - (a.allocatedAmount - a.spentAmount))[0];
+    const cushionRoom = cushion ? Math.round(cushion.allocatedAmount - cushion.spentAmount) : 0;
+
+    if (cushion && cushionRoom > 0) {
+      const move = Math.min(overBy, cushionRoom);
+      const cushionName = categoryMap.get(cushion.category)?.name || cushion.category;
+      const newCushion = Math.round(cushion.allocatedAmount - move);
+      const newWorst = Math.round(worst.allocatedAmount + move);
+      return {
+        label: t.budget.rebalancePull.replace('{{currency}}', currency).replace('{{amt}}', String(move)).replace('{{from}}', cushionName),
+        question: '',
+        actions: [mk(cushion.category, newCushion, desc(cushionName, newCushion)), mk(worst.category, newWorst, desc(worstName, newWorst))],
+      };
+    }
+    const stretched = Math.round(worst.spentAmount);
+    return {
+      label: t.budget.rebalanceStretch.replace('{{cat}}', worstName).replace('{{currency}}', currency).replace('{{amt}}', String(stretched)),
+      question: '',
+      actions: [mk(worst.category, stretched, desc(worstName, stretched))],
+    };
+  }, [smartInsight.mode, budgetsWithSpent, categoryMap, currency, t.budget]);
+
   // ─── Greeting bubble — pool of variants, one picked fresh on each screen focus ───
   const greetingPool = useMemo((): string[] => {
     if (budgetsWithSpent.length === 0) return [];
@@ -1073,8 +1133,36 @@ const BudgetPlanning: React.FC = () => {
     ];
   }, [smartInsight.mode, heroData.overBudgets.length, budgetsWithSpent.length]);
 
+  // Newest income transaction landed this calendar month (for the payday nudge).
+  const newestIncome = useMemo(() => {
+    const now = new Date();
+    let best: (typeof transactions)[number] | null = null;
+    let bestT = -Infinity;
+    for (const tx of transactions) {
+      if (tx.type !== 'income') continue;
+      const d = tx.date instanceof Date ? tx.date : new Date(tx.date);
+      if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) continue;
+      if (d.getTime() > bestT) { bestT = d.getTime(); best = tx; }
+    }
+    return best;
+  }, [transactions]);
+
   useFocusEffect(useCallback(() => {
     if (greetingPool.length === 0) return;
+
+    // Payday re-tailor nudge — once per new in-month income txn. Reuses the
+    // greeting → Echo flow (tap opens Echo to help re-tailor); no new plumbing.
+    if (newestIncome && newestIncome.id !== incomeSeenRef.current) {
+      setGreetingText(t.budget.paydayNudge);
+      setGreetingDismissed(false);
+      setGreetingChips([
+        { label: t.budget.paydayRetailor, question: `I just got paid — help me re-tailor my budget for the rest of this month based on what's already come in and what I've spent.` },
+      ]);
+      incomeSeenRef.current = newestIncome.id;
+      AsyncStorage.setItem(INCOME_SEEN_KEY, newestIncome.id).catch(() => {});
+      return;
+    }
+
     const idx = Math.floor(Math.random() * greetingPool.length);
     setGreetingText(greetingPool[idx]);
     setGreetingDismissed(false);
@@ -1084,6 +1172,7 @@ const BudgetPlanning: React.FC = () => {
     if (m === 'over') {
       const label = over > 1 ? `${over} categories` : `one category`;
       setGreetingChips([
+        ...(rebalanceChip ? [rebalanceChip] : []),
         { label: 'which category is worst?', question: `Which of my budget categories is most overspent right now? Show me the numbers.` },
         { label: `how do I catch up?`, question: `I'm over budget this month in ${label}. Is there a realistic way to recover before month end, or should I adjust my limits?` },
         { label: 'should I reallocate?', question: `Should I move budget from an underspent category to cover the overspent ones? What makes sense for my situation?` },
@@ -1107,7 +1196,7 @@ const BudgetPlanning: React.FC = () => {
         { label: 'what to do with leftover budget?', question: `If I have leftover budget at month end, what's the smartest thing to do with it?` },
       ]);
     }
-  }, [greetingPool, smartInsight.mode, heroData.overBudgets.length]));
+  }, [greetingPool, smartInsight.mode, heroData.overBudgets.length, rebalanceChip, newestIncome, t.budget]));
 
   // ─── Playbook data ─────────────────────────────────────────
   const activePlaybooks = useMemo(
@@ -2609,7 +2698,7 @@ const BudgetPlanning: React.FC = () => {
               onPress={() => {
                 lightTap();
                 if (!TIER_LIMITS[tier].askEchoPerScreen) { setEchoPaywallVisible(true); return; }
-                setEchoAutoPrompt(greetingChips[0]?.question || greetingText);
+                setEchoAutoPrompt(greetingChips.find((c) => c.question)?.question || greetingText);
                 setEchoSheetVisible(true);
               }}
               activeOpacity={0.85}
@@ -2653,6 +2742,7 @@ const BudgetPlanning: React.FC = () => {
         insightTitle={smartInsight.title}
         insightSubtitle={smartInsight.subtitle}
         chips={greetingChips}
+        onChipAction={handleEchoActionChip}
         contextSnapshot={buildBudgetSnapshot()}
         topInset={insets.top}
         bottomInset={insets.bottom}

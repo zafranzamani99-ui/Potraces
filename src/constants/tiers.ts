@@ -45,6 +45,9 @@ export interface TierLimits {
   /** Transactions sent in per-line detail to Echo (older ones collapse into
    *  per-month summary lines). 500 = the "full" safety ceiling. */
   chatTxnDetail: number;
+  /** ECHO MEMORY OF YOU: durable facts Echo keeps about the owner (goals, bills,
+   *  worries…). Free is generous; paid plans remember more of your history. */
+  echoMemories: number;
   // Capabilities
   exportData: boolean;
   googleDocsSync: boolean;
@@ -63,6 +66,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxPaymentQrs: 2,
     maxScansPerMonth: 15, maxAiCallsPerMonth: 30,
     chatSavedBubbles: 50, chatMemoryBubbles: 15, chatTxnDetail: 30,
+    echoMemories: 20,
     exportData: true, googleDocsSync: false,
     cloudBackup: false, askEchoPerScreen: false, photoCategoryIcons: false,
   },
@@ -75,6 +79,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxPaymentQrs: 4,
     maxScansPerMonth: 75, maxAiCallsPerMonth: 300,
     chatSavedBubbles: 150, chatMemoryBubbles: 30, chatTxnDetail: 100,
+    echoMemories: 35,
     exportData: true, googleDocsSync: false,
     cloudBackup: true, askEchoPerScreen: true, photoCategoryIcons: true,
   },
@@ -87,6 +92,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxPaymentQrs: Infinity,
     maxScansPerMonth: 150, maxAiCallsPerMonth: 800,
     chatSavedBubbles: 600, chatMemoryBubbles: 45, chatTxnDetail: 500,
+    echoMemories: 60,
     exportData: true, googleDocsSync: true,
     cloudBackup: true, askEchoPerScreen: true, photoCategoryIcons: true,
   },
@@ -99,6 +105,7 @@ export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
     maxPaymentQrs: Infinity,
     maxScansPerMonth: 300, maxAiCallsPerMonth: 1500,
     chatSavedBubbles: 3000, chatMemoryBubbles: 90, chatTxnDetail: 500,
+    echoMemories: 120,
     exportData: true, googleDocsSync: true,
     cloudBackup: true, askEchoPerScreen: true, photoCategoryIcons: true,
   },
@@ -137,7 +144,7 @@ export function effectiveTier(
 type CountKey =
   | 'maxWallets' | 'maxWalletsPerType' | 'maxBudgets' | 'maxSavingsAccounts'
   | 'maxGoals' | 'maxSharedSubs' | 'maxActivePlaybooks' | 'maxSavedPlaybooks'
-  | 'maxBusinessProfiles' | 'maxPaymentQrs'
+  | 'maxBusinessProfiles' | 'maxPaymentQrs' | 'echoMemories'
   | 'maxScansPerMonth' | 'maxAiCallsPerMonth' | 'maxCollectzSessionsPerWeek';
 
 export function limitFor(tier: PremiumTier, key: CountKey): number {

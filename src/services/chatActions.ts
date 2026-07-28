@@ -17,8 +17,10 @@ import { usePremiumStore } from '../store/premiumStore';
 import { FREE_TIER } from '../constants/premium';
 import { TIER_LIMITS } from '../constants/tiers';
 import { syncLinkAmount } from '../utils/playbookAttribution';
-import { AppMode, Transaction, Subscription, Budget, Debt } from '../types';
+import { computeEqualShares } from '../utils/splitShares';
+import { AppMode, Transaction, Subscription, Budget, Debt, Contact } from '../types';
 import { useLearningStore } from '../store/learningStore';
+import { MEMORY_KINDS, MEMORY_TEXT_MAX, type MemoryKind } from '../store/learningPure';
 
 // ─── Action Types ────────────────────────────────────────
 
@@ -148,6 +150,7 @@ export function sanitizeUserText(text: string): string {
   if (!text) return text;
   return text
     .replace(/\[\/?ACTION\]/gi, '')
+    .replace(/\[\/?MEMORY\]/gi, '') // user can't plant a fake memory either
     .trim();
 }
 
@@ -187,6 +190,64 @@ function cleanJson(raw: string): string {
   return s.trim();
 }
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Amount-shaped fields the executor reads besides `amount`. */
+const AMOUNT_SIBLING_FIELDS = ['newAmount', 'goalTarget', 'initialInvestment'] as const;
+
+/** Coerce a model-emitted amount to a finite number: "40", "RM40", "1,200" → number. */
+function coerceNumeric(v: unknown): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'string') {
+    const n = parseFloat(v.replace(/[^0-9.\-]/g, ''));
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Normalize + validate a parsed action before it becomes a chip.
+ *
+ * The model occasionally emits the amount as a string ("40", "RM40", "1,200").
+ * The old parser required `typeof amount === 'number'`, so those blocks were
+ * silently DROPPED while Echo's prose still said "tap to confirm" — a phantom
+ * save. This coerces numeric strings, rejects non-finite/negative amounts for
+ * money-adding types, and clamps to 2dp so float dust never reaches a wallet
+ * write. Returns null to drop the action. Defense-in-depth: the executor keeps
+ * its own finite/positive guard.
+ */
+function validateAction(parsed: any): ChatAction | null {
+  if (!parsed || typeof parsed.type !== 'string') return null;
+  const type = parsed.type as ChatActionType;
+  const needsAmount = !PARSE_NO_AMOUNT_TYPES.includes(type);
+
+  if (parsed.amount !== undefined) {
+    const a = coerceNumeric(parsed.amount);
+    if (a === undefined) {
+      if (needsAmount) return null; // amount required but unparseable
+      delete parsed.amount;
+    } else {
+      parsed.amount = round2(a);
+    }
+  }
+
+  if (needsAmount && (typeof parsed.amount !== 'number' || !Number.isFinite(parsed.amount) || parsed.amount < 0)) {
+    return null;
+  }
+
+  // ponytail: coerce+clamp the amount siblings the executor reads; other rare
+  // numeric fields still trust the model — extend the list if one misbehaves.
+  for (const f of AMOUNT_SIBLING_FIELDS) {
+    if (parsed[f] !== undefined) {
+      const v = coerceNumeric(parsed[f]);
+      if (v === undefined) delete parsed[f];
+      else parsed[f] = round2(v);
+    }
+  }
+
+  return parsed as ChatAction;
+}
+
 /**
  * Parse [ACTION] blocks out of MODEL OUTPUT only.
  *
@@ -200,10 +261,8 @@ export function parseActions(text: string): { cleanText: string; actions: ChatAc
   const actions: ChatAction[] = [];
   const cleanText = text.replace(ACTION_REGEX, (_, json) => {
     try {
-      const parsed = JSON.parse(cleanJson(json));
-      if (parsed.type && (typeof parsed.amount === 'number' || PARSE_NO_AMOUNT_TYPES.includes(parsed.type))) {
-        actions.push(parsed as ChatAction);
-      }
+      const action = validateAction(JSON.parse(cleanJson(json)));
+      if (action) actions.push(action);
     } catch (e) {
       if (__DEV__) console.warn('[ChatActions] Failed to parse action block:', json, e);
     }
@@ -211,6 +270,33 @@ export function parseActions(text: string): { cleanText: string; actions: ChatAc
   }).trim();
 
   return { cleanText, actions };
+}
+
+const MEMORY_REGEX = /\[MEMORY\]([\s\S]*?)\[\/MEMORY\]/g;
+export interface ParsedMemory { kind: MemoryKind; text: string }
+
+/**
+ * Parse [MEMORY]{"kind","text"}[/MEMORY] blocks out of MODEL OUTPUT — same
+ * security contract as parseActions (NEVER run on user text; sanitizeUserText
+ * strips the tags on the user side). Echo emits these to record a durable fact
+ * about the owner. Capped at 2 per reply (anti-spam), kind validated, text
+ * clamped. Returns the reply with the tags removed so they never show in a bubble.
+ */
+export function parseMemories(text: string): { cleanText: string; memories: ParsedMemory[] } {
+  const memories: ParsedMemory[] = [];
+  const cleanText = text.replace(MEMORY_REGEX, (_, json) => {
+    if (memories.length >= 2) return '';
+    try {
+      const parsed = JSON.parse(cleanJson(json));
+      const kind = parsed?.kind;
+      const t = typeof parsed?.text === 'string' ? parsed.text.trim() : '';
+      if (MEMORY_KINDS.includes(kind) && t) memories.push({ kind, text: t.slice(0, MEMORY_TEXT_MAX) });
+    } catch (e) {
+      if (__DEV__) console.warn('[ChatActions] Failed to parse memory block:', json, e);
+    }
+    return '';
+  }).trim();
+  return { cleanText, memories };
 }
 
 // ─── Soft pre-save checks ────────────────────────────────
@@ -603,7 +689,19 @@ export function executeAction(action: ChatAction): ExecuteResult {
         if (people.length === 0) {
           return { success: false, message: 'No people specified for split.', action };
         }
-        const perPerson = Math.round((action.amount / (people.length + 1)) * 100) / 100;
+        // Reuse the app's canonical equal-split (floor to the sen, remainder to
+        // the payer) so Echo matches the manual DebtTracking wizard exactly:
+        // every friend owes the same clean share and the payer keeps the leftover
+        // cents. Sharing the participant Contact with its debt keeps the split
+        // record and the individual debts aligned per person.
+        const PAYER_ID = '__owner__';
+        const shareContacts: Contact[] = [
+          { id: PAYER_ID, name: 'me', isFromPhone: false },
+          ...people.map((name) => ({ id: uniqueId(name), name, isFromPhone: false })),
+        ];
+        const friendShares = computeEqualShares(action.amount, shareContacts, PAYER_ID)
+          .filter((s) => s.contact.id !== PAYER_ID);
+        const perPerson = friendShares[0]?.amount ?? 0;
 
         // Also record the full amount as an expense
         const walletId = findWalletId(action.wallet);
@@ -622,29 +720,29 @@ export function executeAction(action: ChatAction): ExecuteResult {
           description: action.description,
           totalAmount: action.amount,
           splitMethod: 'equal',
-          participants: people.map((name) => ({
-            contact: { id: uniqueId(name), name, isFromPhone: false },
-            amount: perPerson,
+          participants: friendShares.map((s) => ({
+            contact: s.contact,
+            amount: s.amount,
             isPaid: false,
           })),
           items: [],
           category: action.category,
           mode,
         });
-        // Create individual debts for each person
+        // Create individual debts for each person (same Contact as the split)
         const splitDebtIds: string[] = [];
-        for (const name of people) {
+        friendShares.forEach((s) => {
           const dId = useDebtStore.getState().addDebt({
-            contact: { id: uniqueId(name), name, isFromPhone: false },
+            contact: s.contact,
             type: 'they_owe',
-            totalAmount: perPerson,
+            totalAmount: s.amount,
             description: action.description,
             category: action.category,
             mode,
             splitId,
           });
           if (dId) splitDebtIds.push(dId);
-        }
+        });
         return {
           success: true,
           message: `Split RM ${action.amount.toFixed(2)} for "${action.description}" — ${people.length} people owe RM ${perPerson.toFixed(2)} each (expense recorded)`,
@@ -1475,6 +1573,11 @@ You can perform real actions in the user's app. When the user asks you to add, r
 FORMAT — include this EXACTLY as shown (valid JSON between the tags):
 [ACTION]{"type":"add_expense","amount":15.50,"description":"lunch nasi lemak","category":"food"}[/ACTION]
 
+REMEMBERING THE USER:
+When you learn something DURABLE about the user that would help you know them next time — a goal, a regular bill they pay, a money worry, a win worth celebrating, a style/tone preference, or a life fact (e.g. "freelancer", "supports parents") — quietly record it with a MEMORY block. It's silently saved to "what Echo remembers about you" (the user can see and delete it). Do NOT announce it, do NOT list what you remember back at them, and do NOT record one-off transactions (those are [ACTION]s) or trivia. At most 1-2 per reply, kept SHORT (a distilled fact, not a quote).
+FORMAT: [MEMORY]{"kind":"goal","text":"saving RM5k for a house deposit"}[/MEMORY]
+kind is one of: goal | bill | worry | win | style | fact.
+
 AVAILABLE ACTIONS:
 1. add_expense — Record a spending
    {"type":"add_expense","amount":NUMBER,"description":"TEXT","category":"CATEGORY","wallet":"WALLET_NAME"}
@@ -1529,15 +1632,17 @@ AVAILABLE ACTIONS:
    Fuzzy matches accountName against user's savings accounts (TNG+, ASB, Tabung Haji, etc).
    Use when user says "TNG+ now RM 5200", "update ASB", "my ASB is at RM 50000 now".
 
-15. add_savings_account — Add a new savings/investment account
+15. add_savings_account — Add a savings/investment VEHICLE (a real place money is HELD or GROWS)
    {"type":"add_savings_account","amount":NUMBER,"description":"ACCOUNT_NAME","accountType":"TYPE","initialInvestment":NUMBER}
    Types: tng_plus, robo_crypto, esa, bank, asb, tabung_haji, stocks, gold, other
-   Use when user says "add my ASB account", "I opened TNG+ with RM 1000".
+   Use ONLY for a named account/instrument: ASB, Tabung Haji, TNG+/GO+, a robo-advisor (StashAway / Versa / Wise), crypto, fixed deposit, stocks, gold. e.g. "add my ASB account", "I opened TNG+ with RM 1000", "put RM500 in Versa".
 
-16. create_goal — Create a new savings goal
+16. create_goal — Create a savings GOAL (a TARGET amount for a PURPOSE — not an account)
    {"type":"create_goal","amount":NUMBER,"description":"GOAL_NAME","goalTarget":NUMBER,"goalDeadline":"YYYY-MM-DD"}
    amount and goalTarget should be the same (target amount). goalDeadline is optional.
-   Use when user says "I want to save for X", "create goal for Y", "nak simpan untuk Z".
+   Use whenever the user is saving TOWARD something: a house deposit, wedding, car, umrah, emergency fund, a trip. e.g. "nak save 5 ribu untuk depo rumah", "I want to save for a wedding", "create goal for Y", "nak simpan untuk Z".
+
+GOAL vs SAVINGS ACCOUNT — never confuse these: "save FOR <a purpose/target>" = create_goal. A named place that HOLDS or GROWS money (ASB, TNG+, StashAway, Versa, Wise, crypto, fixed deposit) = add_savings_account. When unsure, a purpose or target amount → create_goal.
 
 17. withdraw_goal — Withdraw/remove money from a goal
    {"type":"withdraw_goal","amount":NUMBER,"description":"GOAL_NAME","goalName":"GOAL_NAME"}

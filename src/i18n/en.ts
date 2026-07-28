@@ -29,6 +29,9 @@ export const en = {
     typeCategory: 'category',
     typeWallet: 'wallet',
     typePerson: 'person',
+    typeType: 'type',
+    typeSkip: 'skipped',
+    skippedValue: 'ignored',
     filterAll: 'all',
     keywordLabel: 'when you say…',
     keywordPlaceholder: 'e.g. shell, grab, mamak',
@@ -58,6 +61,29 @@ export const en = {
     gotIt: 'got it',
     privacyNote: 'kept on your phone + your own cloud sync only. your chats are never used for training.',
     timesShort: '{n}×',
+    // ── memory of you (durable facts echo keeps for every chat) ──
+    memTitle: 'what echo remembers about you',
+    memHint: 'durable facts echo keeps in mind every chat',
+    memEmpty: 'nothing yet — echo learns as you chat, or add something below',
+    memAdd: 'tell echo something',
+    memCapReached: 'memory full — forget one, or upgrade for more',
+    rulesDivider: 'learned shortcuts',
+    memKindGoal: 'goal',
+    memKindBill: 'regular bill',
+    memKindWorry: 'worry',
+    memKindWin: 'win',
+    memKindStyle: 'style',
+    memKindFact: 'fact',
+    memSourceYou: 'you told echo',
+    memSourceEcho: 'echo noticed',
+    memAddTitle: 'what should echo remember?',
+    memEditTitle: 'edit this',
+    memTextLabel: 'the fact',
+    memPlaceholder: 'e.g. saving RM5k for a house, pays PTPTN monthly',
+    memPin: 'pin',
+    memUnpin: 'unpin',
+    memForgetTitle: 'forget this?',
+    memForgetMsg: 'echo stops using it right away.',
   },
 
   common: {
@@ -760,6 +786,7 @@ export const en = {
     logParse: 'parse',
     logListening: 'listening...',
     logHoldToSpeak: 'hold to speak',
+    logTapToSpeak: 'tap to speak',
     logProcessing: 'processing...',
     logNotePlaceholder: 'note (optional)',
     logSource: 'source',
@@ -2203,6 +2230,12 @@ export const en = {
     greetOnTrack: 'on track till payday, relax',
     greetTight: 'bit tight today — you got this',
     greetPaydayEve: 'almost payday, nearly there',
+    // re-balance action chips + payday nudge (Echo re-tailor)
+    rebalancePull: 'pull {{currency}}{{amt}} from {{from}}',
+    rebalanceStretch: 'stretch {{cat}} to {{currency}}{{amt}}',
+    rebalanceDesc: '{{cat}} → {{currency}}{{amt}}',
+    paydayNudge: 'money just came in — re-tailor this month?',
+    paydayRetailor: 're-tailor',
   },
 
   goals: {
@@ -2961,6 +2994,9 @@ export const en = {
     andMore: 'more',
     heroOver: 'over by',
     recurringOverSpend: 'more than your monthly spending',
+    // ── kept across both books (hustle settled into personal − personal spend) ──
+    keptBothBooksLabel: 'you kept this month',
+    keptBothBooksCaption: 'your hustle, after what you spent',
     // ── tappable "the math" breakdown sheet ──
     theMath: 'the math',
     tapForMath: 'tap a number to see the math',
@@ -3231,6 +3267,10 @@ export const en = {
     dailyCheckinSome: '{amount} across {n} today — anything before the day closes?',
     dailyCheckinNone: 'nothing logged yet today — anything to add?',
     rhythmNote: '{n} days in a row — nice rhythm.',
+    // crisis help card — shown on-device, never sent anywhere
+    crisisLead: "you're not alone",
+    crisisBody: "if things feel really heavy right now, please reach out — someone's ready to listen, any time.",
+    crisisCallHint: 'tap to call',
     // segmented totals — never one summed RM
     cameInLabel: 'came in',
     wentOutLabel: 'went out',

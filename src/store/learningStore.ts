@@ -17,12 +17,16 @@ import {
   suggestFrom,
   migrateLearningV0toV1,
   LearningBlob,
+  EchoMemory,
+  MemoryKind,
+  applyAddMemory,
+  renderMemoryHints,
 } from './learningPure';
 
 // Re-export so existing imports from the store keep working, and the Notebook
 // screen can share the trust threshold.
-export { TRUST_COUNT, normalizeKeyword } from './learningPure';
-export type { CategoryPattern, PersonAlias, WalletPreference, TypeCorrection } from './learningPure';
+export { TRUST_COUNT, normalizeKeyword, MEMORY_KINDS } from './learningPure';
+export type { CategoryPattern, PersonAlias, WalletPreference, TypeCorrection, EchoMemory, MemoryKind } from './learningPure';
 
 interface LearningState {
   categoryPatterns: CategoryPattern[];
@@ -30,6 +34,8 @@ interface LearningState {
   walletPreferences: WalletPreference[];
   typeCorrections: TypeCorrection[];
   skippedKeywords: Record<string, number>;
+  /** Durable facts Echo remembers about the owner (goals, bills, worries…). */
+  memories: EchoMemory[];
   /**
    * Epoch ms of the last USER edit on this device (null = never edited here).
    * LWW key for cloud sync — bumped by every learn/forget setter, NOT by
@@ -48,7 +54,18 @@ interface LearningState {
   forgetCategory: (keyword: string, category: string) => void;
   forgetWallet: (keyword: string) => void;
   forgetPersonAlias: (raw: string) => void;
+  forgetTypeCorrection: (keyword: string, toType: string) => void;
+  forgetSkipped: (keyword: string) => void;
   resetNotebook: () => void;
+
+  /** Echo's memory of you. `cap` = the tier's storage ceiling (caller reads the tier). */
+  addMemory: (input: { kind: MemoryKind; text: string; source: 'you' | 'echo' }, cap: number) => void;
+  editMemory: (id: string, text: string) => void;
+  forgetMemory: (id: string) => void;
+  setMemoryPinned: (id: string, pinned: boolean) => void;
+  resetMemories: () => void;
+  /** The "WHAT ECHO REMEMBERS ABOUT YOU" prompt block (pinned-first, capped). */
+  getMemoryHints: () => string;
 
   getSuggestedCategory: (text: string) => string | null;
   getSuggestedPerson: (raw: string) => string | null;
@@ -72,6 +89,7 @@ export const useLearningStore = create<LearningState>()(
       walletPreferences: [],
       typeCorrections: [],
       skippedKeywords: {},
+      memories: [],
       updatedAt: null,
 
       learnCategory: (keyword, category, startCount = 1) =>
@@ -143,6 +161,27 @@ export const useLearningStore = create<LearningState>()(
         }));
       },
 
+      // Same key transform as learnTypeCorrection (normalizeKeyword) so a row's
+      // stored keyword matches. Idempotent — re-normalizing a normalized key is a no-op.
+      forgetTypeCorrection: (keyword, toType) => {
+        const kw = normalizeKeyword(keyword, true);
+        set((s) => ({
+          typeCorrections: s.typeCorrections.filter(
+            (t) => !(t.keyword === kw && t.toType === toType)
+          ),
+          updatedAt: Date.now(),
+        }));
+      },
+
+      // skippedKeywords uses the raw lowercase key (learnSkip's transform).
+      forgetSkipped: (keyword) => {
+        const kw = keyword.toLowerCase().trim();
+        set((s) => {
+          const { [kw]: _removed, ...rest } = s.skippedKeywords;
+          return { skippedKeywords: rest, updatedAt: Date.now() };
+        });
+      },
+
       resetNotebook: () =>
         set({
           categoryPatterns: [],
@@ -152,6 +191,30 @@ export const useLearningStore = create<LearningState>()(
           skippedKeywords: {},
           updatedAt: Date.now(),
         }),
+
+      addMemory: (input, cap) =>
+        set((s) => ({
+          memories: applyAddMemory(
+            s.memories,
+            { id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, kind: input.kind, text: input.text, source: input.source, now: Date.now() },
+            cap,
+          ),
+          updatedAt: Date.now(),
+        })),
+      editMemory: (id, text) =>
+        set((s) => ({
+          memories: s.memories.map((m) => (m.id === id ? { ...m, text: text.trim(), updatedAt: Date.now() } : m)),
+          updatedAt: Date.now(),
+        })),
+      forgetMemory: (id) =>
+        set((s) => ({ memories: s.memories.filter((m) => m.id !== id), updatedAt: Date.now() })),
+      setMemoryPinned: (id, pinned) =>
+        set((s) => ({
+          memories: s.memories.map((m) => (m.id === id ? { ...m, pinned, updatedAt: Date.now() } : m)),
+          updatedAt: Date.now(),
+        })),
+      resetMemories: () => set({ memories: [], updatedAt: Date.now() }),
+      getMemoryHints: () => renderMemoryHints(get().memories),
 
       getSuggestedCategory: (text) => suggestFrom(get().categoryPatterns, text)?.category || null,
 
@@ -206,6 +269,7 @@ export const useLearningStore = create<LearningState>()(
           walletPreferences: s.walletPreferences,
           typeCorrections: s.typeCorrections,
           skippedKeywords: s.skippedKeywords,
+          memories: s.memories,
         };
       },
       applySyncedLearning: (data, updatedAt) => set({ ...data, updatedAt }),
@@ -222,6 +286,7 @@ export const useLearningStore = create<LearningState>()(
         walletPreferences: state.walletPreferences,
         typeCorrections: state.typeCorrections,
         skippedKeywords: state.skippedKeywords,
+        memories: state.memories,
         updatedAt: state.updatedAt,
       }),
     }

@@ -51,8 +51,12 @@ import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import { sendChatMessageStream } from '../../services/moneyChat';
+import { isCrisisMessage } from '../../services/smallTalk';
+import { reviewReply } from '../../services/critic';
+import { useNetInfo } from '@react-native-community/netinfo';
 import {
   parseActions,
+  parseMemories,
   executeAction,
   isLikelyDuplicate,
   isUnusualAmount,
@@ -479,10 +483,14 @@ const ActionEditModal = ({
     const finalWallet = selectedWallet?.name || action.wallet;
     const finalPerson = person.trim() || action.person;
 
-    // Learn from any corrections the user made
+    // Learn from any corrections the user made. Category/wallet shortcuts only make
+    // sense for real transactions (a description = a merchant/spend keyword) — NOT for
+    // goals / savings accounts / subscriptions, whose "description" is a proper name
+    // (e.g. "Depo Rumah") that must never become a Food→Maybank shortcut.
     const learn = useLearningStore.getState();
-    if (finalDesc && finalCategory) learn.learnCategory(finalDesc, finalCategory);
-    if (finalDesc && finalWallet) learn.learnWallet(finalDesc, finalWallet);
+    const isTxn = actionType === 'add_expense' || actionType === 'add_income';
+    if (isTxn && finalDesc && finalCategory) learn.learnCategory(finalDesc, finalCategory);
+    if (isTxn && finalDesc && finalWallet) learn.learnWallet(finalDesc, finalWallet);
     if (actionType !== action.type && finalDesc) learn.learnTypeCorrection(finalDesc, actionType);
     if (finalPerson && action.person && finalPerson !== action.person) {
       learn.learnPersonAlias(action.person, finalPerson);
@@ -849,6 +857,7 @@ const ResolveTargetModal = ({
 
 const ChatBubble = memo(({ item, onSelectText, onViewImage }: { item: AIMessage; onSelectText: (text: string) => void; onViewImage: (uri: string) => void }) => {
   const C = useCalm();
+  const t = useT();
   const neu = useNeu(undefined, { faintDark: true });
   const styles = useMemo(() => makeStyles(C, neu), [C, neu]);
   const isUser = item.role === 'user';
@@ -861,6 +870,27 @@ const ChatBubble = memo(({ item, onSelectText, onViewImage }: { item: AIMessage;
     lightTap();
     onSelectText(item.content);
   }, [item.content, hasText, onSelectText]);
+
+  // Crisis help card — on-device, tappable hotlines. Never a real AI reply.
+  if (item.kind === 'crisis') {
+    return (
+      <AnimatedBubble>
+        <View style={[styles.messageBubble, styles.assistantBubble, styles.crisisCard]}>
+          <Text style={styles.crisisLead}>{t.moneyChat.crisisLead}</Text>
+          <Text style={styles.crisisBody}>{t.moneyChat.crisisBody}</Text>
+          <TouchableOpacity style={styles.crisisRow} activeOpacity={0.7} onPress={() => Linking.openURL('tel:0376272929')} accessibilityRole="button" accessibilityLabel="call Befrienders KL 03-7627 2929">
+            <Text style={styles.crisisOrg}>Befrienders KL</Text>
+            <Text style={styles.crisisNum}>03-7627 2929</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.crisisRow} activeOpacity={0.7} onPress={() => Linking.openURL('tel:15555')} accessibilityRole="button" accessibilityLabel="call Talian HEAL 15555">
+            <Text style={styles.crisisOrg}>Talian HEAL</Text>
+            <Text style={styles.crisisNum}>15555</Text>
+          </TouchableOpacity>
+          <Text style={styles.crisisHint}>{t.moneyChat.crisisCallHint}</Text>
+        </View>
+      </AnimatedBubble>
+    );
+  }
 
   return (
     <AnimatedBubble>
@@ -1115,6 +1145,7 @@ const MoneyChat: React.FC = () => {
     transcribeAudio: (preferServer || preferStreaming) ? transcribeAudio : undefined,
     preferServer,
     preferStreaming,
+    announce: { listening: t.moneyChat.voiceListening, writing: t.moneyChat.voiceTranscribing, ready: t.moneyChat.voiceReady },
   });
   const recordingAnim = useRef(new Animated.Value(1)).current;
   const listenAnim = useRef(new Animated.Value(0)).current; // 0 = composer idle, 1 = listening surface present
@@ -1408,17 +1439,19 @@ const MoneyChat: React.FC = () => {
     cancelRecording();
   }, [cancelRecording]);
 
+  const voiceNetInfo = useNetInfo();
   const voiceErrorCopy = useCallback((kind: VoiceErrorKind): string => {
     switch (kind) {
       case 'permission': return t.moneyChat.voicePermDenied;
       case 'no-speech': return t.moneyChat.voiceNoSpeech;
-      case 'network': return t.moneyChat.voiceNetwork;
+      // Truly offline → the dedicated "voice needs internet" copy; else a generic reach-failure.
+      case 'network': return voiceNetInfo.isConnected === false ? t.moneyChat.voiceOffline : t.moneyChat.voiceNetwork;
       case 'setup': return t.moneyChat.voiceSetup;
       case 'unavailable': return t.moneyChat.voiceSetup;
       case 'quota': return t.moneyChat.voiceLimit;
       default: return t.moneyChat.voiceNoSpeech;
     }
-  }, [t]);
+  }, [t, voiceNetInfo.isConnected]);
 
   // Header buttons — history + new chat
   useLayoutEffect(() => {
@@ -1438,7 +1471,7 @@ const MoneyChat: React.FC = () => {
           </TouchableOpacity>
           {chatMessages.length > 0 && (
             <TouchableOpacity
-              onPress={() => { lightTap(); archiveChat(); }}
+              onPress={() => { lightTap(); requestIdRef.current++; archiveChat(); }}
               accessibilityRole="button"
               accessibilityLabel={t.chat.newChat}
               style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
@@ -1545,7 +1578,23 @@ const MoneyChat: React.FC = () => {
 
   // Process AI response — parse actions but DON'T execute
   const processResponse = useCallback((rawResponse: string) => {
-    const { cleanText, actions } = parseActions(rawResponse);
+    const { cleanText: afterActions, actions } = parseActions(rawResponse);
+    // Pull out any durable facts Echo recorded with [MEMORY] (stripped from the
+    // shown text) and save them to Echo's memory of you, capped by the tier.
+    const { cleanText, memories: echoMemories } = parseMemories(afterActions);
+    if (echoMemories.length) {
+      const cap = TIER_LIMITS[premiumTier].echoMemories;
+      const learn = useLearningStore.getState();
+      echoMemories.forEach((m) => learn.addMemory({ kind: m.kind, text: m.text, source: 'echo' }, cap));
+    }
+
+    // Belt-and-suspenders: the system prompt already forbids advice/banned words
+    // and orphan confirmations, but measure how often the model slips past it
+    // before we decide any harder action. Log-only — never blocks/strips a reply.
+    if (__DEV__) {
+      const issues = reviewReply(cleanText, actions.length > 0);
+      if (issues.length) console.warn('[Echo critic] reply issues:', issues.map((i) => i.detail), { hasAction: actions.length > 0 });
+    }
 
     // Add the text as a chat message
     addChatMessage({ role: 'assistant', content: cleanText, timestamp: new Date().toISOString() });
@@ -1573,7 +1622,7 @@ const MoneyChat: React.FC = () => {
         addPendingActions([action]);
       });
     }
-  }, [addChatMessage, addPendingActions, replacePendingActionById]);
+  }, [addChatMessage, addPendingActions, replacePendingActionById, premiumTier]);
 
   // True only when a receipt carries something we can actually reverse. The undo
   // affordance must EITHER reverse correctly OR not be offered (honest undo) \u2014 an
@@ -1936,6 +1985,15 @@ const MoneyChat: React.FC = () => {
       timestamp: new Date().toISOString(),
       imageUri: sendImageUri || undefined,
     });
+
+    // On-device crisis check — never reaches Gemini (its safety filter would
+    // just return empty → the "AI returned empty" dead end). Show a calm help
+    // card instead. Nothing leaves the phone.
+    if (isCrisisMessage(sendText)) {
+      addChatMessage({ role: 'assistant', kind: 'crisis', content: t.moneyChat.crisisBody, timestamp: new Date().toISOString() });
+      return;
+    }
+
     setIsLoading(true);
     setStreamingText(''); // started — typing dots until first token
 
@@ -1989,7 +2047,7 @@ const MoneyChat: React.FC = () => {
     }
 
     setIsLoading(false);
-  }, [chatMessages, addChatMessage, showError, processResponse, followStream]);
+  }, [chatMessages, addChatMessage, showError, processResponse, followStream, t]);
 
   const handleSend = useCallback(() => {
     const question = input.trim();
@@ -2635,6 +2693,7 @@ const MoneyChat: React.FC = () => {
                     style={[styles.historyItem, locked && { opacity: 0.55 }]}
                     onPress={() => {
                       if (locked) { lightTap(); setHistoryPaywallVisible(true); return; }
+                      requestIdRef.current++; // discard any in-flight reply into the swapped thread
                       loadConversation(convo.id);
                       setShowHistory(false);
                       scrollToLatestRetries();
@@ -2851,6 +2910,45 @@ const makeStyles = (
   },
   userMessageText: {
     color: '#fff',
+  },
+
+  // Crisis help card — calm, tappable hotlines (on-device, nothing sent)
+  crisisCard: {
+    maxWidth: '86%',
+    gap: SPACING.sm,
+  },
+  crisisLead: {
+    fontSize: TYPE.insight.fontSize,
+    fontWeight: '700',
+    color: C.textPrimary,
+  },
+  crisisBody: {
+    fontSize: TYPE.insight.fontSize,
+    lineHeight: TYPE.insight.lineHeight,
+    color: C.textSecondary,
+  },
+  crisisRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
+  },
+  crisisOrg: {
+    fontSize: TYPE.insight.fontSize,
+    color: C.textPrimary,
+  },
+  crisisNum: {
+    fontSize: TYPE.insight.fontSize,
+    fontWeight: '700',
+    color: C.deepOlive,
+  },
+  crisisHint: {
+    fontSize: TYPE.muted.fontSize,
+    color: C.textMuted,
+    textAlign: 'center',
   },
 
   // Streaming bubble — inline blinking caret that wraps with the text

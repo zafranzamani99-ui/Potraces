@@ -9,7 +9,7 @@
  * Run: npx tsx scripts/test-note-extraction.ts
  */
 
-import { parseStructuredLines } from '../src/services/manglishParser';
+import { parseStructuredLines, detectSavingsVehicle } from '../src/services/manglishParser';
 
 let passed = 0;
 let failed = 0;
@@ -180,6 +180,21 @@ console.log('\n8b) NAMED "aku hutang <name>" → i_owe that person; generics sti
   check('named i_owe → both under nabil', named.length === 2 && named.every((r) => r.person?.toLowerCase() === 'nabil' && r.direction === 'i_owe'), JSON.stringify(named.map((r) => `${r.person}:${r.direction}`)));
   const generic = parseStructuredLines('mereka hutang\n100-faris\n50-ali') || [];
   check('generic header still names a person PER LINE', generic.length === 2 && byLabel(generic, 'faris')?.person?.toLowerCase() === 'faris' && byLabel(generic, 'ali')?.person?.toLowerCase() === 'ali', JSON.stringify(generic.map((r) => r.person)));
+}
+
+// ── detectSavingsVehicle: vehicle → savings account, purpose → goal (null) ──
+{
+  // Named vehicles → their account type
+  check('asb → asb', detectSavingsVehicle('topup asb 500') === 'asb');
+  check('versa → robo_crypto', detectSavingsVehicle('masuk versa 200') === 'robo_crypto');
+  check('wise → robo_crypto', detectSavingsVehicle('save in wise') === 'robo_crypto');
+  check('crypto → robo_crypto', detectSavingsVehicle('beli crypto 1000') === 'robo_crypto');
+  check('tabung haji → tabung_haji', detectSavingsVehicle('tabung haji 300') === 'tabung_haji');
+  check('emas → gold', detectSavingsVehicle('simpan emas') === 'gold');
+  // "save FOR a purpose" is NOT a vehicle → null → becomes a GOAL
+  check('save for house → null (goal)', detectSavingsVehicle('save 5000 for depo rumah') === null);
+  check('nak simpan untuk kahwin → null (goal)', detectSavingsVehicle('nak simpan untuk kahwin') === null);
+  check('emergency fund → null (goal)', detectSavingsVehicle('saving for emergency fund') === null);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

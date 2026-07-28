@@ -9,7 +9,7 @@
 import {
   getRange, previousRange, monthsInRange,
   incomeRollup, categoryRollup, biggestExpenses, categoryMovers,
-  cashFlow, recurringShare, monthlyEquivalent,
+  cashFlow, recurringShare, monthlyEquivalent, keptAcrossBooks,
 } from '../src/utils/insights';
 import { Transaction, Subscription, CategoryOption } from '../src/types';
 
@@ -130,6 +130,28 @@ console.log('\nrecurring share is per-month vs per-month (bug fix)');
   const shareThis = recurringShare(subs, cashFlow(txns, rThis).wentOut / monthsInRange(rThis));
   check('share uses monthly-normalised denominator (finite, >0)', share.ofSpendPercent > 0 && isFinite(share.ofSpendPercent));
   check('per-month share is not diluted by range length', shareThis.ofSpendPercent >= share.ofSpendPercent * 0.2);
+}
+
+// ── keptAcrossBooks — the flagship cross-book number ──
+{
+  const spendThisMonth = [
+    tx('expense', 200, 'food', new Date('2026-07-05T10:00:00Z')),
+    tx('expense', 100, 'shopping', new Date('2026-07-10T10:00:00Z')),
+    tx('income', 999, 'salary', new Date('2026-07-08T10:00:00Z')), // ignored — settledIn is the transfer, not personal income
+  ];
+  const k = keptAcrossBooks(spendThisMonth, 1000, NOW);
+  close('kept: personal spend summed', k.personalSpent, 300);
+  close('kept: settledIn = transferredIn', k.settledIn, 1000);
+  close('kept: kept = settledIn − spend', k.kept, 700);
+  check('kept: crossBook true when settled', k.crossBook === true);
+
+  const none = keptAcrossBooks(spendThisMonth, 0, NOW);
+  check('kept: crossBook false with no settlement', none.crossBook === false);
+  close('kept: kept can be negative', none.kept, -300);
+
+  const neg = keptAcrossBooks(spendThisMonth, -50, NOW);
+  close('kept: negative transfer floored to 0', neg.settledIn, 0);
+  check('kept: crossBook false when floored', neg.crossBook === false);
 }
 
 console.log(`\n${failures === 0 ? 'PASS' : `FAIL (${failures})`}`);

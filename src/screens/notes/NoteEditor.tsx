@@ -37,6 +37,7 @@ import {
 import { lightTap, mediumTap, warningNotification } from '../../services/haptics';
 import { useIntentEngine } from '../../hooks/useIntentEngine';
 import { useVoiceInput, VoiceErrorKind } from '../../hooks/useVoiceInput';
+import { useNetInfo } from '@react-native-community/netinfo';
 import { useCategories } from '../../hooks/useCategories';
 import { usePremiumStore } from '../../store/premiumStore';
 import { isGeminiAvailable } from '../../services/geminiClient';
@@ -165,6 +166,7 @@ const NoteEditor: React.FC = () => {
       const separator = text.trim() ? '\n' : '';
       handleTextChange(text + separator + transcription);
     },
+    announce: { listening: t.moneyChat.voiceListening, writing: t.moneyChat.voiceTranscribing, ready: t.moneyChat.voiceReady },
   });
 
   const handleSkip = useCallback((id: string) => {
@@ -425,17 +427,18 @@ const NoteEditor: React.FC = () => {
     cancelRecording();
   }, [cancelRecording]);
 
+  const voiceNetInfo = useNetInfo();
   const voiceErrorCopy = useCallback((kind: VoiceErrorKind): string => {
     switch (kind) {
       case 'permission': return t.moneyChat.voicePermDenied;
       case 'no-speech': return t.moneyChat.voiceNoSpeech;
-      case 'network': return t.moneyChat.voiceNetwork;
+      case 'network': return voiceNetInfo.isConnected === false ? t.moneyChat.voiceOffline : t.moneyChat.voiceNetwork;
       case 'setup': return t.moneyChat.voiceSetup;
       case 'unavailable': return t.moneyChat.voiceSetup;
       case 'quota': return t.moneyChat.voiceLimit;
       default: return t.moneyChat.voiceNoSpeech;
     }
-  }, [t]);
+  }, [t, voiceNetInfo.isConnected]);
 
   // Quota → open paywall (gating happens inside startRecording)
   useEffect(() => {

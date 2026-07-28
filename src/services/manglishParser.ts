@@ -97,9 +97,32 @@ const QUERY_PATTERNS = [
 
 // Savings keywords
 const SAVINGS_KEYWORDS = [
-  'simpan', 'save', 'saving', 'tabung', 'invest', 'tng+', 'esa',
-  'asb', 'kwsp', 'epf', 'pelaburan',
+  'simpan', 'save', 'saving', 'nabung', 'tabung', 'tabung haji', 'invest', 'pelaburan',
+  'tng+', 'esa', 'asb', 'kwsp', 'epf',
+  // modern savings/investment vehicles
+  'crypto', 'bitcoin', 'stashaway', 'versa', 'wise', 'robo', 'emas', 'gold', 'saham', 'stocks', 'fixed deposit',
 ];
+
+// A named place money is HELD or GROWS → its savings-account type. If none matches,
+// the text is a "save FOR a purpose" and should become a GOAL, not a vehicle.
+const SAVINGS_VEHICLES: { type: string; keywords: string[] }[] = [
+  { type: 'asb', keywords: ['asb', 'asnb', 'asn '] },
+  { type: 'tabung_haji', keywords: ['tabung haji'] },
+  { type: 'tng_plus', keywords: ['tng+', 'tng plus', 'go+', 'gopay'] },
+  { type: 'esa', keywords: ['epf', 'kwsp', 'esa'] },
+  { type: 'robo_crypto', keywords: ['crypto', 'bitcoin', 'stashaway', 'versa', 'wise', 'robo', 'akru'] },
+  { type: 'gold', keywords: ['gold', 'emas'] },
+  { type: 'stocks', keywords: ['stocks', 'saham', 'shares'] },
+];
+
+/** The savings-account type if the text names a vehicle (ASB, Versa, crypto…), else null (→ it's a goal). */
+export function detectSavingsVehicle(text: string): string | null {
+  const lower = ` ${text.toLowerCase()} `;
+  for (const v of SAVINGS_VEHICLES) {
+    if (v.keywords.some((k) => lower.includes(k))) return v.type;
+  }
+  return null;
+}
 
 function extractAmounts(text: string): number[] {
   const amounts: number[] = [];

@@ -19,6 +19,11 @@ import {
   suggestFrom,
   migrateLearningV0toV1,
   TRUST_COUNT,
+  applyAddMemory,
+  renderMemoryHints,
+  MEMORY_TEXT_MAX,
+  MEMORY_PROMPT_LINES,
+  type EchoMemory,
 } from '../src/store/learningPure';
 
 const failures: string[] = [];
@@ -89,6 +94,34 @@ check('migrated rules still suggest', suggestFrom(migrated.categoryPatterns || [
 const prov = applyLearnCategory([], 'mamak', 'food', 4);
 const provHit = suggestFrom(prov, 'mamak tom yam campur');
 check('suggestion carries keyword + count', provHit?.keyword === 'mamak' && provHit?.count === 4);
+
+// ── Echo's memory of you (applyAddMemory / renderMemoryHints) ──
+let mem = applyAddMemory([], { id: 'a', kind: 'goal', text: 'saving for house', source: 'you', now: 1 }, 3);
+check('memory added', mem.length === 1 && mem[0].text === 'saving for house');
+mem = applyAddMemory(mem, { id: 'b', kind: 'goal', text: 'Saving  for house', source: 'echo', now: 2 }, 3);
+check('memory dedups within kind (bumps updatedAt, no dup)', mem.length === 1 && mem[0].updatedAt === 2);
+mem = applyAddMemory(mem, { id: 'c', kind: 'bill', text: 'pays ptptn', source: 'you', now: 3 }, 3);
+check('same text, different kind = new memory', mem.length === 2);
+
+const clamped = applyAddMemory([], { id: 'd', kind: 'fact', text: 'x'.repeat(MEMORY_TEXT_MAX + 50), source: 'you', now: 1 }, 3);
+check('memory text clamps to MEMORY_TEXT_MAX', clamped[0].text.length === MEMORY_TEXT_MAX);
+
+let capped: EchoMemory[] = [];
+capped = applyAddMemory(capped, { id: '1', kind: 'goal', text: 'one', source: 'you', now: 1 }, 2);
+capped = applyAddMemory(capped, { id: '2', kind: 'goal', text: 'two', source: 'you', now: 2 }, 2);
+capped = applyAddMemory(capped, { id: '3', kind: 'goal', text: 'three', source: 'you', now: 3 }, 2);
+check('cap evicts the oldest UNPINNED', capped.length === 2 && !capped.some((m) => m.id === '1'));
+
+let pinnedList: EchoMemory[] = [{ id: 'p', kind: 'goal', text: 'pinned', source: 'you', createdAt: 1, updatedAt: 1, pinned: true }];
+pinnedList = applyAddMemory(pinnedList, { id: 'q', kind: 'goal', text: 'newer', source: 'you', now: 5 }, 1);
+check('pinned memory survives an over-cap add', pinnedList.some((m) => m.id === 'p'));
+
+const many: EchoMemory[] = [];
+for (let i = 0; i < MEMORY_PROMPT_LINES + 5; i++) many.push({ id: `m${i}`, kind: 'fact', text: `fact ${i}`, source: 'you', createdAt: i, updatedAt: i });
+many[0].pinned = true; // oldest, but pinned → must still appear
+const hints = renderMemoryHints(many);
+check('memory hints cap at MEMORY_PROMPT_LINES', hints.split('\n').filter((l) => l.startsWith('- [')).length === MEMORY_PROMPT_LINES);
+check('pinned memory appears in hints despite being oldest', hints.includes('fact 0'));
 
 if (failures.length) { console.error('FAIL:\n' + failures.join('\n')); process.exit(1); }
 console.log(`learning-notebook OK (${passed} checks)`);

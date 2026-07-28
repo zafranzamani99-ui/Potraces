@@ -32,3 +32,34 @@ export function isSmallTalk(message: string): boolean {
     .trim();
   return norm.length > 0 && SMALL_TALK.has(norm);
 }
+
+/**
+ * High-precision self-harm phrases (EN + Malay). Deliberately multi-word and
+ * specific so money-app hyperbole never trips them: bare "die"/"mati"/"nak mati"
+ * ("penat nak mati settle bil", "this bill is killing me") are NOT here.
+ *
+ * ponytail: precision-first wordlist — a keyword match can't catch every
+ * euphemism/typo; the owner/a clinician should tune this list. It's the first
+ * net; buildSystemPrompt carries a gentler backstop for anything it misses.
+ */
+const CRISIS_PHRASES = [
+  // English
+  'kill myself', 'killing myself', 'end my life', 'ending my life', 'want to die',
+  'wanna die', 'take my own life', 'suicide', 'suicidal', 'hurt myself', 'harm myself',
+  'self harm', 'self-harm', 'no reason to live', 'better off dead', 'dont want to live',
+  "don't want to live", 'no point living', 'no point in living',
+  // Malay / Manglish
+  'bunuh diri', 'nak bunuh diri', 'cederakan diri', 'mencederakan diri', 'sakiti diri',
+  'menyakiti diri', 'tak nak hidup', 'taknak hidup', 'malas nak hidup', 'tak mahu hidup',
+];
+
+/**
+ * True when the user's own message expresses self-harm intent. Substring match
+ * on the normalized text (lowercased, whitespace collapsed) — the phrases are
+ * specific enough that a substring hit is a real signal, not a false positive.
+ */
+export function isCrisisMessage(message: string): boolean {
+  const norm = message.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!norm) return false;
+  return CRISIS_PHRASES.some((p) => norm.includes(p));
+}

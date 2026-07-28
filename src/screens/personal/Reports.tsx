@@ -45,6 +45,7 @@ import Donut from '../../components/common/Donut';
 import CashFlowMathSheet, { MathFocus } from '../../components/common/CashFlowMathSheet';
 import { lightTap } from '../../services/haptics';
 import ScreenGuide from '../../components/common/ScreenGuide';
+import { useKeptAcrossBooks } from '../../hooks/useKeptNumber';
 
 const DELTA_CAP = 999;
 
@@ -66,6 +67,9 @@ const PersonalReports: React.FC = () => {
   const transactions = usePersonalStore((s) => s.transactions);
   const subscriptions = usePersonalStore((s) => s.subscriptions);
   const currency = useSettingsStore((state) => state.currency);
+  // Cross-book "kept" (hustle settled into personal − personal spend). Shows only
+  // when there's real settlement this month; distinct from the range-driven hero.
+  const keptBooks = useKeptAcrossBooks();
   const expenseCategories = useCategories('expense');
   const incomeCategories = useCategories('income');
 
@@ -497,6 +501,21 @@ const PersonalReports: React.FC = () => {
           )}
         </View>
 
+        {/* Kept across both books — hustle take-home settled into personal minus
+            personal spend this month. Only when there's real settlement (crossBook). */}
+        {keptBooks.crossBook && (
+          <View style={[styles.oCard, neu.raisedSoft, styles.bothBooksCard]}>
+            <Text style={styles.heroEyebrow}>{t.reports.keptBothBooksLabel}</Text>
+            <AnimatedNumber
+              value={keptBooks.kept}
+              prefix={`${currency} `}
+              decimals={0}
+              style={StyleSheet.flatten([styles.heroAmount, { color: heroColor }])}
+            />
+            <Text style={styles.heroSub}>{t.reports.keptBothBooksCaption}</Text>
+          </View>
+        )}
+
         {/* Where it came from — income sources (new; neither screen had this) */}
         {cf.cameIn > 0 && income.length > 0 && (
           <>
@@ -747,6 +766,7 @@ const makeStyles = (C: typeof CALM) =>
       borderRadius: RADIUS.xl,
       padding: SPACING.lg,
     },
+    bothBooksCard: { alignItems: 'center', marginTop: SPACING.md },
 
     sectionLabel: {
       fontSize: TYPE.label.fontSize,

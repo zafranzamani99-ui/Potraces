@@ -6,11 +6,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { classifyIntent, IntentResult } from '../services/intentEngine';
+import { detectSavingsVehicle } from '../services/manglishParser';
 import { answerQuery, QueryAnswer } from '../services/queryEngine';
 import { isGeminiAvailable } from '../services/geminiClient';
 import { usePremiumStore } from '../store/premiumStore';
 import { useNotesStore } from '../store/notesStore';
 import { usePersonalStore } from '../store/personalStore';
+import { useSavingsStore } from '../store/savingsStore';
 import { useWalletStore } from '../store/walletStore';
 import { useAppStore } from '../store/appStore';
 import { useDebtStore } from '../store/debtStore';
@@ -71,6 +73,7 @@ export function useIntentEngine({
   const addSubscription = usePersonalStore((s) => s.addSubscription);
   const goals = usePersonalStore((s) => s.goals);
   const contributeToGoal = usePersonalStore((s) => s.contributeToGoal);
+  const addGoal = usePersonalStore((s) => s.addGoal);
   const mode = useAppStore((s) => s.mode);
 
   // Debt store
@@ -515,9 +518,34 @@ export function useIntentEngine({
           // else: goal already full → leave pending (nothing to contribute).
           return;
         }
-        // No matching goal → leave PENDING. Marking it 'confirmed' here used to
-        // show "saved" while recording nothing (silent no-op). Keeping it pending
-        // lets the user create a matching goal or edit the item instead.
+
+        // No matching goal. Split: a named savings/investment VEHICLE (ASB, Versa,
+        // Wise, crypto…) becomes a savings ACCOUNT; anything else is a "save FOR a
+        // purpose" and becomes a new GOAL (target = amount). Both are money-safe —
+        // neither debits a wallet (mirrors the add_savings_account / create_goal chat
+        // actions), so nothing is silently spent.
+        const vehicle = detectSavingsVehicle(`${description} ${extraction.rawText || ''}`);
+        if (vehicle) {
+          const savings = useSavingsStore.getState();
+          const existing = savings.accounts.find((a) => a.name.toLowerCase() === goalName.toLowerCase());
+          if (existing) {
+            // Value update from a note is ambiguous (new total vs. a top-up) — leave
+            // it pending for the user to set in the Savings screen rather than guess.
+            return;
+          }
+          if (usePremiumStore.getState().canCreateSavingsAccount(savings.accounts.length)) {
+            savings.addAccount({ name: description || 'Savings', type: vehicle, initialInvestment: amount, currentValue: amount });
+            updateExtractionStatus(pageId, extractionId, 'confirmed');
+          }
+          // over the tier's savings-account cap → leave pending
+          return;
+        }
+        // A purpose → create a new goal with the amount as its TARGET (no contribution,
+        // no wallet debit). The user can contribute later from Goals or a note.
+        if (goals.length < 10) {
+          addGoal({ name: description || 'Goal', targetAmount: amount, category: 'general', icon: 'target', color: '#4F5104' });
+          updateExtractionStatus(pageId, extractionId, 'confirmed');
+        }
         return;
       }
 
@@ -566,7 +594,7 @@ export function useIntentEngine({
     },
     [
       pageId, wallets, mode, t, C,
-      addTransaction, addSubscription, goals, contributeToGoal,
+      addTransaction, addSubscription, goals, contributeToGoal, addGoal,
       updateExtractionStatus, onSetupWallet,
       contacts, debts, addDebt, addPayment, addContact,
       addIngredientCost, getActiveSeason,

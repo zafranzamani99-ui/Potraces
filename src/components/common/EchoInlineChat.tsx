@@ -29,10 +29,13 @@ import { lightTap } from '../../services/haptics';
 import { sendChatMessage } from '../../services/moneyChat';
 import { useEchoInlineStore } from '../../store/echoInlineStore';
 import type { AIMessage } from '../../types';
+import type { ChatAction } from '../../services/chatActions';
 
 export interface EchoChip {
   label: string;
   question: string;
+  /** When set, tapping seeds these as pending action chips (no LLM send). */
+  actions?: ChatAction[];
 }
 
 interface Props {
@@ -41,6 +44,8 @@ interface Props {
   insightTitle: string;
   insightSubtitle: string;
   chips: EchoChip[];
+  /** Seed pending action chips instead of sending a question (for action chips). */
+  onChipAction?: (actions: ChatAction[]) => void;
   contextSnapshot: string;
   /** Stable per-screen thread id ('goals', 'budget'…) — the conversation lives
    * in echoInlineStore, so it survives close + navigation for the app session. */
@@ -88,6 +93,7 @@ const EchoInlineChat: React.FC<Props> = ({
   insightTitle,
   insightSubtitle,
   chips,
+  onChipAction,
   contextSnapshot,
   threadKey,
   topInset = 20,
@@ -347,7 +353,10 @@ const EchoInlineChat: React.FC<Props> = ({
                     <Animated.View key={i} entering={FadeIn.delay(80 + i * 60).duration(220)}>
                       <TouchableOpacity
                         style={styles.chip}
-                        onPress={() => send(c.question)}
+                        onPress={() => {
+                          if (c.actions?.length && onChipAction) { onChipAction(c.actions); onClose(); }
+                          else send(c.question);
+                        }}
                         disabled={sending}
                         activeOpacity={0.8}
                         accessibilityRole="button"

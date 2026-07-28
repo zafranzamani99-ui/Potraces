@@ -217,12 +217,77 @@ export function suggestFrom<T extends { keyword: string; count: number }>(
   return best;
 }
 
+// ─── Echo's memory of YOU (durable facts — separate from the keyword rules) ──
+// The notebook above learns keyword→value shortcuts. This is different: short,
+// free-text facts about the owner (a goal, a regular bill, a worry, a win, a
+// style preference, a life fact) that Echo carries into EVERY chat so it never
+// starts blank. Only the distilled fact is stored/synced — never raw chat text.
+
+export type MemoryKind = 'goal' | 'bill' | 'worry' | 'win' | 'style' | 'fact';
+export const MEMORY_KINDS: MemoryKind[] = ['goal', 'bill', 'worry', 'win', 'style', 'fact'];
+
+export interface EchoMemory {
+  id: string;
+  kind: MemoryKind;
+  text: string;
+  /** 'you' = the owner typed it; 'echo' = Echo distilled it from a chat. */
+  source: 'you' | 'echo';
+  createdAt: number;
+  updatedAt: number;
+  pinned?: boolean;
+}
+
+/** Longest a single memory fact may be (a distilled fact, not a paragraph). */
+export const MEMORY_TEXT_MAX = 140;
+/** How many memories reach Echo's prompt per reply (the per-message cost dial,
+ *  uniform across tiers; the STORAGE cap is what's tiered). Pinned-first + recent. */
+export const MEMORY_PROMPT_LINES = 15;
+
+const normalizeMemoryText = (text: string): string => text.toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Add a memory, deduped within its kind. `cap` = the tier's storage ceiling (so
+ * the pure fn stays tier-agnostic — the caller reads the tier). Re-adding the
+ * same (kind, text) bumps updatedAt instead of duplicating. Over cap, the OLDEST
+ * UNPINNED memory is evicted — recency, NOT count (a memory has no hit-count; a
+ * future reader shouldn't "fix" this to count-based). Pinned facts never auto-drop.
+ */
+export function applyAddMemory(
+  memories: EchoMemory[],
+  input: { id: string; kind: MemoryKind; text: string; source: 'you' | 'echo'; now: number },
+  cap: number,
+): EchoMemory[] {
+  const text = input.text.trim().slice(0, MEMORY_TEXT_MAX);
+  if (!text) return memories;
+  const norm = normalizeMemoryText(text);
+  const existing = memories.find((m) => m.kind === input.kind && normalizeMemoryText(m.text) === norm);
+  let next: EchoMemory[] = existing
+    ? memories.map((m) => (m === existing ? { ...m, text, updatedAt: input.now } : m))
+    : [...memories, { id: input.id, kind: input.kind, text, source: input.source, createdAt: input.now, updatedAt: input.now }];
+  if (next.length > cap) {
+    const unpinned = next.filter((m) => !m.pinned).sort((a, b) => a.updatedAt - b.updatedAt);
+    const evict = new Set(unpinned.slice(0, next.length - cap).map((m) => m.id));
+    next = next.filter((m) => !evict.has(m.id));
+  }
+  return next;
+}
+
+/** Echo's prompt block: pinned first, then most-recent, capped at MEMORY_PROMPT_LINES. */
+export function renderMemoryHints(memories: EchoMemory[]): string {
+  if (memories.length === 0) return '';
+  const ordered = [...memories]
+    .sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : b.updatedAt - a.updatedAt))
+    .slice(0, MEMORY_PROMPT_LINES);
+  return `\n\nWHAT ECHO REMEMBERS ABOUT YOU (durable facts — use them naturally, never list them back):\n${ordered.map((m) => `- [${m.kind}] ${m.text}`).join('\n')}`;
+}
+
 export interface LearningBlob {
   categoryPatterns?: CategoryPattern[];
   personAliases?: PersonAlias[];
   walletPreferences?: WalletPreference[];
   typeCorrections?: TypeCorrection[];
   skippedKeywords?: Record<string, number>;
+  memories?: EchoMemory[];
   updatedAt?: number | null;
 }
 

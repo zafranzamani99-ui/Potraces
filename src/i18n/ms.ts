@@ -73,6 +73,9 @@ export const ms: Translations = {
     typeCategory: 'kategori',
     typeWallet: 'dompet',
     typePerson: 'orang',
+    typeType: 'jenis',
+    typeSkip: 'skip',
+    skippedValue: 'echo abai',
     filterAll: 'semua',
     keywordLabel: 'bila you cakap…',
     keywordPlaceholder: 'cth: shell, grab, mamak',
@@ -102,6 +105,29 @@ export const ms: Translations = {
     gotIt: 'faham',
     privacyNote: 'disimpan di phone you + cloud sync you saja. chat you tak pernah guna untuk training.',
     timesShort: '{n}×',
+    // ── memori pasal you (fakta tetap echo ingat setiap chat) ──
+    memTitle: 'apa echo ingat pasal you',
+    memHint: 'fakta tetap echo ingat setiap kali korang sembang',
+    memEmpty: 'belum ada — echo belajar masa korang sembang, atau tambah kat bawah',
+    memAdd: 'bagitau echo something',
+    memCapReached: 'memori dah penuh — buang satu, atau upgrade untuk lebih',
+    rulesDivider: 'shortcut yang dipelajari',
+    memKindGoal: 'matlamat',
+    memKindBill: 'bil tetap',
+    memKindWorry: 'risau',
+    memKindWin: 'menang',
+    memKindStyle: 'gaya',
+    memKindFact: 'fakta',
+    memSourceYou: 'you bagitau',
+    memSourceEcho: 'echo perasan',
+    memAddTitle: 'apa echo patut ingat?',
+    memEditTitle: 'edit benda ni',
+    memTextLabel: 'fakta tu',
+    memPlaceholder: 'cth. simpan RM5k untuk rumah, bayar ptptn tiap bulan',
+    memPin: 'pin',
+    memUnpin: 'unpin',
+    memForgetTitle: 'buang benda ni?',
+    memForgetMsg: 'echo terus lupa.',
   },
 
   common: {
@@ -761,6 +787,7 @@ export const ms: Translations = {
     logParse: 'proses',
     logListening: 'mendengar...',
     logHoldToSpeak: 'tekan untuk cakap',
+    logTapToSpeak: 'tekan nak cakap',
     logProcessing: 'memproses...',
     logNotePlaceholder: 'nota (pilihan)',
     logSource: 'sumber',
@@ -2200,6 +2227,12 @@ export const ms: Translations = {
     greetOnTrack: 'okay sampai gaji, relax',
     greetTight: 'agak ketat hari ni — boleh punya',
     greetPaydayEve: 'dah nak gaji, hampir sampai',
+    // chip susun semula + nudge gaji masuk (Echo re-tailor)
+    rebalancePull: 'tarik {{currency}}{{amt}} dari {{from}}',
+    rebalanceStretch: 'naikkan {{cat}} jadi {{currency}}{{amt}}',
+    rebalanceDesc: '{{cat}} → {{currency}}{{amt}}',
+    paydayNudge: 'duit baru masuk — nak susun semula bulan ni?',
+    paydayRetailor: 'susun semula',
   },
 
   goals: {
@@ -2933,6 +2966,9 @@ export const ms: Translations = {
     andMore: 'lagi',
     heroOver: 'lebih sebanyak',
     recurringOverSpend: 'lebih daripada belanja bulanan anda',
+    // ── kau simpan merentas dua buku (hustle masuk personal − belanja personal) ──
+    keptBothBooksLabel: 'bulan ni kau simpan',
+    keptBothBooksCaption: 'duit hustle, lepas tolak belanja kau',
     // ── helaian pecahan "kiraannya" boleh tap ──
     theMath: 'kiraannya',
     tapForMath: 'tap nombor untuk lihat kiraannya',
@@ -3205,6 +3241,10 @@ export const ms: Translations = {
     dailyCheckinSome: '{amount} dalam {n} hari ni — nak tambah apa-apa sebelum hari tutup?',
     dailyCheckinNone: 'belum catat apa-apa hari ni — nak tambah?',
     rhythmNote: '{n} hari berturut — mantap.',
+    // kad bantuan krisis — papar dalam telefon je, tak hantar ke mana-mana
+    crisisLead: 'kau tak keseorangan',
+    crisisBody: 'kalau rasa berat sangat sekarang, reach out ye — ada orang sedia dengar, bila-bila masa.',
+    crisisCallHint: 'tekan untuk call',
     // segmented totals — jangan campur jadi satu RM
     cameInLabel: 'masuk',
     wentOutLabel: 'keluar',

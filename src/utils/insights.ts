@@ -158,6 +158,28 @@ export function cashFlow(txns: Transaction[], r: DateRange): CashFlow {
   return cashFlowOf(scopeTxns(txns, r));
 }
 
+// ─── Kept across both books ──────────────────────────────────
+// The flagship "you kept RMx" number: hustle take-home settled INTO personal
+// (business→personal transfers this month) minus what personal spent. Pure —
+// `transferredIn` is passed in (never re-derived here) so there's no risk of
+// double-counting the transfer sum. Display-only; touches no balance.
+export interface KeptAcrossBooks {
+  settledIn: number;
+  personalSpent: number;
+  kept: number;
+  crossBook: boolean; // true only when there's real hustle settlement this month
+}
+
+export function keptAcrossBooks(
+  txns: Transaction[],
+  transferredIn: number,
+  now: Date = new Date(),
+): KeptAcrossBooks {
+  const settledIn = Math.max(transferredIn, 0);
+  const personalSpent = cashFlow(txns, getRange('this_month', now)).wentOut;
+  return { settledIn, personalSpent, kept: settledIn - personalSpent, crossBook: settledIn > 0 };
+}
+
 // ─── Category rollup ─────────────────────────────────────────
 export interface CategoryRollup {
   id: string;

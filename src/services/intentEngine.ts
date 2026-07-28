@@ -87,7 +87,7 @@ INTENT TYPES:
 - seller_order: business order from customer
 - seller_cost: business cost/ingredient purchase
 - query: user asking a question about their finances
-- savings_goal: saving or investment action
+- savings_goal: money going INTO savings — either saving toward a GOAL (a purpose/target: house deposit, wedding, umrah, car, emergency fund, a trip) OR a top-up to a savings/investment VEHICLE (ASB, Tabung Haji, EPF/ESA, crypto, a robo-advisor like StashAway / Versa / Wise, fixed deposit, gold, stocks). Signal words: simpan/save/nabung untuk…, topup, masuk tabung, invest. A "save FOR <purpose>" is a goal; a named account that holds/grows money is a vehicle. NOT an everyday expense.
 - playbook: income/salary with a spending breakdown (title + total + category-amount lines)
 - plain: no financial content
 

@@ -7,7 +7,8 @@
 import { useMemo } from 'react';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { usePersonalStore } from '../store/personalStore';
-import { isTransfer, isGoalMove } from '../utils/insights';
+import { useBusinessStore } from '../store/businessStore';
+import { isTransfer, isGoalMove, keptAcrossBooks, type KeptAcrossBooks } from '../utils/insights';
 
 interface KeptSummary {
   keptThisMonth: number;
@@ -66,4 +67,23 @@ export function useKeptNumber(): KeptSummary {
       trendPercent,
     };
   }, [transactions]);
+}
+
+/**
+ * The cross-book "Kept" number (business take-home settled into personal minus
+ * personal spend). Separate from useKeptNumber — that one is personal-only and
+ * feeds the Dashboard Kept card + Reports math sheet; don't merge them.
+ */
+export function useKeptAcrossBooks(): KeptAcrossBooks {
+  const transactions = usePersonalStore((s) => s.transactions);
+  // Depend on the transfers array so the number recomputes when a transfer is
+  // added/removed; the store getter is the single source for the transfer sum.
+  const transfers = useBusinessStore((s) => s.transfers);
+
+  return useMemo(() => {
+    const now = new Date();
+    const transferredIn = useBusinessStore.getState().getTotalTransferredToPersonal(now);
+    return keptAcrossBooks(transactions, transferredIn, now);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, transfers]);
 }

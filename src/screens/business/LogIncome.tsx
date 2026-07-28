@@ -11,6 +11,7 @@ import {
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useVoiceInput, VoiceErrorKind } from '../../hooks/useVoiceInput';
+import { useNetInfo } from '@react-native-community/netinfo';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useNavigation } from '@react-navigation/native';
 import { useBusinessStore } from '../../store/businessStore';
@@ -56,7 +57,7 @@ const LogIncome: React.FC = () => {
   const [showCostEntry, setShowCostEntry] = useState(false);
   const [costType, setCostType] = useState<'petrol' | 'maintenance' | 'data' | 'other'>('petrol');
   const [costAmount, setCostAmount] = useState('');
-  const { isRecording, isTranscribing, liveTranscript, error: voiceError, startRecording, stopAndTranscribe } = useVoiceInput({
+  const { isRecording, isTranscribing, liveTranscript, error: voiceError, startRecording, stopAndTranscribe, cancelRecording } = useVoiceInput({
     onResult: async (transcript) => {
       setTextInput(transcript);
       const result = await parseTextInput(transcript);
@@ -65,6 +66,7 @@ const LogIncome: React.FC = () => {
         setNote(result.description);
       }
     },
+    announce: { listening: t.moneyChat.voiceListening, writing: t.moneyChat.voiceTranscribing, ready: t.moneyChat.voiceReady },
   });
   const transferTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -87,27 +89,25 @@ const LogIncome: React.FC = () => {
     setIsProcessing(false);
   }, [textInput]);
 
-  // Hold-to-talk: start on press-in, stop+transcribe on release.
-  // Transcription only fills the field — Save stays explicit (confirmation-first).
-  const handleVoiceStart = useCallback(() => {
-    void startRecording();
-  }, [startRecording]);
+  // Tap-toggle (locked D4, matches Echo chat + NoteEditor): tap to start, tap to
+  // stop. Transcription only fills the field — Save stays explicit (confirmation-first).
+  const handleMicPress = useCallback(() => {
+    if (isRecording) stopAndTranscribe(); // transcript delivers via onResult
+    else void startRecording();
+  }, [isRecording, startRecording, stopAndTranscribe]);
 
-  const handleVoiceStop = useCallback(() => {
-    stopAndTranscribe(); // transcript delivered via onResult (fires on manual stop OR auto-end)
-  }, [stopAndTranscribe]);
-
+  const voiceNetInfo = useNetInfo();
   const voiceErrorCopy = useCallback((kind: VoiceErrorKind): string => {
     switch (kind) {
       case 'permission': return t.moneyChat.voicePermDenied;
       case 'no-speech': return t.moneyChat.voiceNoSpeech;
-      case 'network': return t.moneyChat.voiceNetwork;
+      case 'network': return voiceNetInfo.isConnected === false ? t.moneyChat.voiceOffline : t.moneyChat.voiceNetwork;
       case 'setup': return t.moneyChat.voiceSetup;
       case 'unavailable': return t.moneyChat.voiceSetup;
       case 'quota': return t.moneyChat.voiceLimit;
       default: return t.moneyChat.voiceNoSpeech;
     }
-  }, [t]);
+  }, [t, voiceNetInfo.isConnected]);
 
   const handleSave = useCallback(() => {
     const numAmount = parseFloat(amount);
@@ -312,20 +312,33 @@ const LogIncome: React.FC = () => {
         )}
 
         {mode === 'voice' && (
-          <TouchableOpacity
-            style={[styles.voiceButton, isRecording && styles.voiceButtonRecording]}
-            onPressIn={handleVoiceStart}
-            onPressOut={handleVoiceStop}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={isRecording ? t.business.logListening : t.business.logHoldToSpeak}
-            accessibilityState={{ selected: isRecording, busy: isTranscribing }}
-          >
-            <Feather name="mic" size={32} color={isRecording ? C.onAccent : C.bronze} />
-            <Text style={[styles.voiceHint, isRecording && styles.voiceHintRecording]}>
-              {isRecording ? t.business.logListening : t.business.logHoldToSpeak}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.voiceControls}>
+            <TouchableOpacity
+              style={[styles.voiceButton, isRecording && styles.voiceButtonRecording]}
+              onPress={handleMicPress}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={isRecording ? t.business.logListening : t.business.logTapToSpeak}
+              accessibilityState={{ selected: isRecording, busy: isTranscribing }}
+            >
+              <Feather name="mic" size={32} color={isRecording ? C.onAccent : C.bronze} />
+              <Text style={[styles.voiceHint, isRecording && styles.voiceHintRecording]}>
+                {isRecording ? t.business.logListening : t.business.logTapToSpeak}
+              </Text>
+            </TouchableOpacity>
+            {isRecording && (
+              <TouchableOpacity
+                onPress={cancelRecording}
+                style={styles.voiceCancel}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.moneyChat.voiceCancel}
+              >
+                <Feather name="x" size={16} color={C.textMuted} />
+                <Text style={styles.voiceCancelText}>{t.moneyChat.voiceCancel}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         {mode === 'voice' && isRecording && !!liveTranscript && (
@@ -516,6 +529,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   voiceHintRecording: {
     color: C.onAccent,
   },
+  voiceControls: { alignItems: 'center' },
+  voiceCancel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  voiceCancelText: { ...TYPE.muted, color: C.textMuted },
 
   // Processing
   processingRow: {
