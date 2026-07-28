@@ -92,3 +92,5 @@ separately (`audit/ECHO_UNFINISHED.md`).
 - [ ] Pre-monetize legal: PSP "referrer not acquirer" letter, SST decision, DPAs/DPO around ~10k users.
 - [ ] Fiuu DuitNow-QR accept (code-complete, blocked on Fiuu provisioning — retest when they finish).
 - [ ] Collectz join-approval deploy (code done; needs `db push` + `functions deploy` + smoke).
+- [ ] **Cheaper Echo** (Bucket 3 #6) — trim the ~5k-token rulebook + wire prompt caching to cut cost per message. Quick edit but changes Echo's behaviour → needs a careful test pass. Not urgent (~RM0.005/msg today). Notes: `ECHO_MEMORY_COST_SAFETY.md` (open decision #1).
+- [ ] **Flagship "Kept" install-hook** (Bucket 3 #7) — the cross-book "you kept RMx" number is on Reports; the growth wiring isn't: a Dashboard hero + a Collectz join-page "track your own money" nudge (acquisition funnel for people who pay a share). Growth call, not core Echo. Spec: `MAKIN_KENAL.md` §6.
