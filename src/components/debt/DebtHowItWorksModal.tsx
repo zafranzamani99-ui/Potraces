@@ -26,8 +26,17 @@ const DebtHowItWorksModal: React.FC<DebtHowItWorksModalProps> = ({ visible, onCl
   return (
     <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={styles.dHowOverlay} onPress={onClose}>
-        <View style={[styles.dHowCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
-          <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: SPACING.sm }}>
+        <View style={[styles.dHowCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
+          {/* Neu seam rule (docs/neu-vertical-error.md): bleed the clip edge
+              out, pad content back in — rows keep their layout, shadows gain
+              slack. Card uses raisedModal per the scrim rule (no halo). */}
+          <ScrollView
+            style={styles.dHowScrollBleed}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm }}
+          >
             <View style={styles.dHowCardHeader}>
               <Text style={styles.dHowCardTitle}>{t.debts.howItWorks}</Text>
               <Text style={styles.dHowCardSub}>{t.debts.howItWorksSub}</Text>
@@ -168,6 +177,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   dHowDismiss: {
     marginTop: SPACING.md,
   },
+  // Counterpart to the contentContainer padding: pulls the ScrollView's clip
+  // edge OUT by the same amount (neu seam rule — docs/neu-vertical-error.md).
+  dHowScrollBleed: { marginHorizontal: -SPACING.md, marginVertical: -SPACING.sm },
 });
 
 export default React.memo(DebtHowItWorksModal);

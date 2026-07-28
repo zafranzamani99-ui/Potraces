@@ -6,13 +6,18 @@
 // FAIL-SOFT discipline: a transient failure (offline, signed out, 5xx) NEVER
 // downgrades the user — only a definitive server response reconciles the store
 // (including tier 'free' once the launch gate is on).
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import { clientForMode } from './supabase';
 import { useAppStore } from '../store/appStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { usePremiumStore } from '../store/premiumStore';
 import { getDeviceId } from '../utils/deviceId';
 import { globalShowToast } from '../context/ToastContext';
+import { globalShowRewardModal, earnedModalShownThisLaunch, type NewReward } from '../context/RewardModalContext';
+
+export type { NewReward };
 import { en } from '../i18n/en';
 import { ms } from '../i18n/ms';
 import type { PremiumTier } from '../types';
@@ -45,6 +50,21 @@ export async function refreshEntitlement(): Promise<void> {
       premiumUntil: data.premium_until ? new Date(data.premium_until) : null,
       gateOn: data.gate_on === true,
     });
+    // Surprise grants the user has never been shown (referrer payout, Collectz
+    // milestone, admin manual). The server marks them seen as it returns them,
+    // so this modal fires exactly once per grant.
+    const rawRewards: unknown[] = Array.isArray(data.new_rewards) ? data.new_rewards : [];
+    const rewards: NewReward[] = rawRewards
+      .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
+      .map((r) => ({
+        source: typeof r.source === 'string' ? r.source : '',
+        tier: typeof r.tier === 'string' ? r.tier : 'pro',
+        days: typeof r.days === 'number' && isFinite(r.days) ? r.days : 0,
+      }))
+      .filter((r) => r.source !== '' && r.days > 0);
+    if (rewards.length > 0) {
+      globalShowRewardModal({ kind: 'earned', rewards });
+    }
   } catch {
     // fail-soft
   }
@@ -140,13 +160,17 @@ export interface ReferralProgress {
   qualified: number;
   rewarded: number;
   rejected: number;
+  welcomeDays: number;
   rewardDaysEach: number;
+  batchSize: number;
+  batchProgress: number;
   daysEarned: number;
   capPerYear: number;
   capUsed: number;
   milestoneNeeded: number;
   milestoneHave: number;
   milestoneDone: boolean;
+  milestoneDays: number;
 }
 
 /** Invite screen data. Null when signed out / unreachable — the screen shows
@@ -165,13 +189,17 @@ export async function fetchReferralProgress(): Promise<ReferralProgress | null> 
       qualified: num(data.qualified),
       rewarded: num(data.rewarded),
       rejected: num(data.rejected),
+      welcomeDays: num(data.welcome_days),
       rewardDaysEach: num(data.reward_days_each),
+      batchSize: num(data.batch_size),
+      batchProgress: num(data.batch_progress),
       daysEarned: num(data.days_earned),
       capPerYear: num(data.cap_per_year),
       capUsed: num(data.cap_used),
       milestoneNeeded: num(data.milestone_needed),
       milestoneHave: num(data.milestone_have),
       milestoneDone: data.milestone_done === true,
+      milestoneDays: num(data.milestone_days),
     };
   } catch {
     return null;
@@ -236,5 +264,69 @@ export async function claimStagedReferral(): Promise<void> {
     globalShowToast(msg, 'success');
   } else if (__DEV__ && (result.reason === 'invalid_code' || result.reason === 'self_referral')) {
     console.warn('[referral] staged claim rejected:', result.reason);
+  }
+}
+
+// ── Clipboard invite token ───────────────────────────────────────────────
+// POTRACES-REF:{CODE} or POTRACES-REF:{CODE}:collectz:{SHARE}, copied from the
+// invite landing / collectz pages. Read ONLY from referral surfaces (the
+// RedeemCode screen) — never at app launch: iOS shows a paste-privacy prompt
+// on EVERY programmatic clipboard read, which is both a daily annoyance and an
+// App Store privacy flag for a finance app. Only ever STAGED after the user
+// confirms — never a silent claim. The seen-key stops the same token
+// re-prompting.
+const CLIPBOARD_REF_SEEN_KEY = 'potraces.clipboardRefSeen';
+
+export async function checkClipboardReferral(): Promise<void> {
+  try {
+    const text = (await Clipboard.getStringAsync()).trim();
+    const m = text.match(/^POTRACES-REF:([A-Za-z0-9]+)(?::collectz:([A-Za-z0-9]+))?$/);
+    if (!m) return;
+    const [, code, share] = m;
+    if ((await AsyncStorage.getItem(CLIPBOARD_REF_SEEN_KEY)) === m[0]) return;
+    await AsyncStorage.setItem(CLIPBOARD_REF_SEEN_KEY, m[0]);
+    Alert.alert(
+      tr().rewards.clipboardTitle,
+      tr().rewards.clipboardBody.replace('{code}', code),
+      [
+        { text: tr().common.cancel, style: 'cancel' },
+        {
+          text: tr().rewards.clipboardYes,
+          onPress: () => {
+            void stagePendingReferral({ code, source: share ? 'collectz' : 'link', session: share ?? null })
+              .then(() => claimStagedReferral());
+          },
+        },
+      ],
+    );
+  } catch {
+    // best-effort
+  }
+}
+
+// ── Rewards intro (once per install) ───────────────────────────────────────
+const INTRO_SEEN_KEY = 'potraces.rewardsIntroSeen.v1';
+
+/** One-time floating intro to the rewards program, called from App.tsx after a
+ *  signed-in refresh. Skipped when an 'earned' modal already fired this launch
+ *  (the reward moment wins; intro waits for the next cold start), when signed
+ *  out / unreachable, and once the flag is set. Never throws. */
+export async function maybeShowRewardsIntro(): Promise<void> {
+  try {
+    const seen = await AsyncStorage.getItem(INTRO_SEEN_KEY);
+    if (seen) return;
+    if (earnedModalShownThisLaunch()) return; // don't stack on a reward moment
+    const progress = await fetchReferralProgress(); // null when signed out / offline
+    if (!progress) return;
+    await AsyncStorage.setItem(INTRO_SEEN_KEY, '1');
+    globalShowRewardModal({
+      kind: 'intro',
+      welcomeDays: progress.welcomeDays,
+      days: progress.rewardDaysEach,
+      tier: 'pro', // reward_tier — same hardcode as the Invite screen subtitle
+      batch: progress.batchSize > 0 ? progress.batchSize : 3,
+    });
+  } catch {
+    // best-effort
   }
 }

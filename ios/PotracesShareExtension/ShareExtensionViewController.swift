@@ -23,10 +23,19 @@ class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
     settings.enableDev = true
     settings.enableMinification = false
     // DEV-BUILD ON A PHYSICAL DEVICE: the extension's RCTBundleURLProvider defaults to
-    // localhost (the phone), which has no Metro. Point it at the Mac's LAN IP so the
-    // extension can load its JS from the dev server. (Dev-only; a release build embeds
-    // main.jsbundle and ignores this. Update the IP if the Mac's Wi-Fi address changes.)
-    settings.jsLocation = "192.168.100.51"
+    // localhost (the phone), which has no Metro. Prefer the host the APP last recorded in
+    // the app-group container (src/utils/shareExtBridge.ts → metro-host.txt) so the
+    // extension follows the SAME Metro on any network/machine (home Mac, office PC).
+    // The hardcoded IP below is the fallback. (Dev-only; a release build embeds
+    // main.jsbundle and ignores this.)
+    var jsLocation = "192.168.100.51"
+    if let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String,
+       let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup),
+       let saved = try? String(contentsOf: container.appendingPathComponent("metro-host.txt"), encoding: .utf8) {
+      let host = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !host.isEmpty { jsLocation = host }
+    }
+    settings.jsLocation = jsLocation
     if let bundleURL = settings.jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry") {
       if var components = URLComponents(url: bundleURL, resolvingAgainstBaseURL: false) {
         components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "shareExtension", value: "true")]

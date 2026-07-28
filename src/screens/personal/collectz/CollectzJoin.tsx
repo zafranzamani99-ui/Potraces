@@ -1127,7 +1127,7 @@ const CollectzJoin: React.FC = () => {
       </PageScrollView>
 
       {/* Team rename — any roster member can retitle a team ("Reds", not "Team 1"). */}
-      <FloatingModal visible={renameTeamIdx != null} onClose={() => setRenameTeamIdx(null)} entrance="fade">
+      <FloatingModal visible={renameTeamIdx != null} onClose={() => setRenameTeamIdx(null)} entrance="fade" borderless>
         <View style={styles.renameWrap}>
           <Text style={styles.renameTitle}>{t.collectz.teamRename}</Text>
           <TextInput

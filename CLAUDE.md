@@ -111,6 +111,8 @@ If the shadowed card clips nothing, no wrapper is needed — the shadow renders 
 
 **References (copy these):** `TransactionItem` (`rowShadow` outer + `card` inner — the canonical row, the owner's "TransactionList has it correct"), `MapPreviewCard` (`card` + `clip`), `CollectzJoin` roster (`listCard` + `listClip`, 2026-07-21).
 
+**THE scrim rule (LOCKED):** any card floating directly on a dim scrim (centered dialogs, bottom sheets, action sheets) uses **`neu.raisedModal`** — never `raisedSoft` / `raised` / a hand-rolled shadow. In light mode their white `#FFFFFF` top-left highlight blooms into a halo around the whole card on the `rgba(0,0,0,0.4)` scrim; `raisedModal` drops the highlight and lifts with a single soft neutral drop in both modes. Plain `SHADOWS.*` cards are exempt (all `#000`-based). Neu elements *inside* the card are fine — they sit on the card's background, not the scrim. Details: `docs/neu-vertical-error.md` (sibling artifact "white halo").
+
 ## "Note Fields" — multi-line note/description inputs (LOCKED)
 
 Any **note / description** input is **multi-line** and carries the **gold keyboard-done FAB**. When the user says a note/description field is wrong, this is the rule to apply.

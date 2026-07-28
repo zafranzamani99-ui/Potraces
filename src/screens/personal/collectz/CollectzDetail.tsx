@@ -1157,7 +1157,7 @@ const CollectzDetail: React.FC = () => {
 
       {/* Team rename — organizer taps a team header. Participants can rename
           from their join page too; last write wins, which is fine for a label. */}
-      <FloatingModal visible={renameTeamIdx != null} onClose={() => setRenameTeamIdx(null)} entrance="fade">
+      <FloatingModal visible={renameTeamIdx != null} onClose={() => setRenameTeamIdx(null)} entrance="fade" borderless>
         <View style={styles.renameWrap}>
           <Text style={styles.renameTitle}>{t.collectz.teamRename}</Text>
           <TextInput
@@ -1179,7 +1179,29 @@ const CollectzDetail: React.FC = () => {
 
       {/* Participant action modal — tap any roster row. Centered fade-in like
           the Repay Credit picker (NOT a bottom slide). */}
-      <FloatingModal visible={!!actionFor} onClose={() => setActionFor(null)} entrance="fade">
+      <FloatingModal
+        visible={!!actionFor}
+        onClose={() => setActionFor(null)}
+        entrance="fade"
+        borderless
+        // ConfirmDialog goes in the overlay SLOT, not in children: as a child
+        // its absolute-fill scrim is clipped to the sheet card (the card has
+        // overflow hidden), so the dim covered only the card and the dialog
+        // centered inside it instead of over the whole window.
+        overlay={
+          <ConfirmDialog
+            visible={!!pConfirm}
+            title={pConfirm?.title ?? ''}
+            message={pConfirm?.message}
+            confirmLabel={pConfirm?.confirmLabel ?? ''}
+            destructive={pConfirm?.destructive}
+            busy={busy}
+            onConfirm={() => pConfirm?.onConfirm()}
+            onClose={() => setPConfirm(null)}
+            asOverlay
+          />
+        }
+      >
         {actionFor && session && (() => {
           const p = actionFor;
           const share = p.slot === 'reserve' ? null : shares.get(p.id) ?? null;
@@ -1324,19 +1346,6 @@ const CollectzDetail: React.FC = () => {
             </View>
           );
         })()}
-        {/* asOverlay: lives in THIS modal's window. A nested <Modal> would present
-            behind the sheet and be invisible on iOS. */}
-        <ConfirmDialog
-          visible={!!pConfirm}
-          title={pConfirm?.title ?? ''}
-          message={pConfirm?.message}
-          confirmLabel={pConfirm?.confirmLabel ?? ''}
-          destructive={pConfirm?.destructive}
-          busy={busy}
-          onConfirm={() => pConfirm?.onConfirm()}
-          onClose={() => setPConfirm(null)}
-          asOverlay
-        />
       </FloatingModal>
 
       {/* Proof review sheet */}
@@ -1742,7 +1751,7 @@ const makeStyles = (C: typeof CALM) =>
     claimedTagText: { fontSize: 10, color: C.accent, fontWeight: TYPOGRAPHY.weight.medium },
     rowShare: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
     // Participant action modal
-    amWrap: { padding: SPACING.lg, paddingTop: SPACING.sm, gap: SPACING.md },
+    amWrap: { padding: SPACING.lg, gap: SPACING.md },
     amHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
     amHeaderMain: { flex: 1, gap: 2 },
     amName: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, flexShrink: 1 },

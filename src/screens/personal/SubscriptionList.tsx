@@ -1228,19 +1228,19 @@ const SubscriptionList: React.FC = () => {
       >
         {/* Squircle avatar */}
         {installmentDone ? (
-          <View style={[styles.rowIcon, neu.well, { backgroundColor: withAlpha(C.positive, 0.12) }]}>
+          <View style={[styles.rowIcon, neu.raised, { backgroundColor: withAlpha(C.positive, 0.12) }]}>
             <Feather name="check-circle" size={18} color={C.positive} />
           </View>
         ) : sub.imageUri ? (
           <Image source={{ uri: sub.imageUri }} style={styles.rowIconImage} />
         ) : sub.iconName ? (
-          <View style={[styles.rowIcon, neu.well, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+          <View style={[styles.rowIcon, neu.raised, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
             {renderIcon(sub.iconName, 24, C.accent)}
           </View>
         ) : (
           <View style={[
             styles.rowIcon,
-            neu.well,
+            neu.raised,
             { backgroundColor: isCleared ? withAlpha(C.positive, 0.12) : withAlpha(accentColor, 0.14) },
           ]}>
             {isCleared
@@ -1987,7 +1987,7 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setPayWarning(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setPayWarning(null)}>
-          <View style={[styles.warnCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.warnCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
             <View style={[styles.warnIconCircle, neu.well]}>
               <Feather name={isDouble ? 'alert-circle' : isNotStarted ? 'calendar' : 'clock'} size={24} color={C.gold} />
             </View>
@@ -2038,7 +2038,7 @@ const SubscriptionList: React.FC = () => {
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setCelebrationSub(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setCelebrationSub(null)}>
           <Reanimated.View entering={ZoomIn.duration(320)}>
-            <View style={[styles.celebCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.celebCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
 
               {/* Confetti burst + glow rings + icon */}
               <View style={styles.celebBurstWrap}>
@@ -2130,9 +2130,9 @@ const SubscriptionList: React.FC = () => {
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDeleteConfirmSub(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setDeleteConfirmSub(null)}>
-          <View style={[styles.deleteCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
+          <View style={[styles.deleteCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
             {/* Icon */}
-            <View style={[styles.delIconCircle, neu.well]}>
+            <View style={[styles.delIconCircle, neu.raised, { backgroundColor: withAlpha(C.neutral, C === CALM_DARK ? 0.14 : 0.07) }]}>
               <Feather name="trash-2" size={18} color={C.neutral} />
             </View>
 
@@ -2152,11 +2152,15 @@ const SubscriptionList: React.FC = () => {
             </Text>
 
             {/* Keep — primary (accent), delete — secondary link */}
-            <NeuButton
-              icon="shield"
-              label="keep it"
-              onPress={() => setDeleteConfirmSub(null)}
-            />
+            {/* Stretch wrapper: deleteCard is alignItems:'center', so NeuButton's
+                inner width:'100%' shrink-wraps without it (same as celeb modal). */}
+            <View style={{ alignSelf: 'stretch' }}>
+              <NeuButton
+                icon="shield"
+                label="keep it"
+                onPress={() => setDeleteConfirmSub(null)}
+              />
+            </View>
 
             <Pressable
               style={styles.delConfirmRow}
@@ -2675,8 +2679,17 @@ const SubscriptionList: React.FC = () => {
   const renderHowItWorksModal = () => (
     <Modal visible={howItWorksVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setHowItWorksVisible(false)}>
       <Pressable style={styles.hiwOverlay} onPress={() => setHowItWorksVisible(false)}>
-        <View style={[styles.hiwCard, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: SPACING.sm }}>
+        <View style={[styles.hiwCard, neu.raisedModal]} onStartShouldSetResponder={() => true}>
+          {/* Neu seam rule (docs/neu-vertical-error.md): bleed the clip edge
+              out, pad content back in — rows keep their layout, shadows gain
+              slack. */}
+          <ScrollView
+            style={styles.hiwScrollBleed}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            contentContainerStyle={{ paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm }}
+          >
             <View style={styles.hiwCardHeader}>
               <Text style={styles.hiwTitle}>how it works</Text>
               <Text style={styles.hiwSubtitle}>everything about bills & commitments</Text>
@@ -4001,7 +4014,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 14,
-    backgroundColor: withAlpha(C.neutral, C === CALM_DARK ? 0.14 : 0.07),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.md,
@@ -4077,6 +4089,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,
   },
+  // Counterpart to the contentContainer padding: pulls the ScrollView's clip
+  // edge OUT by the same amount (neu seam rule — docs/neu-vertical-error.md).
+  hiwScrollBleed: { marginHorizontal: -SPACING.md, marginVertical: -SPACING.sm },
   hiwCardHeader: {
     marginBottom: SPACING.md,
   },

@@ -8,7 +8,7 @@
 // in a single surface per section. No emoji wells, no category washes, no
 // stat tiles: the money and the typography do the talking. UI glyphs are
 // Ionicons (premium iOS-native feel), not Feather.
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -33,6 +33,8 @@ import PageScrollView from '../../../components/common/PageScrollView';
 import NeuButton from '../../../components/common/NeuButton';
 import ScreenGuide from '../../../components/common/ScreenGuide';
 import PaywallModal from '../../../components/common/PaywallModal';
+import HowItWorksModal, { HowItWorksSection } from '../../../components/common/HowItWorksModal';
+import { fetchReferralProgress } from '../../../services/entitlements';
 import { useNeu } from '../../../components/common/neu';
 import { lightTap } from '../../../services/haptics';
 import { usePremiumStore } from '../../../store/premiumStore';
@@ -93,6 +95,100 @@ const CollectzHome: React.FC = () => {
   const [myJoinedRows, setMyJoinedRows] = useState<Record<string, JoinedRow>>({});
   const [joinedProgress, setJoinedProgress] = useState<Record<string, { active_count: number; confirmed_count: number; target_amount: number | null; confirmed_amount: number }>>({});
   const [archivedOpen, setArchivedOpen] = useState(false);
+
+  // Header buttons (top-right): how-it-works + Collectz reward explainers,
+  // shown as grouped Bills-style HowItWorksModal cards. The reward one reads
+  // as a quest — objective steps, then your progress as the final item.
+  const [howOpen, setHowOpen] = useState(false);
+  const [questOpen, setQuestOpen] = useState(false);
+  const [quest, setQuest] = useState<{ have: number; needed: number; days: number; done: boolean } | null>(null);
+
+  const openHowItWorks = useCallback(() => {
+    lightTap();
+    setHowOpen(true);
+  }, []);
+
+  const openRewardInfo = useCallback(async () => {
+    lightTap();
+    const p = await fetchReferralProgress(); // null when signed out / offline
+    setQuest(p ? { have: p.milestoneHave, needed: p.milestoneNeeded, days: p.milestoneDays, done: p.milestoneDone } : null);
+    setQuestOpen(true);
+  }, []);
+
+  const howSections: HowItWorksSection[] = useMemo(() => [
+    {
+      group: t.collectz.hiwGroupBasics,
+      items: [
+        { icon: 'plus-circle', bold: t.collectz.hiwCreateB, rest: t.collectz.hiwCreateR },
+        { icon: 'users', bold: t.collectz.hiwRosterB, rest: t.collectz.hiwRosterR },
+        { icon: 'link', bold: t.collectz.hiwJoinB, rest: t.collectz.hiwJoinR },
+      ],
+    },
+    {
+      group: t.collectz.hiwGroupTracking,
+      items: [
+        { icon: 'upload', bold: t.collectz.hiwProofB, rest: t.collectz.hiwProofR },
+        { icon: 'check-circle', bold: t.collectz.hiwMarkB, rest: t.collectz.hiwMarkR },
+        { icon: 'send', bold: t.collectz.hiwNudgeB, rest: t.collectz.hiwNudgeR },
+      ],
+    },
+    {
+      group: t.collectz.hiwGroupWrap,
+      items: [
+        { icon: 'check-square', bold: t.collectz.hiwSettleB, rest: t.collectz.hiwSettleR },
+      ],
+    },
+  ], [t]);
+
+  const questSections: HowItWorksSection[] = useMemo(() => {
+    const steps = [
+      { icon: 'share-2', bold: t.collectz.questShareB, rest: t.collectz.questShareR },
+      { icon: 'user-check', bold: t.collectz.questSettleB, rest: t.collectz.questSettleR },
+      quest
+        ? {
+            icon: 'award',
+            bold: fill(t.collectz.questRewardB, { needed: quest.needed }),
+            // Guard: days=0 means the server config row is MISSING (see
+            // app_config.milestone_collectz_days) — never print "0 days of
+            // Pro"; fall back to the number-free copy until it's fixed.
+            rest: quest.days > 0 ? fill(t.collectz.questRewardR, { days: quest.days }) : t.collectz.questRewardGenericR,
+          }
+        : { icon: 'award', bold: t.collectz.questRewardGenericB, rest: t.collectz.questRewardGenericR },
+    ];
+    const progressItem = !quest
+      ? { icon: 'log-in', bold: t.collectz.questProgressB, rest: t.collectz.questSignedOutR }
+      : quest.done
+        ? { icon: 'check-circle', bold: t.collectz.questDoneB, rest: fill(t.collectz.questDoneR, { days: quest.days }) }
+        : { icon: 'flag', bold: t.collectz.questProgressB, rest: fill(t.collectz.questProgressR, { have: quest.have, needed: quest.needed }) };
+    return [{ group: t.collectz.questGroup, items: [...steps, progressItem] }];
+  }, [t, quest]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerBtns}>
+          <Pressable
+            onPress={openHowItWorks}
+            hitSlop={8}
+            style={styles.headerBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t.collectz.homeHowItWorks}
+          >
+            <Ionicons name="help-circle-outline" size={22} color={C.textPrimary} />
+          </Pressable>
+          <Pressable
+            onPress={() => { void openRewardInfo(); }}
+            hitSlop={8}
+            style={styles.headerBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t.collectz.rewardTitle}
+          >
+            <Ionicons name="gift-outline" size={21} color={C.textPrimary} />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [navigation, styles, C, t, openHowItWorks, openRewardInfo]);
 
   const load = useCallback(async (initial = false) => {
     if (initial) setLoading(true);
@@ -526,6 +622,22 @@ const CollectzHome: React.FC = () => {
         feature="collectz"
         currentUsage={weeklyUsed}
       />
+      <HowItWorksModal
+        visible={howOpen}
+        onClose={() => setHowOpen(false)}
+        title={t.collectz.homeHowItWorks}
+        subtitle={t.collectz.homeHowItWorksSub}
+        sections={howSections}
+        dismissLabel={t.common.gotIt}
+      />
+      <HowItWorksModal
+        visible={questOpen}
+        onClose={() => setQuestOpen(false)}
+        title={t.collectz.rewardTitle}
+        subtitle={t.collectz.questSub}
+        sections={questSections}
+        dismissLabel={t.common.gotIt}
+      />
     </View>
   );
 };
@@ -536,6 +648,8 @@ const makeStyles = (C: typeof CALM) =>
     scroll: { flex: 1 },
     content: { padding: SPACING.xl, paddingBottom: 120 },
     loader: { marginTop: SPACING['4xl'] },
+    headerBtns: { flexDirection: 'row', alignItems: 'center' },
+    headerBtn: { padding: 6 },
 
     // ── Hero ──
     hero: { marginBottom: SPACING.xl, gap: 2 },

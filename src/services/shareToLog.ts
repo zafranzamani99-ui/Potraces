@@ -42,6 +42,7 @@ import { globalShowToast } from '../context/ToastContext';
 import { dedupeKeyFor } from '../utils/paymentDedupeKey';
 import { addSharedKey, pruneSharedKeysByLiveTxIds } from '../utils/sharedPaymentDedupe';
 import { listPendingTexts, removePendingText, getPendingTextRaw } from '../utils/sharedTextInbox';
+import { consumeFileNotified } from '../utils/shareExtBridge';
 import {
   getPendingReceiptRaw,
   listPendingReceipts,
@@ -172,9 +173,12 @@ export async function reconcileSharedPayments(): Promise<void> {
         }
         continue;
       }
-      // Not a pending receipt → a PAYMENT (unchanged): silent-log + delete. scanReceipts:false so
-      // an untagged receipt is never auto-opened from a silent reconcile.
-      try { await logPaymentFromShare(p, { silent: true, scanReceipts: false }); } catch { /* */ }
+      // Not a pending receipt → a PAYMENT. Silent only when the extension already notified
+      // (marker present — see shareExtBridge). When it never ran (no reachable Metro in a
+      // dev build), the app fires the outcome itself, and an untagged receipt gets the
+      // review screen (scanReceipts:true) instead of vanishing silently.
+      const extNotified = await consumeFileNotified(basename(p));
+      try { await logPaymentFromShare(p, { silent: extNotified, scanReceipts: !extNotified }); } catch { /* */ }
       try { await deleteAsync(p, { idempotent: true }); } catch { /* */ }
     }
   } finally {

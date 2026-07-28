@@ -1,6 +1,7 @@
 -- ============================================================
 -- SMOKE TEST — premium grants / redeem codes / referral rewards.
--- Migration under test: 20260726000000_premium_grants_and_rewards.sql
+-- Migrations under test: 20260726000000_premium_grants_and_rewards.sql,
+-- 20260727000000_rewards_milestone5_seen.sql (5-join milestone + new_rewards).
 --
 -- HOW TO RUN: Supabase dashboard → SQL Editor → paste whole file → Run.
 -- Runs as postgres (service role), so GRANT/REVOKE rules are NOT
@@ -23,7 +24,8 @@ end $$;
 select pg_temp.smoke_cleanup();
 
 -- ---------- fixtures: users + a temp admin ----------
--- user A (redeemer), B (referee), C (referrer), D/E/F (collectz joiners)
+-- user A (redeemer + referee), B (referee), C (referrer), I (referee #3),
+-- D/E/F/G/H (collectz joiners)
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
 values
   ('a0000000-0000-4000-8000-00000000000a','00000000-0000-0000-0000-000000000000','authenticated','authenticated','smoke-a@example.com','x',now(),now(),now(),'{"provider":"email","providers":["email"]}','{}'),
@@ -31,7 +33,10 @@ values
   ('c0000000-0000-4000-8000-00000000000c','00000000-0000-0000-0000-000000000000','authenticated','authenticated','smoke-c@example.com','x',now(),now(),now(),'{"provider":"email","providers":["email"]}','{}'),
   ('d0000000-0000-4000-8000-00000000000d','00000000-0000-0000-0000-000000000000','authenticated','authenticated','smoke-d@example.com','x',now(),now(),now(),'{"provider":"email","providers":["email"]}','{}'),
   ('e0000000-0000-4000-8000-00000000000e','00000000-0000-0000-0000-000000000000','authenticated','authenticated','smoke-e@example.com','x',now(),now(),now(),'{"provider":"email","providers":["email"]}','{}'),
-  ('f0000000-0000-4000-8000-00000000000f','00000000-0000-0000-0000-000000000000','authenticated','authenticated','smoke-f@example.com','x',now(),now(),now(),'{"provider":"email","providers":["email"]}','{}')
+  ('f0000000-0000-4000-8000-00000000000f','00000000-0000-0000-0000-000000000000','authenticated','authenticated','smoke-f@example.com','x',now(),now(),now(),'{"provider":"email","providers":["email"]}','{}'),
+  ('00000000-0000-4000-8000-000000000007','00000000-0000-0000-0000-000000000000','authenticated','authenticated','smoke-g@example.com','x',now(),now(),now(),'{"provider":"email","providers":["email"]}','{}'),
+  ('00000000-0000-4000-8000-000000000008','00000000-0000-0000-0000-000000000000','authenticated','authenticated','smoke-h@example.com','x',now(),now(),now(),'{"provider":"email","providers":["email"]}','{}'),
+  ('00000000-0000-4000-8000-000000000009','00000000-0000-0000-0000-000000000000','authenticated','authenticated','smoke-i@example.com','x',now(),now(),now(),'{"provider":"email","providers":["email"]}','{}')
 on conflict (id) do nothing;
 
 insert into public.user_profiles (user_id, referral_code)
@@ -165,7 +170,7 @@ begin
   perform pg_temp.act_as(v_b,'smoke-b@example.com');
   v := public.claim_referral(' smkref ', 'dev-b', 'link', null);
   perform pg_temp.expect((v->>'ok')::boolean, 'claim ok (case/space normalized)');
-  perform pg_temp.expect((v->>'welcome_days')::int = 30, 'welcome grant = 30d');
+  perform pg_temp.expect((v->>'welcome_days')::int = 15, 'welcome grant = 15d');
 
   -- duplicate claim refused
   v := public.claim_referral('SMKREF', 'dev-b', 'link', null);
@@ -180,60 +185,110 @@ begin
   perform pg_temp.act_as(v_a,'smoke-a@example.com');
   v := public.claim_referral('SMKREF', 'dev-a', 'link', null);
   perform pg_temp.expect((v->>'ok')::boolean, 'second legit claim ok');
+
+  -- a third referee for the batch-of-3 payout test in section 5
+  perform pg_temp.act_as('00000000-0000-4000-8000-000000000009','smoke-i@example.com');
+  v := public.claim_referral('SMKREF', 'dev-i', 'link', null);
+  perform pg_temp.expect((v->>'ok')::boolean, 'third legit claim ok');
 end $$;
 
--- note: A could not claim above (device), so test the referrer payout with B only.
--- ---------- 5. qualification: too early, then qualified ----------
+-- ---------- 5. qualification + batch-of-3 referrer payout ----------
+-- Referrer is paid 30d only when 3 settled friends complete a batch.
 do $$
 declare
+  v_a uuid := 'a0000000-0000-4000-8000-00000000000a';
   v_b uuid := 'b0000000-0000-4000-8000-00000000000b';
   v_c uuid := 'c0000000-0000-4000-8000-00000000000c';
-  v json; v_status text; v_cnt int;
+  v_i uuid := '00000000-0000-4000-8000-000000000009';
+  v_status text; v_cnt int;
 begin
   perform pg_temp.act_as(v_b,'smoke-b@example.com');
   perform public.my_entitlement('dev-b');
   select status into v_status from public.referrals where referred_user_id = v_b;
   perform pg_temp.expect(v_status = 'pending', 'new account stays pending (too young)');
 
-  -- age the account, add 3 active days, re-run
+  -- B proves real -> qualified, but NO payout yet (1 of 3)
   update auth.users set created_at = now() - interval '8 days' where id = v_b;
   insert into public.user_activity (user_id, day) values
     (v_b, current_date - 2), (v_b, current_date - 1), (v_b, current_date)
   on conflict do nothing;
   perform public.my_entitlement('dev-b');
-
   select status into v_status from public.referrals where referred_user_id = v_b;
-  perform pg_temp.expect(v_status = 'rewarded', 'referral rewarded once referee proves real');
+  perform pg_temp.expect(v_status = 'qualified', 'first settled friend: qualified, not yet rewarded');
+  select count(*) into v_cnt from public.entitlement_grants
+   where user_id = v_c and source = 'referral_reward';
+  perform pg_temp.expect(v_cnt = 0, 'no payout before the batch completes (1 of 3)');
+
+  -- A proves real -> 2 of 3, still nothing
+  update auth.users set created_at = now() - interval '8 days' where id = v_a;
+  insert into public.user_activity (user_id, day) values
+    (v_a, current_date - 2), (v_a, current_date - 1), (v_a, current_date)
+  on conflict do nothing;
+  perform pg_temp.act_as(v_a,'smoke-a@example.com');
+  perform public.my_entitlement('dev-a');
+  select status into v_status from public.referrals where referred_user_id = v_a;
+  perform pg_temp.expect(v_status = 'qualified', 'second settled friend: qualified (2 of 3)');
+  select count(*) into v_cnt from public.entitlement_grants
+   where user_id = v_c and source = 'referral_reward';
+  perform pg_temp.expect(v_cnt = 0, 'no payout before the batch completes (2 of 3)');
+
+  -- I proves real -> batch completes: C paid one 30d grant
+  update auth.users set created_at = now() - interval '8 days' where id = v_i;
+  insert into public.user_activity (user_id, day) values
+    (v_i, current_date - 2), (v_i, current_date - 1), (v_i, current_date)
+  on conflict do nothing;
+  perform pg_temp.act_as(v_i,'smoke-i@example.com');
+  perform public.my_entitlement('dev-i');
+  select status into v_status from public.referrals where referred_user_id = v_i;
+  perform pg_temp.expect(v_status = 'rewarded', 'third settled friend completes the batch');
   select count(*) into v_cnt from public.entitlement_grants
    where user_id = v_c and source = 'referral_reward' and days = 30;
-  perform pg_temp.expect(v_cnt = 1, 'referrer received one 30d pro grant');
+  perform pg_temp.expect(v_cnt = 1, 'referrer received one 30d batch grant at 3 settled friends');
 end $$;
 
--- ---------- 6. collectz milestone (3 qualified joins) ----------
+-- ---------- 6. collectz milestone (5 qualified joins) ----------
 do $$
 declare
   v_c uuid := 'c0000000-0000-4000-8000-00000000000c';
   v_cnt int;
+  v json;
 begin
-  -- simulate three qualified collectz-sourced referrals for C
+  -- simulate five qualified collectz-sourced referrals for C
   insert into public.referrals (referrer_user_id, referred_user_id, code, status, source, session_code)
   values
     (v_c,'d0000000-0000-4000-8000-00000000000d','SMKREF','qualified','collectz','SMKSES'),
     (v_c,'e0000000-0000-4000-8000-00000000000e','SMKREF','qualified','collectz','SMKSES'),
-    (v_c,'f0000000-0000-4000-8000-00000000000f','SMKREF','rewarded','collectz','SMKSES')
+    (v_c,'f0000000-0000-4000-8000-00000000000f','SMKREF','qualified','collectz','SMKSES'),
+    (v_c,'00000000-0000-4000-8000-000000000007','SMKREF','qualified','collectz','SMKSES'),
+    (v_c,'00000000-0000-4000-8000-000000000008','SMKREF','rewarded','collectz','SMKSES')
   on conflict (referred_user_id) do nothing;
 
   perform pg_temp.act_as(v_c,'smoke-c@example.com');
-  perform public.my_entitlement('dev-c');
+  -- C's first launch after the batch completed + 5 collectz joins: lazy-qualify
+  -- pays the milestone, and BOTH surprise grants surface via new_rewards
+  -- (then marked seen).
+  v := public.my_entitlement('dev-c');
+  perform pg_temp.expect(exists (
+    select 1 from json_array_elements(v->'new_rewards') e where e->>'source' = 'referral_reward'
+  ), 'new_rewards delivers the referrer payout');
+  perform pg_temp.expect(exists (
+    select 1 from json_array_elements(v->'new_rewards') e where e->>'source' = 'collectz_milestone'
+  ), 'new_rewards delivers the collectz milestone');
+  perform pg_temp.expect(not exists (
+    select 1 from json_array_elements(v->'new_rewards') e where e->>'source' = 'referral_welcome'
+  ), 'welcome grant is born seen — never in new_rewards');
+
   select count(*) into v_cnt from public.entitlement_grants
    where user_id = v_c and source = 'collectz_milestone';
-  perform pg_temp.expect(v_cnt = 1, 'collectz milestone granted once at 3 qualified joins');
+  perform pg_temp.expect(v_cnt = 1, 'collectz milestone granted once at 5 qualified joins');
 
-  -- idempotent: second pass does not double-grant (partial unique index)
-  perform public.my_entitlement('dev-c');
+  -- idempotent: second pass does not double-grant (partial unique index),
+  -- and new_rewards is exactly-once (empty on the next launch).
+  v := public.my_entitlement('dev-c');
   select count(*) into v_cnt from public.entitlement_grants
    where user_id = v_c and source = 'collectz_milestone';
   perform pg_temp.expect(v_cnt = 1, 'milestone is one-time');
+  perform pg_temp.expect(json_array_length(v->'new_rewards') = 0, 'new_rewards is exactly-once');
 end $$;
 
 -- ---------- 7. admin tools ----------
@@ -283,12 +338,17 @@ begin
   v := public.my_entitlement(null);
   perform pg_temp.expect(v->>'tier' = 'premium', 'post-launch grant is live immediately');
   perform pg_temp.expect((v->>'gate_on')::boolean = true, 'gate reported ON');
+  perform pg_temp.expect(exists (
+    select 1 from json_array_elements(v->'new_rewards') e where e->>'source' = 'admin_manual'
+  ), 'admin manual grant surfaces via new_rewards');
 
   -- ...but A's beta-era grants were BAKED with starts at the old future
   -- gate_start, which we moved backwards without shifting them: still queued.
   perform pg_temp.act_as(v_a,'smoke-a@example.com');
   v := public.my_entitlement(null);
   perform pg_temp.expect(v->>'tier' = 'free', 'baked beta grants keep their baked start dates');
+  -- A's history: welcome + redeems (born seen) and a REVOKED admin grant — none surface.
+  perform pg_temp.expect(json_array_length(v->'new_rewards') = 0, 'revoked + born-seen grants never surface');
 
   -- restore beta state
   perform set_config('request.jwt.claims',

@@ -10,6 +10,7 @@ import { dedupeKeyFor } from './src/utils/paymentDedupeKey';
 import { hasSharedKey, addSharedKey } from './src/utils/sharedPaymentDedupe';
 import { addPendingReceipt } from './src/utils/sharedReceiptInbox';
 import { addPendingText } from './src/utils/sharedTextInbox';
+import { markFileNotified, stagedBasename } from './src/utils/shareExtBridge';
 
 /**
  * iOS share-extension root — Flow C. iOS blocks a share extension from launching its host
@@ -184,6 +185,9 @@ export default function ShareExtension({ images, files, text }: InitialProps) {
               content: { title: 'Logged to Potraces', body: msg, data: { type: 'share_logged' } },
               trigger: null,
             });
+            // Mark the staged IMAGE so the app's silent reconcile doesn't fire a duplicate
+            // banner — and DOES fire one when this extension never ran (shareExtBridge).
+            if (!payload && raw) await markFileNotified(stagedBasename(raw));
           }
           await addSharedKey(key);
           if (payload) {

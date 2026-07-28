@@ -1,8 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform, Appearance, NativeModules, NativeEventEmitter, Alert } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform, Appearance, NativeModules, NativeEventEmitter } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Clipboard from 'expo-clipboard';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -11,6 +9,7 @@ import RootNavigator from './src/navigation/RootNavigator';
 import { COLORS, SPACING, TYPOGRAPHY } from './src/constants';
 import { useIsDark } from './src/hooks/useCalm';
 import { ToastProvider } from './src/context/ToastContext';
+import { RewardModalProvider } from './src/context/RewardModalContext';
 import { supabaseBusiness, supabasePersonal, getAuthSession } from './src/services/supabase';
 import { isAuthFlowInFlight } from './src/services/authFlow';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId, clearProfileCache } from './src/services/sellerSync';
@@ -31,6 +30,7 @@ import {
   openSharedReceiptById,
   openSharedTextReceiptById,
 } from './src/services/shareToLog';
+import { writeMetroHostFromBundleUrl } from './src/utils/shareExtBridge';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
 import { refreshQuickLogConfigured } from './src/services/quickLogKey';
 import './src/services/quickLogCategories'; // side-effect: keeps the Shortcut's live category list fresh
@@ -41,7 +41,7 @@ import ErrorBoundary from './src/components/common/ErrorBoundary';
 import ForcedUpdateGate from './src/components/common/ForcedUpdateGate';
 import PersonalSyncManager from './src/components/common/PersonalSyncManager';
 import { initBilling } from './src/services/billing';
-import { refreshEntitlement, claimStagedReferral, stagePendingReferral } from './src/services/entitlements';
+import { refreshEntitlement, claimStagedReferral, stagePendingReferral, maybeShowRewardsIntro } from './src/services/entitlements';
 import { usePremiumStore } from './src/store/premiumStore';
 import TapToPayProvider from './src/components/common/TapToPayProvider';
 import { checkStorageIntegrity, clearCorruptedStores } from './src/services/storageIntegrity';
@@ -103,39 +103,6 @@ async function refreshBroadcasts() {
     if (data && data.length) useNotificationStore.getState().mergeBroadcasts(data as BroadcastRow[]);
   } catch {
     /* best-effort */
-  }
-}
-
-// Clipboard invite token (copied from the invite landing / collectz pages):
-// POTRACES-REF:{CODE} or POTRACES-REF:{CODE}:collectz:{SHARE}. Read ONCE per
-// launch, and only ever STAGED after the user confirms — never a silent claim.
-// The seen-key stops the same token re-prompting on every launch.
-const CLIPBOARD_REF_SEEN_KEY = 'potraces.clipboardRefSeen';
-async function checkClipboardReferral() {
-  try {
-    const text = (await Clipboard.getStringAsync()).trim();
-    const m = text.match(/^POTRACES-REF:([A-Za-z0-9]+)(?::collectz:([A-Za-z0-9]+))?$/);
-    if (!m) return;
-    const [, code, share] = m;
-    if ((await AsyncStorage.getItem(CLIPBOARD_REF_SEEN_KEY)) === m[0]) return;
-    await AsyncStorage.setItem(CLIPBOARD_REF_SEEN_KEY, m[0]);
-    const tr = useSettingsStore.getState().language === 'ms' ? ms : en;
-    Alert.alert(
-      tr.rewards.clipboardTitle,
-      tr.rewards.clipboardBody.replace('{code}', code),
-      [
-        { text: tr.common.cancel, style: 'cancel' },
-        {
-          text: tr.rewards.clipboardYes,
-          onPress: () => {
-            void stagePendingReferral({ code, source: share ? 'collectz' : 'link', session: share ?? null })
-              .then(() => claimStagedReferral());
-          },
-        },
-      ],
-    );
-  } catch {
-    // best-effort
   }
 }
 
@@ -240,17 +207,19 @@ function App() {
       }
 
       // Server entitlement (premium grants/rewards) — one call per launch, after
-      // the mode pick so it reads the ACTIVE account. Fail-soft.
-      refreshEntitlement().catch(() => {});
+      // the mode pick so it reads the ACTIVE account. Fail-soft. The one-time
+      // rewards intro follows so it never stacks on an "earned" modal.
+      refreshEntitlement()
+        .catch(() => {})
+        .then(() => maybeShowRewardsIntro())
+        .catch(() => {});
       // A referral staged from a deep link / clipboard / onboarding is claimed once
       // there's a session (no-op while signed out — it stays staged).
       claimStagedReferral().catch(() => {});
 
       if (!cancelled) setIsLoading(false);
 
-      // Clipboard invite token — read once per launch, user-confirmed before
-      // staging. Delayed so the prompt doesn't fight first paint / biometric gate.
-      setTimeout(() => { void checkClipboardReferral(); }, 1500);
+
 
       // Async storage size check — once per day, after a short delay so it
       // doesn't compete with startup rendering. Warns if approaching 6MB limit.
@@ -396,7 +365,10 @@ function App() {
           .catch(() => {})
           .finally(() => useSellerStore.getState().setSyncing(false));
         // Server entitlement for the account that just signed in. Fail-soft.
-        refreshEntitlement().catch(() => {});
+        refreshEntitlement()
+          .catch(() => {})
+          .then(() => maybeShowRewardsIntro())
+          .catch(() => {});
       } else if (event === 'SIGNED_OUT') {
         auth.resetBusiness();
         usePremiumStore.getState().resetServerEntitlement();
@@ -421,7 +393,10 @@ function App() {
         // Pull/push personal data immediately, only if the user opted into backup.
         if (useSettingsStore.getState().personalSyncEnabled) syncPersonal().catch(() => {});
         // Server entitlement + any referral staged before this account existed.
-        refreshEntitlement().catch(() => {});
+        refreshEntitlement()
+          .catch(() => {})
+          .then(() => maybeShowRewardsIntro())
+          .catch(() => {});
         claimStagedReferral().catch(() => {});
       } else if (event === 'SIGNED_OUT') {
         auth.resetPersonal();
@@ -761,11 +736,19 @@ function App() {
   // the app processes it here — on launch and every time it returns to the foreground.
   React.useEffect(() => {
     if (Platform.OS !== 'ios') return;
+    // DEV: record this app's Metro host on every foreground so the share extension (a
+    // separate process) finds the SAME Metro on any network/machine — no hardcoded IP
+    // (see src/utils/shareExtBridge.ts).
+    const recordMetroHost = () => { if (__DEV__) void writeMetroHostFromBundleUrl(); };
+    recordMetroHost();
     // A shared RECEIPT is detected during reconcile and opens the review screen; if
     // navigation wasn't ready yet (cold launch), it's stashed — flush it after reconcile.
     void reconcileSharedPayments().then(flushPendingReceiptReview);
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void reconcileSharedPayments().then(flushPendingReceiptReview);
+      if (state === 'active') {
+        recordMetroHost();
+        void reconcileSharedPayments().then(flushPendingReceiptReview);
+      }
     });
     return () => sub.remove();
   }, []);
@@ -951,20 +934,22 @@ function App() {
               <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
                 <View style={{ flex: 1 }}>
                   <ToastProvider>
-                    <StatusBar style={isDark ? 'light' : 'dark'} />
-                    <BiometricGate>
-                      <PersonalSyncManager />
-                      <TapToPayProvider>
-                        <>
-                          <RootNavigator />
-                          <QuickLogPromoModal
-                            visible={promoVisible}
-                            onClose={() => setPromoVisible(false)}
-                            onSetUp={handlePromoSetUp}
-                          />
-                        </>
-                      </TapToPayProvider>
-                    </BiometricGate>
+                    <RewardModalProvider>
+                      <StatusBar style={isDark ? 'light' : 'dark'} />
+                      <BiometricGate>
+                        <PersonalSyncManager />
+                        <TapToPayProvider>
+                          <>
+                            <RootNavigator />
+                            <QuickLogPromoModal
+                              visible={promoVisible}
+                              onClose={() => setPromoVisible(false)}
+                              onSetUp={handlePromoSetUp}
+                            />
+                          </>
+                        </TapToPayProvider>
+                      </BiometricGate>
+                    </RewardModalProvider>
                   </ToastProvider>
                 </View>
               </TouchableWithoutFeedback>

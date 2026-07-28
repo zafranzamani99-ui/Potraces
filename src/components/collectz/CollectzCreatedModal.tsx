@@ -130,7 +130,7 @@ const CollectzCreatedModal: React.FC<Props> = ({ visible, session, activeCount, 
   };
 
   return (
-    <FloatingModal visible={visible} onClose={onOpen} entrance="fade" showDragHandle={false} maxWidth={440}>
+    <FloatingModal visible={visible} onClose={onOpen} entrance="fade" showDragHandle={false} maxWidth={440} borderless>
       <View style={styles.wrap}>
         <View style={[styles.check, neuFull.raised, { backgroundColor: withAlpha(catColor, 0.14) }]}>
           <Feather name="check" size={26} color={catColor} />

@@ -1,12 +1,12 @@
 # Premium Grants, Redeem Codes & Referral Rewards — Implementation Spec
 
-## ⏩ RESUME HERE (status as of 2026-07-25)
+## ⏩ RESUME HERE (status as of 2026-07-27)
 
-**Built and verified, not yet deployed.** If you are a new session picking this up:
+**v1 deployed; v2 (milestone-5 + reward modals) coded, not yet deployed.** If you are a new session picking this up:
 1. Read this whole file first — it is the design contract.
-2. Code is complete: migration `supabase/migrations/20260726000000_premium_grants_and_rewards.sql` (fresh-eyes reviewed, 15 findings fixed), admin Rewards tab in `site/admin.html`, app wiring (`src/services/entitlements.ts`, `premiumStore` recompute, `RedeemCode`/`InviteFriends` screens, onboarding invite step, deep-link + clipboard attribution), site (`site/r.html`, `collectz.html ?r=`, `vercel.json`), smoke test `supabase/smoke/20260726_grants_smoke.sql`.
-3. Verification already done: `npx tsc --noEmit` clean (2 pre-existing errors in the untracked `PurchaseResultModal.tsx` — not ours), `npx tsx scripts/test-entitlement-recompute.ts` 16/16, all RPC call sites match signatures. **Not yet done: the migration has never been EXECUTED against a live DB.**
-4. Remaining work = the deploy runbook at the bottom of this file, in order. Start with `supabase db push`, then run the smoke script (must end `SMOKE OK`), then Vercel/site, then app build. On a machine without the Supabase CLI, paste the migration into the dashboard SQL editor instead of `db push`.
+2. v1 is LIVE: migration `20260726000000` applied to production (verified via `migration list`), admin Rewards tab + `r.html` live (Vercel), all app code on `main`. Still pending from v1: the smoke script has **never been executed** against the live DB, and no app build carries the entitlements client yet.
+3. v2 changes (2026-07-27, owner decisions): Collectz milestone 3 → **5** joins; friend welcome 30d → **15d**; referrer now paid **30d per batch of 3** settled friends (was 30d each); new `seen_at` / `new_rewards` channel in `my_entitlement()` so surprise grants pop a floating success modal exactly once; one-time invite-only intro modal; CollectzHome top-right buttons (how-it-works + reward explainers via RewardModal 'info'). Code: migration `supabase/migrations/20260727000000_rewards_milestone5_seen.sql`, smoke updated (batch-of-3 + 5 joiners + `new_rewards` asserts), `src/context/RewardModalContext.tsx` + `src/components/common/RewardModal.tsx`, i18n keys, App.tsx wiring.
+4. Remaining work = the deploy runbook at the bottom of this file, in order: `supabase db push` (applies the v2 migration + sets milestone=5 live), then the smoke script (must end `SMOKE OK`), then the app build.
 
 ---
 
@@ -21,11 +21,11 @@ Design discussion origin: redeem codes (admin-minted, plan + duration + expiry, 
 | Free days never burn during beta | grants start at `premium_gate_start` (default `2026-09-01T00:00:00+08:00`) | same |
 | Stacking | sequential per tier — days truly add up; highest active tier wins | fixed in `grant_premium()` |
 | Codes for existing store subscribers | allowed, additive | fixed |
-| Referral reward | double-sided: referee 30d instantly, referrer 30d on qualification | `reward_welcome_days`, `reward_referrer_days`, `reward_tier` |
-| Referrer cap | 12 rewards / rolling 365d | `reward_cap_per_year` |
+| Referral reward | double-sided: referee **15d** instantly; referrer **30d per batch of 3** settled friends (changed from 30d/30d per friend on 2026-07-27) | `reward_welcome_days`, `reward_referrer_days`, `reward_referrer_batch_count`, `reward_tier` |
+| Referrer cap | 12 batch payouts / rolling 365d | `reward_cap_per_year` |
 | Qualification | verified email + account ≥7d + ≥3 distinct active days (server-tracked) | `qualify_*` |
 | Claim window | account age < 14d (stops cross-entry farming between existing users) | `claim_window_days` |
-| Collectz | milestone-first: 3 qualified collectz-sourced joins → one-time 30d | `milestone_collectz_*` |
+| Collectz | milestone-first: 5 qualified collectz-sourced joins → one-time 30d (raised from 3 on 2026-07-27) | `milestone_collectz_*` |
 | Redeem brute-force guard | 5 failed attempts / 15 min → locked out | `redeem_max_attempts`, `redeem_attempt_window_min` |
 | Codes are NEVER sold | free grants only (App Store 3.1.1) | policy, not code |
 
@@ -41,10 +41,15 @@ app ────────rpc──> referral_progress()      ← Invite scree
         entitlement_grants (ledger; grant_premium() is the only writer)
 ```
 
-- `my_entitlement()` returns `{ok, server_time, gate_on, gate_start, tier, premium_until}`.
+- `my_entitlement()` returns `{ok, server_time, gate_on, gate_start, tier, premium_until, new_rewards}`.
   **`gate_on=false` → client behaves exactly as today (beta).** Grants still accrue.
+  `new_rewards` (added 2026-07-27): unseen surprise grants (`referral_reward`, `collectz_milestone`,
+  `admin_manual`, `beta_promise`), collected and marked `seen_at` in the same call — the app pops its
+  floating reward modal exactly once per grant. Self-initiated grants (welcome, redeem, iap) are born
+  seen so they never double-message.
 - `_lazy_qualify()` runs inside `my_entitlement()`: qualifies the caller's own pending referral
-  (pays referrer), and pays the caller's Collectz milestone when reached. No cron.
+  (pays the referrer every time their settled-friend count completes a batch of
+  `reward_referrer_batch_count`), and pays the caller's Collectz milestone when reached. No cron.
 - Codes are stored canonical uppercase-no-dashes (`BETA7K4Q9M2X`); display grouped `BETA-7K4Q-9M2X`.
   Input normalized server-side: strip non-alnum, uppercase.
 
@@ -63,7 +68,7 @@ app ────────rpc──> referral_progress()      ← Invite scree
 
 ### `my_entitlement(p_device_id text) → json` — see above.
 ### `referral_progress() → json`
-`{ok, code, pending, qualified, rewarded, rejected, reward_days_each, days_earned, cap_per_year, cap_used, milestone_needed, milestone_have, milestone_done}`
+`{ok, code, pending, qualified, rewarded, rejected, welcome_days, reward_days_each, batch_size, batch_progress, days_earned, cap_per_year, cap_used, milestone_needed, milestone_have, milestone_done, milestone_days}`
 
 ### Admin (all raise 42501 unless `is_admin()`)
 - `admin_create_redeem_codes(tier, days, count, campaign, max_uses, expires_at, note) → {ok, campaign, codes[]}`

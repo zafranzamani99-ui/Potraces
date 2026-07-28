@@ -30,8 +30,19 @@ const HowItWorksModal: React.FC<Props> = ({ visible, onClose, title = 'how it wo
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={s.overlay} onPress={onClose}>
-        <View style={[s.card, neu.raisedSoft]} onStartShouldSetResponder={() => true}>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: SPACING.sm }}>
+        <View style={[s.card, neu.raisedModal]} onStartShouldSetResponder={() => true}>
+          {/* Neu seam rule (docs/neu-vertical-error.md): the item rows' neu
+              shadows get clipped at the ScrollView's own bounds → vertical
+              seams at both edges. Bleed the ScrollView outward and pad the
+              content back in — same visual layout, but shadows render into
+              slack instead of hitting the clip edge. */}
+          <ScrollView
+            style={s.scrollBleed}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            contentContainerStyle={{ paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm }}
+          >
             <View style={s.header}>
               <Text style={s.title}>{title}</Text>
               <Text style={s.subtitle}>{subtitle}</Text>
@@ -71,6 +82,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
   },
+  // Counterpart to the contentContainer padding: pulls the ScrollView's clip
+  // edge OUT by the same amount, so the rows keep their old visual position
+  // while their shadows gain slack inside the clip (neu seam rule).
+  scrollBleed: { marginHorizontal: -SPACING.md, marginVertical: -SPACING.sm },
   card: {
     width: '100%',
     maxWidth: 380,

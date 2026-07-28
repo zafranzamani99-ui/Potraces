@@ -7,7 +7,7 @@ import {
   useWindowDimensions,
   Keyboard,
 } from 'react-native';
-import { KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView as KAView, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue,
@@ -41,6 +41,8 @@ interface FloatingModalProps {
    * animation; swipe-to-dismiss is inert in this mode; tap-outside closes.
    */
   entrance?: 'slide' | 'fade';
+  /** Removes the card's 1px outline (Collectz dialogs go borderless). */
+  borderless?: boolean;
   children: React.ReactNode;
   /**
    * Optional node rendered ABOVE the card and backdrop, still INSIDE this one RN
@@ -58,6 +60,7 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
   showDragHandle = true,
   swipeToDismiss = true,
   entrance = 'slide',
+  borderless = false,
   children,
   overlay,
 }) => {
@@ -73,6 +76,31 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
   const sheetY = useSharedValue(SCREEN_H);
   const dragStart = useSharedValue(0);
   const thresholdCrossed = useSharedValue(false);
+
+  // Fade-mode keyboard docking. The card is bottom-anchored in BOTH keyboard
+  // states; this ONE continuous animated paddingBottom moves it from near-center
+  // (keyboard down) to just above the keyboard (keyboard up), gliding with the
+  // keyboard's own animation. (The old approach flipped justifyContent
+  // discretely mid-animation — the card teleported, which read as a bounce.)
+  // kbHeight runs 0 → -keyboardHeight; progress runs 0 → 1.
+  const { height: kbHeight, progress: kbProgress } = useReanimatedKeyboardAnimation();
+  const cardH = useSharedValue(0);
+
+  const fadeDockStyle = useAnimatedStyle(() => ({
+    // Rounded to whole pixels — fractional layout values make the card's
+    // border/shadow re-raster at sub-pixel offsets, which reads as shimmer.
+    paddingBottom: Math.round(
+      -kbHeight.value +
+        interpolate(
+          kbProgress.value,
+          [0, 1],
+          // Closed: the padding that CENTERS the card under flex-end, with the
+          // same ~30px downward bias it always had. Open: just the visible gap.
+          [Math.max((SCREEN_H - cardH.value) / 2 - 30, 0), SPACING.xl],
+          Extrapolation.CLAMP,
+        ),
+    ),
+  }));
 
   // Fade mode: NO open/close animation at all — the modal appears and unmounts
   // instantly. Only the slide sheet keeps its spring (pre-existing behavior).
@@ -149,7 +177,15 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
 
   const card = (
     <View
-      style={[styles.card, { maxWidth }]}
+      style={[styles.card, { maxWidth }, borderless && { borderWidth: 0 }]}
+      // Feeds fadeDockStyle's centering math (fade mode only). onLayout also
+      // fires on POSITION changes — i.e. every animation frame — so only write
+      // the shared value on real SIZE changes; otherwise every frame re-commits
+      // the dependent animated style from the JS thread and the card judders.
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        if (h !== cardH.value) cardH.value = h;
+      }}
       onStartShouldSetResponder={() => true}
       onResponderRelease={Keyboard.dismiss}
     >
@@ -187,15 +223,18 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
         {/* KAView from react-native-keyboard-controller on BOTH platforms — RN's
             built-in KeyboardAvoidingView does NOT work inside an Android transparent
             Modal (docs/BUILDING_CHECKLIST.md), and this build is edge-to-edge, so the
-            activity's adjustResize never resizes that window either. The old
-            iOS-only branch left Android cards centred under the keyboard. Same
-            recipe as BottomSheet. */}
+            activity's adjustResize never resizes that window either. Slide sheets
+            use its 'padding' behavior (same recipe as BottomSheet). Fade cards do
+            NOT — they dock above the keyboard via fadeDockStyle, a continuous
+            animated paddingBottom driven by the keyboard's own progress, so the
+            card glides from near-center to docked with no layout flip. */}
         <KAView
-          behavior="padding"
-          // Fade cards get a static downward bias (centers ~60px below true
-          // center, both keyboard states) — with the keyboard up, dead-center
-          // of the shrunk space read as "too high". Static, so nothing flips.
-          style={[styles.centerWrap, fadeMode && { paddingTop: 120 }]}
+          behavior={fadeMode ? undefined : 'padding'}
+          style={[
+            styles.centerWrap,
+            fadeMode && styles.centerWrapFade,
+            fadeMode && fadeDockStyle,
+          ]}
           pointerEvents="box-none"
         >
           {card}
@@ -223,6 +262,12 @@ const makeStyles = (C: typeof import('../../constants').CALM) =>
       justifyContent: 'center',
       alignItems: 'center',
       paddingHorizontal: SPACING.md,
+    },
+    // Fade cards are bottom-anchored in BOTH keyboard states — "centered" is
+    // just fadeDockStyle's animated paddingBottom when the keyboard is down.
+    // One layout mode, no discrete flip, no bounce.
+    centerWrapFade: {
+      justifyContent: 'flex-end',
     },
     card: {
       width: '100%',

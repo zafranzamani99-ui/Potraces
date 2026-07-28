@@ -143,3 +143,13 @@ Still to design (not blockers): **dedupe** strategy incl. the **Apple-auto-log c
 - `App.tsx` (`handleUrl` deep-link routing), `ShareExtension.tsx` + `app.json` (share extension)
 - `src/services/spendingAlerts.ts` (local `trigger:null` notification pattern), `src/services/pushNotifications.ts`
 - `src/types/index.ts:736` (`Transaction`, `inputMethod` union at :754)
+
+---
+
+## Field note (2026-07-27): the "dead extension" pattern
+
+**Symptom:** share a screenshot → **no popup card, no "Logged RM…" banner — yet the payment still appears in Transactions later.** Cause: in dev builds the extension loads its JS from Metro (`ShareExtensionViewController.swift` → `bundleURL()`), while its native half stages the file into the app group *regardless*. If Metro is unreachable (hardcoded IP stale after a DHCP re-lease, sharing from the office machine's network, Metro down), the card and banner never happen — and the app's reconcile logs the staged file **silently**, because it assumes the extension already notified.
+
+**Fixes shipped (2026-07-27):**
+- `src/utils/shareExtBridge.ts` — in `__DEV__` the app records its Metro host to `metro-host.txt` in the app-group root; the extension's Swift reads it and follows the SAME Metro on any network/machine (hardcoded IP kept as fallback). Takes effect after one dev-client rebuild; the app must have been opened once on the current network.
+- Notified-file markers (`notified-files.json`, same bridge): the extension marks each staged image it fired the banner for; the app reconcile fires the outcome notification itself for unmarked images (and opens the receipt review for unmarked receipts) instead of a silent log. Duplicate banner is possible only if the marker write fails — preferred over silence.
