@@ -129,18 +129,21 @@ begin
   v := public.redeem_code('ZZZZZZZZ99');
   perform pg_temp.expect(v->>'reason' = 'rate_limited', '6th wrong try rate-limited');
 
-  -- stacking: A redeems two codes from another campaign -> sequential windows
+  -- stacking: A redeems two codes from DIFFERENT campaigns -> sequential windows.
+  -- (One code per campaign per user, so the two stacking codes MUST live in
+  -- separate campaigns — SMK2 then SMK3 — else the second is campaign_already_used.)
   perform set_config('request.jwt.claims',
     json_build_object('sub','c0000000-0000-4000-8000-00000000000c','role','authenticated',
                       'email','smoke-admin@example.com','email_verified',true)::text, true);
-  v := public.admin_create_redeem_codes('pro', 30, 2, 'SMK2', 1, null, null);
+  v := public.admin_create_redeem_codes('pro', 30, 1, 'SMK2', 1, null, null);
+  v := public.admin_create_redeem_codes('pro', 30, 1, 'SMK3', 1, null, null);
   select code into v_code2 from public.redeem_codes where campaign='SMK2' order by code limit 1;
   perform pg_temp.act_as(v_a,'smoke-a@example.com');
   v := public.redeem_code(v_code2);
-  perform pg_temp.expect((v->>'ok')::boolean, 'SMK2 first code ok');
-  select code into v_code2 from public.redeem_codes where campaign='SMK2' and use_count = 0 limit 1;
+  perform pg_temp.expect((v->>'ok')::boolean, 'SMK2 code ok');
+  select code into v_code2 from public.redeem_codes where campaign='SMK3' order by code limit 1;
   v := public.redeem_code(v_code2);
-  perform pg_temp.expect((v->>'ok')::boolean, 'SMK2 second code ok (different campaign)');
+  perform pg_temp.expect((v->>'ok')::boolean, 'SMK3 code ok (different campaign)');
   v_until2 := (v->>'premium_until')::timestamptz;
   perform pg_temp.expect(v_until2 = v_gate + interval '90 days', 'stacking is sequential: gate + 90d total');
 
