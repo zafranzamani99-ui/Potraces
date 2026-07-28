@@ -153,12 +153,6 @@
       ],
       "@react-native-community/datetimepicker",
       [
-        "expo-audio",
-        {
-          "microphonePermission": "Potraces uses the microphone so you can speak your expenses instead of typing."
-        }
-      ],
-      [
         "expo-notifications",
         {
           "sounds": []
