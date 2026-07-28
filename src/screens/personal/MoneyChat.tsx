@@ -53,6 +53,7 @@ import WalletPicker from '../../components/common/WalletPicker';
 import { sendChatMessageStream } from '../../services/moneyChat';
 import { isCrisisMessage } from '../../services/smallTalk';
 import { reviewReply } from '../../services/critic';
+import { detectSavingsVehicle } from '../../services/manglishParser';
 import { useNetInfo } from '@react-native-community/netinfo';
 import {
   parseActions,
@@ -365,11 +366,23 @@ const PendingChip = memo(({
 });
 
 // Common action types the user can switch between (label resolved at render via i18n)
+// The default 4 shown for a normal, unambiguous chip.
 const SWITCHABLE_TYPE_KEYS: { key: ChatActionType; icon: keyof typeof Feather.glyphMap }[] = [
   { key: 'add_expense', icon: 'arrow-up-right' },
   { key: 'add_income', icon: 'arrow-down-left' },
   { key: 'add_debt', icon: 'repeat' },
   { key: 'add_subscription', icon: 'credit-card' },
+];
+
+// Extra options appended ONLY when a chip is ambiguous. Right now the one real
+// ambiguity is "saving" — the same word means a GOAL (save FOR a purpose) or a
+// SAVINGS/INVESTMENT account (ASB, Versa, crypto…). So a savings-ish chip also
+// offers those two, letting the owner pin the accurate one (and Echo learns it).
+const SAVINGS_FAMILY: ChatActionType[] = ['create_goal', 'add_goal_contribution', 'add_savings_account'];
+const AMBIG_SAVE_RE = /\b(sav(?:e|ing)|simpan|nabung|tabung|invest)\b/i;
+const SAVINGS_ALT_KEYS: { key: ChatActionType; icon: keyof typeof Feather.glyphMap }[] = [
+  { key: 'create_goal', icon: 'target' },
+  { key: 'add_savings_account', icon: 'trending-up' },
 ];
 
 // Floating modal for editing + confirming a pending action
@@ -425,6 +438,14 @@ const ActionEditModal = ({
   const showCategory = ['add_expense', 'add_income', 'add_subscription', 'update_subscription'].includes(actionType);
   const showWallet = ['add_expense', 'add_income', 'add_bnpl', 'repay_credit'].includes(actionType);
   const showPerson = ['add_debt', 'split_bill', 'debt_update', 'forgive_debt'].includes(actionType);
+
+  // Type options: the base 4, plus the goal/savings pair ONLY when this chip is
+  // ambiguous (Echo tracked a savings-ish thing, or the words say "save/simpan").
+  // Based on what Echo DETECTED (action.*), not the current selection.
+  const typeOptions = useMemo(() => {
+    const ambiguous = !!action && (SAVINGS_FAMILY.includes(action.type) || AMBIG_SAVE_RE.test(action.description || ''));
+    return ambiguous ? [...SWITCHABLE_TYPE_KEYS, ...SAVINGS_ALT_KEYS] : SWITCHABLE_TYPE_KEYS;
+  }, [action]);
 
   // B11: for a debt payment, resolve the matching debt + remaining balance so the
   // owner sees what they're paying down (and what's left after) before confirm.
@@ -496,15 +517,26 @@ const ActionEditModal = ({
       learn.learnPersonAlias(action.person, finalPerson);
     }
 
+    const finalAmount = parseFloat(amount) || action.amount;
+    // When switched to a goal/savings type, carry the fields those executors read
+    // (target for a goal; inferred vehicle type for a savings account) so the
+    // switch produces a real goal/account, not a bare fallback.
+    const extras: Partial<ChatAction> =
+      actionType === 'create_goal'
+        ? { goalTarget: action.goalTarget || finalAmount, goalName: finalDesc }
+        : actionType === 'add_savings_account'
+        ? { accountType: action.accountType || detectSavingsVehicle(finalDesc) || 'other', accountName: finalDesc, initialInvestment: finalAmount }
+        : {};
     onConfirm({
       ...action,
       type: actionType,
       description: finalDesc,
-      amount: parseFloat(amount) || action.amount,
+      amount: finalAmount,
       category: finalCategory,
       wallet: finalWallet,
       person: finalPerson,
       debtType: showPerson ? debtType : action.debtType,
+      ...extras,
     });
   };
   const guardedConfirm = useSubmitGuard(handleConfirm);
@@ -538,7 +570,7 @@ const ActionEditModal = ({
                   accessibilityLabel={`${t.moneyChat.typeLabel}: ${getActionLabel(actionType, t)}`}
                 >
                   <Feather
-                    name={SWITCHABLE_TYPE_KEYS.find((s) => s.key === actionType)?.icon || 'circle'}
+                    name={typeOptions.find((s) => s.key === actionType)?.icon || 'circle'}
                     size={14}
                     color={C.bronze}
                   />
@@ -729,7 +761,7 @@ const ActionEditModal = ({
         >
           <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
             <Text style={styles.typePickerTitle}>{t.chat.selectType}</Text>
-            {SWITCHABLE_TYPE_KEYS.map((s) => {
+            {typeOptions.map((s) => {
               const active = actionType === s.key;
               const label = getActionLabel(s.key, t);
               return (
@@ -3795,7 +3827,7 @@ const makeStyles = (
     maxHeight: '70%',
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    ...neu.raisedSoft,
+    ...neu.raisedModal,   // scrim rule: drops the white #FFFFFF highlight that halos on the dim backdrop
   },
   selectTextHeader: {
     flexDirection: 'row',

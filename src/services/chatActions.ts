@@ -21,6 +21,7 @@ import { computeEqualShares } from '../utils/splitShares';
 import { AppMode, Transaction, Subscription, Budget, Debt, Contact } from '../types';
 import { useLearningStore } from '../store/learningStore';
 import { extractMemories, type MemoryKind } from '../store/learningPure';
+import { detectSavingsVehicle } from './manglishParser';
 
 // ─── Action Types ────────────────────────────────────────
 
@@ -257,12 +258,40 @@ function validateAction(parsed: any): ChatAction | null {
  * persisted. The only callers of parseActions are on Gemini's response text
  * (moneyChat's stream display + MoneyChat's post-processing of the final reply).
  */
+/**
+ * Fix a "save toward X" the model mislabelled as a goal contribution, so the CHIP
+ * itself shows the right type (not just the save result):
+ *  - X is a savings/investment VEHICLE (ASB, Versa, crypto…) → add_savings_account.
+ *  - no goal named X exists yet → create_goal (the owner is STARTING a goal).
+ * Runs on model output only, at parse time, so it's deterministic (not left to the
+ * small model to get right). Never touches wallets.
+ */
+function reshapeSavingsIntent(a: ChatAction): ChatAction {
+  if (a.type !== 'add_goal_contribution') return a;
+  const name = (a.goalName || a.description || '').trim();
+  if (!name) return a;
+  const cleanName = name.replace(/^(nak\s+)?(saving|save|simpan|nabung)\s+(for|untuk)\s+/i, '').trim() || name;
+  const vehicle = detectSavingsVehicle(name);
+  if (vehicle) {
+    return { ...a, type: 'add_savings_account', accountType: vehicle, accountName: cleanName, description: cleanName, initialInvestment: a.amount };
+  }
+  const goals = usePersonalStore.getState().goals;
+  const exists = goals.some((g) => {
+    const gn = g.name.toLowerCase();
+    return gn.includes(name.toLowerCase()) || name.toLowerCase().includes(gn);
+  });
+  if (!exists) {
+    return { ...a, type: 'create_goal', description: cleanName, goalName: cleanName, goalTarget: a.amount };
+  }
+  return a;
+}
+
 export function parseActions(text: string): { cleanText: string; actions: ChatAction[] } {
   const actions: ChatAction[] = [];
   const cleanText = text.replace(ACTION_REGEX, (_, json) => {
     try {
       const action = validateAction(JSON.parse(cleanJson(json)));
-      if (action) actions.push(action);
+      if (action) actions.push(reshapeSavingsIntent(action));
     } catch (e) {
       if (__DEV__) console.warn('[ChatActions] Failed to parse action block:', json, e);
     }
@@ -849,7 +878,26 @@ export function executeAction(action: ChatAction): ExecuteResult {
                  goalName.toLowerCase().includes(g.name.toLowerCase())
         );
         if (!goal) {
-          return { success: false, message: `No savings goal matching "${goalName}" found.`, action };
+          // No matching goal → don't fail; CREATE it (the owner is confirming this
+          // chip, so this IS the confirmation). If the name is a savings/investment
+          // VEHICLE (ASB, Versa, crypto…) make a savings account; otherwise make a
+          // GOAL with the amount as its target. Both are money-safe (no wallet debit).
+          const cleanName = goalName.replace(/^(nak\s+)?(saving|save|simpan|nabung)\s+(for|untuk)\s+/i, '').trim() || goalName;
+          const vehicle = detectSavingsVehicle(goalName);
+          if (vehicle) {
+            const sv = useSavingsStore.getState();
+            if (!usePremiumStore.getState().canCreateSavingsAccount(sv.accounts.length)) {
+              const svTier = usePremiumStore.getState().tier;
+              return { success: false, message: `Your ${svTier} plan caps you at ${TIER_LIMITS[svTier].maxSavingsAccounts} savings accounts. Remove one, or upgrade.`, action };
+            }
+            sv.addAccount({ name: cleanName, type: vehicle, initialInvestment: action.amount, currentValue: action.amount });
+            return { success: true, message: `Added savings account "${cleanName}" with RM ${action.amount.toFixed(2)}`, action };
+          }
+          if (usePersonalStore.getState().goals.length >= 10) {
+            return { success: false, message: 'Maximum 10 goals — remove one first.', action };
+          }
+          usePersonalStore.getState().addGoal({ name: cleanName, targetAmount: action.amount, category: 'general', icon: 'target', color: '#4F5104' });
+          return { success: true, message: `Created goal "${cleanName}" — target RM ${action.amount.toFixed(2)} (nothing added yet — contribute when you're ready)`, action };
         }
         // Cap to the room left — a full/over-target goal must not take money without
         // advancing progress (matches the Goals UI handleContribute guard).
@@ -1588,9 +1636,9 @@ AVAILABLE ACTIONS:
    {"type":"transfer","amount":NUMBER,"description":"TEXT","fromWallet":"SOURCE_WALLET","toWallet":"DEST_WALLET"}
    Use when user wants to move money between bank accounts, e-wallets, etc.
 
-8. add_goal_contribution — Save money toward a goal
+8. add_goal_contribution — Add money to a goal that ALREADY EXISTS
    {"type":"add_goal_contribution","amount":NUMBER,"description":"TEXT","goalName":"GOAL_NAME"}
-   Match goalName to the user's existing savings goals. Use when user says "simpan", "save for", "add to goal", etc.
+   Use ONLY when goalName matches one of the user's EXISTING goals (see their data). If they're starting to save for something NEW (no such goal yet, e.g. "nak saving kereta"), use create_goal (16) instead — never contribute to a goal that doesn't exist.
 
 9. cancel_subscription — Cancel/deactivate a subscription
    {"type":"cancel_subscription","amount":0,"description":"SUBSCRIPTION_NAME"}
