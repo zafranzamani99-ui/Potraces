@@ -52,7 +52,7 @@ import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import { sendChatMessageStream } from '../../services/moneyChat';
 import { isCrisisMessage } from '../../services/smallTalk';
-import { reviewReply } from '../../services/critic';
+import { reviewReply, cleanReply } from '../../services/critic';
 import { detectSavingsVehicle } from '../../services/manglishParser';
 import { useNetInfo } from '@react-native-community/netinfo';
 import {
@@ -374,15 +374,26 @@ const SWITCHABLE_TYPE_KEYS: { key: ChatActionType; icon: keyof typeof Feather.gl
   { key: 'add_subscription', icon: 'credit-card' },
 ];
 
-// Extra options appended ONLY when a chip is ambiguous. Right now the one real
-// ambiguity is "saving" — the same word means a GOAL (save FOR a purpose) or a
-// SAVINGS/INVESTMENT account (ASB, Versa, crypto…). So a savings-ish chip also
-// offers those two, letting the owner pin the accurate one (and Echo learns it).
+// Extra options appended to the picker ONLY when a chip is ambiguous — the same
+// word can mean different things, so Echo offers the close alternatives and the
+// owner pins the accurate one (Echo then learns it). Extensible: add a rule here
+// as new confusions surface. Extras already in the base 4 are ignored.
+type TypeOpt = { key: ChatActionType; icon: keyof typeof Feather.glyphMap };
 const SAVINGS_FAMILY: ChatActionType[] = ['create_goal', 'add_goal_contribution', 'add_savings_account'];
 const AMBIG_SAVE_RE = /\b(sav(?:e|ing)|simpan|nabung|tabung|invest)\b/i;
-const SAVINGS_ALT_KEYS: { key: ChatActionType; icon: keyof typeof Feather.glyphMap }[] = [
-  { key: 'create_goal', icon: 'target' },
-  { key: 'add_savings_account', icon: 'trending-up' },
+// pay-later can look like a plain expense — offer the BNPL type as a correction.
+const AMBIG_BNPL_RE = /\b(spay\s?later|spaylater|atome|pay\s?later|ansuran|installment|instalment|payflex)\b|(?:grab|shopee|tiktok)\s?(?:pay)?later/i;
+const AMBIGUITY_RULES: { test: (a: ChatAction) => boolean; extras: TypeOpt[] }[] = [
+  {
+    // "saving" → a GOAL (save for a purpose) vs a SAVINGS/INVESTMENT account (ASB, Versa, crypto…).
+    test: (a) => SAVINGS_FAMILY.includes(a.type) || AMBIG_SAVE_RE.test(a.description || ''),
+    extras: [{ key: 'create_goal', icon: 'target' }, { key: 'add_savings_account', icon: 'trending-up' }],
+  },
+  {
+    // pay-later purchase vs a plain expense.
+    test: (a) => a.type !== 'add_bnpl' && AMBIG_BNPL_RE.test(a.description || ''),
+    extras: [{ key: 'add_bnpl', icon: 'credit-card' }],
+  },
 ];
 
 // Floating modal for editing + confirming a pending action
@@ -439,12 +450,23 @@ const ActionEditModal = ({
   const showWallet = ['add_expense', 'add_income', 'add_bnpl', 'repay_credit'].includes(actionType);
   const showPerson = ['add_debt', 'split_bill', 'debt_update', 'forgive_debt'].includes(actionType);
 
-  // Type options: the base 4, plus the goal/savings pair ONLY when this chip is
-  // ambiguous (Echo tracked a savings-ish thing, or the words say "save/simpan").
-  // Based on what Echo DETECTED (action.*), not the current selection.
+  // Type options: the base 4, plus any extras from ambiguity rules that match THIS
+  // chip (based on what Echo detected, not the current selection). De-duped; base
+  // types are never re-added. A normal chip just gets the 4.
   const typeOptions = useMemo(() => {
-    const ambiguous = !!action && (SAVINGS_FAMILY.includes(action.type) || AMBIG_SAVE_RE.test(action.description || ''));
-    return ambiguous ? [...SWITCHABLE_TYPE_KEYS, ...SAVINGS_ALT_KEYS] : SWITCHABLE_TYPE_KEYS;
+    if (!action) return SWITCHABLE_TYPE_KEYS;
+    const baseKeys = new Set(SWITCHABLE_TYPE_KEYS.map((s) => s.key));
+    const extras: TypeOpt[] = [];
+    const seen = new Set<ChatActionType>();
+    for (const rule of AMBIGUITY_RULES) {
+      if (!rule.test(action)) continue;
+      for (const e of rule.extras) {
+        if (baseKeys.has(e.key) || seen.has(e.key)) continue;
+        seen.add(e.key);
+        extras.push(e);
+      }
+    }
+    return extras.length ? [...SWITCHABLE_TYPE_KEYS, ...extras] : SWITCHABLE_TYPE_KEYS;
   }, [action]);
 
   // B11: for a debt payment, resolve the matching debt + remaining balance so the
@@ -1620,16 +1642,17 @@ const MoneyChat: React.FC = () => {
       echoMemories.forEach((m) => learn.addMemory({ kind: m.kind, text: m.text, source: 'echo' }, cap));
     }
 
-    // Belt-and-suspenders: the system prompt already forbids advice/banned words
-    // and orphan confirmations, but measure how often the model slips past it
-    // before we decide any harder action. Log-only — never blocks/strips a reply.
+    // Critic: log any leak (telemetry on the kinds that are too idiom-risky to
+    // auto-fix — advice-soft/loss/orphan), THEN deterministically clean the SAFE
+    // ones (grammar-safe advice softening + banned-word swaps) before it's shown.
     if (__DEV__) {
       const issues = reviewReply(cleanText, actions.length > 0);
       if (issues.length) console.warn('[Echo critic] reply issues:', issues.map((i) => i.detail), { hasAction: actions.length > 0 });
     }
+    const displayText = cleanReply(cleanText);
 
     // Add the text as a chat message
-    addChatMessage({ role: 'assistant', content: cleanText, timestamp: new Date().toISOString() });
+    addChatMessage({ role: 'assistant', content: displayText, timestamp: new Date().toISOString() });
 
     // Fill category/wallet the AI left blank from what the user taught us
     // before (learningStore), then route each action: an "amend" re-emit updates

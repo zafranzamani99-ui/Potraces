@@ -212,3 +212,31 @@ export function reviewReply(text: string, hasAction: boolean): ReplyIssue[] {
   }
   return issues;
 }
+
+// Deterministic, grammar-safe fixes applied to a reply before it's shown. ONLY
+// the swaps that read correctly in every context: soften the clear advice openers
+// ("you should"→"you could") and replace banned finance words with the app's own
+// vocabulary ("profit"→"kept"). Idiom-risky words are deliberately NOT auto-fixed
+// — "loss" ("at a loss"), "consider"/"try to", and orphan confirmations still get
+// FLAGGED by reviewReply for telemetry, but are left to a human/prompt to handle.
+const REPLY_FIXES: { re: RegExp; to: string }[] = [
+  // grammar-safe advice softening ("you should save" → "you could save")
+  { re: /\byou should\b/gi, to: 'you could' },
+  { re: /\byou need to\b/gi, to: 'you could' },
+  { re: /\byou must\b/gi, to: 'you could' },
+  // banned finance words → the app's own vocabulary. ("I recommend" is left
+  // alone — no verb-form-safe swap exists; reviewReply still flags it.)
+  { re: /\bprofit\b/gi, to: 'kept' },
+  { re: /\brevenue\b/gi, to: 'money in' },
+  { re: /\broi\b/gi, to: 'return' },
+  { re: /\binventory\b/gi, to: 'stock' },
+];
+const matchCase = (src: string, rep: string): string =>
+  src[0] === src[0].toUpperCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep;
+
+/** Clean a reply for display (advice softening + banned-word swaps). Unchanged when nothing matches. */
+export function cleanReply(text: string): string {
+  let out = text;
+  for (const f of REPLY_FIXES) out = out.replace(f.re, (m) => matchCase(m, f.to));
+  return out;
+}

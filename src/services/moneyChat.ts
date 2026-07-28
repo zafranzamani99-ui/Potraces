@@ -12,6 +12,7 @@ import { chatModelForTier } from './chatModel';
 import { TIER_LIMITS } from '../constants/tiers';
 import { isAiProxyConfigured } from './aiProxy';
 import { parseActions, parseMemories } from './chatActions';
+import { cleanReply } from './critic';
 import { scrubPii } from '../utils/pii';
 import { usePremiumStore } from '../store/premiumStore';
 import { usePersonalStore } from '../store/personalStore';
@@ -1077,6 +1078,8 @@ function _displayTextFromPartial(partial: string): string {
   // Also strip complete [MEMORY] facts (they're silent) — tolerant of a missing
   // closing tag, same as the final post-process — so the tag never flashes.
   cleanText = parseMemories(cleanText).cleanText;
+  // Soften advice / swap banned words live too, so they never even flash mid-stream.
+  cleanText = cleanReply(cleanText);
   // Drop a trailing, not-yet-closed block (no closing tag yet) of either kind.
   const open = Math.max(cleanText.lastIndexOf('[ACTION]'), cleanText.lastIndexOf('[MEMORY]'));
   if (open !== -1) return cleanText.slice(0, open).trim();
