@@ -42,6 +42,7 @@ import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useReceiptStore } from '../../store/receiptStore';
 import { useCategoryStore } from '../../store/categoryStore';
+import { useLearningStore } from '../../store/learningStore';
 import { useToast } from '../../context/ToastContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
@@ -166,6 +167,9 @@ const ReceiptScanner: React.FC = () => {
   const [editTotal, setEditTotal] = useState('');
   const [editDate, setEditDate] = useState(new Date());
   const [editCategory, setEditCategory] = useState('other');
+  // The learned rule that pre-filled the category, if any — lets the category
+  // pill state its reason ("your rule · 4×"). Cleared on manual re-pick/reset.
+  const [learnedRule, setLearnedRule] = useState<{ keyword: string; count: number } | null>(null);
   const [editMyTaxCategory, setEditMyTaxCategory] = useState('none');
   const [editLocation, setEditLocation] = useState('');
   const [newItemName, setNewItemName] = useState('');
@@ -372,7 +376,11 @@ const ReceiptScanner: React.FC = () => {
       setEditItems([...extracted.items]);
       setEditTotal(extracted.total.toFixed(2));
       setEditDate(parseReceiptDate(extracted.date));
-      setEditCategory(extracted.suggestedExpenseCategory || 'other');
+      // Notebook first: a merchant the user corrected before (count ≥ 2) beats
+      // the AI's generic guess — and the pill will cite the rule ("your rule · n×").
+      const learnedCat = useLearningStore.getState().getCategorySuggestion(extracted.vendor || '');
+      setLearnedRule(learnedCat);
+      setEditCategory(learnedCat?.category || extracted.suggestedExpenseCategory || 'other');
       setEditMyTaxCategory(extracted.suggestedTaxCategory || 'none');
       setEditLocation(extracted.location || '');
       // Local scan fired either because we're out of scans (limit) or offline —
@@ -443,7 +451,10 @@ const ReceiptScanner: React.FC = () => {
     setEditItems([...extracted.items]);
     setEditTotal(extracted.total.toFixed(2));
     setEditDate(parseReceiptDate(extracted.date));
-    setEditCategory(extracted.suggestedExpenseCategory || 'other');
+    // Notebook first — same rule as the scan path above.
+    const learnedCat = useLearningStore.getState().getCategorySuggestion(extracted.vendor || '');
+    setLearnedRule(learnedCat);
+    setEditCategory(learnedCat?.category || extracted.suggestedExpenseCategory || 'other');
     setEditMyTaxCategory(extracted.suggestedTaxCategory || 'none');
     setEditLocation(extracted.location || '');
     // Local read (offline + quota-free) — same "double-check the numbers" notice.
@@ -459,6 +470,7 @@ const ReceiptScanner: React.FC = () => {
     setEditTotal('');
     setEditDate(new Date());
     setEditCategory('other');
+    setLearnedRule(null);
     setEditMyTaxCategory('none');
     setEditLocation('');
     setNewItemName('');
@@ -585,6 +597,14 @@ const ReceiptScanner: React.FC = () => {
         transactionId: txId,
         year: getYear(editDate),
       });
+
+      // Teach the notebook: the reviewed category is the user's confirmation/
+      // correction — the richest learning signal in the app. Vendor is the
+      // recurring keyword (title as fallback); trusted after the 2nd save.
+      const learnKeyword = (editVendor || title).trim();
+      if (learnKeyword && editCategory) {
+        useLearningStore.getState().learnCategory(learnKeyword, editCategory);
+      }
 
       clearDraft();
       leavingCleanlyRef.current = true;
@@ -962,6 +982,14 @@ const ReceiptScanner: React.FC = () => {
 
             </View>
 
+            {/* "Sebab you ajar" — the category pill came from the user's own
+                notebook rule; say so (MAKIN_KENAL §8.4). */}
+            {learnedRule && (
+              <Text style={styles.learnedReason}>
+                {t.common.learnedRuleReason.replace('{n}', String(learnedRule.count))}
+              </Text>
+            )}
+
             {/* 4. Items Card */}
             <Card style={[styles.itemsCard, neu.raisedSoft, { borderWidth: 0 }]}>
               <View style={styles.itemsHeader}>
@@ -1214,7 +1242,7 @@ const ReceiptScanner: React.FC = () => {
                 return (
                   <TouchableOpacity
                     style={[styles.taxItem, isSelected && { backgroundColor: withAlpha(cat.color, 0.1) }]}
-                    onPress={() => { setEditCategory(cat.id); setCategoryPickerVisible(false); }}
+                    onPress={() => { setEditCategory(cat.id); setLearnedRule(null); setCategoryPickerVisible(false); }}
                     activeOpacity={0.7}
                   >
                     <View style={[styles.taxItemIcon, neu.well, { backgroundColor: isSelected ? cat.color : withAlpha(cat.color, 0.15) }]}>
@@ -1644,6 +1672,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     letterSpacing: 0.2,
+  },
+  learnedReason: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.accent,
+    marginTop: -SPACING.sm,
+    marginBottom: SPACING.lg,
+    marginLeft: SPACING.xs,
   },
 
   // ── 4. Items Card ──

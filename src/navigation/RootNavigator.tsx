@@ -50,6 +50,7 @@ import BusinessSetup from '../screens/business/Setup';
 import Settings from '../screens/shared/Settings';
 import MyPlan from '../screens/shared/MyPlan';
 import InviteFriends from '../screens/shared/InviteFriends';
+import EchoNotebook from '../screens/personal/EchoNotebook';
 import RedeemCode from '../screens/shared/RedeemCode';
 import ManageCategories from '../screens/shared/ManageCategories';
 import BusinessProfile from '../screens/business/BusinessProfile';
@@ -537,6 +538,11 @@ const RootNavigator: React.FC = () => {
           name="RedeemCode"
           component={RedeemCode}
           options={makeBackHeader(C, mode, 'Redeem code')}
+        />
+        <Stack.Screen
+          name="EchoNotebook"
+          component={EchoNotebook}
+          options={makeBackHeader(C, mode, 'Echo')}
         />
         <Stack.Screen
           name="ManageCategories"

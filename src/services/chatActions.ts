@@ -1184,6 +1184,11 @@ export function executeAction(action: ChatAction): ExecuteResult {
         usePersonalStore.getState().updateTransaction(tx.id, updates);
         // Keep the playbook drain amount in sync with an edited amount.
         if (updates.amount !== undefined) syncLinkAmount(tx.id, updates.amount);
+        // A chat category edit IS the user's correction — teach the notebook so
+        // the next similar description files right the first time.
+        if (updates.category) {
+          learn.learnCategory(updates.description || tx.description, updates.category);
+        }
         const changes: string[] = [];
         if (updates.amount) changes.push(`amount → RM ${updates.amount.toFixed(2)}`);
         if (updates.description) changes.push(`description → "${updates.description}"`);

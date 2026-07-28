@@ -1,52 +1,28 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  CategoryPattern,
+  PersonAlias,
+  WalletPreference,
+  TypeCorrection,
+  TRUST_COUNT,
+  MIN_KEYWORD_LENGTH,
+  MAX_PATTERNS,
+  normalizeKeyword,
+  upsert,
+  applyLearnCategory,
+  applyLearnWallet,
+  applyLearnPersonAlias,
+  suggestFrom,
+  migrateLearningV0toV1,
+  LearningBlob,
+} from './learningPure';
 
-interface CategoryPattern {
-  keyword: string;
-  category: string;
-  count: number;
-}
-
-interface PersonAlias {
-  raw: string;
-  preferred: string;
-  count: number;
-}
-
-interface WalletPreference {
-  keyword: string;
-  wallet: string;
-  count: number;
-}
-
-interface TypeCorrection {
-  keyword: string;
-  toType: string;
-  count: number;
-}
-
-const MAX_PATTERNS = 100;
-
-function upsert<T extends { count: number }>(
-  arr: T[],
-  match: (item: T) => boolean,
-  create: () => T
-): T[] {
-  const idx = arr.findIndex(match);
-  if (idx >= 0) {
-    const updated = [...arr];
-    updated[idx] = { ...updated[idx], count: updated[idx].count + 1 };
-    return updated;
-  }
-  const next = [...arr, create()];
-  // Cap at MAX_PATTERNS — evict lowest count
-  if (next.length > MAX_PATTERNS) {
-    next.sort((a, b) => b.count - a.count);
-    return next.slice(0, MAX_PATTERNS);
-  }
-  return next;
-}
+// Re-export so existing imports from the store keep working, and the Notebook
+// screen can share the trust threshold.
+export { TRUST_COUNT, normalizeKeyword } from './learningPure';
+export type { CategoryPattern, PersonAlias, WalletPreference, TypeCorrection } from './learningPure';
 
 interface LearningState {
   categoryPatterns: CategoryPattern[];
@@ -56,19 +32,31 @@ interface LearningState {
   skippedKeywords: Record<string, number>;
   /**
    * Epoch ms of the last USER edit on this device (null = never edited here).
-   * LWW key for cloud sync — bumped by every learn* setter, NOT by applySyncedLearning.
+   * LWW key for cloud sync — bumped by every learn/forget setter, NOT by
+   * applySyncedLearning.
    */
   updatedAt: number | null;
 
-  learnCategory: (keyword: string, category: string) => void;
+  /** startCount ≥ TRUST_COUNT = instantly trusted (manual add in Echo's Notebook). */
+  learnCategory: (keyword: string, category: string, startCount?: number) => void;
   learnPersonAlias: (raw: string, preferred: string) => void;
-  learnWallet: (keyword: string, wallet: string) => void;
+  learnWallet: (keyword: string, wallet: string, startCount?: number) => void;
   learnTypeCorrection: (keyword: string, toType: string) => void;
   learnSkip: (keyword: string) => void;
+
+  /** Notebook screen edits — each forget* normalizes its input like learn* does. */
+  forgetCategory: (keyword: string, category: string) => void;
+  forgetWallet: (keyword: string) => void;
+  forgetPersonAlias: (raw: string) => void;
+  resetNotebook: () => void;
 
   getSuggestedCategory: (text: string) => string | null;
   getSuggestedPerson: (raw: string) => string | null;
   getSuggestedWallet: (text: string) => string | null;
+  /** Provenance variants ("sebab you ajar"): the winning rule's keyword + count
+   *  ride along, so a chip can state WHY it auto-filled ("your rule · 4×"). */
+  getCategorySuggestion: (text: string) => { category: string; keyword: string; count: number } | null;
+  getWalletSuggestion: (text: string) => { wallet: string; keyword: string; count: number } | null;
   getPromptHints: () => string;
   /** Sync push: the persisted learning blob (the fields in partialize). */
   getSyncData: () => Partial<LearningState>;
@@ -86,49 +74,27 @@ export const useLearningStore = create<LearningState>()(
       skippedKeywords: {},
       updatedAt: null,
 
-      learnCategory: (keyword, category) => {
-        const kw = keyword.toLowerCase().trim();
-        if (!kw || !category) return;
+      learnCategory: (keyword, category, startCount = 1) =>
         set((s) => ({
-          categoryPatterns: upsert(
-            s.categoryPatterns,
-            (p) => p.keyword === kw && p.category === category,
-            () => ({ keyword: kw, category, count: 1 })
-          ),
+          categoryPatterns: applyLearnCategory(s.categoryPatterns, keyword, category, startCount),
           updatedAt: Date.now(),
-        }));
-      },
+        })),
 
-      learnPersonAlias: (raw, preferred) => {
-        const r = raw.toLowerCase().trim();
-        const p = preferred.trim();
-        if (!r || !p || r === p.toLowerCase()) return;
+      learnPersonAlias: (raw, preferred) =>
         set((s) => ({
-          personAliases: upsert(
-            s.personAliases,
-            (a) => a.raw === r,
-            () => ({ raw: r, preferred: p, count: 1 })
-          ),
+          personAliases: applyLearnPersonAlias(s.personAliases, raw, preferred),
           updatedAt: Date.now(),
-        }));
-      },
+        })),
 
-      learnWallet: (keyword, wallet) => {
-        const kw = keyword.toLowerCase().trim();
-        if (!kw || !wallet) return;
+      learnWallet: (keyword, wallet, startCount = 1) =>
         set((s) => ({
-          walletPreferences: upsert(
-            s.walletPreferences,
-            (p) => p.keyword === kw,
-            () => ({ keyword: kw, wallet, count: 1 })
-          ),
+          walletPreferences: applyLearnWallet(s.walletPreferences, keyword, wallet, startCount),
           updatedAt: Date.now(),
-        }));
-      },
+        })),
 
       learnTypeCorrection: (keyword, toType) => {
-        const kw = keyword.toLowerCase().trim();
-        if (!kw || !toType) return;
+        const kw = normalizeKeyword(keyword, true);
+        if (kw.length < MIN_KEYWORD_LENGTH || !toType) return;
         set((s) => ({
           typeCorrections: upsert(
             s.typeCorrections,
@@ -151,18 +117,45 @@ export const useLearningStore = create<LearningState>()(
         }));
       },
 
-      getSuggestedCategory: (text) => {
-        const lower = text.toLowerCase();
-        const { categoryPatterns } = get();
-        // Find highest-count pattern that matches
-        let best: CategoryPattern | null = null;
-        for (const p of categoryPatterns) {
-          if (p.count >= 2 && lower.includes(p.keyword)) {
-            if (!best || p.count > best.count) best = p;
-          }
-        }
-        return best?.category || null;
+      forgetCategory: (keyword, category) => {
+        const kw = normalizeKeyword(keyword, true);
+        set((s) => ({
+          categoryPatterns: s.categoryPatterns.filter(
+            (p) => !(p.keyword === kw && p.category === category)
+          ),
+          updatedAt: Date.now(),
+        }));
       },
+
+      forgetWallet: (keyword) => {
+        const kw = normalizeKeyword(keyword, true);
+        set((s) => ({
+          walletPreferences: s.walletPreferences.filter((p) => p.keyword !== kw),
+          updatedAt: Date.now(),
+        }));
+      },
+
+      forgetPersonAlias: (raw) => {
+        const r = raw.toLowerCase().trim();
+        set((s) => ({
+          personAliases: s.personAliases.filter((a) => a.raw !== r),
+          updatedAt: Date.now(),
+        }));
+      },
+
+      resetNotebook: () =>
+        set({
+          categoryPatterns: [],
+          personAliases: [],
+          walletPreferences: [],
+          typeCorrections: [],
+          skippedKeywords: {},
+          updatedAt: Date.now(),
+        }),
+
+      getSuggestedCategory: (text) => suggestFrom(get().categoryPatterns, text)?.category || null,
+
+      getCategorySuggestion: (text) => suggestFrom(get().categoryPatterns, text),
 
       getSuggestedPerson: (raw) => {
         const r = raw.toLowerCase().trim();
@@ -170,24 +163,16 @@ export const useLearningStore = create<LearningState>()(
         return alias ? alias.preferred : null;
       },
 
-      getSuggestedWallet: (text) => {
-        const lower = text.toLowerCase();
-        const { walletPreferences } = get();
-        let best: WalletPreference | null = null;
-        for (const p of walletPreferences) {
-          if (p.count >= 2 && lower.includes(p.keyword)) {
-            if (!best || p.count > best.count) best = p;
-          }
-        }
-        return best?.wallet || null;
-      },
+      getSuggestedWallet: (text) => suggestFrom(get().walletPreferences, text)?.wallet || null,
+
+      getWalletSuggestion: (text) => suggestFrom(get().walletPreferences, text),
 
       getPromptHints: () => {
         const { categoryPatterns, personAliases, walletPreferences, typeCorrections } = get();
         const hints: string[] = [];
 
-        // Category patterns (count >= 2)
-        const cats = categoryPatterns.filter((p) => p.count >= 2);
+        // Category patterns (trusted)
+        const cats = categoryPatterns.filter((p) => p.count >= TRUST_COUNT);
         for (const p of cats.slice(0, 10)) {
           hints.push(`"${p.keyword}" → category "${p.category}"`);
         }
@@ -197,14 +182,14 @@ export const useLearningStore = create<LearningState>()(
           hints.push(`"${a.raw}" is a person, preferred name: "${a.preferred}"`);
         }
 
-        // Wallet preferences (count >= 2)
-        const wallets = walletPreferences.filter((w) => w.count >= 2);
+        // Wallet preferences (trusted)
+        const wallets = walletPreferences.filter((w) => w.count >= TRUST_COUNT);
         for (const w of wallets.slice(0, 5)) {
           hints.push(`"${w.keyword}" → wallet "${w.wallet}"`);
         }
 
-        // Type corrections (count >= 2)
-        const types = typeCorrections.filter((t) => t.count >= 2);
+        // Type corrections (trusted)
+        const types = typeCorrections.filter((t) => t.count >= TRUST_COUNT);
         for (const t of types.slice(0, 10)) {
           hints.push(`"${t.keyword}" should be intent "${t.toType}"`);
         }
@@ -227,7 +212,10 @@ export const useLearningStore = create<LearningState>()(
     }),
     {
       name: 'learning-storage',
+      version: 1,
       storage: createJSONStorage(() => AsyncStorage),
+      migrate: (persisted: any, version: number) =>
+        version === 0 ? migrateLearningV0toV1(persisted as LearningBlob) : persisted,
       partialize: (state) => ({
         categoryPatterns: state.categoryPatterns,
         personAliases: state.personAliases,
@@ -239,3 +227,6 @@ export const useLearningStore = create<LearningState>()(
     }
   )
 );
+
+// MAX_PATTERNS lives in learningPure; re-exported here for any external cap checks.
+export { MAX_PATTERNS };

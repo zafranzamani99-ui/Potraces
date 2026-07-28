@@ -369,6 +369,13 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
             <SubscriptionCard variant="personal" />
 
               <SettingRow
+                icon="m/brain"
+                chipColor="#4F5104"
+                label={t.echoNotebook.title}
+                sublabel={t.echoNotebook.settingsSublabel}
+                onPress={() => { lightTap(); navigation.navigate('EchoNotebook'); }}
+              />
+              <SettingRow
                 icon="i/gift"
                 chipColor="#4F5104"
                 label={t.settings.inviteFriends}

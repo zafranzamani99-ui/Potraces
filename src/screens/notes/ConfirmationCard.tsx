@@ -16,6 +16,7 @@ import { useT } from '../../i18n';
 import { lightTap, mediumTap } from '../../services/haptics';
 import { useFadeSlide } from '../../utils/fadeSlide';
 import { useLearningStore } from '../../store/learningStore';
+import { suggestFrom } from '../../store/learningPure';
 import { useSettingsStore } from '../../store/settingsStore';
 import { parseCommitmentSchedule } from '../../utils/commitmentParse';
 
@@ -57,6 +58,14 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
   const currency = useSettingsStore((s) => s.currency);
   const { type, extractedData, status } = extraction;
   const { amount, description, category, wallet, person } = extractedData;
+
+  // "Sebab you ajar" (MAKIN_KENAL §8.4): when the shown category came from the
+  // user's own notebook rule, the card says so. Derived here at display time —
+  // category may be an id or a name, so compare normalized.
+  const categoryPatterns = useLearningStore((s) => s.categoryPatterns);
+  const learnedRule = suggestFrom(categoryPatterns, description || '');
+  const normCat = (s: string) => s.toLowerCase().replace(/[\s&]+/g, '_');
+  const learnedMatches = !!(learnedRule && category && normCat(learnedRule.category) === normCat(category));
 
   const isConfirmed = status === 'confirmed';
   const isSkipped = status === 'skipped';
@@ -140,6 +149,11 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           {sub ? (
             <Text style={styles.sub} numberOfLines={1}>{sub}</Text>
           ) : null}
+          {learnedMatches && learnedRule && (
+            <Text style={styles.learnedReason} numberOfLines={1}>
+              {t.common.learnedRuleReason.replace('{n}', String(learnedRule.count))}
+            </Text>
+          )}
         </View>
 
         {/* Right: amount + edit hint */}
@@ -230,6 +244,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   sub: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
+  },
+  learnedReason: {
+    fontSize: 10,
+    color: C.accent,
+    marginTop: 1,
   },
   amount: {
     fontSize: TYPOGRAPHY.size.lg,

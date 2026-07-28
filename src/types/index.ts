@@ -699,6 +699,8 @@ export type RootStackParamList = {
   InviteFriends: undefined;
   /** Redeem an admin-minted gift code — from the Settings ticket row. */
   RedeemCode: undefined;
+  /** Echo's Notebook — every rule Echo learned about you, editable (Settings row). */
+  EchoNotebook: undefined;
   SellerSettings: undefined;
   SettingsDetail: { section?: SettingsSection; scrollTo?: string } | undefined;
   BusinessProfile: undefined;
