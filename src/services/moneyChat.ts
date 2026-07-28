@@ -995,14 +995,13 @@ function _buildChatBody(message: string, history: AIMessage[], imageBase64?: str
     parts: [{ text: msg.role === 'assistant' ? msg.content : scrubPii(msg.content) }],
   }));
   // Longer chats: older turns are plainly dropped (no extra AI call to summarize
-  // them) — one static note keeps the model from treating the window start as
-  // the start of the conversation.
-  if (history.length > recentHistory.length) {
-    contents.unshift({
-      role: 'user' as const,
-      parts: [{ text: `(Earlier in this chat: ${history.length - recentHistory.length} older messages omitted to save space — rely on the recent turns below and the financial data for context.)` }],
-    });
-  }
+  // them). Put the "N omitted" note in the system prompt's DYNAMIC tail (below)
+  // rather than the FRONT of `contents` — a changing count at the front shifts the
+  // contents prefix every turn and defeats Gemini's implicit history caching. The
+  // model still learns the window isn't the whole conversation.
+  const omittedNote = history.length > recentHistory.length
+    ? `\n\n(Earlier in this chat: ${history.length - recentHistory.length} older messages were omitted to save space — rely on the recent turns and the financial data for context.)`
+    : '';
 
   // Add current message (with optional image). OCR-extracted text is already
   // scrubbed in ocrService; this covers free-typed chat text.
@@ -1015,11 +1014,17 @@ function _buildChatBody(message: string, history: AIMessage[], imageBase64?: str
   contents.push({ role: 'user' as const, parts: userParts });
 
   return {
-    system_instruction: { parts: [{ text: fullSystem }] },
+    system_instruction: { parts: [{ text: fullSystem + omittedNote }] },
     contents,
     generationConfig: {
       temperature: 0.3,
       maxOutputTokens: 4096,
+      // No pre-reply "thinking" pause — a money chat reply is usually simple, so
+      // reasoning before the first token just adds latency. 0 = disabled (the proxy
+      // caps the MAX thinking, not the min, so this passes through). Speeds up
+      // time-to-first-token WITHOUT removing any rule/feature. (If a future model
+      // rejects 0, use a small value like 128.)
+      thinkingConfig: { thinkingBudget: 0 },
     },
   };
 }

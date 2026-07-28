@@ -249,6 +249,11 @@ Deno.serve(async (req: Request) => {
         const u = JSON.parse(text)?.usageMetadata;
         pin = u?.promptTokenCount ?? 0;
         pout = u?.candidatesTokenCount ?? 0;
+        // Implicit-cache visibility: how many of the input tokens were served from
+        // Gemini's free prefix cache (billed at ~10%). >0 confirms Echo's static
+        // rulebook is being cached. Logged (not stored) — no schema change needed.
+        const cached = u?.cachedContentTokenCount ?? 0;
+        if (cached > 0) console.log(`[ai-proxy] cache hit: ${cached}/${pin} input tokens cached (${upstreamModel})`);
       } catch { /* token parse failed; still count the call below */ }
       background(record(pin, pout)); // always counts the call (calls += 1)
     }
@@ -314,6 +319,7 @@ async function meterGeminiStream(
   let buf = '';
   let lastIn = 0;
   let lastOut = 0;
+  let lastCached = 0;
   try {
     // Always drain to completion — never let a parse error stop reading, or the
     // teed branch backpressures/leaks memory while the client branch streams.
@@ -327,8 +333,10 @@ async function meterGeminiStream(
           const slice = buf.slice(idx, idx + 400);
           const pin = slice.match(/"promptTokenCount"\s*:\s*(\d+)/);
           const pout = slice.match(/"candidatesTokenCount"\s*:\s*(\d+)/);
+          const pc = slice.match(/"cachedContentTokenCount"\s*:\s*(\d+)/);
           if (pin) lastIn = parseInt(pin[1], 10);
           if (pout) lastOut = parseInt(pout[1], 10);
+          if (pc) lastCached = parseInt(pc[1], 10);
           idx = buf.indexOf('"usageMetadata"', idx + 1);
         }
         // keep only a tail large enough to hold a usageMetadata block
@@ -337,6 +345,9 @@ async function meterGeminiStream(
     }
     // Always record — even a zero-token (aborted) stream counts as one call, so
     // MONTHLY_CALL_CAP bounds abuse that evades token metering.
+    // Implicit-cache visibility (streamed): >0 confirms the static rulebook prefix
+    // is being served from Gemini's free cache. Logged only — no schema change.
+    if (lastCached > 0) console.log(`[ai-proxy] cache hit (stream): ${lastCached}/${lastIn} input tokens cached`);
     await record(lastIn, lastOut);
   } catch {
     try { await reader.cancel(); } catch { /* noop */ }
