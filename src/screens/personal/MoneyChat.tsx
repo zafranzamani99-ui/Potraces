@@ -87,6 +87,7 @@ import { getMalayVoiceState, type MalayVoiceState } from '../../services/voiceMo
 import { transcribeAudio } from '../../services/aiService';
 import { generateCheckinMessage } from '../../services/checkinMessage';
 import { detectRecurringCandidates, upcomingBills } from '../../utils/insights';
+import { builtInMerchantCategory } from '../../services/merchantCategoryGuess';
 
 // Static MY money/merchant lexicon — merged with the user's real merchants/wallets/categories to
 // bias the speech recognizer toward what Malaysians actually say. Best-effort (≤100 total, capped below).
@@ -1717,7 +1718,15 @@ const MoneyChat: React.FC = () => {
         let action = a;
         if (a.type === 'add_expense' || a.type === 'add_income') {
           action = { ...a };
-          if (!action.category) { const c = learn.getSuggestedCategory(a.description); if (c) action.category = c; }
+          if (!action.category) {
+            // user's own rule first; else the shared Malaysian merchant dictionary
+            // (so a new user with an empty notebook still gets a smart guess).
+            let c = learn.getSuggestedCategory(a.description);
+            if (!c && a.type === 'add_expense') {
+              c = builtInMerchantCategory(a.description, useCategoryStore.getState().getExpenseCategories('personal').map((cat) => cat.id));
+            }
+            if (c) action.category = c;
+          }
           if (!action.wallet) { const w = learn.getSuggestedWallet(a.description); if (w) action.wallet = w; }
         }
         if (action.amend) {

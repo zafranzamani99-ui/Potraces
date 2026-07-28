@@ -67,6 +67,15 @@ check('keyword for deleted category → null', guessMerchantCategory({
 }) === null);
 check('no valid categories at all → null', guessMerchantCategory({ ...base, note: 'KFC', validCategoryIds: [] }) === null);
 
+// ── enriched shared dictionary (the "everyone's knowledge" defaults) ──
+check("Touch 'n Go toll → transport", guessMerchantCategory({ ...base, note: "TOUCH N GO EWALLET" }) === 'transport');
+check('ZUS coffee → food', guessMerchantCategory({ ...base, note: 'ZUS COFFEE' }) === 'food');
+check('Takaful → bills', guessMerchantCategory({ ...base, note: 'PRUBSN TAKAFUL' }) === 'bills');
+check('Cold Storage → food', guessMerchantCategory({ ...base, note: 'COLD STORAGE' }) === 'food');
+check('Sephora → shopping', guessMerchantCategory({ ...base, note: 'SEPHORA MY' }) === 'shopping');
+// removed false-positive risks stay null
+check('"yesterday makan..." does NOT hit removed "yes"→bills', guessMerchantCategory({ ...base, note: 'yesterday belanja' }) !== 'bills');
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) {
   console.error('FAILED:\n - ' + failures.join('\n - '));
