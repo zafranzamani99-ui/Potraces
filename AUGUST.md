@@ -61,8 +61,8 @@ separately (`audit/ECHO_UNFINISHED.md`).
 
 ### 🧹 Code cleanup (mostly me — quick)
 - [x] Remove `AD_ID` + `NSUserTrackingUsageDescription`. ✅
-- [ ] Remove unused permissions: `SYSTEM_ALERT_WINDOW`, `WRITE_CONTACTS`, `expo-audio` (verify unused first).
-- [ ] Remove "Google Docs sync" paywall line; hide the "Playbook — coming soon" chip.
+- [x] Removed unused permissions `SYSTEM_ALERT_WINDOW` + `WRITE_CONTACTS`, and the unused `expo-audio` package. ✅
+- [x] Removed "Google Docs sync" paywall line + hid the Playbook "coming soon" tab (App Store 2.1). ✅
 - [ ] Public order double-tap protection (idempotency) so one tap ≠ two orders.
 - [ ] `receipt-images` storage bucket → private.
 - [ ] Verify in the live DB that the shop-takeover fix is active (strangers can't read customer name/phone).

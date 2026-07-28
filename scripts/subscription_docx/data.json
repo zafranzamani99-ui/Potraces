@@ -9,7 +9,7 @@
         "priceYearly": "n/a",
         "yearlyPerMonth": "n/a",
         "discount": "none",
-        "oneLineWhoItsFor": "The capped baseline: tight count caps (7 wallets, 5 budgets, 3 savings/goals/shared-subs) and low metered use (15 scans/mo, 30 AI calls/mo, 50 saved chat bubbles that lock when exceeded); no cloud backup, no Ask-Echo-per-screen, no Google Docs sync."
+        "oneLineWhoItsFor": "The capped baseline: tight count caps (7 wallets, 5 budgets, 3 savings/goals/shared-subs) and low metered use (15 scans/mo, 30 AI calls/mo, 50 saved chat bubbles that lock when exceeded); no cloud backup, no Ask-Echo-per-screen."
       },
       {
         "id": "basic",
@@ -27,7 +27,7 @@
         "priceYearly": "RM120/yr (was RM14/mo i.e. RM168/yr struck through)",
         "yearlyPerMonth": "RM10/mo",
         "discount": "-28% (yearly)",
-        "oneLineWhoItsFor": "For power users: all COUNT features go unlimited (wallets/budgets/savings/goals/shared-subs/playbooks) plus Google Docs sync and unlimited Collectz sessions; metered use raised to 150 scans/mo & 800 AI/mo; roadmap adds remove-branding, store templates, AI preview."
+        "oneLineWhoItsFor": "For power users: all COUNT features go unlimited (wallets/budgets/savings/goals/shared-subs/playbooks) plus unlimited Collectz sessions; metered use raised to 150 scans/mo & 800 AI/mo; roadmap adds Google Docs sync, remove-branding, store templates, AI preview."
       },
       {
         "id": "premium",
@@ -245,7 +245,7 @@
         "basic": "No",
         "pro": "Yes",
         "premium": "Yes",
-        "notes": "tiers.ts:59,69,79,89. Pro+ only (off on free AND basic)."
+        "notes": "tiers.ts:59,69,79,89 flag Pro+ only, but the feature is UNBUILT — no sync code exists, and it was pulled from the paywall on 2026-07-29 (App Store 2.1: no advertising unbuilt features). Planned for a later update."
       },
       {
         "key": "askEchoPerScreen",
