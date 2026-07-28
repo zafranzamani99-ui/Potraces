@@ -64,7 +64,8 @@ separately (`audit/ECHO_UNFINISHED.md`).
 - [x] Removed unused permissions `SYSTEM_ALERT_WINDOW` + `WRITE_CONTACTS`, and the unused `expo-audio` package. ✅
 - [x] Removed "Google Docs sync" paywall line + hid the Playbook "coming soon" tab (App Store 2.1). ✅
 - [ ] Public order double-tap protection (idempotency) so one tap ≠ two orders.
-- [ ] `receipt-images` storage bucket → private.
+- [x] `receipt-images` bucket IS private — confirmed live via probe (done in migration 20260528000000; audit finding was stale). ✅
+- [ ] **Seller receipt images broken** — `sellerSync.ts` uses `getPublicUrl` on the now-private bucket → 403; switch to on-demand signed URLs (the personal path already does this). Found 2026-07-29.
 - [ ] Verify in the live DB that the shop-takeover fix is active (strangers can't read customer name/phone).
 - [ ] Add a splash-screen image (opens blank now) + fix the clipped Android adaptive icon.
 - [ ] Malay paywall (English-only today).
