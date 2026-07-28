@@ -179,9 +179,10 @@ export async function uploadProductImage(imageUri: string, productId: string): P
   return urlData.publicUrl + '?t=' + Date.now();
 }
 
-/** Upload a cost receipt image. Returns public URL or null on error.
- *  This function returns null instead of throwing because it's called during
- *  sync where receipt upload is best-effort (retried next sync cycle). */
+/** Upload a cost receipt image. Returns the bucket OBJECT PATH (never a URL —
+ *  receipt-images is private since 20260528000000, so public URLs 403 and signed
+ *  URLs expire). The display side mints a fresh signed URL via resolveReceiptUri().
+ *  Returns null on error (best-effort — called during sync, retried next cycle). */
 export async function uploadReceiptImage(imageUri: string, costId: string): Promise<string | null> {
   const session = await getSession();
   if (!session) return null;
@@ -208,12 +209,32 @@ export async function uploadReceiptImage(imageUri: string, costId: string): Prom
 
     if (error) return null;
 
-    const { data: urlData } = supabase.storage
-      .from('receipt-images')
-      .getPublicUrl(path);
-
-    return urlData.publicUrl + '?t=' + Date.now();
+    // Persist the private-bucket object path, never a URL (it 403s / expires).
+    // Display resolves a fresh signed URL on demand via resolveReceiptUri().
+    return path;
   } catch (e: any) {
+    return null;
+  }
+}
+
+/** Resolve a stored seller-receipt reference to a URI an <Image> can render.
+ *  - local file://|content:// → returned as-is (capture flow, no round-trip)
+ *  - private-bucket path (`{uid}/{costId}.jpg`) → fresh 1h signed URL
+ *  - legacy public URL (…/receipt-images/<path>?…) → extract the path, then sign
+ *  Returns null on failure. Never throws. */
+export async function resolveReceiptUri(ref: string | null | undefined): Promise<string | null> {
+  if (!ref) return null;
+  if (ref.startsWith('file://') || ref.startsWith('content://')) return ref;
+  let path = ref;
+  if (ref.startsWith('http')) {
+    const m = ref.match(/receipt-images\/(.+?)(?:\?|$)/);
+    if (!m) return null;
+    path = decodeURIComponent(m[1]);
+  }
+  try {
+    const { data } = await supabase.storage.from('receipt-images').createSignedUrl(path, 3600);
+    return data?.signedUrl ?? null;
+  } catch {
     return null;
   }
 }

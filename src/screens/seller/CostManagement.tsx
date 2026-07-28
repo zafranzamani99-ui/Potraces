@@ -36,7 +36,7 @@ import { useT } from '../../i18n';
 import { IngredientCost, RecurringFrequency } from '../../types';
 import { createTransfer } from '../../utils/transferBridge';
 import { scanSellerReceipt, isLocalScanResult } from '../../services/receiptScanner';
-import { uploadReceiptImage, deleteReceiptImage } from '../../services/sellerSync';
+import { uploadReceiptImage, deleteReceiptImage, resolveReceiptUri } from '../../services/sellerSync';
 import CostCategoryPicker from '../../components/seller/CostCategoryPicker';
 import ReceiptViewer from '../../components/seller/ReceiptViewer';
 import PaywallModal from '../../components/common/PaywallModal';
@@ -119,6 +119,14 @@ const CostManagement: React.FC = () => {
   const [costVendor, setCostVendor] = useState('');
   const [receiptLocalUri, setReceiptLocalUri] = useState<string | null>(null);
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+  // Edit-form receipt thumbnail: resolve a fresh signed URL (bucket is private)
+  // or pass a local file:// through — never render a stored path/URL directly.
+  const [thumbUri, setThumbUri] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    resolveReceiptUri(receiptUrl || receiptLocalUri).then((u) => { if (alive) setThumbUri(u); });
+    return () => { alive = false; };
+  }, [receiptUrl, receiptLocalUri]);
   const [scanning, setScanning] = useState(false);
   const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [paywallVisible, setPaywallVisible] = useState(false);
@@ -919,7 +927,7 @@ const CostManagement: React.FC = () => {
                             {cost.vendor ? <Text style={styles.historyVendor} numberOfLines={1}>· {cost.vendor}</Text> : null}
                             {hasReceipt && (
                               <Pressable
-                                onPress={() => setViewerUri(cost.receiptUrl || cost.receiptLocalUri || null)}
+                                onPress={async () => setViewerUri(await resolveReceiptUri(cost.receiptUrl || cost.receiptLocalUri))}
                                 hitSlop={8}
                                 style={styles.historyReceiptBtn}
                                 accessibilityRole="button"
@@ -1113,14 +1121,14 @@ const CostManagement: React.FC = () => {
                   loading={scanning}
                   loadingLabel={t.seller.scanningReceipt}
                 />
-                {!scanning && (receiptUrl || receiptLocalUri) && (
+                {!scanning && thumbUri && (
                   <Pressable
-                    onPress={() => setViewerUri(receiptUrl || receiptLocalUri)}
+                    onPress={() => setViewerUri(thumbUri)}
                     style={styles.receiptThumbWrap}
                     accessibilityRole="button"
                     accessibilityLabel={t.seller.viewReceipt}
                   >
-                    <Image source={{ uri: (receiptUrl || receiptLocalUri)! }} style={styles.receiptThumb} contentFit="cover" />
+                    <Image source={{ uri: thumbUri }} style={styles.receiptThumb} contentFit="cover" />
                     <Pressable
                       onPress={() => { setReceiptUrl(null); setReceiptLocalUri(null); }}
                       style={styles.receiptRemove}

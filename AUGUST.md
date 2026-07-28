@@ -65,7 +65,7 @@ separately (`audit/ECHO_UNFINISHED.md`).
 - [x] Removed "Google Docs sync" paywall line + hid the Playbook "coming soon" tab (App Store 2.1). ✅
 - [ ] Public order double-tap protection (idempotency) so one tap ≠ two orders.
 - [x] `receipt-images` bucket IS private — confirmed live via probe (done in migration 20260528000000; audit finding was stale). ✅
-- [ ] **Seller receipt images broken** — `sellerSync.ts` uses `getPublicUrl` on the now-private bucket → 403; switch to on-demand signed URLs (the personal path already does this). Found 2026-07-29.
+- [x] **Seller receipt images fixed** — sellerSync stores the bucket path now; display mints on-demand signed URLs (`resolveReceiptUri`), legacy public URLs auto-rescued. ⚠️ needs an on-device check. ✅
 - [ ] Verify in the live DB that the shop-takeover fix is active (strangers can't read customer name/phone).
 - [ ] Add a splash-screen image (opens blank now) + fix the clipped Android adaptive icon.
 - [ ] Malay paywall (English-only today).
