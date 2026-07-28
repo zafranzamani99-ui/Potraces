@@ -254,6 +254,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
   const neu = useNeu(); // full neu — ✕ button (Neu Key), active toggle thumb, selected tier
   const neuF = useNeu(undefined, { faintDark: true }); // Onyx rule 3 — unselected selector cards
   const applyTier = usePremiumStore((s) => s.setTier);
+  const gateOn = usePremiumStore((s) => s.gateOn);
   const { height: SCREEN_H } = useWindowDimensions();
 
   // ─── Bottom-sheet mechanics ─────────────────────────────────────────
@@ -393,7 +394,13 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
       }
       return;
     }
-    // Billing not configured yet → local unlock so the app stays fully usable in dev.
+    // Billing not configured. In beta (gate off) this is the intended local unlock so
+    // testers use paid features free. Once LAUNCHED (gate on), a missing billing config
+    // must NEVER hand premium out free — fail safe instead of giving the app away.
+    if (gateOn) {
+      setResult({ kind: 'failed', retry: true });
+      return;
+    }
     applyTier(paidTier);
     setResult({ kind: 'success' });
   };

@@ -35,7 +35,7 @@ separately (`audit/ECHO_UNFINISHED.md`).
 - [ ] "Cancel subscription" must deep-link to Apple's manage-subscriptions page (today it
       only flips a local switch → Apple reject).
 - [ ] Server-side entitlement check so a paid tier can't be flipped on-device.
-- [ ] Make the dev "free unlock" impossible in a release build.
+- [x] Dev "free unlock" fails safe once launched (gate on); beta/dev keep the local unlock. ✅
 
 ### 📟 Tap-to-Pay (decided: keep building)
 - [ ] Finish Tap-to-Pay.
