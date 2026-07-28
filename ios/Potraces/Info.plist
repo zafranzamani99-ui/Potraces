@@ -110,8 +110,6 @@
 	<string>Potraces needs access to your photos to scan receipts.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Potraces uses speech recognition to show your words live as you speak.</string>
-	<key>NSUserTrackingUsageDescription</key>
-	<string>Allow this app to collect app-related data that can be used for tracking you or your device.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
