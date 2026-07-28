@@ -32,8 +32,8 @@ separately (`audit/ECHO_UNFINISHED.md`).
 Grouped by who does it: **🟢 Claude can do · 🟡 needs you · 🔴 bigger build (Claude, but a real feature).**
 
 ### 🟢 Claude can do (code — just say go)
-- [ ] Order double-tap protection (idempotency) so one tap ≠ two orders.
-- [ ] Malay paywall (English-only today).
+- [x] Order double-tap protection — fail-open dedup in place-order (deployed); identical order within 45s returns the same order, no duplicate. ✅
+- [x] Malay paywall — already fully translated in `ms.ts` (tiers/features/roadmap/legal); audit finding was stale. ✅
 - [x] Bilingual "not financial advice" note — added under SavingsTracker's coaching/projections. ✅ *(Goals/Pulse can get it too if wanted)*
 - [ ] Biometric app-lock.
 - [ ] Sentry crash reporting — actually **needs your Sentry DSN key** (🟡, not green).

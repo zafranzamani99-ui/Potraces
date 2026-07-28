@@ -190,6 +190,32 @@ Deno.serve(async (req: Request) => {
     // 7) Recompute the total from server prices — never trust the client.
     const total = round2(serverItems.reduce((s, x) => s + x.unitPrice * x.quantity, 0));
 
+    // 7.5) Duplicate-tap guard (fail-open). A buyer double-tapping "place order"
+    //    fires two POSTs; without this each inserts a row. If an identical
+    //    order_link order (same seller, phone, total, items) already landed in the
+    //    last DEDUP_WINDOW, return it instead of inserting a second. Any error here
+    //    MUST NOT block a real order — it just falls through to the insert below.
+    try {
+      const DEDUP_WINDOW_MS = 45 * 1000;
+      const dupeSince = new Date(now - DEDUP_WINDOW_MS).toISOString();
+      const { data: recentDupes } = await admin
+        .from('seller_orders')
+        .select('id, items')
+        .eq('seller_id', seller.id)
+        .eq('source', 'order_link')
+        .eq('customer_phone', customer.phone)
+        .eq('total_amount', total)
+        .gt('created_at', dupeSince)
+        .order('created_at', { ascending: false });
+      const orderSig = (arr: unknown): string =>
+        Array.isArray(arr) ? arr.map((x: any) => `${x.productId}x${x.quantity}`).sort().join('|') : '';
+      const sig = orderSig(serverItems);
+      const dupe = (recentDupes ?? []).find((o) => orderSig(o.items) === sig);
+      if (dupe) return json({ ok: true, orderId: dupe.id, total });
+    } catch (e) {
+      console.error('place-order dedup check failed (proceeding to insert):', e);
+    }
+
     // 8) Insert via service role. Keep source='order_link', seller_id set,
     //    user_id null so the existing push trigger still fires.
     const { data: inserted, error: insErr } = await admin
