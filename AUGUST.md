@@ -29,54 +29,40 @@ separately (`audit/ECHO_UNFINISHED.md`).
 
 ## 🔴 WAIT — before launch (must do before 13 Aug)
 
-### 💳 Payments (the long pole — needs your accounts)
-- [ ] RevenueCat: create account + API keys + 5 products (App Store Connect + Play) +
-      entitlements + native rebuild + sandbox purchase test.
-- [ ] "Cancel subscription" must deep-link to Apple's manage-subscriptions page (today it
-      only flips a local switch → Apple reject).
-- [ ] Server-side entitlement check so a paid tier can't be flipped on-device.
-- [x] Dev "free unlock" fails safe once launched (gate on); beta/dev keep the local unlock. ✅
+Grouped by who does it: **🟢 Claude can do · 🟡 needs you · 🔴 bigger build (Claude, but a real feature).**
 
-### 📟 Tap-to-Pay (decided: keep building)
-- [ ] Finish Tap-to-Pay.
-- [ ] Declare location use in the Play Data-Safety form + fix the privacy page (it
-      currently says "no location", but card readers need it).
-
-### 📄 Store paperwork & deploys
-- [ ] App Store privacy "nutrition label" + Play Data-Safety forms (answer-sheet in `audit/STORE_DATA_DISCLOSURE.md`).
-- [ ] delete-account function deployed + public deletion page live + URL in Play Console.
-- [ ] Privacy Policy + Terms actually live on jejakbaki.my.
-- [ ] `apple-app-site-association` + `assetlinks.json` live on jejakbaki.my (link verification).
-- [ ] Apple reviewer demo account; store screenshots (all sizes); support email/URL in the listing.
-- [ ] `eas.json` production submit profile + Google Play service-account key (only iOS TestFlight is set up).
-- [ ] iOS Google client ID in prod EAS; Android release SHA-1 in `google-services.json` (or Google sign-in breaks on the store build).
-
-### ☁️ Cloud backup (decision needed)
-- [ ] Either turn it on (and confirm sync works) OR hide the toggle + "automatic backup" pitch. It's advertised but off → Apple reject.
-
-### 👥 Collectz safety (Apple 1.2 — it shows other people's names/photos)
-- [ ] Add Report + Block for users.
-- [ ] EULA acceptance at sign-up + a zero-tolerance-for-objectionable-content clause.
-- [ ] Server-side profanity/URL filter on Collectz free-text names.
-
-### 🧹 Code cleanup (mostly me — quick)
-- [x] Remove `AD_ID` + `NSUserTrackingUsageDescription`. ✅
-- [x] Removed unused permissions `SYSTEM_ALERT_WINDOW` + `WRITE_CONTACTS`, and the unused `expo-audio` package. ✅
-- [x] Removed "Google Docs sync" paywall line + hid the Playbook "coming soon" tab (App Store 2.1). ✅
-- [ ] Public order double-tap protection (idempotency) so one tap ≠ two orders.
-- [x] `receipt-images` bucket IS private — confirmed live via probe (done in migration 20260528000000; audit finding was stale). ✅
-- [x] **Seller receipt images fixed** — sellerSync stores the bucket path now; display mints on-demand signed URLs (`resolveReceiptUri`), legacy public URLs auto-rescued. ⚠️ needs an on-device check. ✅
-- [ ] Verify in the live DB that the shop-takeover fix is active (strangers can't read customer name/phone).
-- [ ] Add a splash-screen image (opens blank now) + fix the clipped Android adaptive icon.
+### 🟢 Claude can do (code — just say go)
+- [ ] Order double-tap protection (idempotency) so one tap ≠ two orders.
 - [ ] Malay paywall (English-only today).
 - [ ] Visible bilingual "not financial advice" note on savings/projection screens.
-- [ ] First-run privacy-consent tap + swap the 21 bank/e-wallet logo PNGs to a generic icon (IP risk).
-- [ ] Sentry crash reporting wired before launch.
 - [ ] Biometric app-lock.
-- [ ] AI zero-retention DPAs (Anthropic/Google) + make AI opt-in.
+- [ ] Sentry crash reporting wired.
 - [ ] `console.log` cleanup + 5 hardcoded-string i18n fixes.
-- [ ] On-device run-through: paywall + every limit gate (wallet/budget/goal/scan); confirm cold-open loaders don't stick.
+- [ ] `eas.json` production submit profile (the Play service-account key is yours).
+- [ ] "Make AI opt-in" toggle (the DPAs are yours).
+- [ ] Verify in the live DB the shop-takeover fix is active (strangers can't read customer name/phone).
+
+### 🟡 Needs you (accounts / uploads / decisions)
+- [ ] **RevenueCat** — account + API keys + 5 products (App Store Connect + Play) + entitlements + native rebuild + sandbox test. *(the payment system — longest pole; enable it on launch day)*
+- [ ] App Store privacy "nutrition label" + Play Data-Safety forms (answer-sheet: `audit/STORE_DATA_DISCLOSURE.md`).
+- [ ] Confirm LIVE on jejakbaki.my: account-deletion page, Privacy Policy + Terms, and `apple-app-site-association` + `assetlinks.json`; delete-account function deployed + URL in Play Console.
+- [ ] Apple reviewer demo login + store screenshots (all sizes) + support email/URL in the listing.
+- [ ] iOS Google client ID in prod EAS + Android release SHA-1 in `google-services.json` (or Google sign-in breaks) + Google Play service-account key.
+- [ ] Splash logo art → send it, I wire it (+ fix the clipped Android adaptive icon).
+- [ ] Generic bank/e-wallet icon → send it, I swap the 21 logo PNGs (IP risk).
+- [ ] **Cloud backup:** decide — turn it on (confirm sync works) OR hide the toggle + "automatic backup" pitch.
+- [ ] AI zero-retention DPAs (Anthropic / Google).
+- [ ] **Tap-to-Pay:** finish it + declare location in Play Data-Safety + fix the privacy page (says "no location", card readers need it).
+- [ ] On-device run-through: paywall + every limit gate (wallet/budget/goal/scan); confirm cold-open loaders don't stick + seller receipts show.
 - [ ] Set `BETA_IOS_URL` / `BETA_ANDROID_URL` (or download links show "coming soon").
+
+### 🔴 Bigger builds (Claude can do, but real features)
+- [ ] **Collectz Report + Block** for users (Apple 1.2) + server-side profanity/URL filter on free-text names + EULA / objectionable-content tick at sign-up.
+- [ ] "Cancel subscription" → deep-link to Apple's manage-subscriptions page. *(pairs with RevenueCat)*
+- [ ] Server-side entitlement check so a paid tier can't be flipped on-device. *(pairs with RevenueCat)*
+
+### ✅ Cleared this session
+Redeem/rewards/invite + clipboard auto-attribution · `redeem_code` message fix · ad-tracking removed (`AD_ID` + ATT string) · `SYSTEM_ALERT_WINDOW` + `WRITE_CONTACTS` + `expo-audio` removed · Google Docs sync line + Playbook tab hidden · dev free-unlock seatbelt · `receipt-images` confirmed private · seller receipt images fixed · contacts search bug · docs synced.
 
 ---
 
