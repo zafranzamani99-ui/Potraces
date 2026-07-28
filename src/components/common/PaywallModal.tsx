@@ -191,7 +191,6 @@ const buildItems = (tier: PremiumTier, t: Translations): SpecItem[] => {
     { label: t.paywall.itemPhotoIcons, on: L.photoCategoryIcons },
     { label: t.paywall.cloudBackup, on: L.cloudBackup },
     { label: t.paywall.itemExport, on: L.exportData },
-    { label: t.paywall.itemGoogleDocs, on: L.googleDocsSync },
   ];
   // Finite counts get their own cells; unlimited counts collapse into a single full line
   // (rendered separately) so Pro/Premium stay short.
@@ -653,7 +652,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
               accessibilityRole="button"
               accessibilityLabel={t.paywall.close}
             />
-            <View style={[styles.infoCard, neu.raisedSoft]}>
+            <View style={[styles.infoCard, neu.raisedModal]}>
               {infoModal === 'business' ? (
                 <>
                   <View style={styles.infoHead}>

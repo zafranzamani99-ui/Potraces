@@ -116,8 +116,8 @@ const getPeriodDates = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
   }
 };
 
-// Playbook ships in v1.2.0. Until then the whole tab is a locked "coming soon"
-// state — no create FAB, no active/past list. Flip to false to enable the feature.
+// Playbook ships in v1.2.0. Until then the tab is HIDDEN entirely — no segment,
+// no reachable "coming soon" placeholder (App Store 2.1). Flip to false to enable.
 const PLAYBOOK_COMING_SOON = true;
 
 // ─── Component ─────────────────────────────────────────────
@@ -1371,7 +1371,8 @@ const BudgetPlanning: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.segmentRow}>
+        {!PLAYBOOK_COMING_SOON && (
+          <View style={styles.segmentRow}>
             <TouchableOpacity
               style={[styles.segmentChip, viewMode === 'budget' && styles.segmentChipActive]}
               onPress={() => { lightTap(); setViewMode('budget'); }}
@@ -1390,14 +1391,10 @@ const BudgetPlanning: React.FC = () => {
                 <Text style={[styles.segmentText, viewMode === 'playbook' && styles.segmentTextActive]}>
                   {t.budget.playbookTab}
                 </Text>
-                {PLAYBOOK_COMING_SOON && (
-                  <View style={styles.segmentSoonBadge}>
-                    <Text style={styles.segmentSoonText}>soon</Text>
-                  </View>
-                )}
               </View>
             </TouchableOpacity>
           </View>
+        )}
 
         {/* ══════════════ BUDGET VIEW ══════════════ */}
         {viewMode === 'budget' && (<>
