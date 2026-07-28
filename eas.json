@@ -42,6 +42,14 @@
       "ios": {
         "language": "en-US"
       }
+    },
+    "production": {
+      "ios": {
+        "language": "en-US"
+      },
+      "android": {
+        "track": "internal"
+      }
     }
   }
 }

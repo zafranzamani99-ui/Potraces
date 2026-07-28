@@ -2393,6 +2393,7 @@ export const ms: Translations = {
   },
 
   savings: {
+    notAdvice: 'anggaran je — bukan nasihat kewangan',
     startBuilding: 'mula menabung',
     setAside: 'simpan sedikit setiap kali — ia terkumpul',
     addSavings: 'tambah simpanan',

@@ -2421,6 +2421,7 @@ export const en = {
   },
 
   savings: {
+    notAdvice: 'estimates only — not financial advice',
     startBuilding: 'start building',
     setAside: 'set aside a little each time — it adds up',
     addSavings: 'add savings',

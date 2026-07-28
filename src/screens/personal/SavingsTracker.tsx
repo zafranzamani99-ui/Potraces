@@ -362,6 +362,11 @@ const SavingsTracker: React.FC = () => {
               </View>
             )}
 
+            {/* Finance-app disclaimer: coaching/projections are estimates, not advice. */}
+            <Text style={{ color: C.textMuted, fontSize: 11, lineHeight: 15, textAlign: 'center', paddingHorizontal: SPACING.lg, marginBottom: SPACING.sm }}>
+              {t.savings.notAdvice}
+            </Text>
+
             {/* ALLOCATION */}
             {tabBreakdown.length >= 2 && (() => {
               // Displayed integer labels are apportioned (Hamilton) so they sum to

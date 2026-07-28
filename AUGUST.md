@@ -34,13 +34,13 @@ Grouped by who does it: **🟢 Claude can do · 🟡 needs you · 🔴 bigger bu
 ### 🟢 Claude can do (code — just say go)
 - [ ] Order double-tap protection (idempotency) so one tap ≠ two orders.
 - [ ] Malay paywall (English-only today).
-- [ ] Visible bilingual "not financial advice" note on savings/projection screens.
+- [x] Bilingual "not financial advice" note — added under SavingsTracker's coaching/projections. ✅ *(Goals/Pulse can get it too if wanted)*
 - [ ] Biometric app-lock.
-- [ ] Sentry crash reporting wired.
-- [ ] `console.log` cleanup + 5 hardcoded-string i18n fixes.
-- [ ] `eas.json` production submit profile (the Play service-account key is yours).
+- [ ] Sentry crash reporting — actually **needs your Sentry DSN key** (🟡, not green).
+- [x] 5 hardcoded-string i18n fixes — already clean, lint passes. ✅ · `console.log` cleanup deferred (53 hits, mostly test/dev files — harmless in RN).
+- [x] `eas.json` production submit profile added. ✅
 - [ ] "Make AI opt-in" toggle (the DPAs are yours).
-- [ ] Verify in the live DB the shop-takeover fix is active (strangers can't read customer name/phone).
+- [x] Shop-takeover fix verified LIVE — anon denied on `seller_orders`/`seller_profiles` (customer PII safe). ✅
 
 ### 🟡 Needs you (accounts / uploads / decisions)
 - [ ] **RevenueCat** — account + API keys + 5 products (App Store Connect + Play) + entitlements + native rebuild + sandbox test. *(the payment system — longest pole; enable it on launch day)*
