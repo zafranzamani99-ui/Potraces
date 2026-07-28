@@ -40,6 +40,7 @@ import {
   stagePendingReferral,
   claimStagedReferral,
   clearPendingReferral,
+  checkClipboardReferral,
 } from '../../services/entitlements';
 import { SkyBackdrop, FlyingWau } from '../../components/common/WauScene';
 import { useNeu } from '../../components/common/neu';
@@ -852,13 +853,20 @@ const Onboarding: React.FC = () => {
   const [inviteCode, setInviteCode] = useState('');
   const prefilledCodeRef = useRef<string | null>(null);
   useEffect(() => {
-    peekPendingReferral()
-      .then((ref) => {
-        if (!ref) return;
+    (async () => {
+      const ref = await peekPendingReferral();
+      if (ref) {
+        // Deep-link / onboarding-entry referral already staged → prefill the field.
         prefilledCodeRef.current = ref.code;
         setInviteCode((cur) => cur || ref.code);
-      })
-      .catch(() => {});
+        return;
+      }
+      // Fresh install via the web "Get the app" button: no deep link fired, but the
+      // invite may be sitting in the clipboard as a POTRACES-REF token. Offer to apply
+      // it (confirm prompt + seen-key dedup live inside checkClipboardReferral); on
+      // accept it stages + claims after sign-in, same as the deep-link path.
+      await checkClipboardReferral();
+    })().catch(() => {});
   }, []);
   const setHasCompletedOnboarding = useSettingsStore((s) => s.setHasCompletedOnboarding);
   const setDefaultMode = useSettingsStore((s) => s.setDefaultMode);
