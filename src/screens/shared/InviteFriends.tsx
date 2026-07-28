@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { View, Text, TextInput, StyleSheet, Share, Alert, ActivityIndicator } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import PageScrollView from '../../components/common/PageScrollView';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import NeuButton from '../../components/common/NeuButton';
@@ -104,8 +104,10 @@ const InviteFriends: React.FC = () => {
 
   const settling = (progress?.pending ?? 0) + (progress?.qualified ?? 0);
 
+  // PageScrollView = KeyboardAwareScrollView — follows the caret, so the
+  // friend's-code field never hides behind the keyboard (CLAUDE.md scroll rule).
   return (
-    <ScrollView
+    <PageScrollView
       style={[styles.container, { backgroundColor: C.background }]}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
@@ -115,7 +117,12 @@ const InviteFriends: React.FC = () => {
       ) : (
         <>
           <Text style={styles.subtitle}>
-            {fill(t.rewards.inviteSubtitle, { days: progress.rewardDaysEach, tier: 'Pro' })}
+            {fill(t.rewards.inviteSubtitle, {
+              welcome: progress.welcomeDays,
+              batch: progress.batchSize || 3,
+              days: progress.rewardDaysEach,
+              tier: 'Pro',
+            })}
           </Text>
 
           {/* My code + share */}
@@ -146,17 +153,19 @@ const InviteFriends: React.FC = () => {
               <Text style={styles.statText}>{fill(t.rewards.daysEarned, { days: progress.daysEarned })}</Text>
             </View>
             <View style={styles.statRow}>
-              <Feather name="pie-chart" size={15} color={C.textSecondary} />
+              <Feather name="target" size={15} color={C.textSecondary} />
               <Text style={styles.statText}>
-                {fill(t.rewards.capLine, { used: progress.capUsed, cap: progress.capPerYear })}
+                {fill(t.rewards.batchLine, {
+                  have: progress.batchProgress,
+                  needed: progress.batchSize || 3,
+                  days: progress.rewardDaysEach,
+                })}
               </Text>
             </View>
             <View style={styles.statRow}>
-              <Feather name="flag" size={15} color={C.textSecondary} />
+              <Feather name="pie-chart" size={15} color={C.textSecondary} />
               <Text style={styles.statText}>
-                {progress.milestoneDone
-                  ? t.rewards.milestoneDone
-                  : fill(t.rewards.milestoneLine, { have: progress.milestoneHave, needed: progress.milestoneNeeded })}
+                {fill(t.rewards.capLine, { used: progress.capUsed, cap: progress.capPerYear })}
               </Text>
             </View>
           </View>
@@ -187,7 +196,7 @@ const InviteFriends: React.FC = () => {
           </View>
         </>
       )}
-    </ScrollView>
+    </PageScrollView>
   );
 };
 

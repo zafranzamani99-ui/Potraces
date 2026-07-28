@@ -335,14 +335,15 @@ const WalkThrough: React.FC<{ id: string; accent?: string; steps: GuideStep[] }>
   }, [dismissHint, id]);
 
   const advance = useCallback(() => {
-    setStepIndex((i) => {
-      if (i >= steps.length - 1) {
-        dismissHint(id);
-        return i;
-      }
-      return i + 1;
-    });
-  }, [steps.length, dismissHint, id]);
+    // dismissHint must NOT run inside the setStepIndex updater — React may
+    // invoke updaters during render (and twice in dev), so a zustand setState
+    // there fires "Cannot update WalkThrough while rendering WalkThrough".
+    if (stepIndex >= steps.length - 1) {
+      dismissHint(id);
+      return;
+    }
+    setStepIndex((i) => i + 1);
+  }, [stepIndex, steps.length, dismissHint, id]);
   const advanceRef = useRef(advance);
   advanceRef.current = advance;
 

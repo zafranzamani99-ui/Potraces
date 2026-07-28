@@ -6,6 +6,7 @@
  * drainQuickLogInbox() is verified manually.
  * Run: npx tsx scripts/test-quick-log-inbox.ts
  */
+import './test-storage-shim'; // MUST be first — AsyncStorage fallback for Node (see file)
 import { mapInboxRowToQuickLog, type QuickLogInboxRow } from '../src/services/quickLogInboxMap';
 import { logQuickExpense } from '../src/services/quickLog';
 import { useWalletStore } from '../src/store/walletStore';

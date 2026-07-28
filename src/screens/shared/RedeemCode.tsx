@@ -5,12 +5,12 @@
 
 import React from 'react';
 import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import PageScrollView from '../../components/common/PageScrollView';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import NeuButton from '../../components/common/NeuButton';
 import { useNeu } from '../../components/common/neu';
-import { redeemCode } from '../../services/entitlements';
+import { redeemCode, checkClipboardReferral } from '../../services/entitlements';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
@@ -24,6 +24,10 @@ const RedeemCode: React.FC = () => {
 
   const [code, setCode] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+
+  // Clipboard invite token (POTRACES-REF:…) — read HERE, on a referral surface,
+  // never at app launch (iOS fires the paste-privacy prompt on every read).
+  React.useEffect(() => { void checkClipboardReferral(); }, []);
 
   const handleRedeem = async () => {
     const input = code.trim();
@@ -62,7 +66,7 @@ const RedeemCode: React.FC = () => {
   };
 
   return (
-    <ScrollView
+    <PageScrollView
       style={[styles.container, { backgroundColor: C.background }]}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
@@ -90,7 +94,7 @@ const RedeemCode: React.FC = () => {
         onPress={handleRedeem}
         disabled={!code.trim() || busy}
       />
-    </ScrollView>
+    </PageScrollView>
   );
 };
 
