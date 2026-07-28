@@ -15,6 +15,25 @@ separately (`audit/ECHO_UNFINISHED.md`).
 
 ---
 
+## 🛠️ Pending deploy — dev AI-cap bypass (NOT launch-blocking)
+- [ ] **Deploy `ai-proxy` + set the dev-unlimited secret** (project `jngmanwvhbpkpkeklfiv`).
+      Why: heavy Echo testing hits the proxy's monthly cap (`MONTHLY_TOKEN_CAP` 1.5M /
+      `MONTHLY_CALL_CAP` 3000) → `403 {"error":"BUDGET_EXCEEDED"}` → Gemini 403s → MoneyChat
+      falls back. Local code now adds `DEV_UNLIMITED_IDENTITIES` (env allowlist) that skips the
+      cap for listed identities — **default-off, so prod stays capped**. Metering still runs.
+      Finish it:
+      ```
+      npx supabase functions deploy ai-proxy --project-ref jngmanwvhbpkpkeklfiv
+      npx supabase secrets set DEV_UNLIMITED_IDENTITIES=<your-user-uid> --project-ref jngmanwvhbpkpkeklfiv
+      ```
+      `<your-user-uid>` = Dashboard → Authentication → Users → zafranzamani99@gmail.com → User UID.
+      Use the signed-in id (server-verified); a `dev:<device-id>` entry is spoofable.
+- Quick unblock **without** deploying — reset this month's counter in the SQL editor (fine
+      pre-launch, resets everyone; don't run with real paying users):
+      `delete from ai_proxy_usage where period = to_char(now() at time zone 'utc','YYYY-MM');`
+
+---
+
 ## ✅ Done (checked & decided this session)
 - [x] **Redeem codes + invite/referral rewards + clipboard auto-attribution** — built,
       deployed to prod, smoke test passed. Live values: welcome **15d** / Collectz
