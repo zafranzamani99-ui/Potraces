@@ -272,6 +272,31 @@ export function applyAddMemory(
   return next;
 }
 
+// Match [MEMORY]{...} with an OPTIONAL [/MEMORY] — small models routinely drop
+// the closing tag, so we must NOT require it (otherwise the raw tag leaks into the
+// bubble AND the fact is never captured). `{...}` is the flat memory object.
+const MEMORY_BLOCK_RE = /\[MEMORY\]\s*(\{[\s\S]*?\})\s*(?:\[\/MEMORY\])?/gi;
+
+/**
+ * Pull [MEMORY] facts out of MODEL OUTPUT and return the reply with them removed.
+ * Tolerant of a missing closing tag. Capped at 2 per reply. Pure + node-testable.
+ */
+export function extractMemories(text: string): { cleanText: string; memories: { kind: MemoryKind; text: string }[] } {
+  const memories: { kind: MemoryKind; text: string }[] = [];
+  let cleanText = text.replace(MEMORY_BLOCK_RE, (_m, json) => {
+    if (memories.length >= 2) return '';
+    try {
+      const parsed = JSON.parse(String(json).trim());
+      const kind = parsed?.kind;
+      const t = typeof parsed?.text === 'string' ? parsed.text.trim() : '';
+      if ((MEMORY_KINDS as string[]).includes(kind) && t) memories.push({ kind, text: t.slice(0, MEMORY_TEXT_MAX) });
+    } catch { /* malformed → drop it, keep nothing */ }
+    return '';
+  });
+  cleanText = cleanText.replace(/\[\/?MEMORY\]/gi, '').trim(); // strip any leftover bare tag
+  return { cleanText, memories };
+}
+
 /** Echo's prompt block: pinned first, then most-recent, capped at MEMORY_PROMPT_LINES. */
 export function renderMemoryHints(memories: EchoMemory[]): string {
   if (memories.length === 0) return '';

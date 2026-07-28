@@ -21,6 +21,7 @@ import {
   TRUST_COUNT,
   applyAddMemory,
   renderMemoryHints,
+  extractMemories,
   MEMORY_TEXT_MAX,
   MEMORY_PROMPT_LINES,
   type EchoMemory,
@@ -122,6 +123,19 @@ many[0].pinned = true; // oldest, but pinned → must still appear
 const hints = renderMemoryHints(many);
 check('memory hints cap at MEMORY_PROMPT_LINES', hints.split('\n').filter((l) => l.startsWith('- [')).length === MEMORY_PROMPT_LINES);
 check('pinned memory appears in hints despite being oldest', hints.includes('fact 0'));
+
+// ── extractMemories: [MEMORY] parsing must tolerate a MISSING closing tag ──
+// (the exact bug — the model emitted [MEMORY]{...} with no [/MEMORY], so the tag
+//  leaked into the bubble AND nothing was captured.)
+const noClose = extractMemories('Got it — noted.\n\n[MEMORY]\n{"kind":"fact","text":"freelancer, supports parents"}');
+check('memory captured without a closing tag', noClose.memories.length === 1 && noClose.memories[0].text === 'freelancer, supports parents');
+check('tag stripped from the shown text', !noClose.cleanText.includes('[MEMORY]') && noClose.cleanText.startsWith('Got it'));
+const withClose = extractMemories('ok [MEMORY]{"kind":"goal","text":"save for house"}[/MEMORY]');
+check('memory captured WITH a closing tag', withClose.memories.length === 1 && withClose.memories[0].kind === 'goal' && withClose.cleanText === 'ok');
+check('malformed memory json is dropped (no crash)', extractMemories('hi [MEMORY]{not json').memories.length === 0);
+check('invalid kind is rejected', extractMemories('[MEMORY]{"kind":"nonsense","text":"x"}').memories.length === 0);
+check('at most 2 memories per reply', extractMemories('[MEMORY]{"kind":"fact","text":"a"} [MEMORY]{"kind":"fact","text":"b"} [MEMORY]{"kind":"fact","text":"c"}').memories.length === 2);
+check('no memory tag → text untouched', extractMemories('just a normal reply').cleanText === 'just a normal reply');
 
 if (failures.length) { console.error('FAIL:\n' + failures.join('\n')); process.exit(1); }
 console.log(`learning-notebook OK (${passed} checks)`);

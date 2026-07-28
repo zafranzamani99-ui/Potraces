@@ -11,7 +11,7 @@ import { callGeminiAPI, streamGeminiText, isGeminiAvailable, getCooldownSecondsL
 import { chatModelForTier } from './chatModel';
 import { TIER_LIMITS } from '../constants/tiers';
 import { isAiProxyConfigured } from './aiProxy';
-import { parseActions } from './chatActions';
+import { parseActions, parseMemories } from './chatActions';
 import { scrubPii } from '../utils/pii';
 import { usePremiumStore } from '../store/premiumStore';
 import { usePersonalStore } from '../store/personalStore';
@@ -1073,9 +1073,12 @@ async function _doSendChatMessage(
  * still post-processed by the screen via parseActions (chips + execution).
  */
 function _displayTextFromPartial(partial: string): string {
-  const { cleanText } = parseActions(partial);
-  // Drop a trailing, not-yet-closed action block (no [/ACTION] yet).
-  const open = cleanText.lastIndexOf('[ACTION]');
+  let { cleanText } = parseActions(partial);
+  // Also strip complete [MEMORY] facts (they're silent) — tolerant of a missing
+  // closing tag, same as the final post-process — so the tag never flashes.
+  cleanText = parseMemories(cleanText).cleanText;
+  // Drop a trailing, not-yet-closed block (no closing tag yet) of either kind.
+  const open = Math.max(cleanText.lastIndexOf('[ACTION]'), cleanText.lastIndexOf('[MEMORY]'));
   if (open !== -1) return cleanText.slice(0, open).trim();
   return cleanText;
 }

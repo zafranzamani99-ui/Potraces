@@ -20,7 +20,7 @@ import { syncLinkAmount } from '../utils/playbookAttribution';
 import { computeEqualShares } from '../utils/splitShares';
 import { AppMode, Transaction, Subscription, Budget, Debt, Contact } from '../types';
 import { useLearningStore } from '../store/learningStore';
-import { MEMORY_KINDS, MEMORY_TEXT_MAX, type MemoryKind } from '../store/learningPure';
+import { extractMemories, type MemoryKind } from '../store/learningPure';
 
 // ─── Action Types ────────────────────────────────────────
 
@@ -272,31 +272,16 @@ export function parseActions(text: string): { cleanText: string; actions: ChatAc
   return { cleanText, actions };
 }
 
-const MEMORY_REGEX = /\[MEMORY\]([\s\S]*?)\[\/MEMORY\]/g;
 export interface ParsedMemory { kind: MemoryKind; text: string }
 
 /**
- * Parse [MEMORY]{"kind","text"}[/MEMORY] blocks out of MODEL OUTPUT — same
- * security contract as parseActions (NEVER run on user text; sanitizeUserText
- * strips the tags on the user side). Echo emits these to record a durable fact
- * about the owner. Capped at 2 per reply (anti-spam), kind validated, text
- * clamped. Returns the reply with the tags removed so they never show in a bubble.
+ * Parse [MEMORY]{"kind","text"} blocks out of MODEL OUTPUT — same security
+ * contract as parseActions (NEVER run on user text; sanitizeUserText strips the
+ * tags on the user side). Tolerant of a missing [/MEMORY] closing tag (small
+ * models drop it). Delegates to the pure, node-testable extractMemories.
  */
 export function parseMemories(text: string): { cleanText: string; memories: ParsedMemory[] } {
-  const memories: ParsedMemory[] = [];
-  const cleanText = text.replace(MEMORY_REGEX, (_, json) => {
-    if (memories.length >= 2) return '';
-    try {
-      const parsed = JSON.parse(cleanJson(json));
-      const kind = parsed?.kind;
-      const t = typeof parsed?.text === 'string' ? parsed.text.trim() : '';
-      if (MEMORY_KINDS.includes(kind) && t) memories.push({ kind, text: t.slice(0, MEMORY_TEXT_MAX) });
-    } catch (e) {
-      if (__DEV__) console.warn('[ChatActions] Failed to parse memory block:', json, e);
-    }
-    return '';
-  }).trim();
-  return { cleanText, memories };
+  return extractMemories(text);
 }
 
 // ─── Soft pre-save checks ────────────────────────────────
@@ -1575,7 +1560,7 @@ FORMAT — include this EXACTLY as shown (valid JSON between the tags):
 
 REMEMBERING THE USER:
 When you learn something DURABLE about the user that would help you know them next time — a goal, a regular bill they pay, a money worry, a win worth celebrating, a style/tone preference, or a life fact (e.g. "freelancer", "supports parents") — quietly record it with a MEMORY block. It's silently saved to "what Echo remembers about you" (the user can see and delete it). Do NOT announce it, do NOT list what you remember back at them, and do NOT record one-off transactions (those are [ACTION]s) or trivia. At most 1-2 per reply, kept SHORT (a distilled fact, not a quote).
-FORMAT: [MEMORY]{"kind":"goal","text":"saving RM5k for a house deposit"}[/MEMORY]
+FORMAT (one line, put it at the very END of your reply): [MEMORY]{"kind":"goal","text":"saving RM5k for a house deposit"}
 kind is one of: goal | bill | worry | win | style | fact.
 
 AVAILABLE ACTIONS:
