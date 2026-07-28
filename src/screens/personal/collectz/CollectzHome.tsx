@@ -43,7 +43,7 @@ import {
   CollectzSession,
   CollectzParticipant,
   listMySessions,
-  getSessionWithRoster,
+  getRostersForSessions,
   computeProgress,
   countSessionsCreatedThisWeek,
   viewByShareCode,
@@ -196,19 +196,10 @@ const CollectzHome: React.FC = () => {
       const mine = await listMySessions();
       setOrganizing(mine.organizing);
       setJoined(mine.joined);
-      // Rosters for organized sessions in one pass — rows need them for the
-      // progress figure. A failed roster fetch degrades to "no progress".
-      const entries = await Promise.all(
-        mine.organizing.map(async (s) => {
-          try {
-            const { participants } = await getSessionWithRoster(s.id);
-            return [s.id, participants] as const;
-          } catch {
-            return [s.id, []] as const;
-          }
-        }),
-      );
-      setRosters(Object.fromEntries(entries));
+      // Rosters for every organized session in ONE query — rows need them for
+      // the progress figure. Batched so Home load doesn't slow down as the
+      // session count grows; a failed fetch degrades to "no progress".
+      setRosters(await getRostersForSessions(mine.organizing.map((s) => s.id)));
 
       // Joined-side: my participant rows (archive state) + progress per session
       // (the join view is the only place a participant sees full progress).

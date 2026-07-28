@@ -27,6 +27,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  *   set_team — authed roster member. Moves MYSELF into a team (null =
  *              unassign); refuses a team already holding team_size people.
  *   set_team_name — authed. Renames a team (organizer OR any roster member).
+ *   leave    — authed roster member. Undo a wrong claim / step out while still
+ *              unpaid: a self-added row is deleted, a claimed organizer name is
+ *              only freed (user_id cleared) so the roster slot survives.
  *
  * Public function (verify_jwt=false). Secrets (Deno env):
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY — auto-provided by the runtime.
@@ -68,6 +71,8 @@ interface ParticipantRow {
   reject_note: string | null;
   /** Membership gate: 'requested'/'rejected' rows are NOT roster members. */
   join_status: 'active' | 'requested' | 'rejected';
+  /** True for rows the caller created via add_self (vs an organizer pre-add). */
+  self_added: boolean;
 }
 
 /**
@@ -119,7 +124,7 @@ Deno.serve(async (req: Request) => {
   const shareCode = String(body.share_code ?? '').trim();
   const action = String(body.action ?? '').trim();
   if (!shareCode || shareCode.length > 32) return json({ error: 'share_code required' }, 400);
-  if (!['view', 'claim', 'add_self', 'set_team', 'set_team_name'].includes(action)) return json({ error: 'unknown action' }, 400);
+  if (!['view', 'claim', 'add_self', 'set_team', 'set_team_name', 'leave'].includes(action)) return json({ error: 'unknown action' }, 400);
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -173,7 +178,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: participants } = await admin
     .from('collectz_participants')
-    .select('id,name,slot,status,share_amount,user_id,team_idx,reject_note,join_status')
+    .select('id,name,slot,status,share_amount,user_id,team_idx,reject_note,join_status,self_added')
     .eq('session_id', session.id)
     .order('created_at', { ascending: true })
     .order('id', { ascending: true });
@@ -322,6 +327,24 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, team_names: names });
   }
 
+  if (action === 'leave') {
+    // Only a roster member (claimed or self-added) can leave, and only while
+    // still unpaid — a pending/confirmed/rejected row means money already moved
+    // or was reviewed, which is the organizer's to sort out. self_added rows are
+    // dropped; a claimed organizer name is only freed (user_id cleared) so the
+    // slot + name stay on the roster for the next claimant. The user_id guard on
+    // the write makes it a no-op if the row changed hands underneath us.
+    const mine = roster.find((p) => p.user_id === userId);
+    if (!mine) return json({ error: 'not_in_roster' }, 403);
+    if (mine.status !== 'unpaid') return json({ error: 'leave_failed' }, 409);
+    const q = admin.from('collectz_participants');
+    const { error } = mine.self_added
+      ? await q.delete().eq('id', mine.id).eq('user_id', userId)
+      : await q.update({ user_id: null }).eq('id', mine.id).eq('user_id', userId);
+    if (error) return json({ error: 'leave_failed' }, 500);
+    return json({ ok: true });
+  }
+
   if (roster.some((p) => p.user_id === userId)) return json({ error: 'already_joined' }, 409);
 
   if (action === 'claim') {
@@ -394,6 +417,7 @@ Deno.serve(async (req: Request) => {
       user_id: userId,
       team_idx: teamIdx,
       join_status: needsApproval ? 'requested' : 'active',
+      self_added: true,
     })
     .select('id')
     .single();

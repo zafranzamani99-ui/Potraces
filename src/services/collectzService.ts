@@ -447,6 +447,32 @@ export async function getSessionWithRoster(
   return { session: session as CollectzSession, participants: (participants ?? []) as CollectzParticipant[] };
 }
 
+/**
+ * Rosters for many of MY sessions in ONE query (owner RLS exposes all rows),
+ * keyed by session_id. Replaces N getSessionWithRoster round-trips on the Home
+ * list — every organized session's progress figure comes from a single hit, so
+ * load time no longer grows with the number of sessions. A failed fetch
+ * degrades to empty rosters (no progress), never a thrown error.
+ */
+export async function getRostersForSessions(
+  sessionIds: string[],
+): Promise<Record<string, CollectzParticipant[]>> {
+  const map: Record<string, CollectzParticipant[]> = {};
+  for (const id of sessionIds) map[id] = [];
+  if (sessionIds.length === 0) return map;
+  const { data, error } = await supabase
+    .from('collectz_participants')
+    .select('*')
+    .in('session_id', sessionIds)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
+  if (error) return map;
+  for (const row of (data ?? []) as CollectzParticipant[]) {
+    (map[row.session_id] ??= []).push(row);
+  }
+  return map;
+}
+
 // ── Roster avatars ───────────────────────────────────────────────────────────
 
 export interface CollectzProfile {
@@ -614,6 +640,7 @@ export function joinErrorMessage(code: string): string {
     case 'not_in_roster': return 'Join the session first.';
     case 'team_failed': return 'Could not change the team — try again.';
     case 'team_reserve': return 'Reserves join a team once they are playing.';
+    case 'leave_failed': return 'Could not leave — try again.';
     case 'name_invalid': return 'Enter a valid name.';
     case 'rate_limited': return t.collectz.joinRateLimited;
     default: return code;

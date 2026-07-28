@@ -59,11 +59,10 @@ import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
 import StatusChip from '../../../components/collectz/StatusChip';
 import { fmtDateTime, fmtEventRange, fmtMoney, fill, teamLabel, SOCIAL_PLATFORMS, requirementChips } from './collectzFormat';
 
-// Leave/unclaim is wired below, but the collectz-join edge function has no
-// 'leave' action yet (its whitelist stops at view/claim/add_self/set_team/
-// set_team_name, so a tap would 400 'unknown action'). Gated OFF until the
-// server half ships — flip this once collectz-join handles action:'leave'.
-const LEAVE_ENABLED = false;
+// Leave/unclaim — undo a wrong claim or step out while still unpaid. The
+// collectz-join edge function handles action:'leave' (migration 20260728000000
+// added the self_added column it needs), so this is live.
+const LEAVE_ENABLED = true;
 
 const CollectzJoin: React.FC = () => {
   const C = useCalm();
