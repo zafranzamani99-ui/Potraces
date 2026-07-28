@@ -642,7 +642,12 @@ const SellerCustomers: React.FC = () => {
   const filteredContacts = useMemo(() => {
     const term = contactSearch.trim().toLowerCase();
     if (!term) return contactsList;
-    return contactsList.filter((c) => c.name?.toLowerCase().includes(term));
+    const digits = term.replace(/\D/g, '');
+    return contactsList.filter((c) =>
+      c.name?.toLowerCase().includes(term) ||
+      (digits.length >= 3 &&
+        c.phoneNumbers?.some((p) => (p.number || '').replace(/\D/g, '').includes(digits)))
+    );
   }, [contactsList, contactSearch]);
 
   const renderContactItem = useCallback(({ item: contact }: { item: Contacts.Contact }) => {
@@ -1088,7 +1093,7 @@ const SellerCustomers: React.FC = () => {
     }
 
     // Use a simple search-based contact list modal
-    setContactsList(data.filter((c) => c.name).slice(0, 200));
+    setContactsList(data.filter((c) => c.name));
     setContactSearch('');
     setShowContactPicker(true);
   }, [derivedCustomers]);

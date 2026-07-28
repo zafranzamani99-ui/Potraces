@@ -646,7 +646,7 @@ const NewOrder: React.FC = () => {
       Alert.alert('', 'no contacts found.');
       return;
     }
-    setContactsList(filtered.slice(0, 300));
+    setContactsList(filtered);
     setContactSearch('');
     setShowContactPicker(true);
   }, []);
@@ -677,7 +677,12 @@ const NewOrder: React.FC = () => {
   const filteredContacts = useMemo(() => {
     if (!contactSearch.trim()) return contactsList;
     const q = contactSearch.trim().toLowerCase();
-    return contactsList.filter((c) => c.name?.toLowerCase().includes(q));
+    const digits = q.replace(/\D/g, '');
+    return contactsList.filter((c) =>
+      c.name?.toLowerCase().includes(q) ||
+      (digits.length >= 3 &&
+        c.phoneNumbers?.some((p) => (p.number || '').replace(/\D/g, '').includes(digits)))
+    );
   }, [contactsList, contactSearch]);
 
   // ── Render ─────────────────────────────────────────────────

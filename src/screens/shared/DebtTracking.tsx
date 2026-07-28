@@ -3262,7 +3262,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       return;
     }
     const { data } = await Contacts.getContactsAsync({
-      fields: [Contacts.Fields.PhoneNumbers],
+      fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
       sort: Contacts.SortTypes.FirstName,
     });
     const mapped: Contact[] = data
@@ -7459,9 +7459,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   />
 
                   <FlatList
-                    data={itemPhoneContacts.filter((c) =>
-                      c.name.toLowerCase().includes(itemContactSearch.toLowerCase())
-                    )}
+                    data={itemPhoneContacts.filter((c) => {
+                      const q = itemContactSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      const digits = q.replace(/\D/g, '');
+                      return c.name.toLowerCase().includes(q) ||
+                        (digits.length >= 3 && (c.phone || '').replace(/\D/g, '').includes(digits));
+                    })}
                     keyExtractor={(item) => item.id}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode="on-drag"
