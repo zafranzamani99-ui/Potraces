@@ -47,7 +47,7 @@ const SHORTCUT_READY = !SHORTCUT_URL.includes('REPLACE_ME');
 // STALE for up to an hour (bit us 2026-07-21). Bump the value on every
 // shortcut re-upload — a new query string is a new cache key, straight to origin.
 const SHORTCUT_FILE_URL = 'https://jngmanwvhbpkpkeklfiv.supabase.co/storage/v1/object/public/web/PotracesQuickLog.shortcut?v=20260721b';
-const AUTOLOG_FILE_URL = 'https://jngmanwvhbpkpkeklfiv.supabase.co/storage/v1/object/public/web/PotracesAutoLog.shortcut?v=20260724a';
+const AUTOLOG_FILE_URL = 'https://jngmanwvhbpkpkeklfiv.supabase.co/storage/v1/object/public/web/PotracesAutoLog.shortcut?v=20260729a';
 // NOTE (2026-07-21, device-verified): the `shortcuts://import-shortcut?url=…`
 // scheme REJECTS non-iCloud URLs on modern iOS ("The shortcut URL provided was
 // invalid") — since iOS 13 only icloud.com share links import by URL; signed
