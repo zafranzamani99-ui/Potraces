@@ -14,10 +14,12 @@ automation. DUAL-MODE input (2026-07-22 redesign, competitor-parity):
      by a Text action + Run Shortcut. Detected by the Amount property having no
      value (a plain string has no Amount) → split on "|" as before.
 
-Both paths converge, then the amount is resolved in up to FOUR layers
+Both paths converge, then the amount is resolved in up to FIVE layers
 (2026-07-24 rebuild — device evidence: the Amount property arrived digitless
-on current iOS, server echoed got:"", while Merchant survived): regex-clean
-the property → clean an explicit Text-action rendering of the property →
+on current iOS, server echoed got:"", while Merchant survived): Get Numbers
+from the raw Amount property (2026-07-30 — reads the number out of the typed
+currency value, bypassing the coercion that nulls it) → regex-clean the
+property → clean an explicit Text-action rendering of the property →
 decimal-pattern match on the transaction's raw text form → Ask once (Number
 keyboard). Category defaults to 'other'; the user re-categorises from the
 confirmation push. Layer 4 means a log is NEVER silently lost again.
@@ -66,6 +68,10 @@ G_MODE = new_uuid()   # transaction-vs-text input discriminator If/Otherwise
 G_AMT1 = new_uuid()   # amount layer 1 (cleaned property) If/Otherwise
 G_AMT2 = new_uuid()   # amount layer 2 (Text-action coercion) If/Otherwise
 G_AMT3 = new_uuid()   # amount layer 3 (decimal match in raw text) If/Otherwise
+G_AMT0 = new_uuid()   # amount layer 0 (Get Numbers from Input) If/Otherwise
+U_GETNUM = new_uuid()
+U_GETNUM_CLEAN = new_uuid()
+U_GETNUM_MATCH = new_uuid()
 
 # The two paths converge into these variables before the POST.
 VAR_RAWAMT = "PotracesRawAmount"
@@ -182,8 +188,8 @@ actions = [
     # Device evidence (RM3.80 @ 7-Eleven, server echoed got:""): the Amount
     # PROPERTY arrives digitless through Set Variable → Replace Text — the
     # value dies in that coercion on current iOS, while Merchant (a text
-    # property) survives fine. So the amount is resolved in four layers; the
-    # first to produce digits wins, and the last can never fail silently:
+    # property) survives fine. So the amount is resolved in five layers (layer 0
+    # below is tried FIRST); the first to produce digits wins, last never fails silently:
     #   1. regex-clean the property value (the pre-2026-07-24 behavior)
     #   2. route the property through an explicit Text action first — numbers
     #      and currency measurements render properly THERE — then clean
@@ -192,6 +198,42 @@ actions = [
     #      ("1274-7-Eleven") can never become a garbage amount
     #   4. Ask once (Number keyboard) — iOS hid the amount, the user types it.
     #      The log ALWAYS lands; silent data loss becomes impossible.
+    # ── Amount layer 0 (2026-07-30): Get Numbers from Input ──────────────────
+    # Root cause found: the Amount is a currency-TYPED value (symbol + locale
+    # format), not a plain number. Feeding it through Set Variable / Replace
+    # Text nulls it on current iOS (that's the got:"" evidence above). "Get
+    # Numbers from Input" read STRAIGHT off the raw input property — NOT
+    # VAR_RAWAMT, which is already the coerced-dead copy — pulls the number out
+    # of the typed value, which is the recipe every working Apple Pay expense
+    # shortcut uses. Guarded by a [1-9] match: Get Numbers can yield 0/empty on
+    # a genuine miss, and this guarantees such a miss falls through to layers
+    # 1-4 (→ Ask) instead of silently posting RM0. Tried first; if it lands the
+    # amount we're done, otherwise behaviour is identical to before.
+    action("is.workflow.actions.detect.number", {
+        "UUID": U_GETNUM,
+        "WFInput": token_attachment(input_prop("Amount")),
+    }),
+    action("is.workflow.actions.text.replace", {
+        "UUID": U_GETNUM_CLEAN,
+        "WFInput": token_attachment(out_ref(U_GETNUM, "Number")),
+        "WFReplaceTextFind": "[^0-9.]",
+        "WFReplaceTextReplace": "",
+        "WFReplaceTextRegularExpression": True,
+    }),
+    action("is.workflow.actions.text.match", {
+        "UUID": U_GETNUM_MATCH,
+        "WFMatchText": token_attachment(out_ref(U_GETNUM_CLEAN, "Updated Text")),
+        "WFMatchTextPattern": "[1-9]",
+        "WFMatchTextCaseSensitive": False,
+    }),
+    action("is.workflow.actions.conditional", {
+        "GroupingIdentifier": G_AMT0,
+        "WFControlFlowMode": 0,
+        "WFCondition": 100,  # a non-zero digit exists → a real amount came through
+        "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_GETNUM_MATCH, "Matches"))},
+    }),
+    set_var(VAR_FINALAMT, out_ref(U_GETNUM_CLEAN, "Updated Text")),
+    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT0, "WFControlFlowMode": 1}),
     action("is.workflow.actions.text.replace", {
         "UUID": U_CLEAN1,
         "WFInput": token_attachment(var_ref(VAR_RAWAMT)),
@@ -255,6 +297,7 @@ actions = [
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT3, "WFControlFlowMode": 2}),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT2, "WFControlFlowMode": 2}),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT1, "WFControlFlowMode": 2}),
+    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT0, "WFControlFlowMode": 2}),
     # Key from the file the Back Tap flow saved (no picker, no error if missing).
     action("is.workflow.actions.documentpicker.open", {
         "UUID": U_KEY,
