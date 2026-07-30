@@ -301,5 +301,40 @@ export const family: Persona = {
       year: new Date().getFullYear(),
       items: [{ name: 'RON95 — 43.90L @ RM2.05', amount: 90.0 }],
     });
+
+    // ─── Echo's notebook — shortcuts Echo learned + what it remembers ──────
+    // Trusted category rules (count ≥ 2 → "knows you")
+    c.learnCategory('tadika', 'education', 3);
+    c.learnCategory('petronas', 'transport', 3);
+    c.learnCategory('guardian', 'health', 2);
+    c.learnCategory('jaya grocer', 'shopping', 2);
+    c.learnCategory('lampin', 'family', 2);
+    // Still learning (count 1)
+    c.learnCategory('mcd', 'food', 1);
+    c.learnCategory('watsons', 'health', 1);
+    // Which wallet a keyword is usually paid from
+    c.learnWallet('groceries', 'Maybank Joint Account', 2);
+    c.learnWallet('tadika', 'Maybank Joint Account', 2);
+    c.learnWallet('minyak', 'Maybank Visa', 1);
+    // People Echo learned to recognise
+    c.learnPerson('abang', 'Suami', 2);
+    c.learnPerson('kakak', 'Kakak (anak sulung)', 1);
+    c.learnPerson('adik', 'Adik (anak kedua)', 1);
+    // Type corrections (salary + tuition side income are income)
+    c.learnType('gaji', 'income', 2);
+    c.learnType('tuition', 'income', 2);
+    c.learnType('bonus', 'income', 1);
+    // Keywords Echo learned to skip (joint-account internal moves)
+    c.learnSkip('transfer', 2);
+    c.learnSkip('joint', 1);
+    // Durable memories — what Echo carries into every chat
+    c.memory({ kind: 'goal', text: "Saving for the kids' education via SSPN", source: 'you', pinned: true });
+    c.memory({ kind: 'goal', text: 'Planning a family umrah trip', source: 'you' });
+    c.memory({ kind: 'bill', text: 'Home mortgage in Cheras — 7.5 years into a 30-year loan', source: 'echo' });
+    c.memory({ kind: 'bill', text: 'Eldest child in tadika; second still in diapers', source: 'echo' });
+    c.memory({ kind: 'win', text: 'Part-time evening tuition brings in extra household income', source: 'echo' });
+    c.memory({ kind: 'fact', text: 'Shares household expenses with husband via a joint account', source: 'echo' });
+    c.memory({ kind: 'worry', text: 'Big commitments — mortgage, car loan, and two young kids', source: 'echo' });
+    c.memory({ kind: 'style', text: 'Busy working mum — keep advice concise and family-focused', source: 'you' });
   },
 };

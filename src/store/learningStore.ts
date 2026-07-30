@@ -25,7 +25,7 @@ import {
 
 // Re-export so existing imports from the store keep working, and the Notebook
 // screen can share the trust threshold.
-export { TRUST_COUNT, normalizeKeyword, MEMORY_KINDS } from './learningPure';
+export { TRUST_COUNT, normalizeKeyword, MEMORY_KINDS, inferMemoryKind } from './learningPure';
 export type { CategoryPattern, PersonAlias, WalletPreference, TypeCorrection, EchoMemory, MemoryKind } from './learningPure';
 
 interface LearningState {

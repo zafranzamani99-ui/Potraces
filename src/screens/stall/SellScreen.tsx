@@ -11,6 +11,7 @@ import {
   Pressable,
   Keyboard,
   Modal,
+  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -87,7 +88,7 @@ const SellScreen: React.FC = () => {
   // (47.8% was exactly half → the gap tipped the 2nd tile onto its own row).
   const productTileWidth = gridColumns === 4 ? '23%' : gridColumns === 3 ? '31%' : '47%';
   const {
-    products, getActiveSession, addSale, quickSale, addCustomSale,
+    products, getActiveSession, resumeSession, addSale, quickSale, addCustomSale,
     updateSale, removeSale, restockProduct, setSessionDefaultPayment, addProduct,
     regularCustomers, recordVisit, loyalty, setClearance, categories,
   } = useStallStore();
@@ -227,6 +228,17 @@ const SellScreen: React.FC = () => {
   const [modifierProduct, setModifierProduct] = useState<StallProduct | null>(null);
 
   const session = getActiveSession();
+  // Block-and-prompt when the session is paused (bug 6f). Reads fresh store state
+  // on each call, so it stays correct even inside memoized sale handlers.
+  const promptResumeIfPaused = useCallback(() => {
+    const s = getActiveSession();
+    if (!s?.paused) return false;
+    Alert.alert(t.stall.stallPausedTitle, t.stall.resumeToSellPrompt, [
+      { text: t.common.cancel, style: 'cancel' },
+      { text: t.stall.resumeSession, onPress: () => resumeSession() },
+    ]);
+    return true;
+  }, [getActiveSession, resumeSession, t]);
   const defaultPayment: 'cash' | 'qr' = session?.defaultPayment || 'cash';
   const clearance = session?.clearancePercent || 0;
   const priceOf = useCallback(
@@ -455,6 +467,7 @@ const SellScreen: React.FC = () => {
   const handleCheckout = useCallback(
     (method: 'cash' | 'qr' | 'card', pspTransactionId?: string) => {
       if (cart.length === 0 || !session) return;
+      if (promptResumeIfPaused()) return;
 
       // Distribute discount proportionally across items
       const discountRatio = subtotal > 0 && discountAmount > 0 ? discountAmount / subtotal : 0;
@@ -482,7 +495,7 @@ const SellScreen: React.FC = () => {
       recordServingVisit();
       showToast(t.stall.saleRecorded, 'success');
     },
-    [cart, session, addSale, collapseCart, showToast, subtotal, discountAmount, t, servingCustomerId, recordServingVisit],
+    [cart, session, addSale, collapseCart, showToast, subtotal, discountAmount, t, servingCustomerId, recordServingVisit, promptResumeIfPaused],
   );
   const guardedCheckout = useSubmitGuard(handleCheckout);
 
@@ -572,6 +585,7 @@ const SellScreen: React.FC = () => {
   // ── Tile press dispatcher: modifier chooser, else quick/cart ──
   const handleTilePress = useCallback(
     (product: StallProduct) => {
+      if (promptResumeIfPaused()) return;
       if (product.modifiers && product.modifiers.length > 0) {
         setModifierProduct(product);
         return;
@@ -579,7 +593,7 @@ const SellScreen: React.FC = () => {
       if (mode === 'quick') handleQuickSale(product);
       else addToCart(product.id);
     },
-    [mode, handleQuickSale, addToCart],
+    [mode, handleQuickSale, addToCart, promptResumeIfPaused],
   );
 
   // ── Flip the session default payment (quick mode) ──
@@ -616,7 +630,7 @@ const SellScreen: React.FC = () => {
     setCustomLabel('');
     setCustomSaveProduct(false);
     setCustomVisible(true);
-  }, [session]);
+  }, [session, promptResumeIfPaused]);
 
   // Record the custom sale (shared by cash/qr and the post-charge card path).
   const finishCustomSale = useCallback((amt: number, label: string, save: boolean, pspTransactionId?: string) => {

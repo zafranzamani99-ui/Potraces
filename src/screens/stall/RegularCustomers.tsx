@@ -22,6 +22,7 @@ import NewstInput, { newstOutline } from '../../components/business/NewstInput';
 import { useNeu } from '../../components/common/neu';
 import NeuIconButton from '../../components/common/NeuIconButton';
 import NeuButton from '../../components/common/NeuButton';
+import PullRefresh from '../../components/common/PullRefresh';
 
 const RegularCustomers: React.FC = () => {
   const C = useCalm();
@@ -43,6 +44,8 @@ const RegularCustomers: React.FC = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 600); }, []);
 
   // Loyalty config (optional)
   const [loyaltyEvery, setLoyaltyEvery] = useState(loyalty.everyN ? String(loyalty.everyN) : '');
@@ -383,20 +386,23 @@ const RegularCustomers: React.FC = () => {
         style={styles.keyboardView}
         behavior="padding"
       >
-        <FlatList
-          data={regularCustomers}
-          renderItem={renderCustomer}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
-          ListHeaderComponent={renderHeader()}
-          ListEmptyComponent={renderEmpty}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          removeClippedSubviews
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          initialNumToRender={10}
-        />
+        <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+          <FlatList
+            data={regularCustomers}
+            renderItem={renderCustomer}
+            keyExtractor={(item) => item.id}
+            style={styles.list}
+            contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
+            ListHeaderComponent={renderHeader()}
+            ListEmptyComponent={renderEmpty}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            removeClippedSubviews
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            initialNumToRender={10}
+          />
+        </PullRefresh>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -408,6 +414,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
   },
   keyboardView: {
+    flex: 1,
+  },
+  list: {
     flex: 1,
   },
 

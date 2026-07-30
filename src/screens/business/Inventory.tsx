@@ -27,6 +27,7 @@ import CategoryIcon from '../../components/common/CategoryIcon';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import PullRefresh from '../../components/common/PullRefresh';
 
 const Inventory: React.FC = () => {
   const C = useCalm();
@@ -49,6 +50,12 @@ const Inventory: React.FC = () => {
   const [category, setCategory] = useState(PRODUCT_CATEGORIES[0].id);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   const availableCategories = useMemo(() => {
     const usedIds = new Set(products.map((p) => p.category));
@@ -190,6 +197,7 @@ const Inventory: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
@@ -387,6 +395,7 @@ const Inventory: React.FC = () => {
           />
         )}
       </ScrollView>
+      </PullRefresh>
 
       <FAB
         onPress={() => {

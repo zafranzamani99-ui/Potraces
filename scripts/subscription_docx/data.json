@@ -9,7 +9,7 @@
         "priceYearly": "n/a",
         "yearlyPerMonth": "n/a",
         "discount": "none",
-        "oneLineWhoItsFor": "The capped baseline: tight count caps (7 wallets, 5 budgets, 3 savings/goals/shared-subs) and low metered use (15 scans/mo, 30 AI calls/mo, 50 saved chat bubbles that lock when exceeded); no cloud backup, no Ask-Echo-per-screen."
+        "oneLineWhoItsFor": "The capped baseline: tight count caps (7 wallets, 6 budgets, 3 savings/goals/shared-subs) and low metered use (15 scans/mo, 30 AI calls/mo, 50 saved chat bubbles that lock when exceeded); no cloud backup, no Ask-Echo-per-screen."
       },
       {
         "id": "basic",
@@ -111,11 +111,11 @@
         "key": "maxBudgets",
         "plainLabel": "Budgets",
         "unit": "budgets",
-        "free": "5",
+        "free": "6",
         "basic": "10",
         "pro": "Unlimited",
         "premium": "Unlimited",
-        "notes": "tiers.ts:54,64,74,84. Concurrent count cap, no reset."
+        "notes": "tiers.ts:62,75,88,101. Concurrent count cap, no reset. Free bumped 5→6 on 2026-07-29 so the echo-plan's default categories land before the paywall."
       },
       {
         "key": "maxSavingsAccounts",
@@ -291,7 +291,7 @@
     ]
   },
   "echo": {
-    "whatIsEcho": "Echo is Potraces's built-in AI assistant — a Gemini-powered chat \"friend\" that can see all the user's financial data (spending, wallets, debts, goals, subscriptions, playbooks, savings) and answer money questions in a calm, non-judgmental, Malaysian tone. It can also PREPARE money entries (expenses, income, debts, splits, transfers, etc.) as tap-to-confirm chips, but it never saves anything itself — the owner must tap to confirm. Source: src/services/moneyChat.ts:1-7 (module header \"Echo — Gemini-powered conversational AI\"), :38-39 (system prompt \"You are Echo, the AI inside Potraces\"), :66-74 (confirmation model — Echo cannot save/edit/delete on its own).",
+    "whatIsEcho": "Echo is Potraces's built-in AI assistant — a Gemini-powered chat \"friend\" that can see all the user's financial data (spending, wallets, debts, goals, subscriptions, playbooks, savings) and answer money questions in a calm, non-judgmental, Malaysian tone. It can also PREPARE money entries (expenses, income, debts, splits, transfers, etc.) as tap-to-confirm chips, but it never saves anything itself — the owner must tap to confirm. Source: src/services/moneyChat.ts:1-7 (module header \"Echo — Gemini-powered conversational AI\"), :38-39 (system prompt \"You are Echo, the AI inside Potraces\"), :66-74 (confirmation model — Echo cannot save/edit/delete on its own). Echo can also ANSWER with rich data CARDS — a visual card showing the exact figures for a money question (spending, wallet balance, bills, subscriptions, debts, goals, savings, budgets, net worth, biggest spends, top merchants, and more). The AI only chooses WHICH card fits the question; the app fills every number from the user's own data (never the AI), so the figures are always accurate — this is free on ALL tiers, not gated. Source: src/services/echoCards/* (parse/builders/select/fillCards) + src/components/common/EchoCardView.tsx, attached in MoneyChat.tsx processResponse.",
     "whereUsed": [
       "Dedicated Money Chat screen — src/screens/personal/MoneyChat.tsx (the free entry point to Echo)",
       "Floating olive 'zap' Echo FAB button + its greeting bubble — src/components/wallet/EchoFab.tsx:169-217. Rendered on 5 screens: BudgetPlanning, FinancialPulse, SavingsTracker, SubscriptionList, WalletManagement (grep of EchoFab usages).",
@@ -414,7 +414,7 @@
       },
       {
         "topic": "What free users actually get",
-        "detail": "Free tier caps: 7 wallets, 5 budgets, 3 savings accounts, 3 goals, 3 shared subscriptions, 15 receipt scans/month, 30 AI chat calls/month, and NO cloud backup, NO 'Ask Echo' AI on screens, NO photo category icons (src/constants/tiers.ts:52-61). The scan and AI monthly counters reset at the start of each calendar month (src/store/premiumStore.ts:57-89)."
+        "detail": "Free tier caps: 7 wallets, 6 budgets, 3 savings accounts, 3 goals, 3 shared subscriptions, 15 receipt scans/month, 30 AI chat calls/month, and NO cloud backup, NO 'Ask Echo' AI on screens, NO photo category icons (src/constants/tiers.ts:60-71). The scan and AI monthly counters reset at the start of each calendar month (src/store/premiumStore.ts:57-89)."
       },
       {
         "topic": "Scans and AI stay capped even on Premium (margin protection)",
@@ -500,10 +500,10 @@
       "file": "src/screens/personal/BudgetPlanning.tsx",
       "hasLimit": true,
       "limitedResource": "Number of budget categories (maxBudgets). Also a secondary AI/Echo entitlement gate (askEchoPerScreen).",
-      "freeLimit": "5 budgets on the free tier (src/constants/tiers.ts:54 maxBudgets: 5). Basic = 10, Pro/Premium = unlimited. Free tier also has askEchoPerScreen: false (tiers.ts:60), so the per-screen Ask-Echo button is gated for free users.",
+      "freeLimit": "6 budgets on the free tier (src/constants/tiers.ts:62 maxBudgets: 6). Basic = 10, Pro/Premium = unlimited. Free tier also has askEchoPerScreen: false (tiers.ts:60), so the per-screen Ask-Echo button is gated for free users.",
       "afterLimitBehavior": "Hard-blocked. Once budgets.length reaches the tier cap, openAddModal (BudgetPlanning.tsx:648-655) short-circuits: canCreateBudget(budgets.length) returns false, so it calls setPaywallVisible(true) and returns WITHOUT opening the add/edit sheet. The user cannot create the 6th budget on free without upgrading; only the PaywallModal (feature=\"budget\", currentUsage=budgets.length, line 2441-2446) is shown. The Echo AI button behaves the same way: setEchoPaywallVisible(true) with no fallback action for free users.",
       "hardOrSoft": "hard",
-      "whenPaywallShows": "On tapping the add-budget action once at/over the cap (5 budgets free); separately on tapping the header Echo zap button on the free tier.",
+      "whenPaywallShows": "On tapping the add-budget action once at/over the cap (6 budgets free); separately on tapping the header Echo zap button on the free tier.",
       "usesEcho": true,
       "notes": "Two PaywallModal instances on this screen: feature=\"budget\" (paywallVisible, line 2441) gated by canCreateBudget → canCreate(tier,'maxBudgets',count) in premiumStore.ts:93; and feature=\"ai\" (echoPaywallVisible, line 2449) gated by TIER_LIMITS[tier].askEchoPerScreen (checked at line 1260). Imports PaywallModal (line 62), usePremiumStore (67), TIER_LIMITS (56). Echo/AI is used heavily: buildBudgetSnapshot (968) + handleAskEcho (1026) navigate to MoneyChat with a budget-context snapshot; there are psychology-based suggestedPrompts chips (794) and greeting chips. Playbook sub-feature is disabled behind PLAYBOOK_COMING_SOON=true (line 119); its separate limits (maxActivePlaybooks 2, maxSavedPlaybooks 5) are enforced via showToast, not PaywallModal, and are not currently reachable."
     },

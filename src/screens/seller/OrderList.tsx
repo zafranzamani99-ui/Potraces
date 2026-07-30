@@ -12,7 +12,6 @@ import {
   TextInput,
   Platform,
   AppState,
-  RefreshControl,
   Keyboard,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
@@ -31,6 +30,7 @@ import { useNetInfo } from '@react-native-community/netinfo';
 import TapToPaySheet from '../../components/common/TapToPaySheet';
 import QrPaySheet from '../../components/common/QrPaySheet';
 import PendingPaymentsBanner from '../../components/common/PendingPaymentsBanner';
+import PullRefresh from '../../components/common/PullRefresh';
 import { tapToPayAvailable } from '../../services/tapToPay';
 import { qrProviderConfigured, createQrCharge } from '../../services/qrProvider';
 import { resolvePendingPayments } from '../../services/qrPaymentResolver';
@@ -2095,20 +2095,21 @@ const OrderList: React.FC = () => {
       <PendingPaymentsBanner />
 
       {/* ─── Order list ─── */}
-      <FlatList
-        data={(viewMode === 'grouped' ? groupedData : filteredOrders) as any[]}
-        renderItem={viewMode === 'grouped' ? renderGroup as any : renderOrder}
-        keyExtractor={listKeyExtractor}
-        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
-        ListEmptyComponent={listEmptyComponent}
-        removeClippedSubviews
-        windowSize={5}
-        maxToRenderPerBatch={8}
-        initialNumToRender={10}
-        keyboardShouldPersistTaps="handled"
-        onScrollBeginDrag={Keyboard.dismiss}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze} colors={[C.bronze]} />}
-      />
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+        <FlatList
+          data={(viewMode === 'grouped' ? groupedData : filteredOrders) as any[]}
+          renderItem={viewMode === 'grouped' ? renderGroup as any : renderOrder}
+          keyExtractor={listKeyExtractor}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 }]}
+          ListEmptyComponent={listEmptyComponent}
+          removeClippedSubviews
+          windowSize={5}
+          maxToRenderPerBatch={8}
+          initialNumToRender={10}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={Keyboard.dismiss}
+        />
+      </PullRefresh>
 
       {/* ─── Bulk select floating bar ─── */}
       {selectMode && (

@@ -59,7 +59,10 @@ export interface TierLimits {
 export const TIER_LIMITS: Record<PremiumTier, TierLimits> = {
   free: {
     maxWallets: 7, maxWalletsPerType: 2,
-    maxBudgets: 5, maxSavingsAccounts: 3, maxGoals: 3, maxSharedSubs: 3,
+    // Free budgets bumped 5→6 (owner 2026-07-29): the "echo plan" typically suggests
+    // ~6 categories, so a free user hitting the cap on the plan's own output felt like
+    // a bait-and-switch. 6 lets the default plan land before the upsell kicks in.
+    maxBudgets: 6, maxSavingsAccounts: 3, maxGoals: 3, maxSharedSubs: 3,
     maxActivePlaybooks: 2, maxSavedPlaybooks: 5,
     maxCollectzSessionsPerWeek: 2,
     maxBusinessProfiles: 1,

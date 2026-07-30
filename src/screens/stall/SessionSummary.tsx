@@ -313,8 +313,13 @@ const SessionSummary: React.FC = () => {
             )}
             <View style={[styles.keptRow, styles.keptRowFinal]}>
               <Text style={styles.keptFinalLabel}>{t.stall.keptRow}</Text>
-              <Text style={styles.keptFinalValue}>{currency} {econ.kept.toFixed(2)}</Text>
+              <Text style={styles.keptFinalValue}>{econ.keptIsApprox ? '~' : ''}{currency} {econ.kept.toFixed(2)}</Text>
             </View>
+            {econ.keptIsApprox && (
+              <Text style={{ fontSize: 11, color: C.textMuted, textAlign: 'right', marginTop: 4, fontStyle: 'italic' }}>
+                {t.stall.keptApproxNote}
+              </Text>
+            )}
           </View>
         )}
 

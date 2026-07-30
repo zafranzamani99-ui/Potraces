@@ -21,8 +21,8 @@ import {
   STARTER_SPLIT,
 } from './budgetReality';
 import { proposeAndReview } from './planner';
-import { recommendModel, getModel } from './budgetModels';
-import type { BudgetModelId, CommitmentInput } from './budgetModels';
+import { recommendModel, modelLabel, modelWhy } from './budgetModels';
+import type { BudgetModelId, CommitmentInput, Lang } from './budgetModels';
 import type { Objection } from './critic';
 import type { RealityCheck } from '../constants/myEconomics';
 
@@ -71,17 +71,20 @@ export interface BudgetPlanInput {
   asOf: Date;
   /** optional model override; omitted → Echo's recommendation. */
   modelId?: BudgetModelId;
+  /** UI language for the model name, recommendation pitch, and critic notes (default 'en'). */
+  language?: Lang;
 }
 
 export function computeBudgetPlan(inp: BudgetPlanInput): BudgetPlan {
-  const { takeHomeIncome, commitments, txns, debts, wallets, asOf, modelId } = inp;
+  const { takeHomeIncome, commitments, txns, debts, wallets, asOf, modelId, language } = inp;
+  const lang: Lang = language ?? 'en';
   const stores = { txns, debts, wallets, asOf };
   const input = buildTailorInput(stores, { takeHomeIncome, commitments });
   const reality = buildUserReality(stores);
 
-  const rec = recommendModel(input);
+  const rec = recommendModel(input, lang);
   const chosen = modelId ?? rec.id;
-  const reviewed = proposeAndReview(input, reality, chosen);
+  const reviewed = proposeAndReview(input, reality, chosen, lang);
   const plan = reviewed.plan;
 
   // Per-category spending budgets — engine's split if it has one, else a guaranteed starter
@@ -117,8 +120,8 @@ export function computeBudgetPlan(inp: BudgetPlanInput): BudgetPlan {
 
   return {
     modelId: chosen,
-    modelLabel: getModel(chosen).label,
-    reason: chosen === rec.id ? rec.why : getModel(chosen).why,
+    modelLabel: modelLabel(chosen, lang),
+    reason: chosen === rec.id ? rec.why : modelWhy(chosen, lang),
     recommendedId: rec.id,
     runnerUpId: rec.runnerUp ? rec.runnerUp.id : null,
     takeHomeIncome: input.takeHomeIncome,

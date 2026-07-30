@@ -20,6 +20,8 @@ import { useNotesStore } from '../../store/notesStore';
 import { useReceiptStore } from '../../store/receiptStore';
 import { useBudgetProfileStore } from '../../store/budgetProfileStore';
 import { usePendingPaymentsStore } from '../../store/pendingPaymentsStore';
+import { useLearningStore } from '../../store/learningStore';
+import { TRUST_COUNT } from '../../store/learningPure';
 import { roundMoney } from '../money';
 
 import { DEFAULT_SAMPLE_BRACKET, type Persona, type SampleBracket, type SeedContext } from './core';
@@ -76,6 +78,7 @@ export function seedPersona(bracket: SampleBracket = DEFAULT_SAMPLE_BRACKET): { 
   const savingsStore = useSavingsStore.getState();
   const notesStore = useNotesStore.getState();
   const receiptStore = useReceiptStore.getState();
+  const learningStore = useLearningStore.getState();
 
   const refToId = new Map<string, string>();
   const seededWalletIds: string[] = [];
@@ -140,6 +143,30 @@ export function seedPersona(bracket: SampleBracket = DEFAULT_SAMPLE_BRACKET): { 
       commitments.forEach((cmt, i) =>
         bp.upsertCommitment({ id: `seed-commit-${i}`, label: cmt.label, monthly: cmt.monthly }),
       );
+    },
+    // ─── Echo's notebook — all append/upsert (never resets a real notebook) ──
+    // category/wallet take an exact startCount; person/type/skip have no
+    // startCount param in the store, so repeat the call `count` times to build it.
+    learnCategory: (keyword, category, count = TRUST_COUNT) => learningStore.learnCategory(keyword, category, count),
+    learnWallet: (keyword, wallet, count = TRUST_COUNT) => learningStore.learnWallet(keyword, wallet, count),
+    learnPerson: (raw, preferred, count = 2) => {
+      for (let i = 0; i < Math.max(1, count); i++) learningStore.learnPersonAlias(raw, preferred);
+    },
+    learnType: (keyword, toType, count = 1) => {
+      for (let i = 0; i < Math.max(1, count); i++) learningStore.learnTypeCorrection(keyword, toType);
+    },
+    learnSkip: (keyword, times = 1) => {
+      for (let i = 0; i < Math.max(1, times); i++) learningStore.learnSkip(keyword);
+    },
+    memory: ({ kind, text, source, pinned }) => {
+      // Unbounded cap while seeding so appending demo memories never evicts a
+      // real user's existing ones — the tier cap re-applies on the next real add.
+      learningStore.addMemory({ kind, text, source }, Number.MAX_SAFE_INTEGER);
+      if (pinned) {
+        const stored = text.trim().slice(0, 140);
+        const m = useLearningStore.getState().memories.find((x) => x.kind === kind && x.text === stored);
+        if (m) learningStore.setMemoryPinned(m.id, true);
+      }
     },
   };
 

@@ -24,6 +24,7 @@ import PaywallModal from '../../components/common/PaywallModal';
 import HowItWorksModal, { HowItWorksSection } from '../../components/common/HowItWorksModal';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import ScreenGuide from '../../components/common/ScreenGuide';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useToast } from '../../context/ToastContext';
 import { useCategories } from '../../hooks/useCategories';
 import { useT } from '../../i18n';
@@ -101,6 +102,11 @@ const SavingsTracker: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('ALL');
   const [tab, setTab] = useState<Tab>('savings');
   const [ready, setReady] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Synced-store screen — reading the Zustand stores re-renders on their own; the
+  // timeout just holds the branded spinner open long enough to read as a real refresh.
+  const onRefresh = useCallback(() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 600); }, []);
 
   // sheets
   const [addEditOpen, setAddEditOpen] = useState(false);
@@ -289,6 +295,7 @@ const SavingsTracker: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {!ready && <View style={styles.loading}><Text style={styles.muted}>{t.savings.loading}</Text></View>}
 
@@ -430,6 +437,7 @@ const SavingsTracker: React.FC = () => {
           </>
         )}
       </ScrollView>
+      </PullRefresh>
 
       {showBar && !atAccountCap && <FAB icon="plus" onPress={openAdd} accessibilityLabel={t.savings.addAccount} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}
       {showBar && atAccountCap && <FAB icon="lock" onPress={showAccountPaywall} accessibilityLabel={t.savings.unlockUnlimited} style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), right: SPACING.xl }} />}

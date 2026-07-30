@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   PanResponder,
   useWindowDimensions,
+  Keyboard,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -27,8 +28,14 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
 import { sendChatMessage } from '../../services/moneyChat';
+import { parseActions, parseMemories } from '../../services/chatActions';
+import { parseCards } from '../../services/echoCards/parse';
+import { fillCards } from '../../services/echoCards/fillCards';
+import { cleanReply } from '../../services/critic';
+import EchoCardView from './EchoCardView';
 import { useEchoInlineStore } from '../../store/echoInlineStore';
 import type { AIMessage } from '../../types';
+import type { EchoCard } from '../../services/echoCards/types';
 import type { ChatAction } from '../../services/chatActions';
 
 export interface EchoChip {
@@ -55,7 +62,7 @@ interface Props {
   autoPrompt?: string;
 }
 
-type Msg = { role: 'user' | 'assistant'; content: string; pending?: boolean };
+type Msg = { role: 'user' | 'assistant'; content: string; pending?: boolean; cards?: EchoCard[] };
 
 // Stable empty ref for the store selector (avoids re-renders on untouched threads).
 const EMPTY_THREAD: Msg[] = [];
@@ -194,6 +201,7 @@ const EchoInlineChat: React.FC<Props> = ({
       if (!text || sending) return;
 
       lightTap();
+      Keyboard.dismiss(); // close the keyboard on send
       setInput('');
 
       const isFirst = messages.length === 0;
@@ -217,7 +225,15 @@ const EchoInlineChat: React.FC<Props> = ({
         setMessages((prev) => {
           const next = prev.slice(0, -1);
           if (result.ok) {
-            return [...next, { role: 'assistant', content: result.text }];
+            // sendChatMessage returns RAW text with [ACTION]/[MEMORY]/[CARD] tags
+            // intact — strip them all (this surface used to leak them), then attach
+            // any filled card (numbers from the stores, not the model).
+            const afterActions = parseActions(result.text).cleanText;
+            const afterMemory = parseMemories(afterActions).cleanText;
+            const { cleanText, specs } = parseCards(afterMemory);
+            const displayText = cleanReply(cleanText);
+            const cards = fillCards(specs, text, false);
+            return [...next, { role: 'assistant', content: displayText, cards: cards.length ? cards : undefined }];
           }
           return [...next, { role: 'assistant', content: `⚠️ ${result.error}` }];
         });
@@ -260,8 +276,15 @@ const EchoInlineChat: React.FC<Props> = ({
               <ActivityIndicator size="small" color={C.accent} />
             </View>
           ) : (
-            <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
-              <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>{item.content}</Text>
+            <View style={styles.assistantCol}>
+              {!!item.content && (
+                <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
+                  <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>{item.content}</Text>
+                </View>
+              )}
+              {item.cards?.map((card, i) => (
+                <EchoCardView key={`card-${i}`} card={card} />
+              ))}
             </View>
           )}
         </View>
@@ -508,6 +531,10 @@ const makeStyles = (C: typeof CALM) =>
     },
     bubbleRowAssistant: {
       justifyContent: 'flex-start',
+    },
+    assistantCol: {
+      width: '100%',
+      alignItems: 'flex-start',
     },
     bubble: {
       maxWidth: '82%',

@@ -38,6 +38,7 @@ import CategoryIcon from '../../components/common/CategoryIcon';
 import FAB from '../../components/common/FAB';
 import EmptyState from '../../components/common/EmptyState';
 import PaywallModal from '../../components/common/PaywallModal';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { lightTap } from '../../services/haptics';
@@ -312,6 +313,14 @@ const WalletManagement: React.FC = () => {
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => setListReady(true));
     return () => task.cancel();
+  }, []);
+
+  // Pull-to-refresh — the wallet data comes from synced Zustand stores that
+  // re-render on their own; the timeout just holds the spinner briefly.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
   }, []);
 
   // Form state
@@ -1419,6 +1428,7 @@ const WalletManagement: React.FC = () => {
 
   return (
     <View style={styles.screen}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
@@ -1577,6 +1587,7 @@ const WalletManagement: React.FC = () => {
           </View>
         )}
       </ScrollView>
+      </PullRefresh>
 
       {/* FAB — matches DebtTracking / BudgetPlanning pattern */}
       <FAB

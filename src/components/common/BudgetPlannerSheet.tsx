@@ -16,7 +16,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import BottomSheet from './BottomSheet';
 import CategoryIcon from './CategoryIcon';
-import PaywallModal from './PaywallModal';
 import { CALM, CALM_DARK, SPACING, RADIUS, TYPOGRAPHY, withAlpha, SHADOWS } from '../../constants';
 import { remainingOf } from '../../constants/premium';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
@@ -30,13 +29,17 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useBudgetProfileStore } from '../../store/budgetProfileStore';
 import { lightTap, mediumTap } from '../../services/haptics';
 import { computeBudgetPlan, derivedMonthlyIncome, BudgetPlan } from '../../services/budgetPlan';
-import { BUDGET_MODELS, BudgetModelId } from '../../services/budgetModels';
+import { BUDGET_MODELS, BudgetModelId, modelLabel } from '../../services/budgetModels';
 import { CategoryOption } from '../../types';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onApplied?: (created: number, updated: number) => void;
+  // Free-tier cap hit: the planner closes and the PARENT shows the budget paywall
+  // on its own screen. Stacking the paywall over this (tall) sheet read as "broken"
+  // (owner 2026-07-29) — a clean single screen instead.
+  onUpgradeNeeded?: () => void;
 }
 
 const cycleFactor = (cycle?: string): number => {
@@ -49,13 +52,14 @@ const cycleFactor = (cycle?: string): number => {
   }
 };
 
-const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) => {
+const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied, onUpgradeNeeded }) => {
   const C = useCalm();
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const t = useT();
   const tp = t.budget.planner;
   const currency = useSettingsStore((s) => s.currency);
+  const language = useSettingsStore((s) => s.language);
   const money = (n: number) => `${currency} ${Math.round(n).toLocaleString('en-MY')}`;
 
   const transactions = usePersonalStore((s) => s.transactions);
@@ -86,7 +90,6 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
   const [catBuf, setCatBuf] = useState('');
   const [addingId, setAddingId] = useState<string | null>(null);
   const [commitBuf, setCommitBuf] = useState('');
-  const [paywallVisible, setPaywallVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
 
   const asOf = useMemo(() => new Date(), [visible]);
@@ -131,11 +134,12 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
         wallets: wallets as any,
         asOf,
         modelId: (profileModelId as BudgetModelId) ?? undefined,
+        language,
       });
     } catch {
       return null;
     }
-  }, [visible, income, commitments, transactions, debts, wallets, asOf, profileModelId]);
+  }, [visible, income, commitments, transactions, debts, wallets, asOf, profileModelId, language]);
 
   const catMap = useMemo(() => {
     const m: Record<string, CategoryOption> = {};
@@ -250,19 +254,24 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
     setConfirmVisible(false);
     if (created > 0 || updated > 0) onApplied?.(created, updated);
     if (created < buildable.length) {
-      // Couldn't create every NEW budget within the free limit — upsell the rest.
-      setPaywallVisible(true);
+      // Couldn't create every NEW budget within the free limit — close this sheet
+      // and let the parent show the budget paywall on its own (a stacked paywall
+      // over this tall sheet read as "broken"). If no handler, still close cleanly.
+      onClose();
+      onUpgradeNeeded?.();
       return;
     }
     onClose();
-  }, [plan, buildable, updatable, budgetByCat, addBudget, updateBudget, onClose, onApplied, tier, budgets.length]);
+  }, [plan, buildable, updatable, budgetByCat, addBudget, updateBudget, onClose, onUpgradeNeeded, onApplied, tier, budgets.length]);
 
   const apply = useCallback(() => {
     if (nothingToDo) return;
-    // Overwriting a returning user's existing limits needs explicit consent.
-    if (updatable.length > 0) { mediumTap(); setConfirmVisible(true); return; }
-    commitApply(false);
-  }, [nothingToDo, updatable.length, commitApply]);
+    // Always confirm before writing budgets — an in-app dialog (NOT a native
+    // Alert) so the user can back out. Overwrites still get the extra "your
+    // amounts will change" copy; pure creates get a plain create-confirm.
+    mediumTap();
+    setConfirmVisible(true);
+  }, [nothingToDo]);
 
   const handleClose = useCallback(() => { setEditingCat(null); setEditingIncome(false); setAddingId(null); onClose(); }, [onClose]);
 
@@ -312,61 +321,68 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
     </View>
   );
 
-  // Consent gate — rendered via BottomSheet's `overlay` slot (INSIDE the sheet's
-  // Modal window). A sibling <Modal> would present behind the sheet on iOS.
-  const confirmDialog = confirmVisible ? (
-    <Pressable style={styles.confirmOverlay} onPress={() => setConfirmVisible(false)}>
-      <View style={styles.confirmCard} onStartShouldSetResponder={() => true}>
-        <Text style={styles.confirmTitle}>{tp.confirmTitle}</Text>
-        <Text style={styles.confirmBody}>
-          {buildable.length > 0
-            ? tp.confirmBodyBoth.replace('{{u}}', String(updatable.length)).replace('{{c}}', String(buildable.length))
-            : tp.confirmBodyUpdatesOnly.replace('{{u}}', String(updatable.length))}
-        </Text>
-        <TouchableOpacity
-          style={styles.confirmPrimary}
-          onPress={() => commitApply(true)}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel={tp.confirmApply}
-        >
-          <Feather name="check" size={16} color={C.onAccent} />
-          <Text style={styles.confirmPrimaryText}>{tp.confirmApply}</Text>
-        </TouchableOpacity>
-        {buildable.length > 0 && (
+  // Confirm gate — the "create these budgets" button ALWAYS routes through this
+  // (owner 2026-07-29: a chance to back out, in-app dialog not a native Alert).
+  // Rendered via BottomSheet's `overlay` slot (INSIDE the sheet's Modal window);
+  // a sibling <Modal> would present behind the sheet on iOS. Three shapes:
+  //   • create-only  → plain "create these budgets?" + a single create button
+  //   • updates-only → "update your budgets?" + apply (amounts will change)
+  //   • both         → apply-all primary + an "add new only" escape hatch
+  const confirmDialog = confirmVisible ? (() => {
+    const hasCreates = buildable.length > 0;
+    const hasUpdates = updatable.length > 0;
+    const createOnly = hasCreates && !hasUpdates;
+    const title = createOnly ? tp.confirmTitleCreate : tp.confirmTitle;
+    const body = createOnly
+      ? tp.confirmBodyCreateOnly.replace('{{c}}', String(buildable.length))
+      : hasCreates
+        ? tp.confirmBodyBoth.replace('{{u}}', String(updatable.length)).replace('{{c}}', String(buildable.length))
+        : tp.confirmBodyUpdatesOnly.replace('{{u}}', String(updatable.length));
+    // create-only has no existing limits to touch → the primary just creates (false).
+    const primaryLabel = createOnly ? `${tp.confirmCreate} · ${buildable.length}` : tp.confirmApply;
+    return (
+      <Pressable style={styles.confirmOverlay} onPress={() => setConfirmVisible(false)}>
+        <View style={styles.confirmCard} onStartShouldSetResponder={() => true}>
+          <Text style={styles.confirmTitle}>{title}</Text>
+          <Text style={styles.confirmBody}>{body}</Text>
           <TouchableOpacity
-            style={styles.confirmSecondary}
-            onPress={() => commitApply(false)}
+            style={styles.confirmPrimary}
+            onPress={() => commitApply(!createOnly)}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel={tp.confirmAddNew}
+            accessibilityLabel={primaryLabel}
           >
-            <Text style={styles.confirmSecondaryText}>{`${tp.confirmAddNew} · ${buildable.length}`}</Text>
+            <Feather name="check" size={16} color={C.onAccent} />
+            <Text style={styles.confirmPrimaryText}>{primaryLabel}</Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          style={styles.confirmCancel}
-          onPress={() => setConfirmVisible(false)}
-          accessibilityRole="button"
-          accessibilityLabel={t.common.cancel.toLowerCase()}
-        >
-          <Text style={styles.confirmCancelText}>{t.common.cancel}</Text>
-        </TouchableOpacity>
-      </View>
-    </Pressable>
-  ) : null;
+          {/* "add new only" — only when the plan BOTH updates existing and adds new */}
+          {hasCreates && hasUpdates && (
+            <TouchableOpacity
+              style={styles.confirmSecondary}
+              onPress={() => commitApply(false)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={tp.confirmAddNew}
+            >
+              <Text style={styles.confirmSecondaryText}>{`${tp.confirmAddNew} · ${buildable.length}`}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.confirmCancel}
+            onPress={() => setConfirmVisible(false)}
+            accessibilityRole="button"
+            accessibilityLabel={t.common.cancel.toLowerCase()}
+          >
+            <Text style={styles.confirmCancelText}>{t.common.cancel}</Text>
+          </TouchableOpacity>
+        </View>
+      </Pressable>
+    );
+  })() : null;
 
-  // Paywall (free-tier cap) also renders via the sheet's overlay slot — a sibling
-  // <Modal> would present behind the sheet on iOS (invisible, dead upsell).
-  const paywallOverlay = paywallVisible ? (
-    <PaywallModal
-      asOverlay
-      visible
-      onClose={() => setPaywallVisible(false)}
-      feature="budget"
-      currentUsage={budgets.length}
-    />
-  ) : null;
+  // The free-tier cap paywall is no longer stacked in this sheet's overlay slot —
+  // on hitting the cap we close the sheet and the PARENT presents the paywall on
+  // its own (see onUpgradeNeeded / commitApply).
 
   return (
     <>
@@ -374,7 +390,7 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
         / add-commitment inputs autoFocus a number pad that otherwise covers the very row
         being edited — and each commits onBlur, so the user saves a figure they never saw.
         Android has no fallback (edge-to-edge makes adjustResize inert). */}
-    <BottomSheet visible={visible} onClose={handleClose} header={header} maxHeightPct={0.92} keyboardAvoiding overlay={confirmDialog || paywallOverlay}>
+    <BottomSheet visible={visible} onClose={handleClose} header={header} maxHeightPct={0.92} keyboardAvoiding overlay={confirmDialog}>
       <View style={styles.bounds}>
         <ScrollView
           nestedScrollEnabled
@@ -485,7 +501,9 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
               {/* reality check — Belanjawanku cost-of-living, calm + honest */}
               <View style={[styles.realityCard, { backgroundColor: withAlpha(realityColor, 0.07), borderColor: withAlpha(realityColor, 0.16) }]}>
                 <Feather name="compass" size={14} color={realityColor} />
-                <Text style={styles.realityText}>{plan.realityCheck.message}</Text>
+                <Text style={styles.realityText}>
+                  {tp.reality[plan.realityCheck.level].replace('{ref}', plan.realityCheck.referenceRM.toLocaleString('en-MY'))}
+                </Text>
               </View>
 
               {/* Echo's reason */}
@@ -525,7 +543,7 @@ const BudgetPlannerSheet: React.FC<Props> = ({ visible, onClose, onApplied }) =>
                     const isRunner = plan.runnerUpId === m.id;
                     return (
                       <TouchableOpacity key={m.id} style={[styles.chip, active && styles.chipActive]} onPress={() => switchModel(m.id)} activeOpacity={0.85}>
-                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{m.label}</Text>
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{modelLabel(m.id, language)}</Text>
                         {isRec ? <Text style={[styles.chipTag, active && styles.chipTagActive]}>{tp.echoPicks}</Text> : isRunner ? <View style={styles.runnerDot} /> : null}
                       </TouchableOpacity>
                     );

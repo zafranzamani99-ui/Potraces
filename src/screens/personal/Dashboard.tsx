@@ -841,7 +841,7 @@ const PersonalDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} topInset={insets.top}>
       <FlatList
         ref={scrollRef}
         style={styles.scrollView}

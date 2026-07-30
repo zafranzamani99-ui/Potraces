@@ -21,6 +21,7 @@ import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
+import PullRefresh from '../../components/common/PullRefresh';
 import { warningNotification } from '../../services/haptics';
 import { Season } from '../../types';
 
@@ -113,6 +114,12 @@ const PastSeasons: React.FC = () => {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const [templateSeasonId, setTemplateSeasonId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   const activeSeason = seasons.find((s) => s.isActive);
   const pastSeasons = seasons.filter((s) => !s.isActive);
@@ -304,40 +311,42 @@ const PastSeasons: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={allSeasons}
-        renderItem={renderSeason}
-        keyExtractor={(s) => s.id}
-        ListHeaderComponent={allSeasons.length > 0 ? ListHeaderComponent : null}
-        contentContainerStyle={[
-          styles.listContent,
-          allSeasons.length === 0 && styles.listContentEmpty,
-        ]}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconCircle}>
-              <Feather name="calendar" size={28} color={C.textMuted} />
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+        <FlatList
+          data={allSeasons}
+          renderItem={renderSeason}
+          keyExtractor={(s) => s.id}
+          ListHeaderComponent={allSeasons.length > 0 ? ListHeaderComponent : null}
+          contentContainerStyle={[
+            styles.listContent,
+            allSeasons.length === 0 && styles.listContentEmpty,
+          ]}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconCircle}>
+                <Feather name="calendar" size={28} color={C.textMuted} />
+              </View>
+              <Text style={styles.emptyTitle}>{t.seller.noSeasonsYet}</Text>
+              <Text style={styles.emptyHint}>
+                {t.seller.seasonsEmptyHint}
+              </Text>
+              <View style={{ alignSelf: 'stretch' }}>
+                <NeuButton
+                  icon="plus"
+                  label={t.seller.startFirstSeason}
+                  color={C.deepOliveBiz}
+                  onPress={() => setShowAdd(true)}
+                  accessibilityLabel="Start your first season"
+                />
+              </View>
             </View>
-            <Text style={styles.emptyTitle}>{t.seller.noSeasonsYet}</Text>
-            <Text style={styles.emptyHint}>
-              {t.seller.seasonsEmptyHint}
-            </Text>
-            <View style={{ alignSelf: 'stretch' }}>
-              <NeuButton
-                icon="plus"
-                label={t.seller.startFirstSeason}
-                color={C.deepOliveBiz}
-                onPress={() => setShowAdd(true)}
-                accessibilityLabel="Start your first season"
-              />
-            </View>
-          </View>
-        }
-        removeClippedSubviews
-        windowSize={5}
-        maxToRenderPerBatch={10}
-        initialNumToRender={10}
-      />
+          }
+          removeClippedSubviews
+          windowSize={5}
+          maxToRenderPerBatch={10}
+          initialNumToRender={10}
+        />
+      </PullRefresh>
 
       {/* Bottom-anchored add button (only when seasons exist and no active season) */}
       {allSeasons.length > 0 && !activeSeason && (

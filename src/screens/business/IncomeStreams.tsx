@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { IncomeStream } from '../../types';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import PullRefresh from '../../components/common/PullRefresh';
 
 const PRESET_COLORS = [CALM.accent, CALM.bronze, CALM.gold, BIZ.success, BIZ.unpaid, CALM.neutral];
 
@@ -31,6 +32,11 @@ const IncomeStreamsScreen: React.FC = () => {
   const [showAdd, setShowAdd] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -89,21 +95,24 @@ const IncomeStreamsScreen: React.FC = () => {
           .replace('{plural}', incomeStreams.length !== 1 ? 's' : '')}
       </Text>
 
-      <FlatList
-        data={incomeStreams}
-        renderItem={renderStream}
-        keyExtractor={(s) => s.id}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>{t.business.streamsEmpty}</Text>
-          </View>
-        }
-        removeClippedSubviews
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        initialNumToRender={10}
-      />
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+        <FlatList
+          style={styles.list}
+          data={incomeStreams}
+          renderItem={renderStream}
+          keyExtractor={(s) => s.id}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>{t.business.streamsEmpty}</Text>
+            </View>
+          }
+          removeClippedSubviews
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          initialNumToRender={10}
+        />
+      </PullRefresh>
 
       <TouchableOpacity style={styles.addButton} onPress={() => setShowAdd(true)}>
         <Feather name="plus" size={20} color={C.onAccent} />
@@ -166,6 +175,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     maxWidth: 680,
     width: '100%',
     alignSelf: 'center' as const,
+  },
+  list: {
+    flex: 1,
   },
   listContent: {
     padding: SPACING.lg,

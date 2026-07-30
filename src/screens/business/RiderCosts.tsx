@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '.
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { RiderCost } from '../../types';
+import PullRefresh from '../../components/common/PullRefresh';
 
 const RiderCostsScreen: React.FC = () => {
   const C = useCalm();
@@ -34,6 +35,12 @@ const RiderCostsScreen: React.FC = () => {
   const [showAdd, setShowAdd] = useState(false);
   const [selectedType, setSelectedType] = useState<RiderCost['type']>('petrol');
   const [costAmount, setCostAmount] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -101,21 +108,24 @@ const RiderCostsScreen: React.FC = () => {
       </View>
 
       {/* Cost list */}
-      <FlatList
-        data={monthCosts}
-        renderItem={renderCost}
-        keyExtractor={(c) => c.id}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>{t.business.riderEmpty}</Text>
-          </View>
-        }
-        removeClippedSubviews
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        initialNumToRender={10}
-      />
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+        <FlatList
+          data={monthCosts}
+          renderItem={renderCost}
+          keyExtractor={(c) => c.id}
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>{t.business.riderEmpty}</Text>
+            </View>
+          }
+          removeClippedSubviews
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          initialNumToRender={10}
+        />
+      </PullRefresh>
 
       {/* Add cost area */}
       {showAdd ? (
@@ -194,6 +204,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: 20,
     fontWeight: TYPOGRAPHY.weight.light,
     color: C.textPrimary,
+  },
+  list: {
+    flex: 1,
   },
   listContent: {
     padding: SPACING.lg,

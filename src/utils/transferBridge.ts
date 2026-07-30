@@ -6,7 +6,10 @@ export function createTransfer(
   fromMode: 'business' | 'personal',
   toMode: 'business' | 'personal',
   note?: string,
-  linkedBusinessTxId?: string
+  linkedBusinessTxId?: string,
+  /** Destination personal wallet. When set, addTransferIncome credits it —
+   *  without it the transfer records income but no wallet balance moves. */
+  walletId?: string
 ): Transfer {
   return {
     id: newId(),
@@ -15,6 +18,7 @@ export function createTransfer(
     toMode,
     note,
     linkedBusinessTxId,
+    ...(walletId ? { walletId } : {}),
     date: new Date(),
   };
 }

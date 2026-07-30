@@ -5,6 +5,17 @@
 > This is only about **Stall mode**. Plain words. Companion to `STALL_MODE.md` and
 > `STALL_MODE_ROADMAP.md`.
 
+> **✅ UPDATE 2026-07-30 — money bugs resolved (verified, tsc + money tests green).**
+> The 6 money bugs below are now fixed: **(a)** transfer-to-personal already credited the
+> wallet, **(e)** transfer already pre-fills "kept" (both verified still-correct); newly
+> fixed this pass — **(b)** deleting a card sale now lowers `totalCard`; **(c)** expected
+> cash now subtracts cash expenses (no more false "short"); **(d)** custom/add-on sales
+> with no cost now flag "kept" as **≈ approximate** (owner chose the label over new cost
+> inputs); **(f)** selling is now **blocked while paused** with a "resume to sell" prompt.
+> Also fixed the **seller** (Season/Cost) "transfer to personal" which had the same
+> no-wallet-credit ghost. Still owed: run stall on a **physical device**, and a
+> **free-vs-paywall gate** decision (deferred by owner). Tracker: `WAVE_TRACKER.md` #6.
+
 **A few words explained (used a lot below):**
 - **Session** = one selling day/event. You open it, sell, then close it.
 - **Cost price (COGS)** = how much one item costs *you* to make or buy.

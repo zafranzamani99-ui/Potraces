@@ -12,6 +12,7 @@ import {
   Image,
   Linking,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -42,6 +43,7 @@ import { AIMessage, AIMessageAction, Transaction, Budget } from '../../types';
 import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
+import NeuIconButton from '../../components/common/NeuIconButton';
 import NeuPressable from '../../components/common/NeuPressable';
 import QuickAddExpense, { type QuickAddExpenseHandle } from '../../components/common/QuickAddExpense';
 import PaywallModal from '../../components/common/PaywallModal';
@@ -51,6 +53,9 @@ import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import { sendChatMessageStream } from '../../services/moneyChat';
+import { parseCards } from '../../services/echoCards/parse';
+import { fillCards } from '../../services/echoCards/fillCards';
+import EchoCardView from '../../components/common/EchoCardView';
 import { isCrisisMessage } from '../../services/smallTalk';
 import { reviewReply, cleanReply } from '../../services/critic';
 import { detectSavingsVehicle } from '../../services/manglishParser';
@@ -994,6 +999,9 @@ const ChatBubble = memo(({ item, onSelectText, onViewImage }: { item: AIMessage;
         {item.actions?.map((action, i) => (
           <ActionCard key={i} action={action} />
         ))}
+        {item.cards?.map((card, i) => (
+          <EchoCardView key={`card-${i}`} card={card} />
+        ))}
       </View>
     </AnimatedBubble>
   );
@@ -1599,6 +1607,10 @@ const MoneyChat: React.FC = () => {
   // short and the last line stayed hidden behind the composer. Instead, keep a
   // short follow WINDOW: every content-size change inside it re-scrolls.
   const followUntilRef = useRef(0);
+  // Viewport (FlatList) height — lets us tell whether the chat actually overflows
+  // the screen and is scrollable, so the jump-to-latest button never shows on a
+  // short chat that has nothing below.
+  const listHeightRef = useRef(0);
   // Set on any manual drag, cleared when the user is back near the bottom —
   // so auto-follow never fights someone who scrolled up to read.
   const userDraggedRef = useRef(false);
@@ -1626,7 +1638,10 @@ const MoneyChat: React.FC = () => {
     }
   }, []);
 
-  const handleContentSizeChange = useCallback(() => {
+  const handleContentSizeChange = useCallback((_w: number, h: number) => {
+    // A chat that fits the viewport can't be scrolled → keep the jump-to-latest
+    // button hidden (also un-sticks it if a transient layout reading turned it on).
+    if (listHeightRef.current > 0 && h <= listHeightRef.current + 24) setShowScrollDown(false);
     // First layout of a fresh mount → jump straight to the latest message (no animation).
     if (!didInitialScrollRef.current) {
       didInitialScrollRef.current = true;
@@ -1657,8 +1672,12 @@ const MoneyChat: React.FC = () => {
   const handleScroll = useCallback((e: any) => {
     const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
     contentHeightRef.current = contentSize.height;
+    if (layoutMeasurement.height > 0) listHeightRef.current = layoutMeasurement.height;
     const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-    setShowScrollDown(distanceFromBottom > 150);
+    // Only when the chat actually overflows the viewport (is scrollable) AND we're
+    // meaningfully above the bottom — a short chat is never "scrolled up".
+    const scrollable = layoutMeasurement.height > 0 && contentSize.height > layoutMeasurement.height + 24;
+    setShowScrollDown(scrollable && distanceFromBottom > 150);
     // Back near the bottom → re-arm auto-follow (a manual drag had paused it).
     if (distanceFromBottom <= 150) userDraggedRef.current = false;
   }, []);
@@ -1685,11 +1704,14 @@ const MoneyChat: React.FC = () => {
   }, []);
 
   // Process AI response — parse actions but DON'T execute
-  const processResponse = useCallback((rawResponse: string) => {
+  const processResponse = useCallback((rawResponse: string, userMessage: string) => {
     const { cleanText: afterActions, actions } = parseActions(rawResponse);
+    // Strip any [CARD] directive out of the visible text; the app fills the exact
+    // numbers from the stores (never the model) and attaches the filled card below.
+    const { cleanText: afterCards, specs: cardSpecs } = parseCards(afterActions);
     // Pull out any durable facts Echo recorded with [MEMORY] (stripped from the
     // shown text) and save them to Echo's memory of you, capped by the tier.
-    const { cleanText, memories: echoMemories } = parseMemories(afterActions);
+    const { cleanText, memories: echoMemories } = parseMemories(afterCards);
     if (echoMemories.length) {
       const cap = TIER_LIMITS[premiumTier].echoMemories;
       const learn = useLearningStore.getState();
@@ -1705,8 +1727,18 @@ const MoneyChat: React.FC = () => {
     }
     const displayText = cleanReply(cleanText);
 
-    // Add the text as a chat message
-    addChatMessage({ role: 'assistant', content: displayText, timestamp: new Date().toISOString() });
+    // Fill any card from the stores (exact numbers, never the model). Suppressed
+    // on recording turns (an [ACTION] chip already shows the figure) and small talk;
+    // falls back to an app-side default card when the question clearly maps to one.
+    const cards = fillCards(cardSpecs, userMessage, actions.length > 0);
+
+    // Add the text (+ any filled cards) as a chat message
+    addChatMessage({
+      role: 'assistant',
+      content: displayText,
+      timestamp: new Date().toISOString(),
+      cards: cards.length ? cards : undefined,
+    });
 
     // Fill category/wallet the AI left blank from what the user taught us
     // before (learningStore), then route each action: an "amend" re-emit updates
@@ -2083,7 +2115,7 @@ const MoneyChat: React.FC = () => {
         if (requestIdRef.current !== thisRequestId) return;
         setStreamingText(null);
         if (result.ok) {
-          processResponse(result.text);
+          processResponse(result.text, question);
         } else {
           showError(result.error);
         }
@@ -2156,7 +2188,7 @@ const MoneyChat: React.FC = () => {
     if (result.ok) {
       setLastFailedSend(null);
       useAIInsightsStore.getState().setFailedCaptureText(null);
-      processResponse(result.text);
+      processResponse(result.text, sendText);
     } else {
       setLastFailedSend({ text: sendText, base64 });
       if (sendText) useAIInsightsStore.getState().setFailedCaptureText(sendText);
@@ -2172,6 +2204,7 @@ const MoneyChat: React.FC = () => {
     if (!question && !hasImage) return;
 
     lightTap();
+    Keyboard.dismiss(); // close the keyboard on send
     // Strip any model-control tokens a user might paste so they can't inject an
     // [ACTION] block by echoing it back into the chat (B16 / contract #4).
     const sendText = sanitizeUserText(question);
@@ -2218,7 +2251,7 @@ const MoneyChat: React.FC = () => {
     setStreamingText(null);
     if (result.ok) {
       setLastFailedSend(null);
-      processResponse(result.text);
+      processResponse(result.text, lastFailedSend.text);
     } else {
       showError(result.error);
     }
@@ -2320,6 +2353,7 @@ const MoneyChat: React.FC = () => {
             maxToRenderPerBatch={8}
             windowSize={7}
             initialNumToRender={10}
+            onLayout={(e) => { listHeightRef.current = e.nativeEvent.layout.height; }}
             onContentSizeChange={handleContentSizeChange}
             onScroll={handleScroll}
             onScrollBeginDrag={handleScrollBeginDrag}
@@ -2356,13 +2390,6 @@ const MoneyChat: React.FC = () => {
                 : null
             }
           />
-        )}
-
-        {/* Scroll to bottom button */}
-        {showScrollDown && chatMessages.length > 0 && (
-          <TouchableOpacity style={styles.scrollDownButton} onPress={scrollToBottom} activeOpacity={0.8}>
-            <Feather name="chevron-down" size={18} color={C.textMuted} />
-          </TouchableOpacity>
         )}
 
         {attachVisible && (
@@ -2764,6 +2791,17 @@ const MoneyChat: React.FC = () => {
         </View>
         </BottomWrapper>
 
+        {/* Jump-to-latest — rendered LAST so it paints ON TOP of the composer
+            (the old spot was drawn under the input bar → invisible). Centered Neu
+            Key floating just above the input; shown when scrolled up. */}
+        {showScrollDown && chatMessages.length > 0 && (
+          <View style={[styles.scrollDownWrap, { bottom: navBarInset + 90 }]} pointerEvents="box-none">
+            <NeuIconButton size={44} radius={22} onPress={scrollToBottom} accessibilityLabel="scroll to latest message">
+              <Feather name="arrow-down" size={22} color={C.textSecondary} />
+            </NeuIconButton>
+          </View>
+        )}
+
       </ChatContainer>
 
       {/* Conversation history modal */}
@@ -3108,16 +3146,14 @@ const makeStyles = (
   },
 
   // Scroll to bottom
-  scrollDownButton: {
+  scrollDownWrap: {
     position: 'absolute',
-    right: SPACING.lg,
-    bottom: 120,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    justifyContent: 'center',
-    ...neu.raised,
+    zIndex: 20,
+    elevation: 20,
+    // `bottom` is set inline (navBarInset + 72) so it floats just above the composer.
   },
 
   // Pending actions — scrollable chips

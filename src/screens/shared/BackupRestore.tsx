@@ -7,7 +7,7 @@
  * snapshots the current state first (reversible), then the app reloads to re-hydrate.
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Alert, RefreshControl, DevSettings } from 'react-native';
+import { View, Text, StyleSheet, Alert, DevSettings } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import * as Updates from 'expo-updates';
 
 import Button from '../../components/common/Button';
+import PullRefresh from '../../components/common/PullRefresh';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
@@ -137,15 +138,14 @@ export default function BackupRestore() {
 
   return (
     <View style={[styles.screen, { backgroundColor: C.background }]}>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + SPACING['2xl'] }]}
-        keyboardShouldPersistTaps="handled"
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.textSecondary} />
-        }
-      >
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + SPACING['2xl'] }]}
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.inner}>
           {/* Intro */}
           <View style={styles.introCard}>
@@ -191,7 +191,8 @@ export default function BackupRestore() {
             </>
           )}
         </View>
-      </ScrollView>
+        </ScrollView>
+      </PullRefresh>
     </View>
   );
 }
@@ -199,6 +200,7 @@ export default function BackupRestore() {
 const makeStyles = (C: typeof CALM, isDark: boolean) =>
   StyleSheet.create({
     screen: { flex: 1 },
+    scroll: { flex: 1 },
     content: { padding: SPACING.lg },
     inner: { width: '100%', maxWidth: 640, alignSelf: 'center' },
 

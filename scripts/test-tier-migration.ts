@@ -47,10 +47,10 @@ for (const tier of TIERS) {
 
 // ── Concrete scenario: an old FREE user built 5 savings accounts under the OLD cap (5);
 //    the new free cap is 3. They keep all 5; the 6th is blocked; no negatives. (Free budgets
-//    stayed at 5, so that isn't a lowered-cap case.) ──
+//    moved to 6, so that isn't a lowered-cap case.) ──
 check('legacy free 5 savings (new cap 3) → keeps 5, 6th blocked', canCreate('free', 'maxSavingsAccounts', 5) === false);
 check('legacy free 5 savings → remaining 0, not -2', remainingOf('free', 'maxSavingsAccounts', 5) === 0);
-check('free budgets: 4 ok, 5 blocked (cap 5)', canCreate('free', 'maxBudgets', 4) === true && canCreate('free', 'maxBudgets', 5) === false);
+check('free budgets: 5 ok, 6 blocked (cap 6)', canCreate('free', 'maxBudgets', 5) === true && canCreate('free', 'maxBudgets', 6) === false);
 check('legacy free 0 goals (new cap 3) → can still create', canCreate('free', 'maxGoals', 0) === true);
 
 // ── Upgrading lifts the cap without touching data: the SAME over-old-cap count is now allowed. ──

@@ -559,7 +559,7 @@ Before submitting:
 - [ ] Screenshots: 6.5" iPhone + 6.7" iPhone + iPad + all Android sizes
 - [ ] Demo account credentials (Apple reviewers will use)
 - [ ] Support email + website URL
-- [ ] Export compliance (no encryption beyond HTTPS)
+- [x] Export compliance (no encryption beyond HTTPS) — `ITSAppUsesNonExemptEncryption: false` set in app.json ios.infoPlist (verified 2026-07-30)
 
 ### Analytics & crash reporting
 - Add Sentry (`@sentry/react-native`) before launch.

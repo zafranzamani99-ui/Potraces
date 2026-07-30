@@ -90,66 +90,86 @@ export interface TailoredPlan {
   note?: string;
 }
 
+/** UI language for the user-facing model copy (label / why / recommendation pitch).
+ *  Kept local so this module stays dependency-free — matches settingsStore's AppLanguage. */
+export type Lang = 'en' | 'ms';
+
 interface ModelDef {
   id: BudgetModelId;
   /** user-facing, calm lowercase, no banned words */
   label: string;
+  /** BM copy of `label` */
+  labelMs: string;
   engine: 'proportional' | 'envelope' | 'ladder';
   /** baseline set-aside share of breathing room before personalisation */
   defaultSetAsideShare: number;
   /** show spendable money as one "left to spend" number vs per-category guides */
   splitByCategory: boolean;
   why: string;
+  /** BM copy of `why` */
+  whyMs: string;
 }
 
 export const BUDGET_MODELS: ModelDef[] = [
   {
     id: 'pay_yourself_first',
     label: 'set aside first',
+    labelMs: 'simpan dulu',
     engine: 'proportional',
     defaultSetAsideShare: 0.2,
     splitByCategory: false,
     why: 'one slice set aside the day money lands, the rest is yours — simplest to actually stick to',
+    whyMs: 'satu bahagian disimpan hari duit masuk, selebihnya milik kau — paling senang nak ikut betul-betul',
   },
   {
     id: 'flexed_602020',
     label: 'flexed 60/20/20',
+    labelMs: '60/20/20 fleksibel',
     engine: 'proportional',
     defaultSetAsideShare: 0.2,
     splitByCategory: true,
     why: 'a little structure: needs come from your real commitments, not an assumed half',
+    whyMs: 'sikit struktur: keperluan ikut komitmen sebenar kau, bukan agak-agak separuh',
   },
   {
     id: 'envelopes',
     label: 'envelopes',
+    labelMs: 'sampul',
     engine: 'envelope',
     defaultSetAsideShare: 0.15,
     splitByCategory: true,
     why: 'a firm ceiling per category — good when a few specific things keep running over',
+    whyMs: 'had tegas untuk setiap kategori — sesuai bila ada beberapa benda yang selalu terlebih',
   },
   {
     id: 'step_ladder',
     label: 'step ladder',
+    labelMs: 'tangga',
     engine: 'ladder',
     defaultSetAsideShare: 0.08,
     splitByCategory: false,
     why: 'an order, not ratios: tiny cushion → clear costly debt → build a buffer',
+    whyMs: 'ikut urutan, bukan nisbah: simpanan kecil → langsai hutang mahal → bina simpanan',
   },
   {
     id: 'zero_based',
     label: 'every ringgit a job',
+    labelMs: 'setiap ringgit ada kerja',
     engine: 'proportional',
     defaultSetAsideShare: 0.2,
     splitByCategory: true,
     why: 'plan last month’s money down to zero — the honest fit for income that lands at odd times',
+    whyMs: 'rancang duit bulan lepas sampai habis kosong — sesuai untuk pendapatan yang masuk tak tentu masa',
   },
   {
     id: 'conscious_spending',
     label: 'spend on what you love',
+    labelMs: 'belanja yang kau suka',
     engine: 'proportional',
     defaultSetAsideShare: 0.25,
     splitByCategory: true,
     why: 'automate saving + investing, then spend guilt-free on the few things you actually value',
+    whyMs: 'auto simpan + labur dulu, lepas tu belanja tanpa rasa bersalah pada benda yang kau betul-betul hargai',
   },
 ];
 
@@ -158,6 +178,12 @@ export function getModel(id: BudgetModelId): ModelDef {
   if (!m) throw new Error(`unknown budget model: ${id}`);
   return m;
 }
+
+/** Language-aware model name / rationale — the display copy the sheet + plan.reason use. */
+export const modelLabel = (id: BudgetModelId, lang: Lang = 'en'): string =>
+  lang === 'ms' ? getModel(id).labelMs : getModel(id).label;
+export const modelWhy = (id: BudgetModelId, lang: Lang = 'en'): string =>
+  lang === 'ms' ? getModel(id).whyMs : getModel(id).why;
 
 // --- derived context -------------------------------------------------------
 
@@ -297,26 +323,30 @@ export interface Recommendation {
   runnerUp: { id: BudgetModelId; label: string } | null;
 }
 
-function leadReason(c: Ctx): string {
-  if (c.debt && !c.hasBuffer) return 'card/BNPL debt and no cushion yet';
-  if (c.irregular) return 'money lands at odd times';
-  if (c.band === 'high') return 'you’ve got real headroom';
-  if (c.band === 'tight') return 'money’s tight right now';
-  if (c.commitmentRatio > 0.65) return 'commitments already eat most of your pay';
-  if (c.psychology === 'overspender') return 'a few categories keep running over';
-  if (c.dependents >= 2) return 'a household leans on this income';
-  return 'steady pay with room to plan';
+function leadReason(c: Ctx, lang: Lang = 'en'): string {
+  const ms = lang === 'ms';
+  if (c.debt && !c.hasBuffer) return ms ? 'ada hutang kad/pay-later dan simpanan belum ada' : 'card/BNPL debt and no cushion yet';
+  if (c.irregular) return ms ? 'duit masuk tak tentu masa' : 'money lands at odd times';
+  if (c.band === 'high') return ms ? 'kau ada ruang lebih' : 'you’ve got real headroom';
+  if (c.band === 'tight') return ms ? 'duit agak ketat sekarang' : 'money’s tight right now';
+  if (c.commitmentRatio > 0.65) return ms ? 'komitmen dah makan hampir semua gaji' : 'commitments already eat most of your pay';
+  if (c.psychology === 'overspender') return ms ? 'ada beberapa kategori yang selalu terlebih' : 'a few categories keep running over';
+  if (c.dependents >= 2) return ms ? 'satu keluarga bergantung pada pendapatan ni' : 'a household leans on this income';
+  return ms ? 'gaji stabil dengan ruang nak rancang' : 'steady pay with room to plan';
 }
 
-export function recommendModel(input: TailorInput): Recommendation {
+export function recommendModel(input: TailorInput, lang: Lang = 'en'): Recommendation {
   const ranked = scoreModels(input);
   const top = ranked[0];
   const c = deriveCtx(input);
-  const model = getModel(top.id);
+  // Composed pitch: {context}, so I'd start you on {model} — {why}. BM keeps the same shape.
+  const why = lang === 'ms'
+    ? `${leadReason(c, 'ms')}, jadi echo cadang mula dengan ${modelLabel(top.id, 'ms')} — ${modelWhy(top.id, 'ms')}`
+    : `${leadReason(c)}, so i’d start you on ${modelLabel(top.id)} — ${modelWhy(top.id)}`;
   return {
     id: top.id,
     label: top.label,
-    why: `${leadReason(c)}, so i’d start you on ${model.label} — ${model.why}`,
+    why,
     runnerUp: ranked[1] ? { id: ranked[1].id, label: ranked[1].label } : null,
   };
 }

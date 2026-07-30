@@ -324,5 +324,43 @@ export const professional: Persona = {
         { name: 'Hand sanitizer 50ml', amount: 10.6 },
       ],
     });
+
+    // ─── 11. Echo's notebook — shortcuts Echo learned + what it remembers ──
+    // Trusted category rules (count ≥ 2 → "knows you")
+    c.learnCategory('zus', 'food', 4);
+    c.learnCategory('mamak', 'food', 3);
+    c.learnCategory('petronas', 'transport', 3);
+    c.learnCategory('grabfood', 'food', 2);
+    c.learnCategory('99 speedmart', 'shopping', 2);
+    c.learnCategory('tol', 'transport', 2);
+    // Still learning (count 1 — one more correction graduates them)
+    c.learnCategory('tealive', 'food', 1);
+    c.learnCategory('watsons', 'health', 1);
+    c.learnCategory('daiso', 'shopping', 1);
+    // Which wallet a keyword is usually paid from
+    c.learnWallet('zus', "Touch 'n Go", 3);
+    c.learnWallet('grabfood', 'GrabPay', 2);
+    c.learnWallet('petronas', "Touch 'n Go", 2);
+    c.learnWallet('shopee live', 'ShopeePay', 1);
+    // People Echo learned to recognise
+    c.learnPerson('mak', 'Mama', 3);
+    c.learnPerson('long', 'Abang Long', 2);
+    c.learnPerson('zik', 'Zikri', 1);
+    // Type corrections (a keyword that's really income, not a spend)
+    c.learnType('gaji', 'income', 2);
+    c.learnType('carousell', 'income', 1);
+    c.learnType('cashback', 'income', 1);
+    // Keywords Echo learned to skip (internal moves, never a spend)
+    c.learnSkip('reload', 2);
+    c.learnSkip('transfer', 1);
+    // Durable memories — what Echo carries into every chat
+    c.memory({ kind: 'goal', text: 'Building a 3-month emergency fund (target RM12,000) in GXBank', source: 'you', pinned: true });
+    c.memory({ kind: 'bill', text: 'PR1MA condo loan RM1,150 auto-debits around the 28th', source: 'echo' });
+    c.memory({ kind: 'bill', text: 'Sends RM300 to mom every payday', source: 'echo' });
+    c.memory({ kind: 'worry', text: 'Cashflow is tight — only about RM700 left after must-pays each month', source: 'echo' });
+    c.memory({ kind: 'goal', text: 'Wants to travel to Japan during sakura season', source: 'you' });
+    c.memory({ kind: 'win', text: 'Paid off half the Bruno Mars concert money owed to Hakim', source: 'echo' });
+    c.memory({ kind: 'style', text: 'Prefers replies in casual Malay, short and to the point', source: 'you' });
+    c.memory({ kind: 'fact', text: 'Drives a Perodua Myvi, about 30 months into an 84-month loan', source: 'echo' });
   },
 };

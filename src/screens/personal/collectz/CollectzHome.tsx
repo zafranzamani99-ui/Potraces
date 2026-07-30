@@ -13,7 +13,6 @@ import {
   View,
   Text,
   StyleSheet,
-  RefreshControl,
   Pressable,
   TextInput,
   ActivityIndicator,
@@ -30,6 +29,7 @@ import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import FAB from '../../../components/common/FAB';
 import PageScrollView from '../../../components/common/PageScrollView';
+import PullRefresh from '../../../components/common/PullRefresh';
 import NeuButton from '../../../components/common/NeuButton';
 import ScreenGuide from '../../../components/common/ScreenGuide';
 import PaywallModal from '../../../components/common/PaywallModal';
@@ -238,6 +238,11 @@ const CollectzHome: React.FC = () => {
       load(true);
     }, [load]),
   );
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load(); // clears `refreshing` in its finally
+  }, [load]);
 
   const amountLine = useCallback(
     (s: CollectzSession): string => {
@@ -477,12 +482,10 @@ const CollectzHome: React.FC = () => {
           { icon: 'check-circle', text: t.guide.collectzPoint2 },
         ]}
       />
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <PageScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={C.accent} />
-        }
       >
         {loading ? (
           <ActivityIndicator size="large" color={C.accent} style={styles.loader} />
@@ -600,6 +603,7 @@ const CollectzHome: React.FC = () => {
           </>
         )}
       </PageScrollView>
+      </PullRefresh>
 
       <FAB
         onPress={onCreatePress}

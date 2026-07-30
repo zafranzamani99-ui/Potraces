@@ -54,7 +54,7 @@ Read this before continuing work from the previous machine's session. `CLAUDE.md
 **Where to pick up:**
 
 1. **Verify on device (Android):** the custom `PullRefresh` loader on the dashboards. It is proven on the owner's iPhone; the Android path (RNGH pan) is untested on hardware. If it fails on Android, debug `PullRefresh.tsx`'s `pan` gesture (enabled/atTop/arbitration) — do NOT revert to native RefreshControl; it's broken on their build.
-2. **Known pre-existing breakage (NOT ours):** `src/screens/personal/collectz/CollectzJoin.tsx` fails `tsc --noEmit` with missing i18n keys (`joinPayByDaysLeft`, `joinPayByDueToday`) and styles (`payByChip`, `payByChipText`) — someone else's in-flight work. Either the owner finishes it or stub the keys. Don't attribute it to this session.
+2. **~~Known pre-existing breakage (NOT ours):~~ ✅ RESOLVED (verified 2026-07-30, `tsc --noEmit` passes with 0 errors):** `src/screens/personal/collectz/CollectzJoin.tsx` previously failed `tsc --noEmit` with missing i18n keys (`joinPayByDaysLeft`, `joinPayByDueToday`) and styles (`payByChip`, `payByChipText`). All four now exist (keys in `en.ts`/`ms.ts`, styles in the screen), so the build error is gone.
 3. **Uncommitted:** everything above is working-tree changes mixed with other people's WIP. Commit selectively.
 4. **Optional leftovers:**
    - Sell screen's remaining RN Modals (ledger, custom amount, restock, customer picker, clearance, category dropdown) could be ported to `FloatingModal` for one card rule.

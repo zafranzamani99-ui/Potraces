@@ -27,6 +27,7 @@ import {
 } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, TYPE, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
@@ -37,6 +38,7 @@ import { lightTap } from '../../services/haptics';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useNeu } from '../../components/common/neu';
+import PullRefresh from '../../components/common/PullRefresh';
 
 // ─── Types ─────────────────────────────────────────────────
 interface PaymentEvent {
@@ -131,6 +133,17 @@ const SellerTransactions: React.FC = () => {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showFromCalendar, setShowFromCalendar] = useState(false);
   const [showToCalendar, setShowToCalendar] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Real refresh: pull fresh orders from the server (payment events derive from
+  // orders); the branded spinner holds for the actual sync duration.
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    const { products, orders, seasons, sellerCustomers: sc } = useSellerStore.getState();
+    Promise.all([syncAll(products, orders, seasons, sc), pullOrderLinkOrders()])
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
+  }, []);
 
   const headerAnim = useFadeSlide(0);
   const listAnim = useFadeSlide(60);
@@ -538,6 +551,7 @@ const SellerTransactions: React.FC = () => {
 
       {/* List */}
       <Animated.View style={[{ flex: 1 }, listAnim]}>
+        <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
@@ -571,6 +585,7 @@ const SellerTransactions: React.FC = () => {
             </View>
           }
         />
+        </PullRefresh>
       </Animated.View>
 
       {/* ─── Filter modal ──────────────────────────────────── */}

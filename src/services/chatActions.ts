@@ -152,6 +152,7 @@ export function sanitizeUserText(text: string): string {
   return text
     .replace(/\[\/?ACTION\]/gi, '')
     .replace(/\[\/?MEMORY\]/gi, '') // user can't plant a fake memory either
+    .replace(/\[\/?CARD\]/gi, '')   // …nor inject a card directive
     .trim();
 }
 

@@ -1,6 +1,13 @@
 # Potraces — Step 3 (July 2026): Monetization → Beta
 
-_Follows `step2 July.md` Track D. The 4-tier monetization layer (Phases 1–6) is **built**; billing is **dormant** (local unlock until RevenueCat keys/products exist). Everything is **uncommitted** in a mixed WIP tree. This doc = the two flagged items (both resolved) + what's genuinely left before beta. Last updated 2026-07-22 (parked-items section added)._
+_Follows `step2 July.md` Track D. The 4-tier monetization layer (Phases 1–6) is **built & committed** (tree is clean now). Billing stays **dormant** (local unlock until RevenueCat keys/products exist). Last updated 2026-07-22; **reconciled against the repo 2026-07-29.**_
+
+> ## 🎯 Status at a glance (verified 2026-07-29) — mostly DONE; **live tracker is now `AUGUST.md`**
+> Everything genuinely-remaining has moved to **`AUGUST.md`** (v1.0 launch tracker, target 13 Aug). From *this* doc:
+> - ✅ **Done since written:** monetization committed · Echo-for-Free verified · behavior changes live+grandfathered · **M3 custom-category sync** (`personal_categories` table) · **M1/M2/A2** sync fixes · **Malay paywall** · **MoneyChat AI-limit paywall** (`feature="ai"`) · **legal pages exist** (`site/privacy.html` + `terms.html`).
+> - ❌ **Still open → tracked in `AUGUST.md`:** RevenueCat go-live · Cancel→Apple deep-link · server-side entitlement check · beta secrets · import paid tier ladder (on-hold) · confirm legal pages LIVE on jejakbaki.my · on-device paywall/gate verify.
+> - ❌ **Accepted / low (stay here):** **A1** client-clock LWW (architectural — needs a server edit-time) · **A3** poison-row quarantine (low, defense-in-depth).
+> - ❓ **Not re-verified:** the four "related findings NOT in scope" money-logic bugs (kept-number, goal-contributions-as-spending, note-driven debt overpay, Echo coverage) — check against the audit separately.
 
 ---
 
@@ -30,12 +37,12 @@ These are now in effect as of the Phase 1–3 work (intended, and safe):
 
 | # | Do this | Notes |
 |---|---|---|
-| 1 | **On-device verify** the paywall (Basic-hero, "BEST VALUE", RM14, RM120/yr) + a few gates (wallet/budget/goals/shared-sub/scan/Echo) in **light AND dark**. | Nothing money-facing has been eyeballed on a phone yet — only `tsc` + 51 tsx tests. |
-| 2 | **Commit** the monetization layer as **one isolated set**. | It's tangled in a WIP tree (savings/notes/budget-sheet/glass). Cherry-pick the tier/paywall/billing files so it lands clean. |
-| 3 | **RevenueCat go-live** (the real money switch). | Full checklist in `src/services/billing.ts` header + Track D: keys → 5 products (App Store Connect + Play) → RC offering + 3 entitlements → native rebuild → sandbox test. Ideally add **server-side entitlement verification** so the tier can't be flipped locally. Until done, Continue = local unlock. |
-| 4 | _(Optional)_ AI-limit paywall inside MoneyChat | The upsell polish from §1 above. |
-| 5 | _(Optional)_ Existing-user changelog note for lowered free caps | The soft-landing from §2 above. |
-| 6 | _(Later)_ Localize the paywall to Malay | `PaywallModal` is English-only (tier names/benefits/BEST VALUE/Continue). The app is bilingual; the paywall should be too before a wide MY launch. |
+| 1 | ⏭️ **On-device verify** the paywall + a few gates in **light AND dark**. | Still a human gate → tracked in `AUGUST.md` (line ~75). |
+| 2 | ✅ ~~**Commit** the monetization layer~~ **DONE** | Committed; working tree is clean. |
+| 3 | ⏭️ **RevenueCat go-live** (the real money switch). | → `AUGUST.md` (RevenueCat + Cancel→Apple deep-link + server-side entitlement). Until done, Continue = local unlock. |
+| 4 | ✅ ~~AI-limit paywall inside MoneyChat~~ **DONE** | `<PaywallModal feature="ai">` now renders on the AI-limit wall in `MoneyChat.tsx`. |
+| 5 | _(Optional)_ Existing-user changelog note for lowered free caps | Still optional; not done. Non-blocking. |
+| 6 | ✅ ~~Localize the paywall to Malay~~ **DONE** | Fully translated in `ms.ts` (AUGUST notes the "English-only" finding was stale). |
 
 ---
 
@@ -88,7 +95,7 @@ Legend: 🔴 HIGH · 🟠 MEDIUM · 🟡 LOW
 - **Repro:** A sets take-home RM5000 + rent/car commitments + generates a budget. B pulls the budgets, but `budgetProfileStore` stays default → BudgetPlanning + Echo derive "available to spend" from a null income (graceful fallback: `BudgetPlannerSheet.tsx:120` uses transaction-derived income) → different numbers, and re-prompts for income the user already set. Silent divergence, no error.
 - **Fix:** add a `personal_budget_profile` table (or fold takeHome/commitments/modelId into a synced profile blob) with LWW by `updatedAt`; wire into `pullAll`/`pushAll`.
 
-**M3 · 🟠 MEDIUM · Custom categories / renames / colors / order never sync** — `src/store/categoryStore.ts:25`
+**M3 · ✅ DONE (was 🟠 MEDIUM) · Custom categories / renames / colors / order now sync** — `personal_categories` table wired into `personalSync` pull/push (migration `20260722110000`, `client_edit_at` LWW). Original write-up kept below for context. — `src/store/categoryStore.ts:25`
 - `categoryStore` (customExpense/Income categories, name/icon overrides, ordering) is AsyncStorage-local only. Transactions/budgets key on the category **id** (`custom_<ts>`) and DO sync.
 - **Repro:** A creates custom category "Supplier-Ali" + logs under it. On B the synced transactions carry that id but `categoryStore` has no entry → the label/icon/color degrade (shows the description or an em-dash, **not** the custom name) and the category is **absent from B's Category Manager** (can't rename/recolor/reorder there). No money math breaks — amounts/wallets are correct and budget-vs-txn matching still works on the shared id. Cross-device **display + management** inconsistency.
 - **Fix:** sync the custom-category definitions (+ overrides + order) so every referenced category resolves on every device.
@@ -141,6 +148,6 @@ _Deliberately deferred items from the 2026-07-22 monetization audit. None blocks
 - **Raise the ai-proxy monthly token ceiling per-tier at billing go-live:** `supabase/functions/ai-proxy/index.ts` caps EVERY identity at a flat 1.5M tokens/month. With the tiered chat context shipped 2026-07-22 (memory window 15/30/45/90 bubbles + txn detail 30/100/500), a heavy RM25 chatter can hit 1.5M before their 1500-call quota. Make the ceiling tier-aware (e.g. 1.5M/3M/6M/10M) when billing is live — the proxy will need to learn the caller's tier.
 
 ### ⚖️ Legal pages + billing — before go-live (added 2026-07-22)
-- **Privacy Policy page NOT published on website (🔴 launch blocker):** the app links Settings + the paywall footer to `https://jejakbaki.my/privacy.html` (`PRIVACY_URL`, `src/constants/index.ts:164`), but that page **doesn't exist on the site yet** — the link currently 404s. Apple AND Google **require a functional Privacy Policy** on any subscription screen. **Write + publish `privacy.html` before beta goes public / billing goes live.** (Nothing to change in the app — the URL is already wired; the website just needs the page.)
-- **Terms of Use page NOT published on website (🔴 launch blocker):** same as above — app links to `https://jejakbaki.my/terms.html` (`TERMS_URL`, `src/constants/index.ts:163`), page **not published yet**. Store review **requires functional Terms** on the subscription screen. **Write + publish `terms.html` before go-live.**
+- **Privacy Policy — ✅ page now exists in repo (`site/privacy.html`, 269 lines).** Remaining: **confirm it's LIVE on jejakbaki.my** (Vercel deploys from `main`) — tracked in `AUGUST.md` line 67. App URL was already wired (`PRIVACY_URL`).
+- **Terms of Use — ✅ page now exists in repo (`site/terms.html`, 273 lines).** Remaining: **confirm LIVE on jejakbaki.my** — tracked in `AUGUST.md` line 67. App URL was already wired (`TERMS_URL`).
 - **Restore Purchases — verify after beta (🟠 post-beta):** `restorePurchases()` is **dormant during beta** — `isBillingConfigured()` is false, so it **no-ops / returns false** (`src/services/billing.ts:77-79`). It's already wired into the paywall footer + SubscriptionCard (Apple requires Restore reachable outside the paywall). **When RevenueCat goes live post-beta, verify Restore actually re-applies a purchased entitlement** on a fresh install / reinstall before submitting for review.

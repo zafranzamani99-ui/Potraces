@@ -77,6 +77,7 @@ import { pickPhotoIconAsync, deletePhotoIconFile } from '../../components/common
 import EchoInlineChat, { EchoChip } from '../../components/common/EchoInlineChat';
 import WalletPicker from '../../components/common/WalletPicker';
 import CircularProgress from '../../components/common/CircularProgress';
+import PullRefresh from '../../components/common/PullRefresh';
 
 // ── ICON RENDERING (multi-library) ───────────────────────────
 function renderGoalIcon(iconId: string, size: number, color: string) {
@@ -522,6 +523,13 @@ const Goals: React.FC = () => {
   const resumeGoal = usePersonalStore((s) => s.resumeGoal);
   const currency = useSettingsStore((s) => s.currency);
   const wallets = useWalletStore((s) => s.wallets);
+
+  // ── Pull-to-refresh (synced store: the re-read is automatic; hold the spinner briefly) ──
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   // ── Filter / Sort state ──
   const [filter, setFilter] = useState<GoalFilter>('all');
@@ -1597,6 +1605,7 @@ const Goals: React.FC = () => {
           { kind: 'payoff', title: t.guide.goalsPayoffTitle, body: t.guide.goalsPayoffBody, icon: 'check-circle' },
         ]}
       />
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
@@ -1716,6 +1725,7 @@ const Goals: React.FC = () => {
           </CollapsibleSection>
         )}
       </ScrollView>
+      </PullRefresh>
 
       {/* ── FAB ── */}
       {activeGoals.length > 0 && canCreateGoal(goalsList.length) && (

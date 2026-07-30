@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -17,14 +17,16 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLearningStore, TRUST_COUNT, normalizeKeyword, MEMORY_KINDS, type EchoMemory, type MemoryKind } from '../../store/learningStore';
+import { useLearningStore, TRUST_COUNT, normalizeKeyword, MEMORY_KINDS, inferMemoryKind, type EchoMemory, type MemoryKind } from '../../store/learningStore';
 import { usePremiumStore } from '../../store/premiumStore';
 import { TIER_LIMITS } from '../../constants/tiers';
 import { useCategoryStore } from '../../store/categoryStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
+import FAB from '../../components/common/FAB';
 import FloatingModal from '../../components/common/FloatingModal';
+import PullRefresh from '../../components/common/PullRefresh';
 import CategoryIcon from '../../components/common/CategoryIcon';
 import WalletLogo from '../../components/common/WalletLogo';
 import { SPACING, TYPOGRAPHY, RADIUS, withAlpha, CALM_DARK } from '../../constants';
@@ -73,6 +75,13 @@ interface MemModalState {
 }
 const CLOSED_MEM_MODAL: MemModalState = { visible: false, mode: 'add', id: '', kind: 'goal', text: '' };
 
+// The lists grow without bound (memories to 120, still-learning rules to the
+// hundreds), so each collapses to a preview slice + a "show all N" expander to
+// keep the page short. Both lists sort most-relevant-first (memories: pinned
+// then recent; rules: count desc), so the slice is always the top items.
+const MEM_PREVIEW = 8;
+const LEARNING_PREVIEW = 10;
+
 const EchoNotebook: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
@@ -101,6 +110,21 @@ const EchoNotebook: React.FC = () => {
   const [memModal, setMemModal] = useState<MemModalState>(CLOSED_MEM_MODAL);
   const [howVisible, setHowVisible] = useState(false);
   const [filter, setFilter] = useState<'all' | RuleKind>('all');
+  const [showAllMemories, setShowAllMemories] = useState(false);
+  const [showAllLearning, setShowAllLearning] = useState(false);
+  // Two-room split: only ONE list is on screen at a time (halves the page).
+  const [room, setRoom] = useState<'remembers' | 'shortcuts'>('remembers');
+  // Memory kind is auto-filed from the text until the user taps a pill to override.
+  const [memKindAuto, setMemKindAuto] = useState(true);
+
+  // Pull-to-refresh: the notebook reads live from Zustand stores (learning /
+  // premium / category / wallet), so a re-read is enough — the timeout just
+  // holds the branded spinner long enough to read as a real refresh.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   // Memory of you — pinned first, then most-recent (matches Echo's prompt order).
   const sortedMemories = useMemo(
@@ -124,7 +148,7 @@ const EchoNotebook: React.FC = () => {
       : kind === 'style' ? t.echoNotebook.memKindStyle
       : t.echoNotebook.memKindFact;
 
-  const openAddMemory = () => { lightTap(); setMemModal({ visible: true, mode: 'add', id: '', kind: 'goal', text: '' }); };
+  const openAddMemory = () => { setMemKindAuto(true); setMemModal({ visible: true, mode: 'add', id: '', kind: 'fact', text: '' }); };
   const openEditMemory = (m: EchoMemory) => { lightTap(); setMemModal({ visible: true, mode: 'edit', id: m.id, kind: m.kind, text: m.text }); };
   const closeMemModal = () => setMemModal(CLOSED_MEM_MODAL);
 
@@ -169,6 +193,13 @@ const EchoNotebook: React.FC = () => {
   const learning = visibleRules.filter((r) => r.count < TRUST_COUNT);
   const total = allRules.length;
 
+  // Collapse the two growing lists to their top slice unless expanded.
+  const memsShown = showAllMemories ? sortedMemories : sortedMemories.slice(0, MEM_PREVIEW);
+  const learningShown = showAllLearning ? learning : learning.slice(0, LEARNING_PREVIEW);
+  // Hero now counts EVERYTHING Echo knows (durable facts + learned shortcuts);
+  // the old hero counted rules only and ignored memories entirely.
+  const heroCount = total + sortedMemories.length;
+
   const kindIcon = (kind: RuleKind): keyof typeof Feather.glyphMap =>
     kind === 'category' ? 'tag'
       : kind === 'wallet' ? 'credit-card'
@@ -207,9 +238,19 @@ const EchoNotebook: React.FC = () => {
       : r.kind === 'skip' ? t.echoNotebook.skippedValue
       : r.value;
 
-  const openAdd = () => { lightTap(); setModal({ visible: true, mode: 'add', kind: 'category', keyword: '', value: '' }); };
+  const openAdd = () => { setModal({ visible: true, mode: 'add', kind: 'category', keyword: '', value: '' }); };
   const openEdit = (r: NotebookRule) => { lightTap(); setModal({ visible: true, mode: 'edit', kind: r.kind, keyword: r.keyword, value: r.value }); };
   const closeModal = () => setModal(CLOSED_MODAL);
+
+  // One contextual FAB drives both rooms (the FAB fires its own lightTap).
+  const handleFabPress = () => {
+    if (room === 'remembers') {
+      if (memAtCap) { Alert.alert(t.echoNotebook.memCapReached); return; }
+      openAddMemory();
+    } else {
+      openAdd();
+    }
+  };
 
   // "How echo learns" — explains the AUTOMATIC side (corrections → rules), so
   // the screen never reads as a bare list. Shown inline when empty (it IS the
@@ -287,7 +328,7 @@ const EchoNotebook: React.FC = () => {
     lightTap();
     Alert.alert(
       t.echoNotebook.resetTitle,
-      t.echoNotebook.resetMsg.replace('{n}', String(total)),
+      t.echoNotebook.resetMsg.replace('{n}', String(heroCount)),
       [
         { text: t.echoNotebook.cancel, style: 'cancel' },
         { text: t.echoNotebook.resetAll, style: 'destructive', onPress: () => { const s = useLearningStore.getState(); s.resetNotebook(); s.resetMemories(); } },
@@ -327,123 +368,172 @@ const EchoNotebook: React.FC = () => {
     );
   };
 
+  // "show all N" / "show less" toggle for a collapsed list. `fullCount` labels
+  // the total so the row reads "show all 184".
+  const renderShowMore = (expanded: boolean, toggle: () => void, fullCount: number) => (
+    <TouchableOpacity
+      style={[styles.showMoreBtn, neu.raised]}
+      onPress={() => { lightTap(); toggle(); }}
+      accessibilityRole="button"
+    >
+      <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={C.textSecondary} />
+      <Text style={[styles.showMoreText, { color: C.textSecondary }]}>
+        {expanded ? t.echoNotebook.showLess : t.echoNotebook.showAll.replace('{n}', String(fullCount))}
+      </Text>
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.container}>
+      {/* Fixed header — hero + room segment stay put while the room scrolls,
+          so switching rooms never needs a scroll back to the top. */}
+      <View style={styles.fixedHeader}>
+        <View style={[styles.hero, neu.raisedSoft]}>
+          <Text style={[styles.heroNumber, { color: C.accent }]}>{heroCount}</Text>
+          <Text style={[styles.heroText, { color: C.textPrimary }]}>
+            {heroCount > 0
+              ? t.echoNotebook.counter.replace('{n}', String(heroCount))
+              : t.echoNotebook.counterEmpty}
+          </Text>
+        </View>
+        {/* Room segment — two Neu Pills (only one list is live at a time) */}
+        <View style={styles.segmentRow}>
+          {(['remembers', 'shortcuts'] as const).map((r) => {
+            const active = room === r;
+            const count = r === 'remembers' ? sortedMemories.length : total;
+            return (
+              <TouchableOpacity
+                key={r}
+                style={[styles.pill, neu.raised, active && styles.pillActive]}
+                onPress={() => { lightTap(); setRoom(r); }}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.pillText, { color: active ? C.onAccent : C.textSecondary }]}>
+                  {(r === 'remembers' ? t.echoNotebook.roomRemembers : t.echoNotebook.roomShortcuts)} {count}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Counter hero */}
-        <View style={[styles.hero, neu.raisedSoft]}>
-          <Text style={[styles.heroNumber, { color: C.accent }]}>{total}</Text>
-          <Text style={[styles.heroText, { color: C.textPrimary }]}>
-            {total > 0
-              ? t.echoNotebook.counter.replace('{n}', String(total))
-              : t.echoNotebook.counterEmpty}
-          </Text>
-        </View>
-
-        {/* ── What Echo remembers about you (durable facts) — coexists with the learned rules below ── */}
-        <Text style={styles.memTitle}>{t.echoNotebook.memTitle}</Text>
-        <Text style={styles.memHint}>{t.echoNotebook.memHint}</Text>
-        {sortedMemories.length === 0 ? (
-          <Text style={styles.memEmpty}>{t.echoNotebook.memEmpty}</Text>
-        ) : (
-          sortedMemories.map((m) => (
-            <TouchableOpacity key={m.id} style={[styles.memRow, neu.raised]} onPress={() => openEditMemory(m)} accessibilityRole="button">
-              <View style={[styles.memIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
-                <Feather name={memKindIcon(m.kind)} size={15} color={C.accent} />
-              </View>
-              <View style={styles.memTextWrap}>
-                <Text style={[styles.memText, { color: C.textPrimary }]} numberOfLines={2}>{m.text}</Text>
-                <Text style={[styles.memMeta, { color: C.textMuted }]}>
-                  {memKindLabel(m.kind)} · {m.source === 'echo' ? t.echoNotebook.memSourceEcho : t.echoNotebook.memSourceYou}
-                </Text>
-              </View>
-              {m.pinned && <Feather name="bookmark" size={14} color={C.accent} />}
-            </TouchableOpacity>
-          ))
-        )}
-        <TouchableOpacity
-          onPress={openAddMemory}
-          disabled={memAtCap}
-          style={[styles.memAddBtn, neu.raised, memAtCap && { opacity: 0.5 }]}
-          accessibilityRole="button"
-        >
-          <Feather name="plus" size={15} color={C.accent} />
-          <Text style={[styles.memAddText, { color: C.accent }]}>{t.echoNotebook.memAdd}</Text>
-        </TouchableOpacity>
-        {memAtCap && <Text style={styles.memCapNote}>{t.echoNotebook.memCapReached}</Text>}
-
-        {/* ── Learned shortcuts (the notebook rules Echo picked up from corrections) ── */}
-        <Text style={styles.rulesDivider}>{t.echoNotebook.rulesDivider}</Text>
-        <NeuButton icon="plus" label={t.echoNotebook.addOwn} onPress={openAdd} />
-
-        {total === 0 && (
-          <View style={[styles.howCard, neu.raisedSoft]}>
-            <Text style={[styles.howTitle, { color: C.textPrimary }]}>{t.echoNotebook.howTitle}</Text>
-            <Text style={[styles.howIntro, { color: C.textMuted }]}>{t.echoNotebook.empty}</Text>
-            {howBody}
-          </View>
-        )}
-
-        {total > 0 && (
-          <TouchableOpacity
-            onPress={() => { lightTap(); setHowVisible(true); }}
-            style={styles.howLink}
-            accessibilityRole="button"
-          >
-            <Feather name="info" size={13} color={C.textMuted} />
-            <Text style={[styles.howLinkText, { color: C.textMuted }]}>{t.echoNotebook.howTitle}</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Type filter — Neu Pills (faintDark raised idle, olive when active) */}
-        {total > 0 && (
-          <View style={styles.filterRow}>
-            {(['all', 'person', 'category', 'wallet', 'type', 'skip'] as const).map((f) => {
-              const active = filter === f;
-              return (
-                <TouchableOpacity
-                  key={f}
-                  style={[styles.filterPill, neu.raised, active && styles.pillActive]}
-                  onPress={() => { lightTap(); setFilter(f); }}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.pillText, { color: active ? C.onAccent : C.textSecondary }]}>
-                    {f === 'all' ? t.echoNotebook.filterAll : kindLabel(f)}
-                  </Text>
+        {room === 'remembers' ? (
+          /* ── Room 1: durable facts Echo remembers about you ── */
+          <>
+            <Text style={styles.memHint}>{t.echoNotebook.memHint}</Text>
+            {sortedMemories.length === 0 ? (
+              <Text style={styles.memEmpty}>{t.echoNotebook.memEmpty}</Text>
+            ) : (
+              memsShown.map((m) => (
+                <TouchableOpacity key={m.id} style={[styles.memRow, neu.raised]} onPress={() => openEditMemory(m)} accessibilityRole="button">
+                  <View style={[styles.memIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
+                    <Feather name={memKindIcon(m.kind)} size={15} color={C.accent} />
+                  </View>
+                  <View style={styles.memTextWrap}>
+                    <Text style={[styles.memText, { color: C.textPrimary }]} numberOfLines={2}>{m.text}</Text>
+                    <Text style={[styles.memMeta, { color: C.textMuted }]}>
+                      {memKindLabel(m.kind)} · {m.source === 'echo' ? t.echoNotebook.memSourceEcho : t.echoNotebook.memSourceYou}
+                    </Text>
+                  </View>
+                  {m.pinned && <Feather name="bookmark" size={14} color={C.accent} />}
                 </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-
-        {trusted.length > 0 && (
-          <>
-            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.echoNotebook.trustedSection}</Text>
-            {trusted.map(renderRule)}
+              ))
+            )}
+            {sortedMemories.length > MEM_PREVIEW &&
+              renderShowMore(showAllMemories, () => setShowAllMemories((v) => !v), sortedMemories.length)}
+            {memAtCap && <Text style={styles.memCapNote}>{t.echoNotebook.memCapReached}</Text>}
           </>
-        )}
-
-        {learning.length > 0 && (
+        ) : (
+          /* ── Room 2: learned shortcuts (rules Echo picked up from corrections) ── */
           <>
-            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.echoNotebook.learningSection}</Text>
-            <Text style={[styles.sectionHint, { color: C.textMuted }]}>{t.echoNotebook.learningHint}</Text>
-            {learning.map(renderRule)}
+            {total === 0 && (
+              <View style={[styles.howCard, neu.raisedSoft]}>
+                <Text style={[styles.howTitle, { color: C.textPrimary }]}>{t.echoNotebook.howTitle}</Text>
+                <Text style={[styles.howIntro, { color: C.textMuted }]}>{t.echoNotebook.empty}</Text>
+                {howBody}
+              </View>
+            )}
+
+            {total > 0 && (
+              <TouchableOpacity
+                onPress={() => { lightTap(); setHowVisible(true); }}
+                style={styles.howLink}
+                accessibilityRole="button"
+              >
+                <Feather name="info" size={13} color={C.textMuted} />
+                <Text style={[styles.howLinkText, { color: C.textMuted }]}>{t.echoNotebook.howTitle}</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Type filter — Neu Pills (faintDark raised idle, olive when active) */}
+            {total > 0 && (
+              <View style={styles.filterRow}>
+                {(['all', 'person', 'category', 'wallet', 'type', 'skip'] as const).map((f) => {
+                  const active = filter === f;
+                  return (
+                    <TouchableOpacity
+                      key={f}
+                      style={[styles.filterPill, neu.raised, active && styles.pillActive]}
+                      onPress={() => { lightTap(); setFilter(f); }}
+                      accessibilityRole="button"
+                    >
+                      <Text style={[styles.pillText, { color: active ? C.onAccent : C.textSecondary }]}>
+                        {f === 'all' ? t.echoNotebook.filterAll : kindLabel(f)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+
+            {trusted.length > 0 && (
+              <>
+                <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>
+                  {t.echoNotebook.trustedSection} · {trusted.length}
+                </Text>
+                {trusted.map(renderRule)}
+              </>
+            )}
+
+            {learning.length > 0 && (
+              <>
+                <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>
+                  {t.echoNotebook.learningSection} · {learning.length}
+                </Text>
+                <Text style={[styles.sectionHint, { color: C.textMuted }]}>{t.echoNotebook.learningHint}</Text>
+                {learningShown.map(renderRule)}
+                {learning.length > LEARNING_PREVIEW &&
+                  renderShowMore(showAllLearning, () => setShowAllLearning((v) => !v), learning.length)}
+              </>
+            )}
           </>
         )}
 
         <Text style={[styles.privacyNote, { color: C.textMuted }]}>{t.echoNotebook.privacyNote}</Text>
 
-        {total > 0 && (
+        {(total > 0 || sortedMemories.length > 0) && (
           <TouchableOpacity onPress={handleResetAll} style={styles.resetBtn} accessibilityRole="button">
             <Text style={[styles.resetText, { color: '#B5705A' }]}>{t.echoNotebook.resetAll}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
+      </PullRefresh>
+
+      {/* Contextual FAB — adds a memory in Remembers, teaches a rule in Shortcuts
+          (locks when the memory tier cap is hit). Matches the app-wide FAB. */}
+      <FAB
+        onPress={handleFabPress}
+        icon={room === 'remembers' && memAtCap ? 'lock' : 'plus'}
+        accessibilityLabel={room === 'remembers' ? t.echoNotebook.memAdd : t.echoNotebook.addOwn}
+        style={{ bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md) }}
+      />
 
       {/* Add / edit rule */}
       <FloatingModal visible={modal.visible} onClose={closeModal} entrance="fade" borderless>
@@ -581,28 +671,11 @@ const EchoNotebook: React.FC = () => {
             {memModal.mode === 'add' ? t.echoNotebook.memAddTitle : t.echoNotebook.memEditTitle}
           </Text>
 
-          {memModal.mode === 'add' && (
-            <View style={styles.memKindGrid}>
-              {MEMORY_KINDS.map((k) => {
-                const active = memModal.kind === k;
-                return (
-                  <TouchableOpacity
-                    key={k}
-                    style={[styles.filterPill, neu.raised, active && styles.pillActive]}
-                    onPress={() => { lightTap(); setMemModal((m) => ({ ...m, kind: k })); }}
-                    accessibilityRole="button"
-                  >
-                    <Text style={[styles.pillText, { color: active ? C.onAccent : C.textSecondary }]}>{memKindLabel(k)}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-
+          {/* The fact is the hero — type it first; Echo auto-files the type. */}
           <Text style={[styles.fieldLabel, { color: C.textSecondary }]}>{t.echoNotebook.memTextLabel}</Text>
           <TextInput
             value={memModal.text}
-            onChangeText={(v) => setMemModal((m) => ({ ...m, text: v }))}
+            onChangeText={(v) => setMemModal((m) => ({ ...m, text: v, kind: memKindAuto ? inferMemoryKind(v) : m.kind }))}
             placeholder={t.echoNotebook.memPlaceholder}
             placeholderTextColor={C.neutral}
             style={[styles.input, styles.memInput, { color: C.textPrimary, borderColor: C.inputBorder }]}
@@ -611,8 +684,31 @@ const EchoNotebook: React.FC = () => {
             textAlignVertical="top"
           />
 
+          {/* Optional type — pre-filed by Echo from the text, one tap to change.
+              Below the field + clearly optional, so it never blocks saving. */}
+          {memModal.mode === 'add' && (
+            <>
+              <Text style={[styles.memKindHint, { color: C.textMuted }]}>{t.echoNotebook.memKindOptional}</Text>
+              <View style={styles.memKindGrid}>
+                {MEMORY_KINDS.map((k) => {
+                  const active = memModal.kind === k;
+                  return (
+                    <TouchableOpacity
+                      key={k}
+                      style={[styles.filterPill, neu.raised, active && styles.pillActive]}
+                      onPress={() => { lightTap(); setMemKindAuto(false); setMemModal((m) => ({ ...m, kind: k })); }}
+                      accessibilityRole="button"
+                    >
+                      <Text style={[styles.pillText, { color: active ? C.onAccent : C.textSecondary }]}>{memKindLabel(k)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+
           <View style={styles.modalCta}>
-            <NeuButton icon="check" label={t.echoNotebook.saveRule} onPress={handleMemSave} disabled={!memModal.text.trim()} />
+            <NeuButton icon="check" label={t.echoNotebook.memSave} onPress={handleMemSave} disabled={!memModal.text.trim()} />
           </View>
 
           <View style={styles.modalFooterRow}>
@@ -672,8 +768,11 @@ const EchoNotebook: React.FC = () => {
 const makeStyles = (C: ReturnType<typeof useCalm>) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: C.background },
+    // Hero + segment live here, pinned above the scrolling room.
+    fixedHeader: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md },
+    segmentRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
     scrollView: { flex: 1 },
-    scrollContent: { padding: SPACING.md },
+    scrollContent: { paddingHorizontal: SPACING.md, paddingTop: SPACING.xs },
     hero: {
       borderRadius: RADIUS.lg,
       backgroundColor: C.background,
@@ -773,6 +872,18 @@ const makeStyles = (C: ReturnType<typeof useCalm>) =>
       marginLeft: SPACING.xs,
     },
     sectionHint: { fontSize: TYPOGRAPHY.size.xs, marginLeft: SPACING.xs, marginBottom: SPACING.xs },
+    showMoreBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      borderRadius: RADIUS.md,
+      backgroundColor: withAlpha(C.textPrimary, 0.03),
+      paddingVertical: 10,
+      marginTop: 2,
+      marginBottom: SPACING.sm,
+    },
+    showMoreText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: '600' },
     ruleRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -825,6 +936,7 @@ const makeStyles = (C: ReturnType<typeof useCalm>) =>
     },
     memAddText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: '600' },
     memCapNote: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, textAlign: 'center', marginTop: SPACING.xs },
+    memKindHint: { fontSize: TYPOGRAPHY.size.xs, marginTop: SPACING.md, marginBottom: SPACING.sm, marginLeft: 2 },
     memKindGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
     memInput: { minHeight: 72 },
     rulesDivider: {

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ChatConversation } from '../types';
+import type { EchoCard } from '../services/echoCards/types';
 import { useAIInsightsStore } from './aiInsightsStore';
 
 // ─── ASK-ECHO (per-screen inline chat) THREADS ─────────────────────────
@@ -14,7 +15,7 @@ import { useAIInsightsStore } from './aiInsightsStore';
 // (aiInsightsStore.conversations — persisted, 100-item sanity cap, tier
 // chatSavedBubbles LOCKS old ones in the UI, never deletes).
 
-export type InlineMsg = { role: 'user' | 'assistant'; content: string; pending?: boolean };
+export type InlineMsg = { role: 'user' | 'assistant'; content: string; pending?: boolean; cards?: EchoCard[] };
 
 interface EchoInlineState {
   threads: Record<string, InlineMsg[]>;

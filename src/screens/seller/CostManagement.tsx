@@ -26,6 +26,7 @@ import { useSellerStore } from '../../store/sellerStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useWalletStore } from '../../store/walletStore';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
@@ -42,7 +43,9 @@ import ReceiptViewer from '../../components/seller/ReceiptViewer';
 import PaywallModal from '../../components/common/PaywallModal';
 import ImageSourcePills from '../../components/common/ImageSourcePills';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import WalletPicker from '../../components/common/WalletPicker';
 import CategoryIcon from '../../components/common/CategoryIcon';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useNeu } from '../../components/common/neu';
 import {
   lightTap,
@@ -95,6 +98,7 @@ const CostManagement: React.FC = () => {
   const addTransferIncome = usePersonalStore((s) => s.addTransferIncome);
   const addTransfer = useBusinessStore((s) => s.addTransfer);
   const currency = useSettingsStore((s) => s.currency);
+  const wallets = useWalletStore((s) => s.wallets);
   const { showToast } = useToast();
 
   // ─── Recurring cost state ──────────────────────────────────
@@ -148,6 +152,10 @@ const CostManagement: React.FC = () => {
   // ─── Transfer state ────────────────────────────────────────
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
+  // Destination wallet for the transfer — defaults to the user's default wallet.
+  const [transferWalletId, setTransferWalletId] = useState<string | null>(null);
+  const effectiveTransferWalletId =
+    transferWalletId ?? wallets.find((w) => w.isDefault)?.id ?? wallets[0]?.id ?? null;
 
   // ─── Animations ────────────────────────────────────────────
   const summaryAnim = useFadeSlide(0);
@@ -541,7 +549,7 @@ const CostManagement: React.FC = () => {
       ? `seller: ${activeSeason.name} (${untransferredOrders.length} orders)`
       : `seller: ${untransferredOrders.length} orders`;
 
-    const transfer = createTransfer(amount, 'business', 'personal', label);
+    const transfer = createTransfer(amount, 'business', 'personal', label, undefined, effectiveTransferWalletId ?? undefined);
     addTransfer(transfer);
     addTransferIncome(transfer);
     markOrdersTransferred(
@@ -551,11 +559,19 @@ const CostManagement: React.FC = () => {
     successNotification();
     showToast(t.seller.transferredToPersonal, 'success');
     setShowTransfer(false);
-  }, [transferAmount, activeSeason, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast, t]);
+  }, [transferAmount, activeSeason, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast, t, effectiveTransferWalletId]);
   const guardedTransferToPersonal = useSubmitGuard(handleTransferToPersonal);
+
+  // ─── Pull-to-refresh ───────────────────────────────────────
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   return (
     <View style={styles.container}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -701,7 +717,18 @@ const CostManagement: React.FC = () => {
             </View>
 
             {showTransfer ? (
-              <View style={styles.transferInputRow}>
+              <>
+                {wallets.length > 0 && (
+                  <WalletPicker
+                    wallets={wallets}
+                    selectedId={effectiveTransferWalletId}
+                    onSelect={setTransferWalletId}
+                    label={t.stall.transferWalletLabel}
+                    faintNeu
+                    onyxTrigger
+                  />
+                )}
+                <View style={styles.transferInputRow}>
                 <View style={styles.transferInputWrap}>
                   <Text style={styles.transferPrefix}>{currency}</Text>
                   <TextInput
@@ -724,6 +751,7 @@ const CostManagement: React.FC = () => {
                   <Feather name="check" size={18} color={C.onAccent} />
                 </TouchableOpacity>
               </View>
+              </>
             ) : (
               <TouchableOpacity
                 style={styles.transferBtn}
@@ -953,6 +981,7 @@ const CostManagement: React.FC = () => {
           )}
         </Animated.View>
       </ScrollView>
+      </PullRefresh>
 
       {/* ─── FAB: Log Cost ──────────────────────────────────── */}
       <View style={[styles.fabWrapper, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>

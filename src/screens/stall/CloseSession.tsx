@@ -135,11 +135,14 @@ const CloseSession: React.FC = () => {
 
   // Live cash-box reconciliation (from local inputs — no nag if left blank)
   const floatNum = parseFloat(floatStr) || 0;
-  const expectedCash = floatNum + summary.totalCash;
+  const expenses = activeSession.expenses || [];
+  // Cash expenses come out of the drawer → subtract them, or any cash expense
+  // shows a false "short" at close (bug 6c). Mirrors getSessionEconomics.
+  const expensesTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const expectedCash = floatNum + summary.totalCash - expensesTotal;
   const countedNum = parseFloat(countedStr);
   const hasCounted = !isNaN(countedNum);
   const cashDiff = hasCounted ? countedNum - expectedCash : 0;
-  const expenses = activeSession.expenses || [];
 
   return (
     <View style={styles.container}>
@@ -337,8 +340,13 @@ const CloseSession: React.FC = () => {
             <View style={styles.netRule} />
             <View style={styles.netRow}>
               <Text style={styles.netKeptLabel}>{t.stall.keptRow}</Text>
-              <Text style={styles.netKeptValue}>{currency} {econ.kept.toFixed(2)}</Text>
+              <Text style={styles.netKeptValue}>{econ.keptIsApprox ? '~' : ''}{currency} {econ.kept.toFixed(2)}</Text>
             </View>
+            {econ.keptIsApprox && (
+              <Text style={{ fontSize: 11, color: C.textMuted, textAlign: 'right', marginTop: 4, fontStyle: 'italic' }}>
+                {t.stall.keptApproxNote}
+              </Text>
+            )}
           </View>
         )}
 

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   useWindowDimensions,
   InteractionManager,
-  RefreshControl,
   TouchableOpacity,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
@@ -45,6 +44,7 @@ import Donut from '../../components/common/Donut';
 import CashFlowMathSheet, { MathFocus } from '../../components/common/CashFlowMathSheet';
 import { lightTap } from '../../services/haptics';
 import ScreenGuide from '../../components/common/ScreenGuide';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useKeptAcrossBooks } from '../../hooks/useKeptNumber';
 
 const DELTA_CAP = 999;
@@ -391,14 +391,12 @@ const PersonalReports: React.FC = () => {
           { icon: 'pie-chart', text: t.guide.reportsPoint2 },
         ]}
       />
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} />
-        }
       >
         {/* Hero — the kept number for the selected range (tap → the math) */}
         <TouchableOpacity
@@ -736,6 +734,7 @@ const PersonalReports: React.FC = () => {
 
         <View style={{ height: SPACING['3xl'] }} />
       </ScrollView>
+      </PullRefresh>
 
       <CashFlowMathSheet
         visible={mathFocus !== null}

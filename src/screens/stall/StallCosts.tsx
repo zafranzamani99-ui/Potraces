@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useT } from '../../i18n';
 import { StallExpense } from '../../types';
 
@@ -24,6 +25,12 @@ const StallCosts: React.FC = () => {
   const insets = useSafeAreaInsets();
   const sessions = useStallStore((s) => s.sessions);
   const currency = useSettingsStore((s) => s.currency);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   // Every expense across every session, newest first.
   const expenses = useMemo<FlatExpense[]>(() => {
@@ -59,11 +66,13 @@ const StallCosts: React.FC = () => {
 
   return (
     <View style={styles.screen}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
       <FlatList
         data={expenses}
         keyExtractor={(e) => e.id}
         renderItem={renderItem}
         extraData={C}
+        style={styles.list}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
@@ -87,6 +96,7 @@ const StallCosts: React.FC = () => {
           </View>
         }
       />
+      </PullRefresh>
     </View>
   );
 };
@@ -95,6 +105,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: C.background,
+  },
+  list: {
+    flex: 1,
   },
   content: {
     paddingHorizontal: SPACING.xl,

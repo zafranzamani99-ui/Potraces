@@ -198,7 +198,7 @@ const MixedDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} topInset={insets.top}>
       <FlatList
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}

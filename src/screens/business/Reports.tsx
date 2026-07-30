@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { BarChart, PieChart } from 'react-native-chart-kit';
@@ -12,6 +12,7 @@ import { generateReportNarrative, ReportMonthData } from '../../services/reportN
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
+import PullRefresh from '../../components/common/PullRefresh';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -22,6 +23,12 @@ const BusinessReports: React.FC = () => {
   const sales = useBusinessStore((s) => s.sales);
   const products = useBusinessStore((s) => s.products);
   const currency = useSettingsStore(state => state.currency);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   const monthlySalesData = useMemo(() => {
     const months = [];
@@ -210,11 +217,12 @@ const BusinessReports: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
         {narrativeEntry?.text ? (
           <Text style={[{ ...TYPE.narrative }, { color: C.textSecondary, marginBottom: SPACING.md }]}>
             {narrativeEntry.text}
@@ -316,7 +324,8 @@ const BusinessReports: React.FC = () => {
             </View>
           </View>
         </Card>
-      </ScrollView>
+        </ScrollView>
+      </PullRefresh>
     </View>
   );
 };

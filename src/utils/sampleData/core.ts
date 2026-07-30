@@ -9,6 +9,7 @@ import type { usePersonalStore } from '../../store/personalStore';
 import type { useDebtStore } from '../../store/debtStore';
 import type { useSavingsStore } from '../../store/savingsStore';
 import type { useReceiptStore } from '../../store/receiptStore';
+import type { MemoryKind } from '../../store/learningStore';
 
 export type SampleBracket = 'teen' | 'student' | 'professional' | 'family';
 
@@ -35,6 +36,7 @@ export type ReceiptSeed  = Omit<ReceiptInput, 'walletId'> & { wallet: string };
 export type ContribSeed  = { amount: number; note: string };
 export type SnapshotSeed = { value: number; note: string; source: SnapshotSrc };
 export type BudgetProfileSeed = { takeHome: number; commitments: { label: string; monthly: number }[] };
+export type MemorySeed = { kind: MemoryKind; text: string; source: 'you' | 'echo'; pinned?: boolean };
 
 export interface SeedContext {
   /** Declare a wallet. `balance` is its FINAL (current) balance. */
@@ -53,6 +55,21 @@ export interface SeedContext {
   receipt(seed: ReceiptSeed): void;
   /** Seed Echo's "echo plan" budget planner: take-home pay + locked monthly must-pays. */
   budgetProfile(seed: BudgetProfileSeed): void;
+
+  // ─── Echo's notebook (learningStore) — the shortcuts Echo picked up from
+  // corrections + the durable facts it remembers. Appends/upserts, never clobbers.
+  /** Teach a keyword→category shortcut. `category` is a real expense category id. `count` (default TRUST_COUNT) is the confidence: ≥2 lands in "knows you", 1 in "still learning". */
+  learnCategory(keyword: string, category: string, count?: number): void;
+  /** Teach which wallet a keyword is usually paid from. `wallet` = the wallet's display name. */
+  learnWallet(keyword: string, wallet: string, count?: number): void;
+  /** Teach a person alias: what you type (`raw`) → who they are (`preferred`). `count` repeats build confidence. */
+  learnPerson(raw: string, preferred: string, count?: number): void;
+  /** Teach that a keyword is really a given entry type (e.g. `toType` 'income'). `count` repeats build confidence. */
+  learnType(keyword: string, toType: string, count?: number): void;
+  /** Record that Echo learned to skip a keyword (never a spend), over `times` corrections. */
+  learnSkip(keyword: string, times?: number): void;
+  /** Add a durable fact to "what echo remembers about you". */
+  memory(seed: MemorySeed): void;
 }
 
 export interface Persona {

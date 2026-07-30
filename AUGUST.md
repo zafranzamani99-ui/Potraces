@@ -5,6 +5,17 @@ done to submit / go live) and **on-hold** (ships later, safe to launch without).
 Built from the pre-EAS-build audit + decisions on 2026-07-28/29. Echo work tracked
 separately (`audit/ECHO_UNFINISHED.md`).
 
+> **`step2 July.md` + `step3 July.md` are now HISTORICAL — folded in here (2026-07-29).**
+> Their money/sync fixes are done (money-logic audit verified fixed — see ✅ Done); the
+> few non-blocking leftovers sit in ON HOLD → "Folded in from the July docs". **AUGUST.md
+> is the single source of truth for launch.**
+>
+> **Recommended before-launch order:** (1) 🟡 the things only you can start — **RevenueCat
+> account + the Google/Apple keys** (longest poles, everything billing waits on them);
+> (2) in parallel, tell me to run the 🟢 code items + the four 🔴 bigger builds; (3) 🟡
+> uploads (art, icons, screenshots, store forms) + confirm the website pages are live;
+> (4) flip the **launch-day switch** + enable RevenueCat on 13 Aug. Detail below.
+
 ---
 
 ## 🎚️ Launch-day switch — DON'T FORGET
@@ -35,6 +46,14 @@ separately (`audit/ECHO_UNFINISHED.md`).
 ---
 
 ## ✅ Done (checked & decided this session)
+- [x] **Money-logic audit (the step3 July "related findings") — all 4 VERIFIED FIXED (2026-07-29):**
+      (1) Dashboard "Kept" card now excludes transfers + goal-moves so it matches the Reports
+      "You kept" math (`useKeptNumber.ts`); (2) goal contributions are no longer counted as
+      spending in Reports/Pulse (`insights.ts` `isGoalMove`); (3) note-driven debt payment is
+      capped to the balance *before* the wallet is deducted — no more invisible cash
+      (`useIntentEngine.ts`); (4) Goals' Echo is now tier-gated (no monetization bypass,
+      `Goals.tsx`). Earlier multi-device sync fixes **M1/M2/M3/A2** are also in (custom-category
+      sync, budget-profile sync, cloud soft-delete, schema-cache poisoning).
 - [x] **Redeem codes + invite/referral rewards + clipboard auto-attribution** — built,
       deployed to prod, smoke test passed. Live values: welcome **15d** / Collectz
       milestone **5** joins / friend qualifies at account age **3d**.
@@ -79,6 +98,38 @@ Grouped by who does it: **🟢 Claude can do · 🟡 needs you · 🔴 bigger bu
 - [ ] **Collectz Report + Block** for users (Apple 1.2) + server-side profanity/URL filter on free-text names + EULA / objectionable-content tick at sign-up.
 - [ ] "Cancel subscription" → deep-link to Apple's manage-subscriptions page. *(pairs with RevenueCat)*
 - [ ] Server-side entitlement check so a paid tier can't be flipped on-device. *(pairs with RevenueCat)*
+- [ ] **"Earn Pro" hub + Share & Earn Pro reward (NEW — decided 2026-07-29; launch-blocking, full build).**
+      Two parts, one feature:
+      - **(a) Merge into one "Earn Pro" hub — segmented Neu Pills `Invite · Share · Redeem`.**
+        Collapses today's TWO separate settings rows + TWO stack screens into one screen.
+        **Invite** pane = current `src/screens/shared/InviteFriends.tsx` (code / copy / share /
+        progress / friend-code box). **Redeem** pane = current `src/screens/shared/RedeemCode.tsx`
+        (gift-code entry + the clipboard-token read). **Share** pane = NEW (below). Collapse the
+        two `SettingRow`s in `PersonalSettings.tsx` (~L378–390) **and** `BusinessSettings.tsx` into
+        one "Earn Pro" row; register one hub screen in `RootNavigator.tsx` (keep or redirect the
+        old `InviteFriends`/`RedeemCode` route names). Onyx/Neu-compliant, `PageScrollView` per
+        pane. **This half is cheap — a pure UI merge of screens that already exist.**
+      - **(b) Share & Earn Pro — the reward engine (the real work).** Post about the app **with a
+        screenshot** on **Instagram · 小红书 (RED) · Reddit · Facebook · X · Threads**; the reward
+        scales with the post's likes:
+        - **30+ likes → 1 month Pro**
+        - **100+ likes → 1 year Pro**
+        - **viral → Pro forever**
+        Build needs: **(1)** submit flow — user picks a platform, pastes their post URL (+ optional
+        screenshot upload); **(2)** a `share_reward_submissions` table + edge function to record it;
+        **(3) verification** — MVP = team reviews the like count and approves a tier in the admin
+        Rewards tab (same place redeem/referral codes are managed); **(4) grant** — reuse the
+        existing premium-grant path (`docs/plans/premium-grants-and-rewards.md`, `entitlements.ts`)
+        so share-earned Pro is a **server-granted** entitlement exactly like redeem/referral (rides
+        the same server-side entitlement check above, plays with RevenueCat); **(5) abuse controls**
+        — dedupe by post URL, one grant per post, per-user/year cap (mirror the referral cap),
+        account-age gate, reject bought-likes / edited screenshots on review; **(6)** EN+BM copy
+        (new `t.shareEarn.*`) + push on approval (reuse `RewardModal.tsx`).
+      - **Open calls to settle before/while building:** manual review vs honour-system vs a
+        platform API for like counts; is "forever" a true permanent grant or a long-dated one;
+        how the share year-cap interacts with the referral year-cap.
+      - **Doc-sync:** this adds a new way to earn Pro → when built you MUST update
+        `Potraces_Subscription_and_Echo_Guide.docx` (CLAUDE.md rule).
 
 ### ✅ Cleared this session
 Redeem/rewards/invite + clipboard auto-attribution · `redeem_code` message fix · ad-tracking removed (`AD_ID` + ATT string) · `SYSTEM_ALERT_WINDOW` + `WRITE_CONTACTS` + `expo-audio` removed · Google Docs sync line + Playbook tab hidden · dev free-unlock seatbelt · `receipt-images` confirmed private · seller receipt images fixed · contacts search bug · docs synced.
@@ -93,11 +144,19 @@ Redeem/rewards/invite + clipboard auto-attribution · `redeem_code` message fix 
 - [ ] Referral extras: Android Play install-referrer, IAP-webhook grants, waitlist→app code bridge, `ip_hash` fraud signal, beta-installer free-month batch.
 - [ ] Restore Purchases (dormant — test once billing is live).
 - [ ] Statement / CSV import tiers (everyone shares the flat free cap for now).
-- [ ] Multi-device sync edge cases; shared household wallet (v1.1).
+- [ ] Multi-device sync edge cases; shared household wallet (v1.1). *(Includes step3's **A1** — LWW trusts the device clock, architectural, needs a server edit-time — and **A3** — poison-row quarantine, low/defense-in-depth. Both accepted for now.)*
 - [ ] Contact-sync salted-hash rewrite (before personal sign-in ships widely).
 - [ ] Pre-monetize legal: PSP "referrer not acquirer" letter, SST decision, DPAs/DPO around ~10k users.
 - [ ] Fiuu DuitNow-QR accept (code-complete, blocked on Fiuu provisioning — retest when they finish).
 - [ ] Collectz join-approval deploy (code done; needs `db push` + `functions deploy` + smoke).
+- [ ] **Pull-to-refresh — 2 skipped screens.** Branded `PullRefresh` was rolled out to 44 screens (2026-07-30); these two were skipped because a plain wrap would break them and each needs a tailored approach:
+      - **`seller/Products.tsx`** — it's a `DraggableFlatList`; PullRefresh's Android pan fights the drag/reorder gesture. Needs a gesture-coexistence fix (e.g. iOS-only wrap, or gate the pull off while `reorderMode`).
+      - **`shared/InviteFriends.tsx`** — uses `PageScrollView` (KeyboardAwareScrollView form scroller) + has a text input; wrapping breaks caret-follow. **Decide this as part of the "Earn Pro" hub build (🔴 above)** — InviteFriends folds into that hub, so wire pull-to-refresh there rather than patching the standalone screen.
 - [ ] **Cheaper Echo** (Bucket 3 #6) — trim the ~5k-token rulebook + wire prompt caching to cut cost per message. Quick edit but changes Echo's behaviour → needs a careful test pass. Not urgent (~RM0.005/msg today). Notes: `ECHO_MEMORY_COST_SAFETY.md` (open decision #1).
 - [ ] **Flagship "Kept" install-hook** (Bucket 3 #7) — the cross-book "you kept RMx" number is on Reports; the growth wiring isn't: a Dashboard hero + a Collectz join-page "track your own money" nudge (acquisition funnel for people who pay a share). Growth call, not core Echo. Spec: `MAKIN_KENAL.md` §6.
 - [ ] **Echo learns from everyone — LIVE opt-in pipeline** (Bucket 3 #5, decided scope = "categorization defaults only"). The *value* shipped now as a curated static dictionary (`merchantCategoryGuess.ts`, enriched 2026-07-29, now also feeds Echo chat). The LIVE version is parked here because it's a server + PDPA feature that adds a data-safety-disclosure line right at launch. Safe design when ready: opt-in (default OFF) contribute only anonymized keyword→category mappings (mamak→food) via a new edge function that STRIPS identity → a `community_category_hints` table → aggregate (≥N distinct contributors) into `community_category_defaults` → sync down to seed `builtInMerchantCategory`. NO amounts, NO chat text, NO identity. Needs: migration + edge function + client consent toggle + `db push`/`functions deploy`. Ties to the "DPAs/DPO around ~10k users" item above. Notes: `ECHO_MEMORY_COST_SAFETY.md` (decision #3).
+
+### Folded in from `step2 July.md` / `step3 July.md` (non-blocking polish — Claude can do anytime)
+- [ ] **Import → category name→id mapping** — imported txns store the category *name*, so they don't attach to budgets. Resolve to a category id (reuse the category/learning store). Data-quality, **not** launch-blocking. *(the only real code orphan from the July docs)*
+- [ ] **Neu redesign — 3 screens left:** `AccountOverview`, `ImportFromCsv`, `ImportFromStatement`. Cosmetic.
+- [ ] **Existing-user changelog note** for the lowered free caps — a one-time in-app note; optional soft-landing (nothing breaks without it; users keep what they have, just can't add past the new cap).

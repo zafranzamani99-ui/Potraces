@@ -22,7 +22,9 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useWalletStore } from '../../store/walletStore';
 import { createTransfer } from '../../utils/transferBridge';
+import { syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
 import { lightTap, mediumTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
@@ -31,6 +33,8 @@ import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { useNeu } from '../../components/common/neu';
+import PullRefresh from '../../components/common/PullRefresh';
+import WalletPicker from '../../components/common/WalletPicker';
 
 // -- Count-up animation hook ----------------------------------------
 const useCountUp = (target: number, duration: number = 300) => {
@@ -114,7 +118,19 @@ const SeasonSummary: React.FC = () => {
   const addTransferIncome = usePersonalStore((s) => s.addTransferIncome);
   const deletePersonalTransaction = usePersonalStore((s) => s.deleteTransaction);
   const currency = useSettingsStore((s) => s.currency);
+  const wallets = useWalletStore((s) => s.wallets);
   const { showToast } = useToast();
+
+  // Pull-to-refresh — run the real seller sync (pull remote → re-read store), matching
+  // the sibling seller screens; the Zustand re-render then updates this screen.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    const { products, orders, seasons, sellerCustomers: sc } = useSellerStore.getState();
+    Promise.all([syncAll(products, orders, seasons, sc), pullOrderLinkOrders()])
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
+  }, []);
 
   // Get season -- either from route params or active season
   const seasonId = route.params?.seasonId;
@@ -217,6 +233,10 @@ const SeasonSummary: React.FC = () => {
 
   const [transferAmount, setTransferAmount] = useState('');
   const [showTransfer, setShowTransfer] = useState(false);
+  // Destination wallet for the transfer — defaults to the user's default wallet.
+  const [transferWalletId, setTransferWalletId] = useState<string | null>(null);
+  const effectiveTransferWalletId =
+    transferWalletId ?? wallets.find((w) => w.isDefault)?.id ?? wallets[0]?.id ?? null;
 
   // ─── Modal states ───
   const [showEndModal, setShowEndModal] = useState(false);
@@ -288,7 +308,9 @@ const SeasonSummary: React.FC = () => {
       amount,
       'business',
       'personal',
-      `seller: ${season.name} (${untransferredOrders.length} orders)`
+      `seller: ${season.name} (${untransferredOrders.length} orders)`,
+      undefined,
+      effectiveTransferWalletId ?? undefined
     );
     addTransfer(transfer);
     addTransferIncome(transfer);
@@ -299,7 +321,7 @@ const SeasonSummary: React.FC = () => {
     successNotification();
     showToast(t.seller.transferredToPersonal, 'success');
     setShowTransfer(false);
-  }, [transferAmount, season, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast, t]);
+  }, [transferAmount, season, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast, t, effectiveTransferWalletId]);
 
   const guardedTransferToPersonal = useSubmitGuard(handleTransferToPersonal);
 
@@ -462,6 +484,7 @@ const SeasonSummary: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -689,7 +712,18 @@ const SeasonSummary: React.FC = () => {
                   .replace('{plural}', untransferredOrders.length !== 1 ? 's' : '')}
               </Text>
               {showTransfer ? (
-                <View style={styles.transferInputRow}>
+                <>
+                  {wallets.length > 0 && (
+                    <WalletPicker
+                      wallets={wallets}
+                      selectedId={effectiveTransferWalletId}
+                      onSelect={setTransferWalletId}
+                      label={t.stall.transferWalletLabel}
+                      faintNeu
+                      onyxTrigger
+                    />
+                  )}
+                  <View style={styles.transferInputRow}>
                   <View style={styles.transferInputWrapper}>
                     <Text style={styles.transferCurrencyPrefix}>{currency}</Text>
                     <TextInput
@@ -711,6 +745,7 @@ const SeasonSummary: React.FC = () => {
                     <Text style={styles.transferConfirmText}>{t.seller.transfer}</Text>
                   </TouchableOpacity>
                 </View>
+                </>
               ) : (
                 <TouchableOpacity
                   style={styles.transferButton}
@@ -1001,6 +1036,7 @@ const SeasonSummary: React.FC = () => {
           )}
         </FadeInSection>
       </ScrollView>
+      </PullRefresh>
 
       {/* ─── End Season Modal ─── */}
       {showEndModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowEndModal(false)}>

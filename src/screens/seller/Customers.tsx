@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable,
-  TextInput, Animated, Linking, Platform, Alert, Modal, RefreshControl, Keyboard,
+  TextInput, Animated, Linking, Platform, Alert, Modal, Keyboard,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
@@ -21,6 +21,7 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
 import { SellerOrder, SellerCustomer } from '../../types';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import PullRefresh from '../../components/common/PullRefresh';
 
 // ─── Smart date label ─────────────────────────────────────────
 function smartDateLabel(date: Date | string): string {
@@ -1262,6 +1263,7 @@ const SellerCustomers: React.FC = () => {
         styles={styles}
       />
 
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
       <FlatList
         data={filteredCustomers}
         renderItem={renderCustomerItem}
@@ -1312,8 +1314,8 @@ const SellerCustomers: React.FC = () => {
         maxToRenderPerBatch={10}
         windowSize={5}
         removeClippedSubviews
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze} colors={[C.bronze]} />}
       />
+      </PullRefresh>
       </>
       )}
 

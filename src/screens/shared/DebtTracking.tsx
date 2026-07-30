@@ -16,7 +16,6 @@ import {
   Image,
 
 
-  RefreshControl,
   InputAccessoryView,
   NativeModules,
 } from 'react-native';
@@ -90,6 +89,7 @@ import { useDebtAutoArchive } from './debt/useDebtAutoArchive';
 import { useDebtFilters } from './debt/useDebtFilters';
 import { useDebtDerived } from './debt/useDebtDerived';
 import Card from '../../components/common/Card';
+import PullRefresh from '../../components/common/PullRefresh';
 import NeuButton from '../../components/common/NeuButton';
 import NeuPressable from '../../components/common/NeuPressable';
 import WalletLogo from '../../components/common/WalletLogo';
@@ -3509,19 +3509,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
   return (
     <View style={styles.container}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <ScrollView
         ref={mainScrollRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={C.bronze}
-            colors={[C.bronze]}
-          />
-        }
       >
         <DebtScreenHeader
           balanceSummary={balanceSummary}
@@ -3733,6 +3726,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           />
         )}
       </ScrollView>
+      </PullRefresh>
 
       {selectionMode ? (
         <SelectionActionBar

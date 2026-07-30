@@ -27,7 +27,7 @@ check('tierAtLeast: free ≥ free', tierAtLeast('free', 'free') === true);
 
 // ── Locked numbers (spot-check the doc) ──
 check('free Echo = 30/mo', FREE_TIER.maxAiCallsPerMonth === 30);
-check('free budgets = 5; savings/goals/subs = 3', FREE_TIER.maxBudgets === 5 && FREE_TIER.maxSavingsAccounts === 3 && FREE_TIER.maxGoals === 3 && FREE_TIER.maxSharedSubs === 3);
+check('free budgets = 6; savings/goals/subs = 3', FREE_TIER.maxBudgets === 6 && FREE_TIER.maxSavingsAccounts === 3 && FREE_TIER.maxGoals === 3 && FREE_TIER.maxSharedSubs === 3);
 check('free wallets = 7, scans = 15', FREE_TIER.maxWallets === 7 && FREE_TIER.maxScansPerMonth === 15);
 check('basic Echo 300 (10×), scans 75 (5×)', TIER_LIMITS.basic.maxAiCallsPerMonth === 300 && TIER_LIMITS.basic.maxScansPerMonth === 75);
 check('basic wallets 13, budgets 10, savings/goals/subs 6', TIER_LIMITS.basic.maxWallets === 13 && TIER_LIMITS.basic.maxBudgets === 10 && TIER_LIMITS.basic.maxSavingsAccounts === 6);
@@ -45,7 +45,7 @@ check('export data free (safety valve)', FREE_TIER.exportData === true);
 check('google docs sync: basic NO, pro YES', TIER_LIMITS.basic.googleDocsSync === false && TIER_LIMITS.pro.googleDocsSync === true);
 
 // ── canCreate at the boundary ──
-check('free budgets: 4 ok, 5 blocked', canCreate('free', 'maxBudgets', 4) === true && canCreate('free', 'maxBudgets', 5) === false);
+check('free budgets: 5 ok, 6 blocked', canCreate('free', 'maxBudgets', 5) === true && canCreate('free', 'maxBudgets', 6) === false);
 check('basic wallets-per-type: 3 ok, 4 blocked', canCreate('basic', 'maxWalletsPerType', 3) === true && canCreate('basic', 'maxWalletsPerType', 4) === false);
 check('basic budgets: 9 ok, 10 blocked', canCreate('basic', 'maxBudgets', 9) === true && canCreate('basic', 'maxBudgets', 10) === false);
 check('pro budgets: 999 still ok (unlimited)', canCreate('pro', 'maxBudgets', 999) === true);

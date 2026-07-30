@@ -28,6 +28,7 @@ import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import BottomSheet from '../../../components/common/BottomSheet';
 import PageScrollView from '../../../components/common/PageScrollView';
+import PullRefresh from '../../../components/common/PullRefresh';
 import FloatingModal from '../../../components/common/FloatingModal';
 import ConfirmDialog from '../../../components/common/ConfirmDialog';
 import NeuButton from '../../../components/common/NeuButton';
@@ -102,6 +103,7 @@ const CollectzDetail: React.FC = () => {
   const [profiles, setProfiles] = useState<Record<string, CollectzProfile>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Proof review sheet
   const [proofFor, setProofFor] = useState<CollectzParticipant | null>(null);
@@ -167,6 +169,12 @@ const CollectzDetail: React.FC = () => {
     },
     [sessionId, showToast, t],
   );
+
+  // Branded pull-to-refresh → re-fetch the roster; hold the spinner until it settles.
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load().finally(() => setRefreshing(false));
+  }, [load]);
 
   // Spinner ONLY on the first open. A re-focus (coming back from Edit, etc.)
   // refetches silently — showing the spinner unmounts the whole ScrollView, so
@@ -799,6 +807,7 @@ const CollectzDetail: React.FC = () => {
 
   return (
     <View style={styles.screen}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <PageScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -1143,6 +1152,7 @@ const CollectzDetail: React.FC = () => {
           </Pressable>
         </View>
       </PageScrollView>
+      </PullRefresh>
 
       {/* Cost notes sheet — scratchpad + calculator for the per-person math */}
       <CostNotesSheet

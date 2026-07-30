@@ -448,7 +448,7 @@ const StallDashboard: React.FC = () => {
       : new Date(activeSession.startedAt);
     return (
       <View style={styles.container}>
-        <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+        <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze} topInset={insets.top}>
         <FlatList
           style={styles.scrollView}
           contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md, paddingBottom: insets.bottom + 88 }]}
@@ -763,7 +763,7 @@ const StallDashboard: React.FC = () => {
   // ─── State A: No active session — solid hero + glass bento ──
   return (
     <View style={styles.container}>
-      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze} topInset={insets.top}>
       <FlatList
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}

@@ -226,6 +226,30 @@ export function suggestFrom<T extends { keyword: string; count: number }>(
 export type MemoryKind = 'goal' | 'bill' | 'worry' | 'win' | 'style' | 'fact';
 export const MEMORY_KINDS: MemoryKind[] = ['goal', 'bill', 'worry', 'win', 'style', 'fact'];
 
+/**
+ * Best-effort guess of a memory's kind from its text, so the manual "add a
+ * memory" flow can pre-file it — the user never has to understand the six kinds
+ * or pick one to save. Order = priority (first match wins); falls back to 'fact'
+ * (the neutral catch-all) when unsure. Bilingual (EN + common Malay) cues.
+ * Low-stakes and always user-overridable, so a wrong guess costs nothing.
+ */
+export function inferMemoryKind(text: string): MemoryKind {
+  if (!text.trim()) return 'fact';
+  const t = ` ${text.toLowerCase()} `;
+  const has = (re: RegExp) => re.test(t);
+  // win — an achievement already DONE (before goal/bill so "paid off my loan" = win, not bill)
+  if (has(/paid off|cleared|settled|lunas|habis bayar|achieved|reached|hit (my|the)|milestone|managed to|finally|proud/)) return 'win';
+  // goal — saving toward / wants to
+  if (has(/sav(e|ed|ing)|nak |want to|wanna|planning|aim|target|dream|kumpul|simpan|tabung|by \d{4}|deposit for|down ?payment/)) return 'goal';
+  // bill — a recurring commitment
+  if (has(/monthly|every month|per month|setiap bulan|tiap bulan|sebulan|\bdue\b|\bbill\b|\brent\b|sewa|\bloan\b|pinjaman|ansuran|instal?ment|subscription|langganan|pays? .*(month|bulan)/)) return 'bill';
+  // worry — stress / concern
+  if (has(/worr|risau|stress|takut|scared|afraid|anxious|struggl|\btight\b|susah|payah|can'?t afford|tak cukup|overspend/)) return 'worry';
+  // style — a preference / how they like things
+  if (has(/prefer|likes?|dislike|hate|benci|suka|casual|formal|remind me|always|never|in malay|in english|bahasa|keep it short/)) return 'style';
+  return 'fact';
+}
+
 export interface EchoMemory {
   id: string;
   kind: MemoryKind;

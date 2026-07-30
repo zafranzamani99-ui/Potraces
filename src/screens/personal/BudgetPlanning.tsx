@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
   AccessibilityInfo,
   AppState,
+  InteractionManager,
 } from 'react-native';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -63,6 +64,7 @@ import PaywallModal from '../../components/common/PaywallModal';
 import EmptyState from '../../components/common/EmptyState';
 import NeuButton from '../../components/common/NeuButton';
 import BudgetPlannerSheet from '../../components/common/BudgetPlannerSheet';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
@@ -175,6 +177,7 @@ const BudgetPlanning: React.FC = () => {
   const countUpRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [mathSheetVisible, setMathSheetVisible] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // ── Bottom-sheet animation for Add/Edit Budget ──
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
@@ -423,6 +426,14 @@ const BudgetPlanning: React.FC = () => {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') refreshClock(); });
     return () => sub.remove();
+  }, [refreshClock]);
+
+  // Pull-to-refresh — synced Zustand stores re-render on their own; roll the
+  // day-clock forward and hold the spinner briefly so the pull reads as a load.
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    refreshClock();
+    setTimeout(() => setRefreshing(false), 600);
   }, [refreshClock]);
 
   // ── Reduce-motion check ──
@@ -1365,6 +1376,7 @@ const BudgetPlanning: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
@@ -2083,6 +2095,7 @@ const BudgetPlanning: React.FC = () => {
         </>))}
 
       </ScrollView>
+      </PullRefresh>
 
       {/* add budget now lives in the hero pill — no floating FAB over content */}
 
@@ -2535,6 +2548,13 @@ const BudgetPlanning: React.FC = () => {
       <BudgetPlannerSheet
         visible={budgetPlannerVisible}
         onClose={() => setBudgetPlannerVisible(false)}
+        onUpgradeNeeded={() => {
+          // Planner just closed (onClose ran). Present the SAME standalone budget
+          // paywall the "+" add flow uses, once the sheet's dismissal settles —
+          // runAfterInteractions avoids the paywall mounting behind the closing
+          // Modal (the invisible-paywall iOS gotcha).
+          InteractionManager.runAfterInteractions(() => setPaywallVisible(true));
+        }}
         onApplied={(created, updated) => {
           const p = t.budget.planner;
           const msg = updated > 0

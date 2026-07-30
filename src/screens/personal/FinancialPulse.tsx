@@ -57,6 +57,7 @@ import PulseScrubChart from '../../components/pulse/PulseScrubChart';
 import EchoFab from '../../components/wallet/EchoFab';
 import EchoInlineChat, { EchoChip } from '../../components/common/EchoInlineChat';
 import PaywallModal from '../../components/common/PaywallModal';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useEchoFabPan } from '../../hooks/useEchoFabPan';
 import { classifyAccounts, emergencyRunway } from './savings/savingsMath';
 
@@ -273,6 +274,11 @@ const FinancialPulse: React.FC = () => {
   const [showBehind, setShowBehind] = useState(false);
   const [scrollLocked, setScrollLocked] = useState(false);
   const [selBillDay, setSelBillDay] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   // ── 14-day bills strip data ──
   const billDays = useMemo(() => {
@@ -448,6 +454,7 @@ const FinancialPulse: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -872,6 +879,7 @@ const FinancialPulse: React.FC = () => {
 
         <View style={{ height: SPACING['5xl'] }} />
       </ScrollView>
+      </PullRefresh>
 
       <ScreenGuide
         id="guide_pulse"

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { Client } from '../../types';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import PullRefresh from '../../components/common/PullRefresh';
 
 const ClientList: React.FC = () => {
   const C = useCalm();
@@ -31,6 +32,12 @@ const ClientList: React.FC = () => {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [showPayment, setShowPayment] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   const totalAcross = useMemo(
     () => clients.reduce((s, c) => s + c.totalPaid, 0),
@@ -123,22 +130,25 @@ const ClientList: React.FC = () => {
           .replace('{plural}', clients.length !== 1 ? 's' : '')}
       </Text>
 
-      <FlatList
-        data={clients}
-        renderItem={renderClient}
-        keyExtractor={(c) => c.id}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>{t.business.clientsEmpty}</Text>
-          </View>
-        }
-        removeClippedSubviews
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        initialNumToRender={10}
-        keyboardShouldPersistTaps="handled"
-      />
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+        <FlatList
+          data={clients}
+          renderItem={renderClient}
+          keyExtractor={(c) => c.id}
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>{t.business.clientsEmpty}</Text>
+            </View>
+          }
+          removeClippedSubviews
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          initialNumToRender={10}
+          keyboardShouldPersistTaps="handled"
+        />
+      </PullRefresh>
 
       {/* Add client button */}
       <TouchableOpacity
@@ -230,6 +240,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     maxWidth: 680,
     width: '100%',
     alignSelf: 'center' as const,
+  },
+  list: {
+    flex: 1,
   },
   listContent: {
     padding: SPACING.lg,

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
@@ -9,6 +9,8 @@ import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, BIZ_SAFE } from '..
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { semantic } from '../../constants';
+import PullRefresh from '../../components/common/PullRefresh';
+import { syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
 
 const ProductsReport: React.FC = () => {
   const C = useCalm();
@@ -20,6 +22,15 @@ const ProductsReport: React.FC = () => {
   const t = useT();
   const sl = t.seller;
   const bizKept = semantic(BIZ_SAFE.profit, isDark);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    const { products, orders, seasons, sellerCustomers: sc } = useSellerStore.getState();
+    Promise.all([syncAll(products, orders, seasons, sc), pullOrderLinkOrders()])
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
+  }, []);
 
   const reportData = useMemo(() => {
     const now = new Date();
@@ -123,6 +134,7 @@ const ProductsReport: React.FC = () => {
   }, [orders, products]);
 
   return (
+    <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -269,6 +281,7 @@ const ProductsReport: React.FC = () => {
         </>
       )}
     </ScrollView>
+    </PullRefresh>
   );
 };
 

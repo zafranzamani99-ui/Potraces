@@ -307,14 +307,46 @@ export async function checkClipboardReferral(): Promise<void> {
 // ── Rewards intro (once per install) ───────────────────────────────────────
 const INTRO_SEEN_KEY = 'potraces.rewardsIntroSeen.v1';
 
+// Don't front-load the referral pitch. The intro is held back until the user
+// has actually opened the app a few times (owner: "after 3 opens") AND finished
+// onboarding — so it never lands on the welcome screen. This counter is bumped
+// once per cold launch inside maybeShowRewardsIntro, regardless of sign-in
+// state, so an open still counts while signed out.
+const APP_OPEN_COUNT_KEY = 'potraces.appOpenCount';
+const INTRO_MIN_OPENS = 3;
+let openCountedThisLaunch = false;
+
+/** Increment and return the app-open count, at most once per process launch.
+ *  The guard flips synchronously before the first await, so concurrent callers
+ *  in the same launch (the launch effect + a SIGNED_IN listener) can't
+ *  double-count. */
+async function bumpAppOpenCount(): Promise<number> {
+  if (openCountedThisLaunch) {
+    const cur = parseInt((await AsyncStorage.getItem(APP_OPEN_COUNT_KEY)) ?? '0', 10);
+    return Number.isFinite(cur) ? cur : 0;
+  }
+  openCountedThisLaunch = true;
+  const prev = parseInt((await AsyncStorage.getItem(APP_OPEN_COUNT_KEY)) ?? '0', 10);
+  const next = (Number.isFinite(prev) ? prev : 0) + 1;
+  await AsyncStorage.setItem(APP_OPEN_COUNT_KEY, String(next));
+  return next;
+}
+
 /** One-time floating intro to the rewards program, called from App.tsx after a
- *  signed-in refresh. Skipped when an 'earned' modal already fired this launch
- *  (the reward moment wins; intro waits for the next cold start), when signed
- *  out / unreachable, and once the flag is set. Never throws. */
+ *  signed-in refresh. Held back until onboarding is done and the app has been
+ *  opened INTRO_MIN_OPENS times, so it never overlays first-run. Also skipped
+ *  when an 'earned' modal already fired this launch (the reward moment wins;
+ *  intro waits for the next cold start), when signed out / unreachable, and once
+ *  the flag is set. Never throws. */
 export async function maybeShowRewardsIntro(): Promise<void> {
   try {
     const seen = await AsyncStorage.getItem(INTRO_SEEN_KEY);
     if (seen) return;
+    // Count this open first (once per launch), THEN gate — so the onboarding
+    // launch still counts toward the threshold even though we return right after.
+    const opens = await bumpAppOpenCount();
+    if (!useSettingsStore.getState().hasCompletedOnboarding) return; // never during onboarding
+    if (opens < INTRO_MIN_OPENS) return; // not until they've opened it a few times
     if (earnedModalShownThisLaunch()) return; // don't stack on a reward moment
     const progress = await fetchReferralProgress(); // null when signed out / offline
     if (!progress) return;

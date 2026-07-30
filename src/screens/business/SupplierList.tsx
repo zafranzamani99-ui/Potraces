@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../c
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
+import PullRefresh from '../../components/common/PullRefresh';
 import EmptyState from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
 import ModalToastHost from '../../components/common/ModalToastHost';
@@ -43,6 +44,12 @@ const SupplierList: React.FC = () => {
   const [address, setAddress] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   const filteredSuppliers = useMemo(() => {
     if (!searchQuery.trim()) return suppliers;
@@ -130,6 +137,7 @@ const SupplierList: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -246,6 +254,7 @@ const SupplierList: React.FC = () => {
           />
         )}
       </ScrollView>
+      </PullRefresh>
 
       <Button
         title={tr.business.supplierAdd}

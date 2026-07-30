@@ -17,6 +17,7 @@ import { useNotesStore } from '../../store/notesStore';
 import { useAppStore } from '../../store/appStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import NeuButton from '../../components/common/NeuButton';
+import PullRefresh from '../../components/common/PullRefresh';
 import NeuIconButton from '../../components/common/NeuIconButton';
 import { useNeu } from '../../components/common/neu';
 import { useCalm } from '../../hooks/useCalm';
@@ -51,6 +52,11 @@ const NotesHome: React.FC = () => {
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   const modePages = useMemo(
     () => pages.filter((p) => p.mode === mode),
@@ -222,19 +228,22 @@ const NotesHome: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={modePages}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 + (selectMode ? 72 : 0) }]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        extraData={`${selectMode ? selectedIds.size : 0}|${C.textPrimary}`}
-        removeClippedSubviews
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        initialNumToRender={10}
-      />
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+        <FlatList
+          style={{ flex: 1 }}
+          data={modePages}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 88 + (selectMode ? 72 : 0) }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          extraData={`${selectMode ? selectedIds.size : 0}|${C.textPrimary}`}
+          removeClippedSubviews
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          initialNumToRender={10}
+        />
+      </PullRefresh>
       {/* Selection bar — Onyx floating bar: cancel · N selected · delete (red on press).
           Separation comes from the neu raise, not a border. */}
       {selectMode && (

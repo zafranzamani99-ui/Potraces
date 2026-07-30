@@ -3,7 +3,7 @@
  * One tape surface, dashed tear-lines between entries, stamp badges, typographic stats.
  * pre-emit critique: P4 H4 E4 S4 R4 V4
  */
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import { explainStallHistory } from '../../utils/explainStallHistory';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useT } from '../../i18n';
 import { StallSession, SessionCondition } from '../../types';
 
@@ -62,6 +63,12 @@ const SessionHistory: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { sessions, getLifetimeStats, getSessionSummary } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   // Filter only closed sessions, sorted newest first
   const closedSessions = useMemo(
@@ -216,19 +223,22 @@ const SessionHistory: React.FC = () => {
             the unclipped wrapper; the inner view clips the tape to its radius. */}
         <View style={[styles.tapeShadow, neu.raisedSoft]}>
           <View style={styles.tapeClip}>
-            <FlatList
-              data={closedSessions}
-              renderItem={renderSessionEntry}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, SPACING.md) }}
-              ListHeaderComponent={renderTapeHead}
-              ListEmptyComponent={renderEmpty}
-              showsVerticalScrollIndicator={false}
-              removeClippedSubviews
-              maxToRenderPerBatch={10}
-              windowSize={5}
-              initialNumToRender={10}
-            />
+            <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
+              <FlatList
+                style={{ flex: 1 }}
+                data={closedSessions}
+                renderItem={renderSessionEntry}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, SPACING.md) }}
+                ListHeaderComponent={renderTapeHead}
+                ListEmptyComponent={renderEmpty}
+                showsVerticalScrollIndicator={false}
+                removeClippedSubviews
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                initialNumToRender={10}
+              />
+            </PullRefresh>
           </View>
         </View>
       </View>

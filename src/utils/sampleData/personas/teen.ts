@@ -188,5 +188,33 @@ export const teen: Persona = {
         { name: 'Pen + pensel set', amount: 6.5 },
       ],
     });
+
+    // ─── Echo's notebook — shortcuts Echo learned + what it remembers ──────
+    // Trusted category rules (count ≥ 2 → "knows you")
+    c.learnCategory('mixue', 'food', 3);
+    c.learnCategory('canteen', 'food', 2);
+    c.learnCategory('mrt', 'transport', 2);
+    // Still learning (count 1)
+    c.learnCategory('capcut', 'other', 1);
+    c.learnCategory('roblox', 'entertainment', 1);
+    c.learnCategory('kfc', 'food', 1);
+    // Which wallet a keyword is usually paid from
+    c.learnWallet('canteen', 'Boost', 2);
+    c.learnWallet('mrt', 'Boost', 1);
+    // People Echo learned to recognise
+    c.learnPerson('abah', 'Ayah', 2);
+    c.learnPerson('cikgu', 'Cikgu Rina', 1);
+    // Type corrections (pocket money + side income are income, not spends)
+    c.learnType('duit poket', 'income', 2);
+    c.learnType('jual keropok', 'income', 1);
+    // Keywords Echo learned to skip
+    c.learnSkip('topup', 1);
+    // Durable memories — what Echo carries into every chat
+    c.memory({ kind: 'goal', text: 'Saving up for a new phone after SPM', source: 'you', pinned: true });
+    c.memory({ kind: 'goal', text: 'Wants to take driving licence classes after SPM', source: 'you' });
+    c.memory({ kind: 'fact', text: 'Form 4 student in Shah Alam — no salary, weekly pocket money from parents', source: 'echo' });
+    c.memory({ kind: 'win', text: 'Earns side income selling keropok at school and editing CapCut videos', source: 'echo' });
+    c.memory({ kind: 'worry', text: 'Pocket money often runs out before the week ends', source: 'echo' });
+    c.memory({ kind: 'style', text: 'Young — keep money tips simple and encouraging', source: 'you' });
   },
 };

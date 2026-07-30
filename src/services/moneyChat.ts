@@ -30,6 +30,8 @@ import { usePlaybookStore } from '../store/playbookStore';
 import { computePlaybookStats } from '../utils/playbookStats';
 import { AIMessage } from '../types';
 import { ACTION_PROMPT } from './chatActions';
+import { CARD_PROMPT } from './echoCards/prompt';
+import { parseCards } from './echoCards/parse';
 import { useSettingsStore } from '../store/settingsStore';
 import { useLearningStore } from '../store/learningStore';
 import { useAIInsightsStore } from '../store/aiInsightsStore';
@@ -981,7 +983,7 @@ function _buildChatBody(message: string, history: AIMessage[], imageBase64?: str
         .map((p) => `- [ref:${p.clientId}] ${p.type} · ${p.description}${p.amount ? ` · ${currency} ${p.amount}` : ''}`)
         .join('\n')}`
     : '';
-  const fullSystem = `${buildSystemPrompt(currency)}\n\n${ACTION_PROMPT}${learnedHints}${memoryHints}${knowledgeHints}${pendingBlock}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
+  const fullSystem = `${buildSystemPrompt(currency)}\n\n${ACTION_PROMPT}\n${CARD_PROMPT}${learnedHints}${memoryHints}${knowledgeHints}${pendingBlock}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
 
   // Build conversation history — Echo's MEMORY window, tiered (owner-locked
   // 2026-07-22): Free 15 · Basic 30 · Pro 45 · Premium 90 recent bubbles.
@@ -1087,10 +1089,16 @@ function _displayTextFromPartial(partial: string): string {
   // Also strip complete [MEMORY] facts (they're silent) — tolerant of a missing
   // closing tag, same as the final post-process — so the tag never flashes.
   cleanText = parseMemories(cleanText).cleanText;
+  // …and complete [CARD] directives (the card renders after the stream ends).
+  cleanText = parseCards(cleanText).cleanText;
   // Soften advice / swap banned words live too, so they never even flash mid-stream.
   cleanText = cleanReply(cleanText);
-  // Drop a trailing, not-yet-closed block (no closing tag yet) of either kind.
-  const open = Math.max(cleanText.lastIndexOf('[ACTION]'), cleanText.lastIndexOf('[MEMORY]'));
+  // Drop a trailing, not-yet-closed block (no closing tag yet) of any kind.
+  const open = Math.max(
+    cleanText.lastIndexOf('[ACTION]'),
+    cleanText.lastIndexOf('[MEMORY]'),
+    cleanText.lastIndexOf('[CARD]'),
+  );
   if (open !== -1) return cleanText.slice(0, open).trim();
   return cleanText;
 }

@@ -11,7 +11,6 @@ import {
   Alert,
   Keyboard,
   InteractionManager,
-  RefreshControl,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
@@ -26,6 +25,7 @@ import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import { useNeu } from '../../components/common/neu';
+import PullRefresh from '../../components/common/PullRefresh';
 import TransactionItem from '../../components/common/TransactionItem';
 import CategoryIcon from '../../components/common/CategoryIcon';
 import WalletLogo from '../../components/common/WalletLogo';
@@ -992,35 +992,35 @@ const TransactionsList: React.FC = () => {
 
       {/* Transaction List */}
       {sections.length > 0 && sections.some((s) => s.data.length > 0) ? (
-        <SectionList
-          // Remount on page change so each page starts at the top.
-          key={`txn-page-${currentPage}`}
-          sections={sections}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          renderSectionHeader={renderSectionHeader}
-          ListFooterComponent={renderPager}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.listContent,
-            // In select mode, reserve room below the pager so the floating
-            // select bar can't collide with it.
-            selectMode && { paddingBottom: insets.bottom + SELECT_BAR_CLEARANCE },
-          ]}
-          stickySectionHeadersEnabled={true}
-          // Page is capped at PAGE_SIZE items — render them all, no clipping
-          // (clipping/recycling is what made scrolling stutter & flash).
-          removeClippedSubviews={false}
-          initialNumToRender={PAGE_SIZE}
-          maxToRenderPerBatch={PAGE_SIZE}
-          windowSize={5}
-          updateCellsBatchingPeriod={50}
-          keyboardShouldPersistTaps="handled"
-          onScrollBeginDrag={Keyboard.dismiss}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.textMuted} colors={[C.accent]} />
-          }
-        />
+        <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+          <SectionList
+            // Remount on page change so each page starts at the top.
+            key={`txn-page-${currentPage}`}
+            style={{ flex: 1 }}
+            sections={sections}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            renderSectionHeader={renderSectionHeader}
+            ListFooterComponent={renderPager}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.listContent,
+              // In select mode, reserve room below the pager so the floating
+              // select bar can't collide with it.
+              selectMode && { paddingBottom: insets.bottom + SELECT_BAR_CLEARANCE },
+            ]}
+            stickySectionHeadersEnabled={true}
+            // Page is capped at PAGE_SIZE items — render them all, no clipping
+            // (clipping/recycling is what made scrolling stutter & flash).
+            removeClippedSubviews={false}
+            initialNumToRender={PAGE_SIZE}
+            maxToRenderPerBatch={PAGE_SIZE}
+            windowSize={5}
+            updateCellsBatchingPeriod={50}
+            keyboardShouldPersistTaps="handled"
+            onScrollBeginDrag={Keyboard.dismiss}
+          />
+        </PullRefresh>
       ) : (
         <View style={styles.emptyContainer}>
           {/* Typographic empty state — no icon, no illustration.

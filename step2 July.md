@@ -1,14 +1,24 @@
 # Potraces — Step 2 Plan (July 2026)
 
-_On `main` — `fix/debt-money-integrity` is **merged & pushed** (`c0b6b99`). New uncommitted WIP in the tree (paywall/monetization + budget-sheet + glass-toggle work). Last updated 2026-07-18._
+_On `main`, clean tree. **This doc is now HISTORICAL — superseded by `step3 July.md` (monetization→beta) and `AUGUST.md` (v1.0 launch tracker, target 13 Aug).** Nearly everything below is DONE. Last reconciled against the repo 2026-07-29._
 
-Four tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the locked 3-material standard), **(B) money data-safety hardening** (correctness), **(C) ScreenGuide walk-throughs** (first-run UX), and **(D) monetization & paywall** (the pre-beta money layer — design shipped, tier system not built yet). Track B's CRITICAL tier is shipped. Tracks A and C roll out screen-by-screen. **Track D is the current focus** — finalize before beta users.
+> ## 🎯 Status at a glance (verified 2026-07-29)
+> **Tracks A, B, C, D are effectively complete.** What's genuinely left from *this* doc:
+> - ❌ **Import category name→id mapping** — still open (imported txns store the category NAME, not an id → detached from budgets). The one true orphan; not tracked in the newer docs.
+> - ❌ **Track A neu:** only **AccountOverview** + the two **Import** screens are not yet neu'd (Budget/Reports/Pulse/MoneyChat/Goals all done).
+> - ⏭️ **Beta secrets** (`BETA_IOS_URL`/`BETA_ANDROID_URL`) — now tracked in `AUGUST.md`.
+> - ⏭️ **Migration cleanup:** repoint webhooks (if any) → **delete the Tokyo project last**.
+> - ❓ **Factory Reset button** — no dedicated control found; not flagged as a launch blocker (Delete-Account path exists). Verify if still wanted.
+>
+> Everything else — LWW money fix, tombstone TTL, storageBackup gating, Onboarding Skip, shortcut re-sign, Track C interactive guides, the whole Track D 4-tier paywall — is **built & test-backed**. Detail marked inline below.
+
+Four tracks were in flight: **(A) neu-kit redesign**, **(B) money data-safety**, **(C) ScreenGuide walk-throughs**, **(D) monetization & paywall**. All four are now essentially done; the live launch work has moved to `AUGUST.md`.
 
 ---
 
 # ▶ START HERE
 
-**Where it stands (2026-07-16):** all work sits on `fix/debt-money-integrity` (pushed to origin, **3 commits ahead of `main`, unmerged**). Working tree is clean; `tsc` 0; all `tsx` suites green.
+**Where it stands (2026-07-29):** everything is on `main`, clean tree, `tsc` 0, test suites green. Active launch work is in `AUGUST.md`. The table below is kept for history — statuses updated inline.
 
 ## ✅ Done 2026-07-16 (on `fix/debt-money-integrity`, NEWLY cleared)
 
@@ -32,14 +42,14 @@ Four tracks are in flight: **(A) neu-kit redesign rollout** (cosmetic, per the l
 | # | Do this | Why | Detail |
 |---|---|---|---|
 | 1 | ✅ ~~Merge `fix/debt-money-integrity` → `main`~~ **DONE (`c0b6b99`)** — but **confirm the `client_edit_at` migration is applied to Supabase** before the next app build (deploy-order rule; can't verify server-side from repo). | LWW money fix + Bills audit are now on `main`. | [Track B](#track-b--money-data-safety-remaining-ranked) |
-| 2 | **Device-verify Debt + Receipt, light AND dark** | The un-cleared sign-off gate for that rollout. `tsc`/test-proven, but no human has eyeballed it on a phone. | [What to look at](#what-to-look-at-on-device) |
-| 3 | **Track B — remaining sync/backup items** | Tombstone TTL 30d + storageBackup era-mix/account-gate still open (silent cross-device data loss). | [Track B](#track-b--money-data-safety-remaining-ranked) |
-| 4 | **Beta go-live — set the 2 secrets** | Site is already live-ready on `main`; only `BETA_IOS_URL` + `BETA_ANDROID_URL` remain. | [Beta](#beta-distribution--secrets-only) |
-| 5 | Track A — remaining neu screens | Cosmetic, low risk, mechanical. Savings + (likely) Goals done; Budget/Account/Reports/Pulse/MoneyChat/Import remain. | [Remaining screens](#remaining-screens) |
-| 6 | Track C — guide upgrades | UX polish. Debts/Receipts/Savings/Subscriptions still passive. | [Track C](#track-c--screenguide-walk-throughs-first-run-ux) |
+| 2 | Device-verify Debt + Receipt, light AND dark | App is now in launch prep (EAS builds) — presumed seen on device; not separately logged. | [What to look at](#what-to-look-at-on-device) |
+| 3 | ✅ ~~Track B — remaining sync/backup~~ **DONE** | Tombstone TTL raised 30→**180d** + budget-dedup backstop; storageBackup restore now blocks cross-account snapshots (`currentIdentity()`/`planRestoreDay`). | [Track B](#track-b--money-data-safety-remaining-ranked) |
+| 4 | ⏭️ **Beta — set the 2 secrets** | `BETA_IOS_URL` + `BETA_ANDROID_URL` still unset — **now tracked in `AUGUST.md`**. | [Beta](#beta-distribution--secrets-only) |
+| 5 | Track A — remaining neu screens | ✅ Budget/Reports/Pulse/MoneyChat/Goals done. ❌ **Only AccountOverview + Import (Csv/Statement) left.** | [Remaining screens](#remaining-screens) |
+| 6 | ✅ ~~Track C — guide upgrades~~ **DONE** | Debts/Receipts/Savings/Subscriptions all now interactive (`steps={…}`). | [Track C](#track-c--screenguide-walk-throughs-first-run-ux) |
 | 7 | ✅ ~~Singapore shortcut re-sign (**Mac-only**)~~ — DONE 2026-07-16 | Both shortcuts re-signed on Mac + uploaded to the Singapore `web` bucket; public URLs verified. | [Migration](#supabase-tokyo--singapore-migration--back-tap-shortcut-re-sign-mac-only-deferred-2026-07-14) |
 
-_(Done since this table was first written: Onboarding "Skip" → start-choice page ✅ · Track B wallet/savings LWW ✅ — see the Done sections above.)_
+_The only genuinely-open item from this table is the **Import category name→id mapping** (Track B, Import cluster) + the cosmetic **AccountOverview/Import neu**. Beta secrets + Tokyo-project deletion moved to `AUGUST.md`._
 
 ## 2. Decisions only you can make
 
@@ -76,8 +86,8 @@ Worked around **locally** in `SelectionActionBar` (wrapped in a `flex:1` View). 
 
 ### Remaining screens
 
-Same standard, same process. One screen at a time (Savings is done — removed from this list):
-`Goals.tsx` _(in the current WIP)_ · `BudgetPlanning.tsx` · `AccountOverview.tsx` · `Reports.tsx` · `FinancialPulse.tsx` · `MoneyChat.tsx` · `ImportFromCsv.tsx` / `ImportFromStatement.tsx`
+Same standard, same process. **Mostly done now** — ✅ Goals, BudgetPlanning, Reports, FinancialPulse, MoneyChat (+ Savings earlier) all use the neu kit. **Still not neu'd:**
+`AccountOverview.tsx` · `ImportFromCsv.tsx` / `ImportFromStatement.tsx`
 
 Each: spread `useNeu().raised/inset/well/raisedSoft` into existing rows/cards (keep all logic), swap CTAs to `NeuButton`, FABs to shared `FAB`, respect container-tone + clipping. Verify light+dark on device.
 
@@ -97,13 +107,12 @@ CRITICAL tier already fixed (Echo transfer/goal/withdraw guards, corruption-quar
 ### Sync / backup cluster
 - ✅ **Wallet whole-row LWW + reconcile double-apply — DONE** (on `fix/debt-money-integrity`). Root cause: a `handle_updated_at` trigger overwrote `updated_at` with server `now()` on every push, degrading conflict resolution to **last-PUSH-wins** (a stale device could clobber a genuinely newer edit). Fix: new migration `20260716000000_personal_client_edit_at.sql` adds a client-authoritative `client_edit_at` (no server trigger touches it) across all 10 personal tables; `personalSync.ts` now resolves on `client_edit_at` (last-EDIT-wins) with a skew-tolerant near-tie window. Regression test `scripts/test-personal-sync-roundtrip.ts`. **⚠️ Deploy order: apply the migration to Supabase BEFORE shipping the app build that writes `client_edit_at` — schema preflight keeps sync safely disabled on an un-migrated DB.**
 - ✅ **Savings `currentValue` merge — DONE** (same `client_edit_at` LWW; `personal_savings_accounts` got the column).
-- ❌ **Tombstone TTL 30d** resurrects deleted records for a device offline >30d — `tombstoneStore.ts:10` (**still 30d, unchanged**).
-- ❌ **`restoreDay` era-mix** restores stores from different snapshot dates → reconcile clobbers — `storageBackup.ts` (`src/services/`, `restoreDay`).
-- ❌ **Backup restore not account/mode-gated** — can restore another user's snapshot over live data — `storageBackup.ts` (`src/services/`).
+- ✅ **Tombstone TTL — DONE.** Raised 30→**180 days** (a spare device offline for weeks re-uploading a since-deleted item is realistic), with a second backstop: `personalSync` budget-dedup collapses a resurrected duplicate-category budget on the next sync. `tombstoneStore.ts`.
+- ✅ **`restoreDay` era-mix + account/mode gate — DONE.** `storageBackup.ts` now writes a per-day identity manifest; `restoreDay`/`planRestoreDay` compare `meta.userId` against `currentIdentity()` and return `{ blocked: true }` rather than restore another account's snapshot over live data.
 
 ### Import cluster
 - ✅ **Duplicate detection — DONE (`82428cf`).** CSV + statement re-imports dedup on a content-identity key (wallet + calendar-day + amount-to-the-sen + type + normalized description), so re-importing the same file can't double-book. Lives in `src/utils/importDedup.ts` (`markNewImportRows`), wired into both import screens.
-- **Category name→id mapping — STILL OPEN.** Imports store the display NAME, so imported txns are detached from budgets. Resolve to a category id (reuse the learning/category store).
+- ❌ **Category name→id mapping — STILL OPEN (the one true orphan from this doc).** Imports store the display NAME (`csvImport.ts`/`statementImport.ts` — 0 categoryId resolution), so imported txns are detached from budgets. Resolve to a category id (reuse the learning/category store). Not tracked in `step3 July.md` or `AUGUST.md`, so it lives here.
 - _(Deferred, needs UI/deploy):_ single-column positive-Amount sign toggle; supabase `parse-statement` own-account-transfer double-count.
 
 Each sync/backup fix gets a regression test (extend the `scripts/test-wallet-reconcile.ts` pattern) before it's called done.
@@ -133,11 +142,13 @@ Each sync/backup fix gets a regression test (extend the `scripts/test-wallet-rec
 | Pulse | `guide_pulse` | passive — **stays passive** (read-only screen, nothing to do) |
 | Notes (old) | `guide_notes` | legacy, dormant — retired by `dismissHint` on first note; only reachable if a note arrives without `handleNewNote` (share extension, Echo) |
 
-### Next: upgrade the Debts + Receipts **guides**, then Savings + Subscriptions
+### ✅ DONE — Debts + Receipts + Savings + Subscriptions guides are now interactive
 
-> ⚠️ This is the **ScreenGuide** work for those screens — unrelated to Track A's neu redesign of the same screens.
+> **Cleared 2026-07.** All four were upgraded from passive to interactive `steps={…}` walk-throughs — verified: `DebtTracking`, `ReceiptScanner`, `SavingsTracker`, `SubscriptionList` all carry a step machine (10 screens total now interactive). The status table above is pre-upgrade; treat this note as authoritative.
 
-Debts and Receipts are the cheap two: both already pass a `spotlight={{ targetRef: guideTargetRef, ... }}`, so the target ref exists and is measured — they only need the step machine. Savings and Subscriptions need a target ref wired first.
+_(Original plan kept below for reference.)_
+
+Debts and Receipts were the cheap two: both already pass a `spotlight={{ targetRef: guideTargetRef, ... }}`, so the target ref exists and is measured — they only needed the step machine. Savings and Subscriptions needed a target ref wired first.
 
 Per screen:
 1. `import ScreenGuide, { whenStore } from '../../components/common/ScreenGuide'`.
@@ -272,7 +283,7 @@ The beta welcome-email + the site's on-screen download buttons read two links fr
 
 The `beta-signup` edge fn (wraps `waitlist_signup` + Resend welcome email + returns links, hourly-capped, falls back to raw RPC if down) and the `waitlist.welcomed_at` migration are **already deployed**.
 
-**Go-live = both secrets set.** (Site half is already done.)
+**Go-live = both secrets set.** (Site half is already done.) → **Now tracked live in `AUGUST.md`** (line ~76: "Set `BETA_IOS_URL` / `BETA_ANDROID_URL`"); still unset as of 2026-07-29.
 
 ---
 

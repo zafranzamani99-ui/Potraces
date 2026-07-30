@@ -329,6 +329,9 @@ export const useStallStore = create<StallState>()(
       addSale: (sale) => {
         const activeId = get().activeSessionId;
         if (!activeId) return;
+        // Block sales while paused (bug 6f) — the Sell screen shows a "resume to
+        // sell" prompt instead; recording here also corrupts pause-duration math.
+        if (get().getActiveSession()?.paused) return;
 
         const product = get().products.find((p) => p.id === sale.productId);
         if (!product) {
@@ -409,6 +412,8 @@ export const useStallStore = create<StallState>()(
       addCustomSale: ({ amount, paymentMethod, label, regularCustomerId, pspTransactionId }) => {
         const activeId = get().activeSessionId;
         if (!activeId || !amount || amount <= 0) return undefined;
+        // Block sales while paused (bug 6f) — mirrors addSale.
+        if (get().getActiveSession()?.paused) return undefined;
 
         const total = roundCash(amount, paymentMethod, get().roundCashTo5);
         const trimmed = label?.trim();
@@ -539,6 +544,7 @@ export const useStallStore = create<StallState>()(
                 totalRevenue: roundMoney(s.totalRevenue - sale.total),
                 totalCash: sale.paymentMethod === 'cash' ? roundMoney(s.totalCash - sale.total) : s.totalCash,
                 totalQR: sale.paymentMethod === 'qr' ? roundMoney(s.totalQR - sale.total) : s.totalQR,
+                totalCard: sale.paymentMethod === 'card' ? roundMoney((s.totalCard || 0) - sale.total) : (s.totalCard || 0),
               };
             }),
             products: state.products.map((p) =>
@@ -801,7 +807,7 @@ export const useStallStore = create<StallState>()(
         const session = get().sessions.find((s) => s.id === sessionId);
         if (!session) {
           return {
-            revenue: 0, cogs: 0, expensesTotal: 0, spent: 0, kept: 0, hasCosts: false,
+            revenue: 0, cogs: 0, expensesTotal: 0, spent: 0, kept: 0, hasCosts: false, keptIsApprox: false,
             startingFloat: 0, expectedCash: 0, countedCash: null, cashDifference: null, hasCounted: false,
           };
         }
@@ -811,8 +817,18 @@ export const useStallStore = create<StallState>()(
         const expensesTotal = roundMoney((session.expenses || []).reduce((sum, e) => sum + e.amount, 0));
         const spent = roundMoney(cogs + expensesTotal);
         const kept = roundMoney(session.totalRevenue - spent);
+        // Revenue that carries no cost: custom/off-menu sales and uncosted products
+        // (and, by extension, add-ons — StallModifier has no cost field). When this
+        // sits alongside real costs, "kept" is optimistic → flag it approximate (6d).
+        const uncostedRevenue = roundMoney(
+          session.sales.reduce((sum, s) => sum + ((s.costPerUnit && s.costPerUnit > 0) ? 0 : s.total), 0)
+        );
+        const keptIsApprox = spent > 0 && uncostedRevenue > 0;
         const startingFloat = session.startingFloat || 0;
-        const expectedCash = roundMoney(startingFloat + session.totalCash);
+        // Cash expenses are paid out of the drawer, so the till should hold
+        // float + cash sales − expenses. Not subtracting them made any cash
+        // expense read as a false "short" at close (bug 6c).
+        const expectedCash = roundMoney(startingFloat + session.totalCash - expensesTotal);
         const hasCounted = session.countedCash != null;
         const countedCash = hasCounted ? (session.countedCash as number) : null;
         const cashDifference = hasCounted ? roundMoney((session.countedCash as number) - expectedCash) : null;
@@ -823,6 +839,7 @@ export const useStallStore = create<StallState>()(
           spent,
           kept,
           hasCosts: spent > 0,
+          keptIsApprox,
           startingFloat,
           expectedCash,
           countedCash,

@@ -52,6 +52,7 @@ import WalletLogo from '../../components/common/WalletLogo';
 import { useNeu } from '../../components/common/neu';
 import NeuButton from '../../components/common/NeuButton';
 import FAB from '../../components/common/FAB';
+import PullRefresh from '../../components/common/PullRefresh';
 import CommitmentForm from '../../components/commitments/CommitmentForm';
 import EmptyState from '../../components/common/EmptyState';
 import GlassSegmentedControl from '../../components/common/GlassSegmentedControl';
@@ -402,6 +403,13 @@ const SubscriptionList: React.FC = () => {
 
   // ── View state ──────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  // Synced-store screen — reading the Zustand stores already re-renders; the
+  // timeout just holds the branded spinner long enough to read as a refresh.
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
   // Recurring-load display period: per-day / per-month / per-year (day = yearly ÷ 365).
   const [period, setPeriod] = useState<'day' | 'mo' | 'yr'>('mo');
   const [heroMonthOffset, setHeroMonthOffset] = useState(0);
@@ -2735,6 +2743,7 @@ const SubscriptionList: React.FC = () => {
   // ─── Main Render ──────────────────────────────────────
   return (
     <View style={styles.container}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
@@ -2818,6 +2827,7 @@ const SubscriptionList: React.FC = () => {
           renderEmptyState()
         )}
       </ScrollView>
+      </PullRefresh>
 
       {/* FAB — shared neu FAB (neu face + accent glyph) */}
       {subscriptions.length > 0 && (

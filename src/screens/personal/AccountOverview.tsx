@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,7 @@ import {
 import { useCalm } from '../../hooks/useCalm';
 import { useCategories } from '../../hooks/useCategories';
 import Card from '../../components/common/Card';
+import PullRefresh from '../../components/common/PullRefresh';
 import WalletLogo from '../../components/common/WalletLogo';
 import ProgressBar from '../../components/common/ProgressBar';
 import { lightTap } from '../../services/haptics';
@@ -423,6 +424,12 @@ const AccountOverview: React.FC = () => {
 
   const styles = useMemo(() => makeStyles(C), [C]);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
+
   // ── Compute stats ──
   const data = useMemo(() => {
     const now = new Date();
@@ -585,11 +592,12 @@ const AccountOverview: React.FC = () => {
   }, [navigation]);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
+    <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
       {/* ── Hero: Net Worth / Balance (bordered card, no gradient) ── */}
       <View style={styles.heroCard}>
         <Text style={styles.heroLabel}>
@@ -1006,7 +1014,8 @@ const AccountOverview: React.FC = () => {
 
       {/* Bottom spacer */}
       <View style={{ height: SPACING['3xl'] }} />
-    </ScrollView>
+      </ScrollView>
+    </PullRefresh>
   );
 };
 

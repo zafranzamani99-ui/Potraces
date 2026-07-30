@@ -255,5 +255,36 @@ export const student: Persona = {
       year: new Date().getFullYear(),
       items: [{ name: 'Financial Accounting 2nd hand (sem 4)', amount: 68.0 }],
     });
+
+    // ─── Echo's notebook — shortcuts Echo learned + what it remembers ──────
+    // Trusted category rules (count ≥ 2 → "knows you")
+    c.learnCategory('zus', 'food', 4);
+    c.learnCategory('shopee', 'shopping', 3);
+    c.learnCategory('petrol', 'transport', 2);
+    c.learnCategory('mcd', 'food', 2);
+    // Still learning (count 1)
+    c.learnCategory('daiso', 'shopping', 1);
+    c.learnCategory('grab', 'transport', 1);
+    // Which wallet a keyword is usually paid from
+    c.learnWallet('shopee', 'ShopeePay', 3);
+    c.learnWallet('grab', 'GrabPay', 2);
+    c.learnWallet('makan', 'Cash', 1);
+    // People Echo learned to recognise
+    c.learnPerson('mak', 'Mama', 2);
+    c.learnPerson('abg', 'Abang', 1);
+    // Type corrections (PTPTN + freelance + part-time wage are income)
+    c.learnType('ptptn', 'income', 2);
+    c.learnType('freelance', 'income', 1);
+    c.learnType('gaji zus', 'income', 1);
+    // Keywords Echo learned to skip
+    c.learnSkip('spaylater', 1);
+    c.learnSkip('transfer', 1);
+    // Durable memories — what Echo carries into every chat
+    c.memory({ kind: 'goal', text: 'Paying off the Y15 motorbike loan (14 of 36 months done)', source: 'echo', pinned: true });
+    c.memory({ kind: 'bill', text: 'Shares monthly utility bills with housemates in Shah Alam', source: 'echo' });
+    c.memory({ kind: 'fact', text: 'UiTM degree student — part-time ZUS barista plus freelance design income', source: 'echo' });
+    c.memory({ kind: 'worry', text: 'Cashflow is tight between PTPTN disbursements', source: 'echo' });
+    c.memory({ kind: 'win', text: 'Freelance photography gigs are bringing in extra side income', source: 'echo' });
+    c.memory({ kind: 'style', text: 'Prefers a casual Malay-English mix and practical student budgeting tips', source: 'you' });
   },
 };

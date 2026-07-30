@@ -11,7 +11,7 @@
  * revision can never invent a worse-but-confident plan.
  */
 
-import { tailorPlan, recommendModel, type TailorInput, type TailoredPlan, type BudgetModelId } from './budgetModels';
+import { tailorPlan, recommendModel, type TailorInput, type TailoredPlan, type BudgetModelId, type Lang } from './budgetModels';
 import { reviewPlan, planPenalty, type Objection, type UserReality } from './critic';
 
 export interface PlanResult {
@@ -40,11 +40,11 @@ function reviseInput(input: TailorInput, plan: TailoredPlan, objections: Objecti
  * Propose a plan and run one bounded critic round.
  * @param modelId optional override; otherwise Echo's recommended model is used.
  */
-export function proposeAndReview(input: TailorInput, reality: UserReality, modelId?: BudgetModelId): PlanResult {
+export function proposeAndReview(input: TailorInput, reality: UserReality, modelId?: BudgetModelId, lang: Lang = 'en'): PlanResult {
   const model = modelId ?? recommendModel(input).id;
 
   let plan = tailorPlan(input, model);
-  let objections = reviewPlan(plan, input, reality);
+  let objections = reviewPlan(plan, input, reality, lang);
   let penalty = planPenalty(objections);
   let revised = false;
   let rounds = 0;
@@ -53,7 +53,7 @@ export function proposeAndReview(input: TailorInput, reality: UserReality, model
   if (revisedInput) {
     rounds = 1; // hard cap — exactly one revision pass, never more
     const plan2 = tailorPlan(revisedInput, model);
-    const obj2 = reviewPlan(plan2, revisedInput, reality);
+    const obj2 = reviewPlan(plan2, revisedInput, reality, lang);
     const pen2 = planPenalty(obj2);
     // keep the revision ONLY if it genuinely scores better
     if (pen2 < penalty) {

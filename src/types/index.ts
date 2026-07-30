@@ -1,4 +1,6 @@
 // Core App Types
+import type { EchoCard } from '../services/echoCards/types';
+
 export type AppMode = 'personal' | 'business';
 
 // Business Income Types
@@ -644,6 +646,9 @@ export interface StallState {
     spent: number;
     kept: number;
     hasCosts: boolean;
+    /** True when some revenue carries no cost (custom sales / uncosted add-ons),
+     *  so "kept" is optimistic and should be shown as approximate. */
+    keptIsApprox: boolean;
     startingFloat: number;
     expectedCash: number;
     countedCash: number | null;
@@ -822,6 +827,9 @@ export interface AIMessage {
   imageUri?: string;
   // 'crisis' → rendered as an on-device help card instead of a normal reply.
   kind?: 'crisis';
+  // Rich data cards Echo attached to this reply (spending/wallet/bills/…). The
+  // FILLED snapshot is persisted, so scrolling back shows what Echo said then.
+  cards?: EchoCard[];
 }
 
 export interface ChatConversation {

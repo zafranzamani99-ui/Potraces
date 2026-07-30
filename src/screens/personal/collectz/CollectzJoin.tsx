@@ -33,6 +33,7 @@ import { lightTap, mediumTap, selectionChanged, successNotification, errorNotifi
 import { useNeu } from '../../../components/common/neu';
 import FloatingModal from '../../../components/common/FloatingModal';
 import PageScrollView from '../../../components/common/PageScrollView';
+import PullRefresh from '../../../components/common/PullRefresh';
 import NeuButton from '../../../components/common/NeuButton';
 import { newstOutline } from '../../../components/business/NewstInput';
 import { supabasePersonal } from '../../../services/supabase';
@@ -85,6 +86,7 @@ const CollectzJoin: React.FC = () => {
   const [failed, setFailed] = useState(false);
   const [failMsg, setFailMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   // Team rename: which team is being renamed, plus the draft label.
   const [renameTeamIdx, setRenameTeamIdx] = useState<number | null>(null);
   const [renameFocused, setRenameFocused] = useState(false);
@@ -154,6 +156,16 @@ const CollectzJoin: React.FC = () => {
       setLoading(false);
     }
   }, [code, showToast, t]);
+
+  // Pull-to-refresh — re-run the join-view loader, hold the spinner until it settles.
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
 
   useEffect(() => {
     if (code) load();
@@ -586,6 +598,7 @@ const CollectzJoin: React.FC = () => {
 
   return (
     <View style={styles.screen}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
       <PageScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -1124,6 +1137,7 @@ const CollectzJoin: React.FC = () => {
         </>
       )}
       </PageScrollView>
+      </PullRefresh>
 
       {/* Team rename — any roster member can retitle a team ("Reds", not "Team 1"). */}
       <FloatingModal visible={renameTeamIdx != null} onClose={() => setRenameTeamIdx(null)} entrance="fade" borderless>

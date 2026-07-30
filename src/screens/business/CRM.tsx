@@ -36,6 +36,7 @@ import EmptyState from '../../components/common/EmptyState';
 import ProgressBar from '../../components/common/ProgressBar';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import FAB from '../../components/common/FAB';
+import PullRefresh from '../../components/common/PullRefresh';
 import { useToast } from '../../context/ToastContext';
 import { formatAmount } from '../../utils/formatters';
 import { Customer, CustomerOrder, OrderItem } from '../../types';
@@ -89,6 +90,13 @@ const CRM: React.FC = () => {
 
   // ── Search ──────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
+
+  // ── Pull-to-refresh ─────────────────────────────────────────
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   // ── Customer modal state ────────────────────────────────────
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
@@ -530,6 +538,7 @@ const CRM: React.FC = () => {
   // ─── MAIN RENDER ────────────────────────────────────────────
   return (
     <View style={styles.container}>
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 88 }]}
@@ -679,6 +688,7 @@ const CRM: React.FC = () => {
           />
         )}
       </ScrollView>
+      </PullRefresh>
 
       <FAB
         onPress={openAddCustomer}

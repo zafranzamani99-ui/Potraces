@@ -11,8 +11,10 @@ import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useNeu } from '../../components/common/neu';
 import { lightTap, selectionChanged } from '../../services/haptics';
+import { supabasePersonal } from '../../services/supabase';
 import EmptyState from '../../components/common/EmptyState';
-import { useNotificationStore, AppNotification } from '../../store/notificationStore';
+import PullRefresh from '../../components/common/PullRefresh';
+import { useNotificationStore, AppNotification, BroadcastRow } from '../../store/notificationStore';
 import { iconFor, tintFor, relTime, isTransaction } from '../../utils/notificationMeta';
 
 const DELETE_RED = '#E5484D';
@@ -124,8 +126,30 @@ const Notifications: React.FC = () => {
   const markRead = useNotificationStore((s) => s.markRead);
   const markAllRead = useNotificationStore((s) => s.markAllRead);
   const remove = useNotificationStore((s) => s.remove);
+  const mergeBroadcasts = useNotificationStore((s) => s.mergeBroadcasts);
 
   const [filter, setFilter] = useState<NotifFilter>('all');
+
+  // Pull-to-refresh — re-pull active admin broadcasts from Supabase and merge them
+  // (local read/dismissed state wins). Mirrors App.tsx's refreshBroadcasts, which is
+  // the only server source feeding this inbox; update/push notices are local.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const { data } = await supabasePersonal
+        .from('announcements')
+        .select('id,title,body,created_at')
+        .eq('active', true)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (data && data.length) mergeBroadcasts(data as BroadcastRow[]);
+    } catch {
+      /* best-effort */
+    } finally {
+      setRefreshing(false);
+    }
+  }, [mergeBroadcasts]);
 
   // ── Select mode (long-press to enter, tap to toggle — like TransactionsList) ──
   const [selectMode, setSelectMode] = useState(false);
@@ -251,34 +275,37 @@ const Notifications: React.FC = () => {
         </ScrollView>
       )}
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(n) => n.id}
-        renderItem={({ item, index }) => (
-          <NotificationRow
-            item={item}
-            index={index}
-            onPress={onPress}
-            onLongPress={onLongPress}
-            onDelete={remove}
-            selectMode={selectMode}
-            isSelected={selectedIds.has(item.id)}
-          />
-        )}
-        contentContainerStyle={filtered.length ? styles.listContent : styles.listEmpty}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          items.length === 0 ? (
-            <EmptyState icon="bell" title={t.notifications.emptyTitle} message={t.notifications.emptyMessage} />
-          ) : (
-            <EmptyState
-              icon={filter === 'transaction' ? 'credit-card' : 'volume-2'}
-              title={t.notifications.filterEmpty}
-              message={t.notifications.emptyMessage}
+      <PullRefresh refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent}>
+        <FlatList
+          style={styles.list}
+          data={filtered}
+          keyExtractor={(n) => n.id}
+          renderItem={({ item, index }) => (
+            <NotificationRow
+              item={item}
+              index={index}
+              onPress={onPress}
+              onLongPress={onLongPress}
+              onDelete={remove}
+              selectMode={selectMode}
+              isSelected={selectedIds.has(item.id)}
             />
-          )
-        }
-      />
+          )}
+          contentContainerStyle={filtered.length ? styles.listContent : styles.listEmpty}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            items.length === 0 ? (
+              <EmptyState icon="bell" title={t.notifications.emptyTitle} message={t.notifications.emptyMessage} />
+            ) : (
+              <EmptyState
+                icon={filter === 'transaction' ? 'credit-card' : 'volume-2'}
+                title={t.notifications.filterEmpty}
+                message={t.notifications.emptyMessage}
+              />
+            )
+          }
+        />
+      </PullRefresh>
 
       {/* Select mode — floating bar: cancel · N selected · delete (red on press), like TransactionsList */}
       {selectMode && (
@@ -327,6 +354,7 @@ const Notifications: React.FC = () => {
 const makeStyles = (C: typeof CALM) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: C.background },
+    list: { flex: 1 },
     listContent: { padding: SPACING.lg, paddingBottom: SPACING['3xl'] },
     listEmpty: { flexGrow: 1, justifyContent: 'center', padding: SPACING.lg },
     headerBtn: { paddingHorizontal: SPACING.md },
