@@ -10,15 +10,13 @@
 > **HTTP 401 (40104) "Channel not enabled or account inactive"** — the
 > DuitNow QR channel (channelId 24) is not enabled on sandbox merchant
 > SB_jejakbaki. Creds/signature are accepted; this is Fiuu-side provisioning.
-> 2026-07-28 update: Fiuu enabled the channel (40104 gone), but precreate now
-> returns statusCode 99 + **errorCode 1011 "Merchant account unauthorized —
-> merchant account not found or invalid merchant account info at channel
-> side"** (§11 p.63): the DuitNow QR acquiring-side merchant record is
-> missing/incomplete. Also Fiuu-side; user replied to the support thread
-> asking them to complete the channel-side merchant setup (evidence:
-> molTransactionId 169379). CLI check script used: signed precreate POST
-> direct to sandbox (same params as qr-create-charge) — re-run it after
-> Fiuu's next reply; success = statusCode 00 + non-empty authorizationCode.
+> 2026-07-30 update: Fiuu re-updated the DuitNow QR **offline** channel
+> setting — CLI precreate check now returns **statusCode 00 + real EMVCo
+> payload** (merchant "Jejak Baki", Shah Alam). All Fiuu-side blockers
+> cleared. Remaining: in-app E2E test — stall session → QR checkout (Fiuu QR
+> should appear, no rebuild needed) → pay via portal Bank Simulator → sheet
+> auto-completes ~4s + "Payment received" push. If the sheet never completes,
+> check qr-payment-webhook logs for the notification delivery.
 > Next: user emailed support@fiuu.com to enable the DuitNow QR channel
 > (store jejakbaki, applicationCode 0d9cdbb9f8d90f15da8c183196bb17fa).
 > Faster alt channel: Telegram dev forum t.me/FiuuDeveloperForum (spec cover
