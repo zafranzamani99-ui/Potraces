@@ -200,23 +200,24 @@ const ImportFromStatement: React.FC = () => {
               // Move the LIVE wallet balance too (reconcile replays these txns, so the net
               // is applied once) — otherwise the wallet stays wrong, permanently so with
               // sync off.
-              let netDelta = 0; // + income (add), − expense (deduct)
-              let imported = 0;
-              included.forEach((x, i) => {
-                if (!isNew[i]) return; // duplicate already in this wallet
-                addTransaction({
+              // Only rows not already in this wallet. Add them in ONE store write (one persist)
+              // instead of per-row — a large statement no longer freezes the UI — then apply
+              // the wallet net once below (same invariant as the old per-row addTransaction).
+              const toAdd = included
+                .filter((_, i) => isNew[i])
+                .map((x) => ({
                   amount: x.r.amount,
                   category: x.r._category ?? 'other',
                   description: x.r.description,
                   date: x.date,
                   type: x.r.type,
-                  mode: 'personal',
+                  mode: 'personal' as const,
                   inputMethod: 'statement-import' as any,
                   walletId: selectedWalletId,
-                });
-                netDelta += x.r.type === 'income' ? x.r.amount : -x.r.amount;
-                imported++;
-              });
+                }));
+              const netDelta = toAdd.reduce((sum, tx) => sum + (tx.type === 'income' ? tx.amount : -tx.amount), 0);
+              const imported = toAdd.length;
+              if (imported > 0) usePersonalStore.getState().addTransactions(toAdd);
               const skipped = included.length - imported;
               const walletName = wallets.find((w) => w.id === selectedWalletId)?.name ?? '';
               if (imported === 0) {

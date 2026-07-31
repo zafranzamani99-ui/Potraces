@@ -219,23 +219,24 @@ const ImportFromCsv: React.FC = () => {
               // Track the net wallet effect so the LIVE balance actually moves on import.
               // Reconcile replays these same transactions, so applying the net once keeps
               // live + reconciled in agreement.
-              let netDelta = 0; // + income (add), − expense (deduct)
-              let imported = 0;
-              candidates.forEach((p, i) => {
-                if (!isNew[i]) return; // duplicate already in this wallet
-                addTransaction({
+              // Only rows not already in this wallet. Add them in ONE store write (one persist)
+              // instead of per-row — a large statement no longer freezes the UI — then apply
+              // the wallet net once below (same invariant as the old per-row addTransaction).
+              const toAdd = candidates
+                .filter((_, i) => isNew[i])
+                .map((p) => ({
                   amount: p.amount!,
                   category: p.category || 'other',
                   description: p.description || t.importCsv.imported,
                   date: p.date!,
                   type: p.type,
-                  mode: 'personal',
+                  mode: 'personal' as const,
                   inputMethod: 'csv-import' as any,
                   walletId: selectedWalletId,
-                });
-                netDelta += p.type === 'income' ? p.amount! : -p.amount!;
-                imported++;
-              });
+                }));
+              const netDelta = toAdd.reduce((sum, tx) => sum + (tx.type === 'income' ? tx.amount : -tx.amount), 0);
+              const imported = toAdd.length;
+              if (imported > 0) usePersonalStore.getState().addTransactions(toAdd);
               const skipped = candidates.length - imported;
               const walletName = wallets.find((w) => w.id === selectedWalletId)?.name ?? '';
               if (imported === 0) {

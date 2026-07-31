@@ -1365,6 +1365,14 @@ export interface PersonalState {
   _deletedGoalIds?: string[];
   clearPersonalTombstones?: () => void;
   addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  /**
+   * Bulk-add many transactions in ONE store write (one persist/serialize), instead of
+   * calling addTransaction per row. Used by CSV/statement import so a large file doesn't
+   * re-serialize the whole store N times (was O(N²) AsyncStorage writes → UI freeze).
+   * Same invariant as addTransaction: does NOT move wallets — the caller applies the net once.
+   * Returns the new ids in input order; silently drops any row with a non-finite/≤0 amount.
+   */
+  addTransactions: (transactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>[]) => string[];
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
   addSubscription: (subscription: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>) => void;

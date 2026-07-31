@@ -60,6 +60,31 @@ export const usePersonalStore = create<PersonalState>()(
         return id;
       },
 
+      // Bulk sibling of addTransaction: prepares every row (same validate + roundMoney +
+      // id/timestamps) then commits them in a SINGLE set(), so a bulk import serializes the
+      // store once instead of once-per-row. Prepend order matches N sequential addTransaction
+      // calls (last input ends up on top). Wallet invariant unchanged: caller applies the net.
+      addTransactions: (list) => {
+        const ids: string[] = [];
+        const prepared = list.reduce<PersonalState['transactions']>((acc, transaction) => {
+          if (!Number.isFinite(transaction.amount) || transaction.amount <= 0) return acc;
+          const id = newId();
+          ids.push(id);
+          acc.push({
+            ...transaction,
+            amount: roundMoney(transaction.amount),
+            id,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+          return acc;
+        }, []);
+        if (prepared.length === 0) return [];
+        prepared.reverse(); // match per-call prepend (newest input first) without touching ids order
+        set((state) => ({ transactions: [...prepared, ...state.transactions] }));
+        return ids;
+      },
+
       updateTransaction: (id, updates) => {
         const prev = (usePersonalStore.getState() as PersonalState).transactions.find((t) => t.id === id);
         set((state) => ({
