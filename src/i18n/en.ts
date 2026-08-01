@@ -1668,6 +1668,7 @@ export const en = {
     keptApproxNote: '≈ estimate — some sales have no recorded cost',
     stallPausedTitle: 'Session paused',
     resumeToSellPrompt: 'This session is paused. Resume to record the sale?',
+    preOrderPausedToast: 'Resume the session to collect pre-orders.',
     expectedLabel: 'expected',
     countedLabel: 'counted',
     differenceLabel: 'difference',

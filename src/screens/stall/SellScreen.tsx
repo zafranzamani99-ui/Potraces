@@ -502,6 +502,7 @@ const SellScreen: React.FC = () => {
   // ── Card (Tap to Pay) cart checkout: charge first, record on success ──
   const openCardCheckout = useCallback(() => {
     if (cart.length === 0 || !session) return;
+    if (promptResumeIfPaused()) return; // guard BEFORE charging (bug 6f: charge-then-drop)
     if (cardOffline) { showToast(t.tapToPay.offlineToast, 'info'); return; }
     const names = cart.map((i) => i.productName).join(', ');
     setCardSheet({
@@ -509,13 +510,14 @@ const SellScreen: React.FC = () => {
       label: names || t.stall.todaysSales,
       onDone: (txnId: string) => handleCheckout('card', txnId),
     });
-  }, [cart, session, cardOffline, totalAmount, handleCheckout, showToast, t]);
+  }, [cart, session, cardOffline, totalAmount, handleCheckout, showToast, t, promptResumeIfPaused]);
 
   // ── QR cart checkout: try a PSP-issued exact-amount DuitNow QR first (live
   // confirmation via webhook); fall back to the seller's static QR with manual
   // confirm, then to today's one-tap behavior when no QR is set up at all.
   const openQrCheckout = useCallback(() => {
     if (cart.length === 0 || !session) return;
+    if (promptResumeIfPaused()) return; // guard BEFORE any PSP charge (bug 6f)
     const amountCents = Math.round(totalAmount * 100);
     const names = cart.map((i) => i.productName).join(', ');
     const finish = () => { setQrSheet(null); handleCheckout('qr'); };
@@ -533,7 +535,7 @@ const SellScreen: React.FC = () => {
     }
     if (!qrForPay) { guardedCheckout('qr'); return; }
     setQrSheet({ amountCents, onComplete: finish });
-  }, [cart, session, qrForPay, totalAmount, handleCheckout, guardedCheckout, startProviderCharge, t]);
+  }, [cart, session, qrForPay, totalAmount, handleCheckout, guardedCheckout, startProviderCharge, t, promptResumeIfPaused]);
   const guardedOpenQrCheckout = useSubmitGuard(openQrCheckout);
 
   // ── Quick-sell: tap a tile = 1 sale at the session default payment ──
@@ -625,6 +627,7 @@ const SellScreen: React.FC = () => {
   // ── Custom-amount sale ──
   const openCustom = useCallback(() => {
     if (!session) return;
+    if (promptResumeIfPaused()) return; // block opening the custom sheet while paused (bug 6f)
     setCustomMethod(session.defaultPayment || 'cash');
     setCustomAmount('');
     setCustomLabel('');
@@ -641,22 +644,24 @@ const SellScreen: React.FC = () => {
       regularCustomerId: servingCustomerId || undefined,
       ...(pspTransactionId ? { pspTransactionId } : {}),
     });
+    // Sale blocked (e.g. session paused) → don't save a product, fire success, or
+    // book a visit for a sale that wasn't recorded (bug 6f follow-up).
+    if (!id) return;
     if (save && label) {
       addProduct({ name: label, price: amt, isActive: true });
     }
     successNotification();
     recordServingVisit();
-    if (id) {
-      showToast(`${label || t.stall.customSale} · ${currency}${amt.toFixed(0)}`, 'success', {
-        label: t.stall.undo,
-        onPress: () => removeSale(id),
-      });
-    }
+    showToast(`${label || t.stall.customSale} · ${currency}${amt.toFixed(0)}`, 'success', {
+      label: t.stall.undo,
+      onPress: () => removeSale(id),
+    });
   }, [addCustomSale, customMethod, servingCustomerId, addProduct, removeSale, showToast, currency, t, recordServingVisit]);
 
   const handleConfirmCustom = useCallback(() => {
     const amt = parseFloat(customAmount);
     if (isNaN(amt) || amt <= 0) return;
+    if (promptResumeIfPaused()) return; // guard BEFORE charging the custom sale (bug 6f)
     const label = customLabel.trim();
     const save = customSaveProduct;
     if (customMethod === 'card') {
@@ -697,7 +702,7 @@ const SellScreen: React.FC = () => {
     setCustomVisible(false);
     Keyboard.dismiss();
     finishCustomSale(amt, label, save);
-  }, [customAmount, customLabel, customMethod, customSaveProduct, cardOffline, qrForPay, finishCustomSale, startProviderCharge, showToast, t]);
+  }, [customAmount, customLabel, customMethod, customSaveProduct, cardOffline, qrForPay, finishCustomSale, startProviderCharge, showToast, t, promptResumeIfPaused]);
   const guardedConfirmCustom = useSubmitGuard(handleConfirmCustom);
 
   // ── Restock during session ──

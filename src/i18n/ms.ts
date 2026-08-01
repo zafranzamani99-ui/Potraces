@@ -1668,6 +1668,7 @@ export const ms: Translations = {
     keptApproxNote: '≈ anggaran — ada jualan yang tak direkod kosnya',
     stallPausedTitle: 'Sesi dijeda',
     resumeToSellPrompt: 'Sesi ni dijeda. Nak sambung untuk rekod jualan?',
+    preOrderPausedToast: 'Sambung sesi dulu untuk ambil pre-order.',
     expectedLabel: 'dijangka',
     countedLabel: 'dikira',
     differenceLabel: 'beza',

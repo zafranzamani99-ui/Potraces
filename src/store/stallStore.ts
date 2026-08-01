@@ -668,6 +668,10 @@ export const useStallStore = create<StallState>()(
         const state = get();
         const activeId = state.activeSessionId;
         if (!activeId) return false;
+        // addSale/addCustomSale are paused-guarded (bug 6f), so collecting while
+        // paused would mark the order collected + book a visit but record zero
+        // revenue/stock. Block it here; the UI shows a "resume to collect" toast.
+        if (state.getActiveSession()?.paused) return false;
         const po = state.preOrders.find((p) => p.id === id);
         if (!po || po.status !== 'pending') return false;
         const method = po.paymentMethod || state.getActiveSession()?.defaultPayment || 'cash';

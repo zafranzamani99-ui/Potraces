@@ -997,7 +997,7 @@ expo-asset            — asset preloading
 | `docs/DEPLOYMENT_CHECKLIST.md` | Pre-deployment verification steps |
 | `docs/QUICKSTART.md` | Getting started guide |
 | `docs/archive/SELLER_MODE_AUDIT.md` | Seller mode readiness audit (87.78% score) — archived |
-| `docs/AI_SCENARIOS.md` | AI integration scenarios and edge cases |
+| `archive/docs/AI_SCENARIOS.md` | AI integration scenarios and edge cases (archived) |
 | `docs/archive/OUTCOME_UI_ARCHITECTURE.md` | Outcome-driven UI design system — archived |
 | `docs/Potraces_Integration_Plan.pdf` | Integration planning document |
 

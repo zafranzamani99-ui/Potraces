@@ -10,12 +10,14 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { semantic } from '../../constants';
 import PullRefresh from '../../components/common/PullRefresh';
+import { useNeu } from '../../components/common/neu';
 import { syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
 
 const ProductsReport: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const neu = useNeu(undefined, { faintDark: true }); // Neu Card surfaces (Onyx rule 3)
   const products = useSellerStore((s) => s.products);
   const orders = useSellerStore((s) => s.orders);
   const currency = useSettingsStore((s) => s.currency);
@@ -157,7 +159,7 @@ const ProductsReport: React.FC = () => {
       ) : (
         <>
           {/* Top earners */}
-          <View style={styles.card}>
+          <View style={[styles.card, neu.raisedSoft]}>
             <View style={styles.sectionHeader}>
               <Feather name="bar-chart-2" size={15} color={C.bronze} />
               <Text style={styles.sectionTitle}>{sl.reportTopEarners}</Text>
@@ -184,7 +186,7 @@ const ProductsReport: React.FC = () => {
 
           {/* Best margins */}
           {reportData.marginProducts.length > 0 && (
-            <View style={styles.card}>
+            <View style={[styles.card, neu.raisedSoft]}>
               <View style={styles.sectionHeader}>
                 <Feather name="trending-up" size={15} color={C.bronze} />
                 <Text style={styles.sectionTitle}>{sl.reportBestMargins}</Text>
@@ -203,7 +205,7 @@ const ProductsReport: React.FC = () => {
 
           {/* Customer reach */}
           {reportData.customerReach.length > 0 && (
-            <View style={styles.card}>
+            <View style={[styles.card, neu.raisedSoft]}>
               <View style={styles.sectionHeader}>
                 <Feather name="users" size={15} color={C.bronze} />
                 <Text style={styles.sectionTitle}>{sl.reportCustomerReach}</Text>
@@ -221,7 +223,7 @@ const ProductsReport: React.FC = () => {
 
           {/* vs last month */}
           {reportData.trends.length > 0 && (
-            <View style={styles.card}>
+            <View style={[styles.card, neu.raisedSoft]}>
               <View style={styles.sectionHeader}>
                 <Feather name="activity" size={15} color={C.bronze} />
                 <Text style={styles.sectionTitle}>{sl.reportVsLastMonth}</Text>
@@ -245,7 +247,7 @@ const ProductsReport: React.FC = () => {
 
           {/* Never ordered */}
           {reportData.neverOrdered.length > 0 && (
-            <View style={styles.card}>
+            <View style={[styles.card, neu.raisedSoft]}>
               <View style={styles.sectionHeader}>
                 <Feather name="package" size={15} color={C.textMuted} />
                 <Text style={styles.sectionTitle}>{sl.reportNeverOrdered}</Text>
@@ -260,7 +262,7 @@ const ProductsReport: React.FC = () => {
 
           {/* Low stock */}
           {reportData.lowStock.length > 0 && (
-            <View style={styles.card}>
+            <View style={[styles.card, neu.raisedSoft]}>
               <View style={styles.sectionHeader}>
                 <Feather name="alert-circle" size={15} color={C.gold} />
                 <Text style={styles.sectionTitle}>{sl.reportLowStock}</Text>
@@ -309,10 +311,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   card: {
-    backgroundColor: C.surface,
+    // Neu Card: C.background base + neu.raisedSoft (spread on the View); no border
+    // outline (Onyx rule 2) — separation comes from the neu shadow. No overflow:'hidden'
+    // here, so no seam-rule split needed.
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
     padding: SPACING.lg,
     marginBottom: SPACING.md,
   },

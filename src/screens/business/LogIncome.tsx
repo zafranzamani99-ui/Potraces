@@ -17,6 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useWalletStore } from '../../store/walletStore';
 import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
@@ -42,6 +43,10 @@ const LogIncome: React.FC = () => {
     useBusinessStore();
   const { addTransferIncome } = usePersonalStore();
   const currency = useSettingsStore((s) => s.currency);
+  const wallets = useWalletStore((s) => s.wallets);
+  // Credit the default wallet so the transfer actually moves money (not just a
+  // ledger row). This is a quick auto-dismiss prompt, so no picker — default only.
+  const defaultWalletId = wallets.find((w) => w.isDefault)?.id ?? wallets[0]?.id ?? null;
   const navigation = useNavigation<any>();
 
   const [mode, setMode] = useState<InputMode>('text');
@@ -139,12 +144,12 @@ const LogIncome: React.FC = () => {
     const numAmount = parseFloat(transferAmount);
     if (!numAmount || numAmount <= 0) return;
 
-    const transfer = createTransfer(numAmount, 'business', 'personal', undefined, lastTxId || undefined);
+    const transfer = createTransfer(numAmount, 'business', 'personal', undefined, lastTxId || undefined, defaultWalletId ?? undefined);
     addTransfer(transfer);
     addTransferIncome(transfer);
     setShowTransferPrompt(false);
     if (transferTimerRef.current) clearTimeout(transferTimerRef.current);
-  }, [transferAmount, lastTxId, addTransfer, addTransferIncome]);
+  }, [transferAmount, lastTxId, addTransfer, addTransferIncome, defaultWalletId]);
   const guardedTransfer = useSubmitGuard(handleTransfer);
 
   const handleSaveCost = useCallback(() => {

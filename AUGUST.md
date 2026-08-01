@@ -45,6 +45,23 @@ separately (`audit/ECHO_UNFINISHED.md`).
 
 ---
 
+## 🧾 Owner actions from the punch-list work (2026-08-01)
+_Surfaced while working `WAVE_TRACKER.md` (the found-gaps list). Code side is handled; these need **you** (accounts / uploads / consoles). Full detail + code status in `WAVE_TRACKER.md`._
+
+**Before / around launch:**
+- [ ] **Re-upload the corrected privacy page** to jejakbaki.my. `site/privacy.html` had a false "we strip card numbers from receipts" claim (verified untrue in code) — now corrected in-repo (EN + Malay). Deploy `site/` to Vercel so the LIVE page matches. ⚠️ The `site/` folder also carries other unfinished WIP — review before deploying so you don't push half-done pages live.
+- [ ] **App-Privacy form must match the new privacy manifest.** `ios/Potraces/PrivacyInfo.xcprivacy` now declares the 9 collected-data types from `audit/STORE_DATA_DISCLOSURE.md`; enter the SAME answers in App Store Connect → App Privacy. This native change also needs an **EAS rebuild** to ship.
+- [x] ~~**Reconcile `test:tiermigration`.**~~ **RESOLVED (verified 2026-08-01):** `npm test` is now GREEN (exit 0) and `test:tiermigration` passes 70 checks; `tiers.ts` matches HEAD, so the earlier caps/test mismatch is gone. No action needed.
+
+**Post-launch / v1.1 (not blocking 13 Aug):**
+- [ ] **Neu design-consistency — remaining screens.** Verified 2026-08-01: **seller (11/11) and stall (12/12) modes are now 100% neu** (last holdout `seller/ProductsReport.tsx` converted this session — needs a device eyeball, tsc-clean). Still on the OLDER flat style (~44 screens): the whole **business-mode cluster** (freelancer / mixed / on-the-road / part-time + core CRM/POS/Inventory/IncomeStreams/business Dashboard+Reports), **auth** (login/OTP), and **AccountOverview, ImportFromCsv/Statement, Settings, BackupRestore, ManageCategories**. They work fine — cosmetic. Convert post-launch per the CLAUDE.md neu recipes.
+- [ ] **Deploy the flood-cap index** — `supabase db push` picks up `supabase/migrations/20260801010000_seller_orders_floodcap_index.sql` (speeds the place-order flood check under a viral order rush; additive/idempotent, safe to bundle with any other pending push). Load-only insurance, low priority.
+- [ ] **Seller order-link Report/Block** — the public order page has no way for a seller to report/block an abusive buyer (name is length-capped, but content isn't moderated). A real post-launch feature; pairs with the 🔴 Collectz Report/Block item above.
+- [ ] **Stall non-cash expense** — a card-paid expense reads a false "over" at cash close; proper fix needs a payment-method field on stall expenses. Low priority.
+- [ ] **Seller sync hardening (multi-device)** — back seller `orders` with SQLite/MMKV (heavy-seller perf), switch deletes to durable tombstones (2-device race), paginate push-side reads (delete-resurrection). **None cause remote data loss today** (catastrophic audit headline verified STALE); do WITH real 2-device testing.
+
+---
+
 ## ✅ Done (checked & decided this session)
 - [x] **Money-logic audit (the step3 July "related findings") — all 4 VERIFIED FIXED (2026-07-29):**
       (1) Dashboard "Kept" card now excludes transfers + goal-moves so it matches the Reports
@@ -156,7 +173,7 @@ Redeem/rewards/invite + clipboard auto-attribution · `redeem_code` message fix 
 - [ ] **Flagship "Kept" install-hook** (Bucket 3 #7) — the cross-book "you kept RMx" number is on Reports; the growth wiring isn't: a Dashboard hero + a Collectz join-page "track your own money" nudge (acquisition funnel for people who pay a share). Growth call, not core Echo. Spec: `MAKIN_KENAL.md` §6.
 - [ ] **Echo learns from everyone — LIVE opt-in pipeline** (Bucket 3 #5, decided scope = "categorization defaults only"). The *value* shipped now as a curated static dictionary (`merchantCategoryGuess.ts`, enriched 2026-07-29, now also feeds Echo chat). The LIVE version is parked here because it's a server + PDPA feature that adds a data-safety-disclosure line right at launch. Safe design when ready: opt-in (default OFF) contribute only anonymized keyword→category mappings (mamak→food) via a new edge function that STRIPS identity → a `community_category_hints` table → aggregate (≥N distinct contributors) into `community_category_defaults` → sync down to seed `builtInMerchantCategory`. NO amounts, NO chat text, NO identity. Needs: migration + edge function + client consent toggle + `db push`/`functions deploy`. Ties to the "DPAs/DPO around ~10k users" item above. Notes: `ECHO_MEMORY_COST_SAFETY.md` (decision #3).
 
-### Folded in from `step2 July.md` / `step3 July.md` (non-blocking polish — Claude can do anytime)
+### Folded in from `archive/root/step2 July.md` / `archive/root/step3 July.md` (non-blocking polish — Claude can do anytime)
 - [ ] **Import → category name→id mapping** — imported txns store the category *name*, so they don't attach to budgets. Resolve to a category id (reuse the category/learning store). Data-quality, **not** launch-blocking. *(the only real code orphan from the July docs)*
 - [ ] **Neu redesign — 3 screens left:** `AccountOverview`, `ImportFromCsv`, `ImportFromStatement`. Cosmetic.
 - [ ] **Existing-user changelog note** for the lowered free caps — a one-time in-app note; optional soft-landing (nothing breaks without it; users keep what they have, just can't add past the new cap).

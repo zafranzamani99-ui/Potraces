@@ -150,8 +150,13 @@ const StallPreOrders: React.FC = () => {
   }, []);
 
   const handleCollect = useCallback((id: string) => {
-    if (!getActiveSession()) {
+    const s = getActiveSession();
+    if (!s) {
       showToast(t.stall.preOrderNoSession, 'info');
+      return;
+    }
+    if (s.paused) {
+      showToast(t.stall.preOrderPausedToast, 'info');
       return;
     }
     const ok = collectPreOrder(id);
