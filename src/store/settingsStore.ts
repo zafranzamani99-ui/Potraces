@@ -503,6 +503,14 @@ const wipePersonalStores = async ({
     draft: null,
     _deletedReceiptIds: [],
   });
+  // Reset dirty-tracking sets so no stale ids survive the wipe (incremental-sync groundwork,
+  // dormant). Every row above was just cleared, so nothing should remain "to send".
+  usePersonalStore.getState().clearPersonalDirty?.();
+  useWalletStore.getState().clearWalletDirty?.();
+  useDebtStore.getState().clearDebtDirty?.();
+  useSavingsStore.getState().clearSavingsDirty?.();
+  useReceiptStore.getState().clearReceiptDirty?.();
+  useNotesStore.getState().clearNotesDirty?.();
   // ── UNSYNCED personal stores — user-initiated wipes ONLY ──
   // Echo's budget profile (take-home, must-pays, model), the background
   // Quick-Log inbox, and the calculator history are personal data, so a real

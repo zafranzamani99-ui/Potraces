@@ -50,6 +50,7 @@ web-build/
 .env
 .env.local
 .env.production
+.env.staging
 
 # Firebase service account keys (private)
 *firebase-adminsdk*

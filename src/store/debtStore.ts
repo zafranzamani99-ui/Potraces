@@ -17,12 +17,23 @@ export const useDebtStore = create<DebtState>()(
       _deletedSplitIds: [],
       _deletedContactIds: [],
       _deletedSharedSubIds: [],
+      _dirtyDebtIds: [],
+      _dirtySplitIds: [],
+      _dirtyContactIds: [],
+      _dirtySharedSubIds: [],
 
       clearDebtTombstones: () => set({
         _deletedDebtIds: [],
         _deletedSplitIds: [],
         _deletedContactIds: [],
         _deletedSharedSubIds: [],
+      }),
+
+      clearDebtDirty: () => set({
+        _dirtyDebtIds: [],
+        _dirtySplitIds: [],
+        _dirtyContactIds: [],
+        _dirtySharedSubIds: [],
       }),
 
       addDebt: (debt) => {
@@ -52,6 +63,7 @@ export const useDebtStore = create<DebtState>()(
               },
               ...state.debts,
             ],
+            _dirtyDebtIds: [...(state._dirtyDebtIds ?? []), id],
           };
         });
         return id;
@@ -59,6 +71,7 @@ export const useDebtStore = create<DebtState>()(
 
       updateDebt: (id, updates) =>
         set((state) => ({
+          _dirtyDebtIds: [...(state._dirtyDebtIds ?? []), id],
           debts: state.debts.map((debt) => {
             if (debt.id !== id) return debt;
 
@@ -110,6 +123,7 @@ export const useDebtStore = create<DebtState>()(
 
       archiveDebt: (id) =>
         set((state) => ({
+          _dirtyDebtIds: [...(state._dirtyDebtIds ?? []), id],
           debts: state.debts.map((d) =>
             d.id === id ? { ...d, isArchived: true, archivedAt: new Date(), updatedAt: new Date() } : d
           ),
@@ -117,6 +131,7 @@ export const useDebtStore = create<DebtState>()(
 
       unarchiveDebt: (id) =>
         set((state) => ({
+          _dirtyDebtIds: [...(state._dirtyDebtIds ?? []), id],
           debts: state.debts.map((d) =>
             d.id === id ? { ...d, isArchived: false, archivedAt: undefined, updatedAt: new Date() } : d
           ),
@@ -134,6 +149,7 @@ export const useDebtStore = create<DebtState>()(
         const cappedAmount = roundMoney(Math.min(payment.amount, remaining));
         const paymentId = newId();
         set((state) => ({
+          _dirtyDebtIds: [...(state._dirtyDebtIds ?? []), debtId],
           debts: state.debts.map((d) => {
             if (d.id !== debtId) return d;
 
@@ -168,6 +184,7 @@ export const useDebtStore = create<DebtState>()(
         // mode via DebtTracking's `mode !== 'personal'` reversal loop. Refunding here
         // double-counted on every wallet-linked payment deletion.
         set((state) => ({
+          _dirtyDebtIds: [...(state._dirtyDebtIds ?? []), debtId],
           debts: state.debts.map((debt) => {
             if (debt.id !== debtId) return debt;
 
@@ -197,6 +214,7 @@ export const useDebtStore = create<DebtState>()(
 
       updatePayment: (debtId, paymentId, updates) =>
         set((state) => ({
+          _dirtyDebtIds: [...(state._dirtyDebtIds ?? []), debtId],
           debts: state.debts.map((debt) => {
             if (debt.id !== debtId) return debt;
 
@@ -256,6 +274,7 @@ export const useDebtStore = create<DebtState>()(
       addSplit: (split) => {
         const id = newId();
         set((state) => ({
+          _dirtySplitIds: [...(state._dirtySplitIds ?? []), id],
           splits: [
             {
               ...split,
@@ -271,6 +290,7 @@ export const useDebtStore = create<DebtState>()(
 
       updateSplit: (id, updates) =>
         set((state) => ({
+          _dirtySplitIds: [...(state._dirtySplitIds ?? []), id],
           splits: state.splits.map((split) =>
             split.id === id
               ? { ...split, ...updates, updatedAt: new Date() }
@@ -288,6 +308,7 @@ export const useDebtStore = create<DebtState>()(
 
       archiveSplit: (id) =>
         set((state) => ({
+          _dirtySplitIds: [...(state._dirtySplitIds ?? []), id],
           splits: state.splits.map((s) =>
             s.id === id ? { ...s, isArchived: true, archivedAt: new Date(), updatedAt: new Date() } : s
           ),
@@ -295,6 +316,7 @@ export const useDebtStore = create<DebtState>()(
 
       unarchiveSplit: (id) =>
         set((state) => ({
+          _dirtySplitIds: [...(state._dirtySplitIds ?? []), id],
           splits: state.splits.map((s) =>
             s.id === id ? { ...s, isArchived: false, archivedAt: undefined, updatedAt: new Date() } : s
           ),
@@ -302,6 +324,7 @@ export const useDebtStore = create<DebtState>()(
 
       markSplitParticipantPaid: (splitId, contactId) =>
         set((state) => ({
+          _dirtySplitIds: [...(state._dirtySplitIds ?? []), splitId],
           splits: state.splits.map((split) => {
             if (split.id !== splitId) return split;
             return {
@@ -316,6 +339,7 @@ export const useDebtStore = create<DebtState>()(
 
       unmarkSplitParticipantPaid: (splitId, contactId) =>
         set((state) => ({
+          _dirtySplitIds: [...(state._dirtySplitIds ?? []), splitId],
           splits: state.splits.map((split) => {
             if (split.id !== splitId) return split;
             return {
@@ -331,6 +355,7 @@ export const useDebtStore = create<DebtState>()(
       addSharedSubscription: (data) => {
         const id = newId();
         set((state) => ({
+          _dirtySharedSubIds: [...(state._dirtySharedSubIds ?? []), id],
           sharedSubscriptions: [
             {
               ...data,
@@ -354,6 +379,7 @@ export const useDebtStore = create<DebtState>()(
 
       updateSharedSubscription: (id, updates) =>
         set((state) => ({
+          _dirtySharedSubIds: [...(state._dirtySharedSubIds ?? []), id],
           sharedSubscriptions: state.sharedSubscriptions.map((sub) =>
             sub.id === id ? { ...sub, ...updates, updatedAt: new Date() } : sub
           ),
@@ -385,6 +411,7 @@ export const useDebtStore = create<DebtState>()(
 
       addSharedSubMember: (subId, member) =>
         set((state) => ({
+          _dirtySharedSubIds: [...(state._dirtySharedSubIds ?? []), subId],
           sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
             if (sub.id !== subId) return sub;
             return { ...sub, members: [...sub.members, member], updatedAt: new Date() };
@@ -393,6 +420,7 @@ export const useDebtStore = create<DebtState>()(
 
       updateSharedSubMember: (subId, contactId, updates) =>
         set((state) => ({
+          _dirtySharedSubIds: [...(state._dirtySharedSubIds ?? []), subId],
           sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
             if (sub.id !== subId) return sub;
             return {
@@ -407,6 +435,7 @@ export const useDebtStore = create<DebtState>()(
 
       removeSharedSubMember: (subId, contactId) =>
         set((state) => ({
+          _dirtySharedSubIds: [...(state._dirtySharedSubIds ?? []), subId],
           sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
             if (sub.id !== subId) return sub;
             return {
@@ -421,6 +450,7 @@ export const useDebtStore = create<DebtState>()(
 
       ensureMonthRecord: (subId, month) =>
         set((state) => ({
+          _dirtySharedSubIds: [...(state._dirtySharedSubIds ?? []), subId],
           sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
             if (sub.id !== subId) return sub;
             if (sub.monthRecords.find((r) => r.month === month)) return sub;
@@ -453,6 +483,7 @@ export const useDebtStore = create<DebtState>()(
 
       markSharedSubPayment: (subId, month, contactId) =>
         set((state) => ({
+          _dirtySharedSubIds: [...(state._dirtySharedSubIds ?? []), subId],
           sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
             if (sub.id !== subId) return sub;
             return {
@@ -473,6 +504,7 @@ export const useDebtStore = create<DebtState>()(
 
       unmarkSharedSubPayment: (subId, month, contactId) =>
         set((state) => ({
+          _dirtySharedSubIds: [...(state._dirtySharedSubIds ?? []), subId],
           sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
             if (sub.id !== subId) return sub;
             return {
@@ -493,6 +525,7 @@ export const useDebtStore = create<DebtState>()(
 
       recordSharedSubPriceChange: (subId, change) =>
         set((state) => ({
+          _dirtySharedSubIds: [...(state._dirtySharedSubIds ?? []), subId],
           sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
             if (sub.id !== subId) return sub;
             return {
@@ -516,6 +549,7 @@ export const useDebtStore = create<DebtState>()(
           // lowering it below what was paid must settle it). Members with no linked
           // debt (e.g. self / debts not yet generated) keep their existing flag.
           const settledByContact: Record<string, boolean> = {};
+          const changedDebtIds: string[] = [];
           for (const d of state.debts) {
             if (d.sharedSubId !== subId || d.sharedSubMonth !== month) continue;
             const share = memberShares.find((s) => s.contactId === d.contact.id);
@@ -550,6 +584,7 @@ export const useDebtStore = create<DebtState>()(
             if (!share) return d;
             const newTotal = share.shareAmount;
             if (newTotal === d.totalAmount) return d;
+            changedDebtIds.push(d.id);
 
             // Recompute paidAmount + status from existing payments (mirror addPayment/updateDebt)
             const rawPaid = roundMoney(d.payments.reduce((sum, p) => sum + p.amount, 0));
@@ -568,12 +603,15 @@ export const useDebtStore = create<DebtState>()(
               updatedAt: new Date(),
             };
           }),
+          _dirtySharedSubIds: [...(state._dirtySharedSubIds ?? []), subId],
+          _dirtyDebtIds: [...(state._dirtyDebtIds ?? []), ...changedDebtIds],
           };
         }),
 
       addContact: (contact) => {
         const id = newId();
         set((state) => ({
+          _dirtyContactIds: [...(state._dirtyContactIds ?? []), id],
           contacts: [
             {
               ...contact,
@@ -653,6 +691,10 @@ export const useDebtStore = create<DebtState>()(
         _deletedSplitIds: state._deletedSplitIds ?? [],
         _deletedContactIds: state._deletedContactIds ?? [],
         _deletedSharedSubIds: state._deletedSharedSubIds ?? [],
+        _dirtyDebtIds: state._dirtyDebtIds ?? [],
+        _dirtySplitIds: state._dirtySplitIds ?? [],
+        _dirtyContactIds: state._dirtyContactIds ?? [],
+        _dirtySharedSubIds: state._dirtySharedSubIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -732,6 +774,10 @@ export const useDebtStore = create<DebtState>()(
           state._deletedSplitIds = state._deletedSplitIds ?? [];
           state._deletedContactIds = state._deletedContactIds ?? [];
           state._deletedSharedSubIds = state._deletedSharedSubIds ?? [];
+          state._dirtyDebtIds = state._dirtyDebtIds ?? [];
+          state._dirtySplitIds = state._dirtySplitIds ?? [];
+          state._dirtyContactIds = state._dirtyContactIds ?? [];
+          state._dirtySharedSubIds = state._dirtySharedSubIds ?? [];
         }
       },
     }

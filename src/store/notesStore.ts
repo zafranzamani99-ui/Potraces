@@ -14,6 +14,9 @@ export const useNotesStore = create<NotesState>()(
       // clear on a successful push. The durable tombstoneStore is the source of
       // truth that keeps a deleted note from resurrecting on pull.
       _deletedNoteIds: [],
+      // Dormant dirty-tracking (Stage 1 incremental-sync). Sibling of _deletedNoteIds:
+      // a note id lands here on every CREATE/UPDATE (not delete). Nothing consumes it yet.
+      _dirtyNoteIds: [],
 
       createPage: (mode: AppMode) => {
         const id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
@@ -29,6 +32,7 @@ export const useNotesStore = create<NotesState>()(
         set((state) => ({
           pages: [page, ...state.pages],
           activePageId: id,
+          _dirtyNoteIds: [...(state._dirtyNoteIds ?? []), id],
         }));
         return id;
       },
@@ -45,6 +49,7 @@ export const useNotesStore = create<NotesState>()(
               updatedAt: new Date(),
             };
           }),
+          _dirtyNoteIds: [...(state._dirtyNoteIds ?? []), id],
         })),
 
       updatePageFormatting: (id, formatting) =>
@@ -52,6 +57,7 @@ export const useNotesStore = create<NotesState>()(
           pages: state.pages.map((p) =>
             p.id === id ? { ...p, formatting, updatedAt: new Date() } : p
           ),
+          _dirtyNoteIds: [...(state._dirtyNoteIds ?? []), id],
         })),
 
       deletePage: (id) => {
@@ -75,6 +81,9 @@ export const useNotesStore = create<NotesState>()(
 
       clearNotesTombstones: () => set({ _deletedNoteIds: [] }),
 
+      // Dormant (Stage 1): reset this store's dirty set. Mirror of clearNotesTombstones.
+      clearNotesDirty: () => set({ _dirtyNoteIds: [] }),
+
       setActivePageId: (id) => set({ activePageId: id }),
 
       addExtraction: (pageId, extraction) =>
@@ -84,6 +93,7 @@ export const useNotesStore = create<NotesState>()(
               ? { ...p, extractions: [...p.extractions, extraction], updatedAt: new Date() }
               : p
           ),
+          _dirtyNoteIds: [...(state._dirtyNoteIds ?? []), pageId],
         })),
 
       updateExtractionStatus: (pageId, extractionId, status, linkedId) =>
@@ -105,6 +115,7 @@ export const useNotesStore = create<NotesState>()(
                 }
               : p
           ),
+          _dirtyNoteIds: [...(state._dirtyNoteIds ?? []), pageId],
         })),
 
       updateExtraction: (pageId, extractionId, updates) =>
@@ -127,6 +138,7 @@ export const useNotesStore = create<NotesState>()(
                 }
               : p
           ),
+          _dirtyNoteIds: [...(state._dirtyNoteIds ?? []), pageId],
         })),
 
       clearPendingExtractions: (pageId: string) =>
@@ -136,6 +148,7 @@ export const useNotesStore = create<NotesState>()(
               ? { ...p, extractions: p.extractions.filter((e) => e.status !== 'pending') }
               : p
           ),
+          _dirtyNoteIds: [...(state._dirtyNoteIds ?? []), pageId],
         })),
 
       markFirstWriteComplete: () => set({ isFirstWrite: false }),
@@ -152,10 +165,12 @@ export const useNotesStore = create<NotesState>()(
         activePageId: state.activePageId,
         isFirstWrite: state.isFirstWrite,
         _deletedNoteIds: state._deletedNoteIds,
+        _dirtyNoteIds: state._dirtyNoteIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
           state._deletedNoteIds = state._deletedNoteIds || [];
+          state._dirtyNoteIds = state._dirtyNoteIds || [];
           const sd = (v: any) => {
             if (!v) return new Date();
             const d = v instanceof Date ? v : new Date(v);

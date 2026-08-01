@@ -1292,6 +1292,9 @@ export interface ReceiptState {
   draft: ReceiptDraft | null;
   _deletedReceiptIds?: string[];
   clearReceiptTombstones?: () => void;
+  // Dirty-tracking (incremental-sync Stage 1, dormant): ids created/edited since last push.
+  _dirtyReceiptIds?: string[];
+  clearReceiptDirty?: () => void;
   addReceipt: (receipt: Omit<SavedReceipt, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateReceipt: (id: string, updates: Partial<SavedReceipt>) => void;
   deleteReceipt: (id: string) => void;
@@ -1364,6 +1367,12 @@ export interface PersonalState {
   _deletedBudgetIds?: string[];
   _deletedGoalIds?: string[];
   clearPersonalTombstones?: () => void;
+  // Dirty-tracking (incremental-sync Stage 1, dormant): ids created/edited since last push.
+  _dirtyTransactionIds?: string[];
+  _dirtySubscriptionIds?: string[];
+  _dirtyBudgetIds?: string[];
+  _dirtyGoalIds?: string[];
+  clearPersonalDirty?: () => void;
   addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) => string;
   /**
    * Bulk-add many transactions in ONE store write (one persist/serialize), instead of
@@ -1441,6 +1450,12 @@ export interface DebtState {
   _deletedContactIds?: string[];
   _deletedSharedSubIds?: string[];
   clearDebtTombstones?: () => void;
+  // Dirty-tracking (incremental-sync Stage 1, dormant): ids created/edited since last push.
+  _dirtyDebtIds?: string[];
+  _dirtySplitIds?: string[];
+  _dirtyContactIds?: string[];
+  _dirtySharedSubIds?: string[];
+  clearDebtDirty?: () => void;
 
   addDebt: (debt: Omit<Debt, 'id' | 'paidAmount' | 'status' | 'payments' | 'createdAt' | 'updatedAt'>) => string;
   updateDebt: (id: string, updates: Partial<Debt>) => void;
@@ -1533,6 +1548,9 @@ export interface SavingsState {
   lastOpenedValue: number | null;
   _deletedSavingsIds?: string[];
   clearSavingsTombstones?: () => void;
+  // Dirty-tracking (incremental-sync Stage 1, dormant): ids created/edited since last push.
+  _dirtySavingsIds?: string[];
+  clearSavingsDirty?: () => void;
   addAccount: (account: Omit<SavingsAccount, 'id' | 'history' | 'createdAt' | 'updatedAt'>) => void;
   updateAccount: (id: string, updates: Partial<SavingsAccount>) => void;
   deleteAccount: (id: string) => void;
@@ -1583,6 +1601,10 @@ export interface WalletState {
   _deletedWalletIds?: string[];
   _deletedTransferIds?: string[];
   clearWalletTombstones?: () => void;
+  // Dirty-tracking (incremental-sync Stage 1, dormant): ids created/edited since last push.
+  _dirtyWalletIds?: string[];
+  _dirtyTransferIds?: string[];
+  clearWalletDirty?: () => void;
   addWallet: (wallet: Omit<Wallet, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateWallet: (id: string, updates: Partial<Wallet>) => void;
   deleteWallet: (id: string) => void;
@@ -1697,4 +1719,7 @@ export interface NotesState {
   clearPendingExtractions: (pageId: string) => void;
   markFirstWriteComplete: () => void;
   clearNotesTombstones: () => void;
+  // Dirty-tracking (incremental-sync Stage 1, dormant): ids created/edited since last push.
+  _dirtyNoteIds: string[];
+  clearNotesDirty: () => void;
 }

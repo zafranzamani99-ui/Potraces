@@ -16,8 +16,10 @@ export const useSavingsStore = create<SavingsState>()(
       accountOrder: [] as string[],
       lastOpenedValue: null,
       _deletedSavingsIds: [],
+      _dirtySavingsIds: [],
 
       clearSavingsTombstones: () => set({ _deletedSavingsIds: [] }),
+      clearSavingsDirty: () => set({ _dirtySavingsIds: [] }),
 
       addAccount: (account) =>
         set((state) => {
@@ -45,6 +47,7 @@ export const useSavingsStore = create<SavingsState>()(
               ...state.accounts,
             ],
             accountOrder: [id, ...state.accountOrder],
+            _dirtySavingsIds: [...(state._dirtySavingsIds ?? []), id],
             // Shift the "since last check" baseline by the new account's value so
             // adding an account never registers as a value gain.
             lastOpenedValue: state.lastOpenedValue != null ? roundMoney(state.lastOpenedValue + cur) : state.lastOpenedValue,
@@ -105,6 +108,7 @@ export const useSavingsStore = create<SavingsState>()(
               }
               return { ...a, ...u, history, updatedAt: new Date() };
             }),
+            _dirtySavingsIds: [...(state._dirtySavingsIds ?? []), id],
           };
         }),
 
@@ -150,6 +154,7 @@ export const useSavingsStore = create<SavingsState>()(
               updatedAt: new Date(),
             };
           }),
+          _dirtySavingsIds: [...(state._dirtySavingsIds ?? []), accountId],
         }));
       },
 
@@ -164,6 +169,7 @@ export const useSavingsStore = create<SavingsState>()(
               ? { ...a, target: target ?? undefined, updatedAt: new Date() }
               : a
           ),
+          _dirtySavingsIds: [...(state._dirtySavingsIds ?? []), accountId],
         })),
 
       recordOpen: () => {
@@ -188,6 +194,7 @@ export const useSavingsStore = create<SavingsState>()(
         accountOrder: state.accountOrder,
         lastOpenedValue: state.lastOpenedValue,
         _deletedSavingsIds: state._deletedSavingsIds ?? [],
+        _dirtySavingsIds: state._dirtySavingsIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -212,6 +219,7 @@ export const useSavingsStore = create<SavingsState>()(
           if (!state.accountOrder) state.accountOrder = [];
           if (state.lastOpenedValue === undefined) state.lastOpenedValue = null;
           state._deletedSavingsIds = state._deletedSavingsIds ?? [];
+          state._dirtySavingsIds = state._dirtySavingsIds ?? [];
         }
       },
     }

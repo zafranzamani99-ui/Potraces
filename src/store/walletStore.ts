@@ -14,10 +14,17 @@ export const useWalletStore = create<WalletState>()(
       selectedWalletId: null,
       _deletedWalletIds: [],
       _deletedTransferIds: [],
+      _dirtyWalletIds: [],
+      _dirtyTransferIds: [],
 
       clearWalletTombstones: () => set({
         _deletedWalletIds: [],
         _deletedTransferIds: [],
+      }),
+
+      clearWalletDirty: () => set({
+        _dirtyWalletIds: [],
+        _dirtyTransferIds: [],
       }),
 
       addWallet: (wallet) =>
@@ -30,6 +37,7 @@ export const useWalletStore = create<WalletState>()(
             createdAt: new Date(),
             updatedAt: new Date(),
           };
+          const demotedIds = makingDefault ? state.wallets.filter((w) => w.isDefault).map((w) => w.id) : [];
           return {
             wallets: [
               next,
@@ -37,18 +45,23 @@ export const useWalletStore = create<WalletState>()(
                 ? state.wallets.map((w) => (w.isDefault ? { ...w, isDefault: false, updatedAt: new Date() } : w))
                 : state.wallets),
             ],
+            _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), next.id, ...demotedIds],
           };
         }),
 
       updateWallet: (id, updates) =>
         set((state) => {
           const makingDefault = updates.isDefault === true;
+          const demotedIds = makingDefault
+            ? state.wallets.filter((w) => w.isDefault && w.id !== id).map((w) => w.id)
+            : [];
           return {
             wallets: state.wallets.map((w) => {
               if (w.id === id) return { ...w, ...updates, updatedAt: new Date() };
               if (makingDefault && w.isDefault) return { ...w, isDefault: false, updatedAt: new Date() };
               return w;
             }),
+            _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), id, ...demotedIds],
           };
         }),
 
@@ -58,6 +71,8 @@ export const useWalletStore = create<WalletState>()(
           selectedWalletId:
             state.selectedWalletId === id ? null : state.selectedWalletId,
           _deletedWalletIds: [...(state._deletedWalletIds ?? []), id],
+          // Deleted now — drop it from the dirty set (create-then-delete in one window).
+          _dirtyWalletIds: (state._dirtyWalletIds ?? []).filter((x) => x !== id),
         }));
         useTombstoneStore.getState().addTombstones([id]);
         const { usePersonalStore } = require('./personalStore');
@@ -79,6 +94,8 @@ export const useWalletStore = create<WalletState>()(
               debts: s.debts.map((debt: any) =>
                 debt.id === d.id ? { ...debt, payments: newPayments, updatedAt: new Date() } : debt
               ),
+              // This edit (stripping the deleted wallet from a debt payment) must push.
+              _dirtyDebtIds: [...(s._dirtyDebtIds ?? []), d.id],
             }));
           }
         });
@@ -93,6 +110,12 @@ export const useWalletStore = create<WalletState>()(
             isDefault: w.id === id,
             updatedAt: w.id === id ? new Date() : w.updatedAt,
           })),
+          // The new default (updatedAt bumped) plus any previously-default wallet
+          // whose isDefault flag flips — both rows changed and must push.
+          _dirtyWalletIds: [
+            ...(state._dirtyWalletIds ?? []),
+            ...state.wallets.filter((w) => w.id === id || w.isDefault).map((w) => w.id),
+          ],
         })),
 
       // Wallet-delta primitives. INVARIANT: every ledger entry that affects a wallet — a
@@ -120,6 +143,7 @@ export const useWalletStore = create<WalletState>()(
             }
             return { ...w, balance: roundMoney(w.balance - amount), updatedAt: new Date() };
           }),
+          _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), id],
         }));
       },
 
@@ -138,6 +162,7 @@ export const useWalletStore = create<WalletState>()(
             }
             return { ...w, balance: roundMoney(w.balance + amount), updatedAt: new Date() };
           }),
+          _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), id],
         }));
       },
 
@@ -146,6 +171,7 @@ export const useWalletStore = create<WalletState>()(
           wallets: state.wallets.map((w) =>
             w.id === id ? { ...w, balance, updatedAt: new Date() } : w
           ),
+          _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), id],
         })),
 
       transferBetweenWallets: (fromId, toId, amount, note) =>
@@ -179,25 +205,31 @@ export const useWalletStore = create<WalletState>()(
               return w;
             }),
             transfers: [transfer, ...state.transfers],
+            _dirtyTransferIds: [...(state._dirtyTransferIds ?? []), transfer.id],
+            _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), fromId, toId],
           };
         }),
 
       logActivity: (fromId, toId, amount, kind, note) =>
-        set((state) => ({
-          transfers: [
-            {
-              id: newId(),
-              fromWalletId: fromId,
-              toWalletId: toId,
-              amount,
-              note,
-              date: new Date(),
-              createdAt: new Date(),
-              kind,
-            },
-            ...state.transfers,
-          ],
-        })),
+        set((state) => {
+          const id = newId();
+          return {
+            transfers: [
+              {
+                id,
+                fromWalletId: fromId,
+                toWalletId: toId,
+                amount,
+                note,
+                date: new Date(),
+                createdAt: new Date(),
+                kind,
+              },
+              ...state.transfers,
+            ],
+            _dirtyTransferIds: [...(state._dirtyTransferIds ?? []), id],
+          };
+        }),
 
       deleteTransfer: (transferId) => {
         set((state) => {
@@ -239,6 +271,11 @@ export const useWalletStore = create<WalletState>()(
             wallets,
             transfers: state.transfers.filter((x) => x.id !== transferId),
             _deletedTransferIds: [...(state._deletedTransferIds ?? []), transferId],
+            // Deleted now — drop it from the dirty set (create-then-delete in one window).
+            _dirtyTransferIds: (state._dirtyTransferIds ?? []).filter((x) => x !== transferId),
+            // The transfer itself is DELETED (never marked dirty), but reversing it
+            // mutates both wallet balances — those rows changed and must push.
+            _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), t.fromWalletId, t.toWalletId],
           };
         });
         useTombstoneStore.getState().addTombstones([transferId]);
@@ -256,6 +293,7 @@ export const useWalletStore = create<WalletState>()(
                 }
               : w
           ),
+          _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), id],
         })),
 
       repayCredit: (id, amount) =>
@@ -274,10 +312,11 @@ export const useWalletStore = create<WalletState>()(
               updatedAt: new Date(),
             };
           }),
+          _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), id],
         })),
 
       clearAll: () =>
-        set({ wallets: [], transfers: [], selectedWalletId: null, _deletedWalletIds: [], _deletedTransferIds: [] }),
+        set({ wallets: [], transfers: [], selectedWalletId: null, _deletedWalletIds: [], _deletedTransferIds: [], _dirtyWalletIds: [], _dirtyTransferIds: [] }),
     }),
     {
       name: 'wallet-storage',
@@ -296,6 +335,8 @@ export const useWalletStore = create<WalletState>()(
         selectedWalletId: state.selectedWalletId,
         _deletedWalletIds: state._deletedWalletIds ?? [],
         _deletedTransferIds: state._deletedTransferIds ?? [],
+        _dirtyWalletIds: state._dirtyWalletIds ?? [],
+        _dirtyTransferIds: state._dirtyTransferIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -318,6 +359,8 @@ export const useWalletStore = create<WalletState>()(
           });
           state._deletedWalletIds = state._deletedWalletIds ?? [];
           state._deletedTransferIds = state._deletedTransferIds ?? [];
+          state._dirtyWalletIds = state._dirtyWalletIds ?? [];
+          state._dirtyTransferIds = state._dirtyTransferIds ?? [];
           // Migrate transfers array if missing
           if (!state.transfers) {
             state.transfers = [];

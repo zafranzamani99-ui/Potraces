@@ -16,8 +16,11 @@ export const useReceiptStore = create<ReceiptState>()(
       receipts: [],
       draft: null,
       _deletedReceiptIds: [],
+      _dirtyReceiptIds: [],
 
       clearReceiptTombstones: () => set({ _deletedReceiptIds: [] }),
+
+      clearReceiptDirty: () => set({ _dirtyReceiptIds: [] }),
 
       addReceipt: (receipt) => {
         const id = newId();
@@ -32,6 +35,7 @@ export const useReceiptStore = create<ReceiptState>()(
             },
             ...state.receipts,
           ],
+          _dirtyReceiptIds: [...(state._dirtyReceiptIds ?? []), id],
         }));
         return id;
       },
@@ -54,6 +58,7 @@ export const useReceiptStore = create<ReceiptState>()(
             receipts: state.receipts.map((r) =>
               r.id === id ? { ...r, ...updates, updatedAt: new Date() } : r
             ),
+            _dirtyReceiptIds: [...(state._dirtyReceiptIds ?? []), id],
           };
         }),
 
@@ -141,6 +146,7 @@ export const useReceiptStore = create<ReceiptState>()(
           savedAt: state.draft.savedAt instanceof Date ? state.draft.savedAt.toISOString() : state.draft.savedAt,
         } : null,
         _deletedReceiptIds: state._deletedReceiptIds ?? [],
+        _dirtyReceiptIds: state._dirtyReceiptIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -160,6 +166,7 @@ export const useReceiptStore = create<ReceiptState>()(
             state.draft.savedAt = sd(state.draft.savedAt);
           }
           state._deletedReceiptIds = state._deletedReceiptIds ?? [];
+          state._dirtyReceiptIds = state._dirtyReceiptIds ?? [];
         }
       },
     }

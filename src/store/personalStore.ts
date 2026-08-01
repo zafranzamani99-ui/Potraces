@@ -21,12 +21,27 @@ export const usePersonalStore = create<PersonalState>()(
       _deletedSubscriptionIds: [],
       _deletedBudgetIds: [],
       _deletedGoalIds: [],
+      _dirtyTransactionIds: [],
+      _dirtySubscriptionIds: [],
+      _dirtyBudgetIds: [],
+      _dirtyGoalIds: [],
 
       clearPersonalTombstones: () => set({
         _deletedTransactionIds: [],
         _deletedSubscriptionIds: [],
         _deletedBudgetIds: [],
         _deletedGoalIds: [],
+        _dirtyTransactionIds: [],
+        _dirtySubscriptionIds: [],
+        _dirtyBudgetIds: [],
+        _dirtyGoalIds: [],
+      }),
+
+      clearPersonalDirty: () => set({
+        _dirtyTransactionIds: [],
+        _dirtySubscriptionIds: [],
+        _dirtyBudgetIds: [],
+        _dirtyGoalIds: [],
       }),
 
       // WALLET-BALANCE INVARIANT: a transaction with a walletId moves that wallet exactly
@@ -56,6 +71,7 @@ export const usePersonalStore = create<PersonalState>()(
             },
             ...state.transactions,
           ],
+          _dirtyTransactionIds: [...(state._dirtyTransactionIds ?? []), id],
         }));
         return id;
       },
@@ -81,7 +97,10 @@ export const usePersonalStore = create<PersonalState>()(
         }, []);
         if (prepared.length === 0) return [];
         prepared.reverse(); // match per-call prepend (newest input first) without touching ids order
-        set((state) => ({ transactions: [...prepared, ...state.transactions] }));
+        set((state) => ({
+          transactions: [...prepared, ...state.transactions],
+          _dirtyTransactionIds: [...(state._dirtyTransactionIds ?? []), ...ids],
+        }));
         return ids;
       },
 
@@ -111,6 +130,7 @@ export const usePersonalStore = create<PersonalState>()(
               editLog: editEntry ? [...(t.editLog ?? []), editEntry] : t.editLog,
             };
           }),
+          _dirtyTransactionIds: [...(state._dirtyTransactionIds ?? []), id],
         }));
 
         if (!prev) return;
@@ -162,6 +182,7 @@ export const usePersonalStore = create<PersonalState>()(
         // forwards action.amount unchecked, and `NaN <= 0` is false, so a bare
         // `<= 0` guard would let a "RM NaN" bill through. Round at the write site.
         if (!Number.isFinite(subscription.amount) || subscription.amount <= 0) return;
+        const id = newId();
         set((state) => ({
           subscriptions: [
             {
@@ -170,12 +191,13 @@ export const usePersonalStore = create<PersonalState>()(
               ...(subscription.outstandingBalance !== undefined
                 ? { outstandingBalance: roundMoney(subscription.outstandingBalance) }
                 : {}),
-              id: newId(),
+              id,
               createdAt: new Date(),
               updatedAt: new Date(),
             },
             ...state.subscriptions,
           ],
+          _dirtySubscriptionIds: [...(state._dirtySubscriptionIds ?? []), id],
         }));
       },
 
@@ -196,21 +218,24 @@ export const usePersonalStore = create<PersonalState>()(
                 ? { ...b, allocatedAmount: roundMoney(budget.allocatedAmount), updatedAt: new Date() }
                 : b
             ),
+            _dirtyBudgetIds: [...(state._dirtyBudgetIds ?? []), existing.id],
           }));
           return;
         }
+        const id = newId();
         set((state) => ({
           budgets: [
             {
               ...budget,
               allocatedAmount: roundMoney(budget.allocatedAmount),
-              id: newId(),
+              id,
               spentAmount: 0,
               createdAt: new Date(),
               updatedAt: new Date(),
             },
             ...state.budgets,
           ],
+          _dirtyBudgetIds: [...(state._dirtyBudgetIds ?? []), id],
         }));
       },
 
@@ -231,6 +256,7 @@ export const usePersonalStore = create<PersonalState>()(
               ? { ...budget, ...safe, updatedAt: new Date() }
               : budget
           ),
+          _dirtyBudgetIds: [...(state._dirtyBudgetIds ?? []), id],
         }));
       },
 
@@ -251,6 +277,7 @@ export const usePersonalStore = create<PersonalState>()(
                 }
               : subscription
           ),
+          _dirtySubscriptionIds: [...(state._dirtySubscriptionIds ?? []), id],
         })),
 
       deleteSubscription: (id) => {
@@ -294,6 +321,7 @@ export const usePersonalStore = create<PersonalState>()(
                 }
               : sub
           ),
+          _dirtySubscriptionIds: [...(state._dirtySubscriptionIds ?? []), id],
         })),
 
       toggleSubscriptionPause: (id) =>
@@ -303,6 +331,7 @@ export const usePersonalStore = create<PersonalState>()(
               ? { ...sub, isPaused: !sub.isPaused, updatedAt: new Date() }
               : sub
           ),
+          _dirtySubscriptionIds: [...(state._dirtySubscriptionIds ?? []), id],
         })),
 
       markSubscriptionPaid: (id, transactionId?, walletId?, paidAt?) =>
@@ -358,6 +387,7 @@ export const usePersonalStore = create<PersonalState>()(
               updatedAt: new Date(),
             };
           }),
+          _dirtySubscriptionIds: [...(state._dirtySubscriptionIds ?? []), id],
         })),
 
       undoSubscriptionPayment: (subId, paymentId) => {
@@ -432,6 +462,10 @@ export const usePersonalStore = create<PersonalState>()(
             _deletedTransactionIds: transactionToDelete
               ? [...(s._deletedTransactionIds ?? []), transactionToDelete]
               : s._deletedTransactionIds,
+            // The subscription row itself was modified (undone payment, re-derived
+            // schedule) — mark it dirty. The linked transaction is DELETED above, so
+            // it goes to _deletedTransactionIds, never to _dirtyTransactionIds.
+            _dirtySubscriptionIds: [...(s._dirtySubscriptionIds ?? []), subId],
           };
         });
 
@@ -445,10 +479,11 @@ export const usePersonalStore = create<PersonalState>()(
 
       addTransferIncome: (transfer) => {
         const walletId = (transfer as Transfer & { walletId?: string }).walletId;
+        const id = `transfer-${transfer.id}`;
         set((state) => ({
           transactions: [
             {
-              id: `transfer-${transfer.id}`,
+              id,
               amount: transfer.amount,
               category: 'from business',
               description: transfer.note || 'Transfer from business',
@@ -462,18 +497,20 @@ export const usePersonalStore = create<PersonalState>()(
             },
             ...state.transactions,
           ],
+          _dirtyTransactionIds: [...(state._dirtyTransactionIds ?? []), id],
         }));
         if (walletId) {
           useWalletStore.getState().addToWallet(walletId, transfer.amount);
         }
       },
 
-      addGoal: (goal) =>
+      addGoal: (goal) => {
+        const id = newId();
         set((state) => ({
           goals: [
             {
               ...goal,
-              id: newId(),
+              id,
               currentAmount: 0,
               contributions: [],
               milestones: [
@@ -487,7 +524,9 @@ export const usePersonalStore = create<PersonalState>()(
             },
             ...state.goals,
           ],
-        })),
+          _dirtyGoalIds: [...(state._dirtyGoalIds ?? []), id],
+        }));
+      },
 
       updateGoal: (id, updates) =>
         set((state) => ({
@@ -496,6 +535,7 @@ export const usePersonalStore = create<PersonalState>()(
               ? { ...goal, ...updates, updatedAt: new Date() }
               : goal
           ),
+          _dirtyGoalIds: [...(state._dirtyGoalIds ?? []), id],
         })),
 
       deleteGoal: (id) => {
@@ -548,6 +588,7 @@ export const usePersonalStore = create<PersonalState>()(
               updatedAt: new Date(),
             };
           }),
+          _dirtyGoalIds: [...(state._dirtyGoalIds ?? []), goalId],
         }));
       },
 
@@ -580,6 +621,7 @@ export const usePersonalStore = create<PersonalState>()(
               updatedAt: new Date(),
             };
           }),
+          _dirtyGoalIds: [...(state._dirtyGoalIds ?? []), goalId],
         })),
 
       removeContribution: (goalId, contributionId) => {
@@ -603,6 +645,7 @@ export const usePersonalStore = create<PersonalState>()(
               updatedAt: new Date(),
             };
           }),
+          _dirtyGoalIds: [...(state._dirtyGoalIds ?? []), goalId],
         }));
       },
 
@@ -611,6 +654,7 @@ export const usePersonalStore = create<PersonalState>()(
           goals: state.goals.map((g) =>
             g.id === goalId ? { ...g, isArchived: true, updatedAt: new Date() } : g
           ),
+          _dirtyGoalIds: [...(state._dirtyGoalIds ?? []), goalId],
         })),
 
       unarchiveGoal: (goalId) =>
@@ -618,6 +662,7 @@ export const usePersonalStore = create<PersonalState>()(
           goals: state.goals.map((g) =>
             g.id === goalId ? { ...g, isArchived: false, updatedAt: new Date() } : g
           ),
+          _dirtyGoalIds: [...(state._dirtyGoalIds ?? []), goalId],
         })),
 
       pauseGoal: (goalId) =>
@@ -625,6 +670,7 @@ export const usePersonalStore = create<PersonalState>()(
           goals: state.goals.map((g) =>
             g.id === goalId ? { ...g, isPaused: true, updatedAt: new Date() } : g
           ),
+          _dirtyGoalIds: [...(state._dirtyGoalIds ?? []), goalId],
         })),
 
       resumeGoal: (goalId) =>
@@ -632,6 +678,7 @@ export const usePersonalStore = create<PersonalState>()(
           goals: state.goals.map((g) =>
             g.id === goalId ? { ...g, isPaused: false, updatedAt: new Date() } : g
           ),
+          _dirtyGoalIds: [...(state._dirtyGoalIds ?? []), goalId],
         })),
     }),
     {
@@ -688,6 +735,10 @@ export const usePersonalStore = create<PersonalState>()(
         _deletedSubscriptionIds: state._deletedSubscriptionIds ?? [],
         _deletedBudgetIds: state._deletedBudgetIds ?? [],
         _deletedGoalIds: state._deletedGoalIds ?? [],
+        _dirtyTransactionIds: state._dirtyTransactionIds ?? [],
+        _dirtySubscriptionIds: state._dirtySubscriptionIds ?? [],
+        _dirtyBudgetIds: state._dirtyBudgetIds ?? [],
+        _dirtyGoalIds: state._dirtyGoalIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -734,6 +785,10 @@ export const usePersonalStore = create<PersonalState>()(
           state._deletedSubscriptionIds = state._deletedSubscriptionIds ?? [];
           state._deletedBudgetIds = state._deletedBudgetIds ?? [];
           state._deletedGoalIds = state._deletedGoalIds ?? [];
+          state._dirtyTransactionIds = state._dirtyTransactionIds ?? [];
+          state._dirtySubscriptionIds = state._dirtySubscriptionIds ?? [];
+          state._dirtyBudgetIds = state._dirtyBudgetIds ?? [];
+          state._dirtyGoalIds = state._dirtyGoalIds ?? [];
           state.goals = (state.goals || []).map((g: any) => ({
             ...g,
             deadline: g.deadline ? sd(g.deadline) : undefined,

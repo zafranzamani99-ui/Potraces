@@ -1006,12 +1006,23 @@ const WalletManagement: React.FC = () => {
     if (hasTx || hasTransfer) return;
     setDeleteConfirmId(null);
     const ps = usePersonalStore.getState();
-    usePersonalStore.setState({
-      goals: ps.goals.map((g) => ({
+    // Stripping the deleted wallet from a goal's contributions is a real edit to that
+    // synced Goal row — bump updatedAt + mark it dirty so the change actually pushes
+    // (only the goals that changed; untouched goals keep their timestamp).
+    const dirtiedGoalIds: string[] = [];
+    const nextGoals = ps.goals.map((g) => {
+      if (!g.contributions.some((c) => c.walletId === walletId)) return g;
+      dirtiedGoalIds.push(g.id);
+      return {
         ...g,
+        updatedAt: new Date(),
         contributions: g.contributions.map((c) => c.walletId === walletId ? { ...c, walletId: undefined } : c),
-      })),
+      };
     });
+    usePersonalStore.setState((s) => ({
+      goals: nextGoals,
+      _dirtyGoalIds: [...(s._dirtyGoalIds ?? []), ...dirtiedGoalIds],
+    }));
     deleteWallet(walletId);
   }, [deleteConfirmId, deleteWallet]);
 
