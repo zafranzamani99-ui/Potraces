@@ -63,6 +63,21 @@ export class QrProviderNotImplementedError extends Error {
   }
 }
 
+/**
+ * Thrown when a configured provider is reached but the charge is rejected
+ * (bad creds, disabled channel, PSP downtime…). `message` carries the server's
+ * reason (e.g. "Fiuu precreate failed (40104)") so the caller can show it —
+ * unlike the two errors above, this is a real runtime failure to surface, not
+ * a "provider off" fallback signal.
+ */
+export class QrChargeFailedError extends Error {
+  readonly code = 'charge_failed';
+  constructor(message: string) {
+    super(message);
+    this.name = 'QrChargeFailedError';
+  }
+}
+
 export interface QrChargeRequest {
   amountCents: number;
   /** App-side reference: a seller order id (the webhook looks the order up by this). */
@@ -105,10 +120,25 @@ async function createFiuuCharge(req: QrChargeRequest): Promise<QrChargeResult> {
   const { data, error } = await supabaseBusiness.functions.invoke('qr-create-charge', {
     body: { amountCents: req.amountCents, refId: req.refId, mode: req.mode },
   });
-  if (error) throw new QrProviderNotImplementedError('fiuu');
+  if (error) {
+    // supabase-js wraps a non-2xx response in FunctionsHttpError; the JSON body
+    // (e.g. { error: "Fiuu precreate failed (40104)" }) rides on error.context,
+    // which is the raw Response. Pull the reason out so the seller sees WHY.
+    let detail = error.message || 'request failed';
+    try {
+      const ctx = (error as { context?: Response }).context;
+      if (ctx && typeof ctx.json === 'function') {
+        const body = (await ctx.json()) as { error?: unknown } | null;
+        if (body?.error) detail = String(body.error);
+      }
+    } catch {
+      /* keep the generic message */
+    }
+    throw new QrChargeFailedError(detail);
+  }
   const qrPayload = String((data as { qrPayload?: unknown } | null)?.qrPayload ?? '');
   const chargeId = String((data as { chargeId?: unknown } | null)?.chargeId ?? '');
-  if (!qrPayload || !chargeId) throw new QrProviderNotImplementedError('fiuu');
+  if (!qrPayload || !chargeId) throw new QrChargeFailedError('provider returned an incomplete charge');
   return { qrPayload, chargeId };
 }
 

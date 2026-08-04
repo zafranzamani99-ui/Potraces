@@ -52,6 +52,13 @@ interface BottomSheetProps {
    * NOT work inside Android transparent modals — docs/BUILDING_CHECKLIST.md).
    */
   keyboardAvoiding?: boolean;
+  /**
+   * Optional guard run on EVERY user-initiated close (backdrop tap, drag-dismiss,
+   * ✕ footer, Android back). Return `false` to CANCEL the close — e.g. to show a
+   * "discard?" confirm first, then close yourself via the sheet's own onClose.
+   * Omit (default) → closes normally.
+   */
+  onAttemptClose?: () => boolean | void;
 }
 
 /**
@@ -79,6 +86,7 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
   closeLabel = 'close',
   overlay,
   keyboardAvoiding = false,
+  onAttemptClose,
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -104,6 +112,18 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
       if (finished) runOnJS(finishClose)();
     });
   }, [SCREEN_H, sheetY, finishClose]);
+
+  // Every user-initiated close (backdrop, drag, ✕, back) routes through here so
+  // an optional onAttemptClose guard can veto it (return false → stay open).
+  const attemptClose = useCallback(() => {
+    if (onAttemptClose && onAttemptClose() === false) {
+      // Guard cancelled the close — if a drag left the sheet part-way down,
+      // spring it back to fully open.
+      sheetY.value = withTiming(0, { duration: 200 });
+      return;
+    }
+    close();
+  }, [onAttemptClose, close, sheetY]);
 
   // Open: reset position then slide up.
   useEffect(() => {
@@ -131,12 +151,12 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
         .onEnd((e) => {
           'worklet';
           if (e.translationY > 100 || e.velocityY > 800) {
-            runOnJS(close)();
+            runOnJS(attemptClose)();
           } else {
             sheetY.value = withTiming(0, { duration: 280 });
           }
         }),
-    [close, sheetY, dragStart],
+    [attemptClose, sheetY, dragStart],
   );
 
   const sheetAnimStyle = useAnimatedStyle(() => ({
@@ -185,7 +205,7 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
         <View style={styles.closeZone}>
           <Pressable
             style={styles.closeLink}
-            onPress={close}
+            onPress={attemptClose}
             hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
             accessibilityRole="button"
             accessibilityLabel={closeLabel}
@@ -203,13 +223,13 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
   );
 
   return (
-    <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={close}>
+    <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={attemptClose}>
       <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={StyleSheet.absoluteFill}>
         <Reanimated.View style={[styles.backdrop, backdropAnimStyle]}>
           <Pressable
             style={{ flex: 1 }}
-            onPress={close}
+            onPress={attemptClose}
             accessibilityRole="button"
             accessibilityLabel="close"
           />

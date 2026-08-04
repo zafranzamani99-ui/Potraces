@@ -118,16 +118,32 @@ const SellScreen: React.FC = () => {
   const [qrSheet, setQrSheet] = useState<null | {
     amountCents: number;
     onComplete: () => void;
+    label?: string;
     providerPayload?: string;
     chargeId?: string;
     refId?: string;
+    loading?: boolean;
   }>(null);
   const addPending = usePendingPaymentsStore((s) => s.addPending);
 
-  // Create a provider charge; returns null on any failure (caller falls back
-  // to the static QR — a PSP hiccup must never block a sale).
+  // Each QR-sheet open gets a token. A provider charge resolves asynchronously;
+  // if the seller closes (or reopens) the sheet before it lands, the stale
+  // promise must NOT re-open or overwrite the sheet — so we ignore any result
+  // whose token no longer matches the current open. closeQrSheet bumps it.
+  const qrOpenToken = useRef(0);
+  const closeQrSheet = useCallback(() => {
+    qrOpenToken.current += 1;
+    setQrSheet(null);
+  }, []);
+
+  // Create a provider charge; returns null on any failure. The caller decides
+  // the fallback: a static QR if the seller has one, else notifyChargeFailed()
+  // (we must NOT silently book an unpaid sale when the QR never showed).
+  // On failure the reason is stashed in chargeErrorRef for the toast.
+  const chargeErrorRef = useRef<string | null>(null);
   const startProviderCharge = useCallback(async (amountCents: number, label: string) => {
     if (!qrProviderConfigured()) return null;
+    chargeErrorRef.current = null;
     try {
       const refId = `st${Array.from(Crypto.getRandomBytes(9)).map((b) => b.toString(16).padStart(2, '0')).join('')}`;
       const { qrPayload, chargeId } = await createQrCharge({ amountCents, refId, mode: 'stall' });
@@ -140,10 +156,40 @@ const SellScreen: React.FC = () => {
         mode: 'stall',
       });
       return { providerPayload: qrPayload, chargeId, refId };
-    } catch {
+    } catch (e) {
+      chargeErrorRef.current = (e as Error)?.message || null;
       return null;
     }
   }, [addPending]);
+
+  // Provider was ON but the charge failed and there's no static QR to show.
+  // Tell the seller (with the server's reason) — never silently record a sale
+  // for a QR that never appeared.
+  const notifyChargeFailed = useCallback(() => {
+    const detail = chargeErrorRef.current;
+    showToast(detail ? `${t.qrPay.chargeFailed} — ${detail}` : t.qrPay.chargeFailed, 'error');
+  }, [showToast, t]);
+
+  // Open the QR sheet on the provider path: show a loader immediately, create the
+  // Fiuu charge, then fill in the QR (or fall back to a static QR / toast on
+  // failure). Shared by cart checkout, custom sale, and refresh. The token guards
+  // against a stale charge landing after the seller closed/reopened the sheet.
+  const openProviderQr = useCallback((amountCents: number, label: string, finish: () => void) => {
+    const token = ++qrOpenToken.current;
+    setQrSheet({ amountCents, label, onComplete: finish, loading: true });
+    startProviderCharge(amountCents, label).then((charge) => {
+      if (token !== qrOpenToken.current) return; // sheet was closed/reopened
+      if (charge) setQrSheet({ amountCents, label, onComplete: finish, ...charge });
+      else if (qrForPay) setQrSheet({ amountCents, label, onComplete: finish });
+      else { setQrSheet(null); notifyChargeFailed(); }
+    });
+  }, [startProviderCharge, qrForPay, notifyChargeFailed]);
+
+  // Regenerate the current charge (fresh QR + new validity) — used when it expires.
+  const handleRefreshQr = useCallback(() => {
+    if (!qrSheet) return;
+    openProviderQr(qrSheet.amountCents, qrSheet.label || '', qrSheet.onComplete);
+  }, [qrSheet, openProviderQr]);
 
   // While a provider QR is on screen, poll payment_events every 4s (QR validity
   // is 180s → ≤45 light polls). A hit auto-completes the sale; closing the
@@ -520,22 +566,14 @@ const SellScreen: React.FC = () => {
     if (promptResumeIfPaused()) return; // guard BEFORE any PSP charge (bug 6f)
     const amountCents = Math.round(totalAmount * 100);
     const names = cart.map((i) => i.productName).join(', ');
-    const finish = () => { setQrSheet(null); handleCheckout('qr'); };
+    const finish = () => { closeQrSheet(); handleCheckout('qr'); };
     if (qrProviderConfigured()) {
-      startProviderCharge(amountCents, names || t.stall.todaysSales).then((charge) => {
-        if (charge) {
-          setQrSheet({ amountCents, onComplete: finish, ...charge });
-        } else if (qrForPay) {
-          setQrSheet({ amountCents, onComplete: finish });
-        } else {
-          guardedCheckout('qr');
-        }
-      });
+      openProviderQr(amountCents, names || t.stall.todaysSales, finish);
       return;
     }
     if (!qrForPay) { guardedCheckout('qr'); return; }
     setQrSheet({ amountCents, onComplete: finish });
-  }, [cart, session, qrForPay, totalAmount, handleCheckout, guardedCheckout, startProviderCharge, t, promptResumeIfPaused]);
+  }, [cart, session, qrForPay, totalAmount, handleCheckout, guardedCheckout, openProviderQr, closeQrSheet, t, promptResumeIfPaused]);
   const guardedOpenQrCheckout = useSubmitGuard(openQrCheckout);
 
   // ── Quick-sell: tap a tile = 1 sale at the session default payment ──
@@ -682,16 +720,12 @@ const SellScreen: React.FC = () => {
     if (customMethod === 'qr') {
       // Provider first (live confirmation), static QR fallback, plain record last.
       const amountCents = Math.round(amt * 100);
-      const finish = () => { setQrSheet(null); finishCustomSale(amt, label, save); };
+      const finish = () => { closeQrSheet(); finishCustomSale(amt, label, save); };
       setCustomVisible(false);
       Keyboard.dismiss();
       setTimeout(() => {
         if (qrProviderConfigured()) {
-          startProviderCharge(amountCents, label || t.stall.customSale).then((charge) => {
-            if (charge) setQrSheet({ amountCents, onComplete: finish, ...charge });
-            else if (qrForPay) setQrSheet({ amountCents, onComplete: finish });
-            else finishCustomSale(amt, label, save);
-          });
+          openProviderQr(amountCents, label || t.stall.customSale, finish);
           return;
         }
         if (qrForPay) { setQrSheet({ amountCents, onComplete: finish }); return; }
@@ -702,7 +736,7 @@ const SellScreen: React.FC = () => {
     setCustomVisible(false);
     Keyboard.dismiss();
     finishCustomSale(amt, label, save);
-  }, [customAmount, customLabel, customMethod, customSaveProduct, cardOffline, qrForPay, finishCustomSale, startProviderCharge, showToast, t, promptResumeIfPaused]);
+  }, [customAmount, customLabel, customMethod, customSaveProduct, cardOffline, qrForPay, finishCustomSale, openProviderQr, closeQrSheet, showToast, t, promptResumeIfPaused]);
   const guardedConfirmCustom = useSubmitGuard(handleConfirmCustom);
 
   // ── Restock during session ──
@@ -1839,9 +1873,12 @@ const SellScreen: React.FC = () => {
         paymentQr={qrForPay}
         providerPayload={qrSheet?.providerPayload}
         waiting={!!qrSheet?.providerPayload}
+        loading={!!qrSheet?.loading}
+        testRef={qrSheet?.refId}
+        onRefresh={handleRefreshQr}
         onConfirmReceived={() => qrSheet?.onComplete()}
         onSkip={() => qrSheet?.onComplete()}
-        onClose={() => setQrSheet(null)}
+        onClose={closeQrSheet}
       />
 
       {/* Category dropdown list — anchored under the dropdown button. */}

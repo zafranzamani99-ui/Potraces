@@ -37,6 +37,7 @@ import KeyboardDoneFab from '../../../components/common/KeyboardDoneFab';
 import { useNeu } from '../../../components/common/neu';
 import { useKeyboardVisible } from '../../../hooks/useKeyboardVisible';
 import { lightTap, mediumTap, successNotification, errorNotification } from '../../../services/haptics';
+import { isCleanContent } from '../../../utils/contentFilter';
 import {
   CollectzSession,
   CollectzParticipant,
@@ -45,6 +46,7 @@ import {
   updateSession,
   updateParticipant,
   removeParticipant,
+  reportParticipant,
   confirmParticipant,
   rejectParticipant,
   resetParticipantToUnpaid,
@@ -517,6 +519,28 @@ const CollectzDetail: React.FC = () => {
   const promote = (p: CollectzParticipant) =>
     run(() => updateParticipant(p.id, { slot: 'active' }), fill(t.collectz.promotedToast, { name: p.name }));
 
+  // Report a member for offensive/abusive content (Apple 1.2 UGC). Confirm →
+  // write to collectz_reports (fails soft if the migration isn't applied yet).
+  const reportMember = (p: CollectzParticipant) => {
+    setPConfirm({
+      title: t.collectz.reportTitle,
+      message: t.collectz.reportBody,
+      confirmLabel: t.collectz.report,
+      onConfirm: async () => {
+        setPConfirm(null);
+        setActionFor(null);
+        const ok = await reportParticipant({
+          sessionId,
+          participantId: p.id,
+          reportedUserId: p.user_id ?? null,
+          reportedName: p.name,
+        });
+        if (ok) { successNotification(); showToast(t.collectz.reportedToast, 'success'); }
+        else { errorNotification(); showToast(t.collectz.reportFailedToast, 'error'); }
+      },
+    });
+  };
+
   const remove = (p: CollectzParticipant) => {
     const paid = p.status === 'pending' || p.status === 'confirmed';
     setPConfirm({
@@ -553,6 +577,11 @@ const CollectzDetail: React.FC = () => {
     if (!proofFor) return;
     const p = proofFor;
     const note = rejectNote.trim();
+    if (note && !isCleanContent(note)) {
+      errorNotification();
+      showToast(t.collectz.validationContent, 'error');
+      return;
+    }
     closeProof();
     run(() => rejectParticipant(p.id, note), t.collectz.rejectedToast);
   };
@@ -721,7 +750,13 @@ const CollectzDetail: React.FC = () => {
     if (!session || renameTeamIdx == null) return;
     const names = Array.isArray(session.team_names) ? [...session.team_names] : [];
     while (names.length < teamCount) names.push('');
-    names[renameTeamIdx - 1] = renameDraft.trim().slice(0, 40);
+    const draft = renameDraft.trim().slice(0, 40);
+    if (draft && !isCleanContent(draft)) {
+      errorNotification();
+      showToast(t.collectz.validationContent, 'error');
+      return;
+    }
+    names[renameTeamIdx - 1] = draft;
     setRenameTeamIdx(null);
     run(() => updateSession(sessionId, { team_names: names.some((n) => n) ? names : null }), t.collectz.teamRenamed);
   };
@@ -1279,6 +1314,7 @@ const CollectzDetail: React.FC = () => {
             // inside this sheet, so the sheet must stay open until confirmed.
             chips.push({ key: 'undo', icon: 'rotate-ccw', color: C.textSecondary, label: t.collectz.actionUndo, onPress: () => undoConfirm(p) });
           }
+          chips.push({ key: 'report', icon: 'flag', color: C.gold, label: t.collectz.report, onPress: () => reportMember(p) });
           chips.push({ key: 'remove', icon: 'trash-2', color: C.overdue, label: t.collectz.actionRemove, onPress: () => remove(p) });
 
           return (

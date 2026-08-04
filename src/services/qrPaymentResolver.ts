@@ -24,16 +24,26 @@ export async function resolvePendingPayments(): Promise<PendingCharge[]> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return [];
 
-  const since = pending.reduce(
+  // Lower-bound the scan generously. The stall webhook confirms by UPDATING the
+  // charge-time pending row IN PLACE (keeping its created_at = T0), and T0 is a
+  // moment BEFORE our pending `createdAt` (we stamp that on the client only
+  // AFTER the create round-trip returns, so it's T0 + latency). Using it as a
+  // hard `>=` bound would hide the very row we're waiting for — so subtract a
+  // wide margin that absorbs the round-trip and any clock skew. And gate on
+  // status='paid' so the still-pending row (same ref) is never mistaken for a
+  // confirmation.
+  const oldest = pending.reduce(
     (min, p) => (p.createdAt < min ? p.createdAt : min),
     pending[0].createdAt,
   );
+  const windowStart = new Date(Date.parse(oldest) - 60 * 60_000).toISOString();
 
   const { data: events } = await supabase
     .from('payment_events')
-    .select('charge_id, app_ref, amount_cents')
+    .select('charge_id, app_ref')
     .eq('user_id', session.user.id)
-    .gte('created_at', since);
+    .eq('status', 'paid')
+    .gte('created_at', windowStart);
   if (!events || events.length === 0) return [];
 
   const resolved: PendingCharge[] = [];

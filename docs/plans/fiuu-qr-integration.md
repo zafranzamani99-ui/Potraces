@@ -1,6 +1,27 @@
 # Fiuu DuitNow QR integration — handoff (2026-07-24)
 
 > ## RESUME HERE
+> **2026-08-02 update: the Fiuu QR now RENDERS in-app.** Root cause of "tap QR,
+> nothing happens" on this Mac: `.env` had **no `EXPO_PUBLIC_QR_PROVIDER` line
+> at all** (last edited Jul 16, before this feature; `.env` is gitignored so the
+> `=fiuu` set on another machine never carried over) → provider defaulted to
+> `none` → the Fiuu path was skipped. Fix: re-added `EXPO_PUBLIC_QR_PROVIDER=fiuu`
+> to `.env`, restart Metro `--clear` + reload (no native rebuild). Verified on
+> prod project (`jngmanwvhbpkpkeklfiv`): both functions ACTIVE
+> (`qr-create-charge` v2, `qr-payment-webhook` v11 verify_jwt=false), all 5
+> `FIUU_*` secrets set. QR now appears with the exact amount.
+> **Design:** `QrPaySheet` redesigned to a HitPay-style floating white card —
+> **official DuitNow logo** (`assets/e-wallet/duit-now-logo.png`) on top → QR →
+> "SCAN TO PAY" pill → **"powered by Fiuu"** watermark
+> (`assets/e-wallet/fiuu-logo.png`), plus merchant name (tag 59) and a live
+> pulsing "waiting for payment" chip. Instant loader while the charge is
+> created; guarded close (confirm) while a payment is live.
+> **Still to verify E2E:** pay the on-screen QR via the Fiuu portal Bank
+> Simulator (sandbox creds — a real bank app won't settle it) → sheet should
+> auto-complete in ~4s + "Payment received" push. If it never completes, check
+> `qr-payment-webhook` logs for the notification delivery.
+>
+> ## (earlier) RESUME HERE
 > **Status: fully wired; blocked on Fiuu provisioning (2026-07-28).**
 > Done: functions deployed; webhook `verify_jwt=false` (config.toml); all 5
 > `FIUU_*` secrets set (creds from portal → Store Management → Store List);

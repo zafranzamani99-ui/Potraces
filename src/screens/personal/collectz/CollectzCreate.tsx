@@ -59,6 +59,7 @@ import { clubIconsForCategory, presetClubIcon, presetClubColor, CLUB_PRESET_PREF
 import { collectzCategoryIcon } from '../../../constants/collectzColors';
 import { isMapsLink } from '../../../utils/mapLink';
 import { parseAmountLoose } from '../../../utils/parseAmountLoose';
+import { isCleanContent } from '../../../utils/contentFilter';
 import MapPreviewCard from '../../../components/collectz/MapPreviewCard';
 import CollectzCreatedModal from '../../../components/collectz/CollectzCreatedModal';
 import BottomSheet from '../../../components/common/BottomSheet';
@@ -1048,6 +1049,13 @@ const CollectzCreate: React.FC = () => {
         { text: t.common.cancel, style: 'cancel' },
         { text: t.collectz.saveAnyway, onPress: doSave },
       ]);
+      return;
+    }
+    // Content filter (Apple 1.2): no offensive/spam text in any name shown to others.
+    const badField = [title, ...roster.map((r) => r.name), ...teamNames].find((v) => !isCleanContent(v));
+    if (badField !== undefined) {
+      errorNotification();
+      showToast(t.collectz.validationContent, 'error');
       return;
     }
     mediumTap();

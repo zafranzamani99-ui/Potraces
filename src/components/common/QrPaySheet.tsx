@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,20 @@ import {
   Image,
   Pressable,
   ActivityIndicator,
+  Alert,
   useWindowDimensions,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
+import { Feather } from '@expo/vector-icons';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  cancelAnimation,
+  interpolate,
+  Easing,
+} from 'react-native-reanimated';
 import BottomSheet from './BottomSheet';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
@@ -16,7 +27,22 @@ import { useT } from '../../i18n';
 import { formatAmount } from '../../utils/formatters';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useSettingsStore, type PaymentQr } from '../../store/settingsStore';
-import { embedAmount } from '../../services/emvQr';
+import { embedAmount, parseTlv } from '../../services/emvQr';
+
+// DuitNow brand magenta (QR-card loader spinner tint).
+const DUITNOW_PINK = '#ED1C6E';
+
+// The provider QR is created with a 180s Fiuu validity (qr-create-charge's
+// validityDuration). We expire the on-screen QR a few seconds EARLIER than that,
+// measured from when it appears — the charge was created ~1-2s before display, so
+// a margin guarantees we never present a QR the app thinks is live but Fiuu has
+// already rejected.
+const QR_VALIDITY_MS = 170000;
+
+// Official brand logos (assets/e-wallet). DuitNow = the scheme mark shown on the
+// card; Fiuu = the acquirer, shown as a small "powered by" watermark.
+const DUITNOW_LOGO = require('../../../assets/e-wallet/duit-now-logo.png');
+const FIUU_LOGO = require('../../../assets/e-wallet/fiuu-logo.png');
 
 // Note: a screen-brightness boost (so the QR scans in sunlight) is intentionally
 // omitted — expo-brightness is not a dependency, and statically requiring an
@@ -28,7 +54,7 @@ export interface QrPaySheetProps {
   amountCents: number;
   /** The seller's QR to show. `payload` present → exact-amount QR; else image fallback. */
   paymentQr?: PaymentQr;
-  /** Buyer paid (seller confirms by their own bank ping). */
+  /** Buyer paid — record the sale (manual confirm, or the auto-confirm escape hatch). */
   onConfirmReceived: () => void;
   /** Record the sale without waiting — preserves today's trust-based behavior. */
   onSkip: () => void;
@@ -41,28 +67,82 @@ export interface QrPaySheetProps {
   providerPayload?: string;
   /**
    * Provider charge in flight — the webhook will confirm automatically. Shows a
-   * live "waiting for payment…" state; the manual "record without confirming"
-   * stays as a fallback. No manual "received" button in this mode.
+   * live "confirms automatically" state; a manual "mark as paid" escape hatch
+   * appears only after MANUAL_REVEAL_MS.
    */
   waiting?: boolean;
+  /**
+   * The provider charge is still being created (network round-trip). Opens the
+   * sheet immediately with a spinner instead of a frozen screen.
+   */
+  loading?: boolean;
+  /**
+   * App-side charge reference. Shown small + selectable ONLY in dev builds, so it
+   * can be typed into Fiuu's sandbox to confirm a test payment. Never in prod.
+   */
+  testRef?: string;
+  /**
+   * Regenerate a fresh provider charge (new QR + new validity window). Wired on
+   * the provider path so an expired QR can be refreshed in one tap.
+   */
+  onRefresh?: () => void;
 }
 
 /**
- * Shows the seller's DuitNow QR re-rendered with the exact sale amount embedded
- * (EMVCo tag 54) so the buyer's banking app pre-fills it. No money flows through
- * the app — "Received" and "Record without confirming" both just complete the
- * existing sale; closing records nothing.
+ * DuitNow QR pay sheet. The white card is a self-contained payment ticket
+ * (DuitNow logo → amount → merchant → QR → scan-to-pay → powered by Fiuu). No
+ * money flows through the app — the provider webhook auto-confirms; "mark as
+ * paid" records the sale manually; closing records nothing.
  */
 export default function QrPaySheet(props: QrPaySheetProps) {
+  const t = useT();
+  // Expire the provider QR after its validity window (measured from when the QR
+  // appears). Resets whenever a fresh payload arrives (i.e. after refresh).
+  const [expired, setExpired] = useState(false);
+  useEffect(() => {
+    setExpired(false);
+    if (!props.visible || !props.providerPayload || props.loading) return;
+    const timer = setTimeout(() => setExpired(true), QR_VALIDITY_MS);
+    return () => clearTimeout(timer);
+  }, [props.visible, props.providerPayload, props.loading]);
+
   if (!props.visible) return null;
+  // Guard the close while a payment is LIVE — the buyer may be mid-scan, so
+  // confirm before dismissing. An expired QR can't be paid, so let it close
+  // freely. Returning false keeps the sheet open; "close anyway" calls onClose.
+  const guardClose = (): boolean => {
+    if (!props.waiting || expired) return true;
+    Alert.alert(t.qrPay.closeConfirmTitle, t.qrPay.closeConfirmBody, [
+      { text: t.qrPay.keepWaiting, style: 'cancel' },
+      { text: t.qrPay.closeAnyway, style: 'destructive', onPress: () => props.onClose() },
+    ]);
+    return false;
+  };
   return (
-    <BottomSheet visible={props.visible} onClose={props.onClose} maxHeightPct={0.9}>
-      <PayBody {...props} />
+    <BottomSheet
+      visible={props.visible}
+      onClose={props.onClose}
+      onAttemptClose={guardClose}
+      maxHeightPct={0.9}
+    >
+      <PayBody {...props} expired={expired} />
     </BottomSheet>
   );
 }
 
-function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPayload, waiting }: QrPaySheetProps) {
+/** Parse the merchant name (EMVCo tag 59) from a raw QR payload. */
+function merchantFromPayload(payload?: string): string | undefined {
+  if (!payload) return undefined;
+  try {
+    const node = parseTlv(payload).find((n) => n.id === '59');
+    const v = node?.value?.trim();
+    return v || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPayload, waiting, loading, testRef, onRefresh, expired }: QrPaySheetProps & { expired?: boolean }) {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -70,7 +150,7 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPa
   const { width } = useWindowDimensions();
 
   const amountText = formatAmount(amountCents / 100, currency);
-  const qrSize = Math.min(Math.round(width * 0.62), 260);
+  const qrSize = Math.min(Math.round(width * 0.6), 250);
 
   // Build the exact-amount QR payload. Falls back to the stored image if there
   // is no decoded payload, or if embedding fails for any reason.
@@ -86,7 +166,15 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPa
   // A PSP dynamic QR (if any) takes priority over the static embedded one.
   const qrValue = providerPayload || embedded;
   const hasImage = !!paymentQr?.uri;
-  const merchantName = paymentQr?.merchantName?.trim();
+
+  // Merchant name: prefer the stored capture name; else read tag 59 from
+  // whichever payload we're actually rendering (the Fiuu QR carries it too).
+  const merchantName = useMemo(() => {
+    const stored = paymentQr?.merchantName?.trim();
+    if (stored) return stored;
+    return merchantFromPayload(providerPayload || paymentQr?.payload);
+  }, [paymentQr?.merchantName, paymentQr?.payload, providerPayload]);
+
   const a11y = merchantName
     ? t.qrPay.qrA11y.replace('{amount}', amountText).replace('{name}', merchantName)
     : t.qrPay.qrA11yNoName.replace('{amount}', amountText);
@@ -98,74 +186,157 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPa
     successNotification();
     onConfirmReceived();
   };
-  const handleSkip = () => {
+  // Manual "already paid? mark it" — an explicit escape hatch when the seller has
+  // their own proof (e.g. their bank's DuitNow alert) and doesn't want to wait on
+  // auto-confirm. Always available but muted; a one-line confirm guards against a
+  // reflex tap booking an unpaid sale.
+  const handleManualMark = () => {
     lightTap();
-    onSkip();
+    Alert.alert(t.qrPay.markPaidConfirmTitle, t.qrPay.markPaidConfirmBody, [
+      { text: t.qrPay.keepWaiting, style: 'cancel' },
+      { text: t.qrPay.markPaid, onPress: onSkip },
+    ]);
   };
+  const handleRefresh = () => {
+    lightTap();
+    onRefresh?.();
+  };
+
+  // Reusable muted "already paid? mark it" escape hatch (shown while waiting and
+  // when expired — a payment could have landed just before the QR lapsed).
+  const manualMarkLink = (
+    <Pressable
+      style={styles.manualLink}
+      onPress={handleManualMark}
+      accessibilityRole="button"
+      accessibilityLabel={t.qrPay.alreadyPaid}
+    >
+      <Text style={styles.manualText}>{t.qrPay.alreadyPaid}</Text>
+    </Pressable>
+  );
 
   return (
     <View style={styles.wrap} onStartShouldSetResponder={() => true}>
-      <Text style={styles.title}>{t.qrPay.payTitle}</Text>
-      <Text style={styles.amount}>{amountText}</Text>
-      {!!merchantName && <Text style={styles.merchant}>{merchantName}</Text>}
+      {/* Self-contained payment ticket. QR stays pure black-on-white so it scans
+          even in dark mode. */}
+      <View style={styles.qrCard}>
+        <Image source={DUITNOW_LOGO} style={styles.duitnowLogo} resizeMode="contain" />
 
-      {/* QR / image always on a white card so it scans even in dark mode. */}
-      <View style={[styles.qrCard, { width: qrSize + SPACING.xl, height: qrSize + SPACING.xl }]}>
-        {qrValue ? (
-          <QRCode
-            value={qrValue}
-            size={qrSize}
-            color="#111111"
-            backgroundColor="#FFFFFF"
-            ecl="M"
-          />
-        ) : hasImage ? (
-          <Image
-            source={{ uri: paymentQr!.uri }}
-            style={{ width: qrSize, height: qrSize, borderRadius: RADIUS.sm }}
-            resizeMode="contain"
-            accessibilityLabel={a11y}
-          />
-        ) : (
-          <Text style={styles.noQr}>{t.qrPay.imageFallbackNote}</Text>
+        <Text style={styles.amount}>{amountText}</Text>
+        {!!merchantName && <Text style={styles.merchant}>{merchantName}</Text>}
+
+        <View style={styles.qrHolder}>
+          {loading ? (
+            <View style={[styles.loadingBox, { width: qrSize, height: qrSize }]}>
+              <ActivityIndicator size="large" color={DUITNOW_PINK} />
+              <Text style={styles.loadingText}>{t.qrPay.creatingQr}</Text>
+            </View>
+          ) : expired ? (
+            <View style={[styles.expiredBox, { width: qrSize, height: qrSize }]}>
+              <Feather name="refresh-cw" size={30} color="#B0B0B0" />
+              <Text style={styles.expiredText}>{t.qrPay.qrExpired}</Text>
+            </View>
+          ) : qrValue ? (
+            <QRCode
+              value={qrValue}
+              size={qrSize}
+              color="#111111"
+              backgroundColor="#FFFFFF"
+              ecl="M"
+            />
+          ) : hasImage ? (
+            <Image
+              source={{ uri: paymentQr!.uri }}
+              style={{ width: qrSize, height: qrSize, borderRadius: RADIUS.sm }}
+              resizeMode="contain"
+              accessibilityLabel={a11y}
+            />
+          ) : (
+            <Text style={styles.noQr}>{t.qrPay.imageFallbackNote}</Text>
+          )}
+        </View>
+
+        {!loading && !expired && (
+          <View style={styles.scanPill}>
+            <Text style={styles.scanPillText}>{t.qrPay.payTitle}</Text>
+          </View>
+        )}
+
+        {!loading && (
+          <View style={styles.poweredRow}>
+            <Text style={styles.poweredText}>powered by</Text>
+            <Image source={FIUU_LOGO} style={styles.fiuuLogo} resizeMode="contain" />
+          </View>
         )}
       </View>
-      {qrValue && (
-        <View accessibilityLabel={a11y} accessible style={styles.srOnly} />
+      {qrValue && !loading && <View accessibilityLabel={a11y} accessible style={styles.srOnly} />}
+
+      {/* Dev-only: the charge ref for the Fiuu sandbox. Never shown in prod. */}
+      {__DEV__ && !!testRef && waiting && (
+        <Text style={styles.testRef} selectable>
+          ref: {testRef}
+        </Text>
       )}
 
-      <Text style={styles.note}>
-        {qrValue ? t.qrPay.autoFillNote : t.qrPay.imageFallbackNote}
-      </Text>
-
-      <View style={styles.actions}>
-        {waiting ? (
-          <View style={styles.waitingRow}>
-            <ActivityIndicator size="small" color={C.accent} />
-            <Text style={styles.waitingText}>{t.qrPay.waiting}</Text>
-          </View>
-        ) : (
-          <Pressable
-            style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
-            onPress={handleReceived}
-            accessibilityRole="button"
-            accessibilityLabel={t.qrPay.received}
-          >
-            <Text style={styles.primaryText}>{t.qrPay.received}</Text>
-          </Pressable>
-        )}
-        <Pressable
-          style={styles.secondaryBtn}
-          onPress={handleSkip}
-          accessibilityRole="button"
-          accessibilityLabel={t.qrPay.recordWithout}
-        >
-          <Text style={styles.secondaryText}>{t.qrPay.recordWithout}</Text>
-        </Pressable>
-      </View>
+      {!loading && (
+        <View style={styles.actions}>
+          {expired ? (
+            <>
+              <Pressable
+                style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
+                onPress={handleRefresh}
+                accessibilityRole="button"
+                accessibilityLabel={t.qrPay.refreshQr}
+              >
+                <Text style={styles.primaryText}>{t.qrPay.refreshQr}</Text>
+              </Pressable>
+              {manualMarkLink}
+            </>
+          ) : waiting ? (
+            <>
+              <View style={styles.statusRow}>
+                <LiveDot color={C.accent} />
+                <Text style={styles.statusText}>{t.qrPay.autoConfirm}</Text>
+              </View>
+              {manualMarkLink}
+            </>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
+              onPress={handleReceived}
+              accessibilityRole="button"
+              accessibilityLabel={t.qrPay.markPaid}
+            >
+              <Text style={styles.primaryText}>{t.qrPay.markPaid}</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
     </View>
   );
 }
+
+/** A single softly-pulsing "live" dot — the calm alternative to a spinner. */
+function LiveDot({ color }: { color: string }) {
+  const v = useSharedValue(0);
+  useEffect(() => {
+    v.value = withRepeat(
+      withTiming(1, { duration: 950, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true,
+    );
+    return () => cancelAnimation(v);
+  }, [v]);
+  const style = useAnimatedStyle(() => ({
+    opacity: interpolate(v.value, [0, 1], [0.35, 1]),
+    transform: [{ scale: interpolate(v.value, [0, 1], [0.85, 1.2]) }],
+  }));
+  return <Reanimated.View style={[liveDotStyles.dot, { backgroundColor: color }, style]} />;
+}
+
+const liveDotStyles = StyleSheet.create({
+  dot: { width: 8, height: 8, borderRadius: 4 },
+});
 
 const makeStyles = (C: typeof CALM) =>
   StyleSheet.create({
@@ -177,34 +348,62 @@ const makeStyles = (C: typeof CALM) =>
       width: '100%',
       maxWidth: 460, // tablet cap
     },
-    title: {
-      fontSize: TYPOGRAPHY.size.sm,
-      color: C.textMuted,
-      fontWeight: TYPOGRAPHY.weight.semibold,
-      letterSpacing: 0.3,
-      textTransform: 'lowercase',
+    qrCard: {
+      alignSelf: 'stretch', // fill the sheet width — not a slim strip
+      backgroundColor: '#FFFFFF',
+      borderRadius: RADIUS.xl,
+      alignItems: 'center',
+      paddingVertical: SPACING.xl,
+      paddingHorizontal: SPACING.lg,
+      borderWidth: 1,
+      borderColor: withAlpha('#000000', 0.05),
+      // Soft float, like the HitPay reference card.
+      shadowColor: '#000000',
+      shadowOpacity: 0.12,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 6,
+    },
+    duitnowLogo: {
+      width: 62,
+      height: 55, // 600×534 source aspect
     },
     amount: {
-      fontSize: 40,
-      lineHeight: 48,
+      fontSize: 38,
+      lineHeight: 44,
       fontWeight: TYPOGRAPHY.weight.bold,
-      color: C.textPrimary,
-      marginTop: SPACING.xs,
+      color: '#111111',
+      marginTop: SPACING.md,
     },
     merchant: {
       fontSize: TYPOGRAPHY.size.sm,
-      color: C.textSecondary,
+      color: '#6B6B6B',
       marginTop: 2,
       textAlign: 'center',
     },
-    qrCard: {
-      backgroundColor: '#FFFFFF',
-      borderRadius: RADIUS.lg,
+    qrHolder: {
+      marginTop: SPACING.lg,
+      marginBottom: SPACING.lg,
+    },
+    loadingBox: {
       alignItems: 'center',
       justifyContent: 'center',
-      marginTop: SPACING.lg,
-      borderWidth: 1,
-      borderColor: withAlpha('#000000', 0.06),
+      gap: SPACING.md,
+    },
+    loadingText: {
+      fontSize: TYPOGRAPHY.size.sm,
+      color: '#888888',
+      fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    expiredBox: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: SPACING.sm,
+    },
+    expiredText: {
+      fontSize: TYPOGRAPHY.size.sm,
+      color: '#9A9A9A',
+      fontWeight: TYPOGRAPHY.weight.semibold,
     },
     noQr: {
       fontSize: TYPOGRAPHY.size.sm,
@@ -212,38 +411,77 @@ const makeStyles = (C: typeof CALM) =>
       textAlign: 'center',
       paddingHorizontal: SPACING.lg,
     },
+    scanPill: {
+      backgroundColor: '#F1F1F4',
+      borderRadius: RADIUS.full,
+      paddingHorizontal: SPACING.lg,
+      paddingVertical: 7,
+    },
+    scanPillText: {
+      fontSize: TYPOGRAPHY.size.xs,
+      fontWeight: '700',
+      color: '#5B5B5B',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+    },
+    poweredRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      marginTop: SPACING.md,
+    },
+    poweredText: {
+      fontSize: 11,
+      color: '#9A9A9A',
+      fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    fiuuLogo: {
+      width: 42,
+      height: 19, // 439×198 source aspect
+    },
     srOnly: {
       width: 1,
       height: 1,
       opacity: 0,
     },
-    note: {
-      fontSize: TYPOGRAPHY.size.xs,
+    testRef: {
+      fontSize: 11,
       color: C.textMuted,
       textAlign: 'center',
       marginTop: SPACING.md,
-      paddingHorizontal: SPACING.sm,
-      lineHeight: 17,
+      opacity: 0.7,
     },
     actions: {
       width: '100%',
-      gap: SPACING.sm,
-      marginTop: SPACING.lg,
+      alignItems: 'center',
+      marginTop: SPACING.xl,
     },
-    waitingRow: {
+    statusRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: SPACING.sm,
-      minHeight: 50,
+      minHeight: 44,
     },
-    waitingText: {
+    statusText: {
       fontSize: TYPOGRAPHY.size.base,
       fontWeight: TYPOGRAPHY.weight.semibold,
       color: C.textSecondary,
     },
+    manualLink: {
+      marginTop: SPACING.sm,
+      paddingVertical: SPACING.sm,
+      paddingHorizontal: SPACING.lg,
+    },
+    manualText: {
+      fontSize: TYPOGRAPHY.size.sm,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textMuted,
+    },
     primaryBtn: {
-      minHeight: 50,
+      alignSelf: 'stretch',
+      minHeight: 52,
       borderRadius: RADIUS.lg,
       backgroundColor: C.accent,
       alignItems: 'center',
@@ -253,16 +491,5 @@ const makeStyles = (C: typeof CALM) =>
       fontSize: TYPOGRAPHY.size.base,
       fontWeight: TYPOGRAPHY.weight.bold,
       color: C.onAccent,
-    },
-    secondaryBtn: {
-      minHeight: 44,
-      borderRadius: RADIUS.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    secondaryText: {
-      fontSize: TYPOGRAPHY.size.sm,
-      fontWeight: TYPOGRAPHY.weight.semibold,
-      color: C.textMuted,
     },
   });

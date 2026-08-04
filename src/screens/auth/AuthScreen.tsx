@@ -8,12 +8,13 @@ import {
   ActivityIndicator,
   Keyboard,
   Platform,
+  Linking,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha, TERMS_URL, PRIVACY_URL } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { signUpWithPhone, signInWithPhone, requestOtp, supabaseBusiness } from '../../services/supabase';
 import { beginAuthFlow, endAuthFlow } from '../../services/authFlow';
@@ -55,6 +56,9 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
   const [error, setError] = useState('');
+  // Apple 1.2 (UGC): creating an account requires agreeing to the no-objectionable-content
+  // terms. Required on sign-up only (returning users already agreed); gates every sign-up path.
+  const [agreed, setAgreed] = useState(false);
 
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
@@ -81,6 +85,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
     }
     if (!isLogin && password !== confirmPassword) {
       setError(tr.auth.errPasswordMismatch);
+      return;
+    }
+    if (!isLogin && !agreed) {
+      setError(tr.auth.eulaMustAgree);
       return;
     }
 
@@ -138,10 +146,11 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
       endAuthFlow();
       setLoading(false);
     }
-  }, [phone, password, confirmPassword, isLogin, cleanPhone, onVerificationNeeded, onAuthenticated, tr]);
+  }, [phone, password, confirmPassword, isLogin, agreed, cleanPhone, onVerificationNeeded, onAuthenticated, tr]);
 
   const handleGoogleSignIn = useCallback(async () => {
     if (anyLoading) return;
+    if (!isLogin && !agreed) { setError(tr.auth.eulaMustAgree); return; }
     setError('');
     setSocialLoading('google');
     try {
@@ -162,10 +171,11 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
     } finally {
       setSocialLoading(null);
     }
-  }, [anyLoading, onAuthenticated, tr]);
+  }, [anyLoading, isLogin, agreed, onAuthenticated, tr]);
 
   const handleAppleSignIn = useCallback(async () => {
     if (anyLoading) return;
+    if (!isLogin && !agreed) { setError(tr.auth.eulaMustAgree); return; }
     setError('');
     setSocialLoading('apple');
     try {
@@ -182,7 +192,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
     } finally {
       setSocialLoading(null);
     }
-  }, [anyLoading, onAuthenticated, tr]);
+  }, [anyLoading, isLogin, agreed, onAuthenticated, tr]);
 
   const handleBack = useCallback(() => {
     useAppStore.getState().setMode('personal');
@@ -311,6 +321,27 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
               >
                 <Feather name={showPassword ? 'eye-off' : 'eye'} size={16} color={C.textMuted} />
               </Pressable>
+            </View>
+          </View>
+        )}
+
+        {/* Agreement (sign-up only) — Apple 1.2 UGC: explicit no-objectionable-content consent */}
+        {!isLogin && (
+          <View style={styles.agreeWrap}>
+            <Pressable
+              style={styles.agreeRow}
+              onPress={() => setAgreed((a) => !a)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <View style={[styles.checkbox, agreed && styles.checkboxOn]}>
+                {agreed && <Feather name="check" size={13} color={C.onAccent} />}
+              </View>
+              <Text style={styles.agreeText}>{tr.auth.eulaAgree}</Text>
+            </Pressable>
+            <View style={styles.linkRow}>
+              <Text style={styles.linkText} onPress={() => Linking.openURL(TERMS_URL)}>{tr.auth.eulaTerms}</Text>
+              <Text style={styles.linkDot}>·</Text>
+              <Text style={styles.linkText} onPress={() => Linking.openURL(PRIVACY_URL)}>{tr.auth.eulaPrivacy}</Text>
             </View>
           </View>
         )}
@@ -541,6 +572,54 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     position: 'absolute',
     right: 0,
     padding: SPACING.xs,
+  },
+  agreeWrap: {
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+  },
+  agreeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1.5,
+    borderColor: withAlpha(C.textPrimary, 0.25),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxOn: {
+    backgroundColor: C.accent,
+    borderColor: C.accent,
+  },
+  agreeText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    lineHeight: 18,
+  },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+    marginLeft: 20 + SPACING.sm,
+  },
+  linkText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    textDecorationLine: 'underline',
+  },
+  linkDot: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
   },
   errorBox: {
     flexDirection: 'row',

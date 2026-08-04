@@ -38,6 +38,8 @@ import NeuButton from '../../../components/common/NeuButton';
 import { newstOutline } from '../../../components/business/NewstInput';
 import { supabasePersonal } from '../../../services/supabase';
 import { embedAmount } from '../../../services/emvQr';
+import { isCleanContent } from '../../../utils/contentFilter';
+import { useCollectzBlockStore, blockKey } from '../../../store/collectzBlockStore';
 import {
   CollectzJoinView,
   CollectzParticipantStatus,
@@ -52,6 +54,7 @@ import {
   qrImageUrl,
   joinTeam,
   renameTeam,
+  reportParticipant,
   joinErrorMessage,
 } from '../../../services/collectzService';
 import { presetClubIcon, presetClubColor } from '../../../constants/clubIcons';
@@ -92,6 +95,9 @@ const CollectzJoin: React.FC = () => {
   const [renameFocused, setRenameFocused] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [selfName, setSelfName] = useState('');
+  // Moderation (Apple 1.2 UGC): tap a roster member → report/block menu.
+  const [memberMenu, setMemberMenu] = useState<CollectzJoinView['participants'][number] | null>(null);
+  const blockedMap = useCollectzBlockStore((s) => s._blocked);
   // Teams sessions: joining requires picking a team up front (claim + add-self
   // both send it). null = not chosen yet — the join actions gate on this.
   const [joinTeamIdx, setJoinTeamIdx] = useState<number | null>(null);
@@ -174,6 +180,8 @@ const CollectzJoin: React.FC = () => {
 
   // Live updates — refetch the join view on any roster/session change.
   const sessionId = view?.session?.id ?? null;
+  // Scope for name-keyed blocks (roster entries carry no account id).
+  const blockScope = sessionId ?? code ?? '';
   useEffect(() => {
     if (!sessionId) return;
     return subscribeToSession(sessionId, () => load());
@@ -270,23 +278,67 @@ const CollectzJoin: React.FC = () => {
     [view?.qr_payload, view?.qr_image_path],
   );
 
-  // One roster line — shared by the flat list and every team block.
-  const renderMember = (p: CollectzJoinView['participants'][number]) => (
-    <View key={p.id} style={styles.row}>
-      <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
-      {!!p.claimed && (
-        <View style={styles.claimedTag}>
-          <Feather name="user-check" size={11} color={C.accent} />
-        </View>
-      )}
-      <View style={styles.rowRight}>
-        {p.effective_share != null && (
-          <Text style={styles.rowShare}>{fmtMoney(p.effective_share, currency)}</Text>
+  // One roster line — shared by the flat list and every team block. Tapping a
+  // member (not yourself) opens the report/block menu; a blocked member's name
+  // is masked (Apple 1.2 UGC).
+  const renderMember = (p: CollectzJoinView['participants'][number]) => {
+    const isSelf = !!my && my.id === p.id;
+    const blocked = !!blockedMap[blockKey(blockScope, { name: p.name })];
+    const inner = (
+      <>
+        <Text style={styles.rowName} numberOfLines={1}>{blocked ? t.collectz.blockedUser : p.name}</Text>
+        {!!p.claimed && !blocked && (
+          <View style={styles.claimedTag}>
+            <Feather name="user-check" size={11} color={C.accent} />
+          </View>
         )}
-        <StatusChip status={p.status} label={statusLabel(p.status)} />
-      </View>
-    </View>
-  );
+        <View style={styles.rowRight}>
+          {p.effective_share != null && (
+            <Text style={styles.rowShare}>{fmtMoney(p.effective_share, currency)}</Text>
+          )}
+          <StatusChip status={p.status} label={statusLabel(p.status)} />
+        </View>
+      </>
+    );
+    if (isSelf) return <View key={p.id} style={styles.row}>{inner}</View>;
+    return (
+      <Pressable
+        key={p.id}
+        style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
+        onPress={() => { lightTap(); setMemberMenu(p); }}
+        accessibilityRole="button"
+        accessibilityLabel={blocked ? t.collectz.blockedUser : p.name}
+      >
+        {inner}
+      </Pressable>
+    );
+  };
+
+  // ── Moderation actions (Apple 1.2 UGC) ──
+  const reportMember = async (p: CollectzJoinView['participants'][number]) => {
+    setMemberMenu(null);
+    const ok = await reportParticipant({
+      sessionId: sessionId ?? '',
+      participantId: p.id,
+      reportedName: p.name,
+    });
+    if (ok) { successNotification(); showToast(t.collectz.reportedToast, 'success'); }
+    else { errorNotification(); showToast(t.collectz.reportFailedToast, 'error'); }
+  };
+
+  const toggleBlock = (p: CollectzJoinView['participants'][number]) => {
+    const key = blockKey(blockScope, { name: p.name });
+    const store = useCollectzBlockStore.getState();
+    if (store.isBlocked(key)) {
+      store.unblock(key);
+      showToast(t.collectz.unblockedToast, 'success');
+    } else {
+      mediumTap();
+      store.block(key);
+      showToast(t.collectz.blockedToast, 'success');
+    }
+    setMemberMenu(null);
+  };
 
   const statusLabel = (status: CollectzParticipantStatus): string => {
     switch (status) {
@@ -354,6 +406,12 @@ const CollectzJoin: React.FC = () => {
   const addMyself = async () => {
     const name = selfName.trim();
     if (!code || !name || busy) return;
+    // Content filter (Apple 1.2): your name is shown to everyone on the roster.
+    if (!isCleanContent(name)) {
+      errorNotification();
+      showToast(t.collectz.validationContent, 'error');
+      return;
+    }
     // Teams gate: adding yourself into a TEAMS session needs a team pick —
     // unless the join queues for approval anyway (the team is picked from the
     // join page once the organizer approves).
@@ -408,6 +466,12 @@ const CollectzJoin: React.FC = () => {
     if (!code || renameTeamIdx == null || busy) return;
     const idx = renameTeamIdx;
     const name = renameDraft.trim().slice(0, 40);
+    // Content filter (Apple 1.2): team names are shown to the whole roster.
+    if (name && !isCleanContent(name)) {
+      errorNotification();
+      showToast(t.collectz.validationContent, 'error');
+      return;
+    }
     setRenameTeamIdx(null);
     setBusy(true);
     try {
@@ -1159,6 +1223,42 @@ const CollectzJoin: React.FC = () => {
           <NeuButton icon="check" label={t.common.save} onPress={saveTeamName} disabled={busy} />
         </View>
       </FloatingModal>
+
+      {/* Member report/block menu (Apple 1.2 UGC) */}
+      <FloatingModal visible={!!memberMenu} onClose={() => setMemberMenu(null)} entrance="fade" borderless>
+        {memberMenu && (() => {
+          const m = memberMenu;
+          if (!m) return null;
+          const blocked = !!blockedMap[blockKey(blockScope, { name: m.name })];
+          return (
+            <View style={styles.memberMenuWrap}>
+              <Text style={styles.memberMenuTitle} numberOfLines={1}>
+                {blocked ? t.collectz.blockedUser : m.name}
+              </Text>
+              <Pressable
+                style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.7 }]}
+                onPress={() => reportMember(m)}
+                accessibilityRole="button"
+                accessibilityLabel={t.collectz.report}
+              >
+                <Feather name="flag" size={18} color={C.gold} />
+                <Text style={styles.menuRowText}>{t.collectz.report}</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.7 }]}
+                onPress={() => toggleBlock(m)}
+                accessibilityRole="button"
+                accessibilityLabel={blocked ? t.collectz.unblock : t.collectz.block}
+              >
+                <Feather name={blocked ? 'user-check' : 'slash'} size={18} color={blocked ? C.textSecondary : C.overdue} />
+                <Text style={[styles.menuRowText, !blocked && { color: C.overdue }]}>
+                  {blocked ? t.collectz.unblock : t.collectz.block}
+                </Text>
+              </Pressable>
+            </View>
+          );
+        })()}
+      </FloatingModal>
       {/* Screen-level "Done" bar for the add-your-name input (Debt does the same). */}
     </View>
   );
@@ -1384,6 +1484,10 @@ const makeStyles = (C: typeof CALM) =>
     teamMineChipText: { fontSize: TYPOGRAPHY.size.xs, color: C.accent, fontWeight: TYPOGRAPHY.weight.bold },
     renameWrap: { gap: SPACING.md, padding: SPACING.xl },
     renameTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, textAlign: 'center' },
+    memberMenuWrap: { padding: SPACING.lg, gap: SPACING.xs },
+    memberMenuTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, textAlign: 'center', marginBottom: SPACING.sm },
+    menuRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.md, paddingHorizontal: SPACING.sm },
+    menuRowText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.medium, color: C.textPrimary },
     // Layout + type only — the ONE input border comes from newstOutline in the JSX.
     renameInput: {
       minHeight: 46,

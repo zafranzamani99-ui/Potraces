@@ -577,6 +577,37 @@ export async function rejectParticipant(id: string, note: string): Promise<void>
   throwIfError(error, 'Could not reject.');
 }
 
+/**
+ * Report a participant for offensive/abusive content (Apple 1.2 UGC). Writes a
+ * row to `collectz_reports` for the team to review + act on. Fails SOFT: if the
+ * table isn't deployed yet (migration 20260802* pending) or the insert is
+ * refused, returns false so the UI shows "try again later" instead of throwing.
+ */
+export async function reportParticipant(input: {
+  sessionId: string;
+  participantId?: string | null;
+  reportedUserId?: string | null;
+  reportedName: string;
+  reason?: string;
+}): Promise<boolean> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const reporterId = data.session?.user?.id;
+    if (!reporterId) return false;
+    const { error } = await supabase.from('collectz_reports').insert({
+      session_id: input.sessionId,
+      participant_id: input.participantId ?? null,
+      reported_user_id: input.reportedUserId ?? null,
+      reported_name: (input.reportedName ?? '').slice(0, 80),
+      reason: input.reason ?? 'user_report',
+      reporter_id: reporterId,
+    });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 /** Move a participant back to unpaid (e.g. a confirm tapped by mistake). */
 export async function resetParticipantToUnpaid(id: string): Promise<void> {
   const { data: row } = await supabase
