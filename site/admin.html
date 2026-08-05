@@ -538,9 +538,20 @@ async function loadAll(){
     if (Array.isArray(r.screenshot_paths)) for (const p of r.screenshot_paths) paths.push(p);
   }
   shotUrls = {};
+  let signProblem = '';
   if (paths.length){
-    const { data: signed } = await sb.storage.from(BUCKET).createSignedUrls(paths, 3600);
-    if (Array.isArray(signed)) for (const s of signed){ if (s && s.path && s.signedUrl) shotUrls[s.path] = s.signedUrl; }
+    const { data: signed, error: signErr } = await sb.storage.from(BUCKET).createSignedUrls(paths, 3600);
+    if (signErr) signProblem = signErr.message || String(signErr);
+    if (Array.isArray(signed)) for (const s of signed){
+      if (s && s.error) signProblem = signProblem || `${s.path}: ${s.error}`;
+      if (s && s.path && s.signedUrl) shotUrls[s.path] = s.signedUrl;
+    }
+  }
+  // Don't fail silently: if reports carry screenshots but none could be signed,
+  // say so out loud (previous behaviour rendered nothing and hid the cause).
+  const signedCount = Object.keys(shotUrls).length;
+  if (paths.length > 0 && signedCount < paths.length){
+    showFlash(`${signedCount}/${paths.length} screenshots could not load${signProblem ? ': ' + signProblem : ''}`);
   }
   renderStats();
   render();
@@ -589,7 +600,7 @@ function render(){
     return `<article class="arow" data-id="${escA(r.id)}">
       <div class="arow-head">${sev}${screen}<span class="arow-email">${esc(r.email||'—')}</span><span class="ri-date">${esc(fmtDate(r.created_at))}</span></div>
       <div class="ri-body">${esc(r.body)}</div>
-      ${shot ? `<div class="ashots" style="display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 10px;">${shot}</div>` : ''}
+      ${shot ? `<div class="ashots" style="display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 10px;">${shot}</div>` : (shotPaths.length ? `<div style="font-size:12px;color:#999;margin:2px 0 10px;">${shotPaths.length} screenshot(s) attached, but they could not be loaded</div>` : '')}
       <div class="arow-foot">
         <label>Status <select class="status-sel st-${escA(r.status)}" data-id="${escA(r.id)}">${statusOptions(r.status)}</select></label>
         <button type="button" class="afoot-btn adel" data-del="${escA(r.id)}">Delete</button>
