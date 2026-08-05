@@ -32,7 +32,7 @@
     },
     {
       "source": "/dl/auto-log",
-      "destination": "https://jngmanwvhbpkpkeklfiv.supabase.co/storage/v1/object/public/web/PotracesAutoLog.shortcut?download=Potraces%20Auto%20Log.shortcut&v=20260729a",
+      "destination": "https://jngmanwvhbpkpkeklfiv.supabase.co/storage/v1/object/public/web/PotracesAutoLog.shortcut?download=Potraces%20Auto%20Log.shortcut&v=20260805a",
       "permanent": false
     }
   ],
