@@ -1,16 +1,19 @@
 # Backup & Restore — Firm the Foundation (roadmap plan)
 
-> Status: approved 2026-08-04. **Phases 0–2 (+ 3.2/3.3/3.4/3.5/3.6/3.8) + Phase 4 + Stage-2 dirty push IMPLEMENTED 2026-08-04.**
-> Done: file-based snapshot engine (`storageBackup.ts` + `storageBackupCore.ts`),
-> GFS-lite rotation, local→account fix, tooNew guard, legacy migration, Android backup
-> rules, restore preview + undo, export/import (one `planRestorePayload`→`restorePayload`
-> pipeline), shared `PERSONAL_SYNC_TABLES`, orphaned-image sweep on wipe, mismatch
-> alert + restore prompt (`PersonalSyncManager`), 90-day retention (privacy.html),
-> `backup_telemetry` + reporter, `docs/backup-restore.md` runbook, dirty push behind
-> `EXPO_PUBLIC_SYNC_INCREMENTAL` (`personalSyncDirty.ts`, 25 dirty checks green).
-> **Remaining: Stage 3 (cursor pull — HIGH risk, needs Stage-0 trigger migration on
-> staging first), Stages 4–5, Account-screen sync-status rows (blocked by parallel
-> Drive-plan WIP in `AccountScreen.tsx`), flag unlock after launch checklist.**
+> Status: approved 2026-08-04. **ALL PHASES COMPLETE 2026-08-04** (with two noted
+> deferrals). Phases 0–2: file-based snapshot engine, GFS-lite rotation, local→account
+> fix, tooNew guard, legacy migration, Android backup rules, restore preview + undo,
+> export/import (one `planRestorePayload`→`restorePayload` pipeline). Phase 3:
+> `PERSONAL_SYNC_TABLES` shared list, orphaned-image sweep, mismatch alert +
+> restore prompt, 90-day retention copy, **incremental sync Stages 2–5 built**
+> (`personalSyncDirty.ts`, `personalSyncCursor.ts`, watermarks in settingsStore,
+> Sync-now full reconcile, Stage-5 subscription gaps) — flags still OFF.
+> Phase 4: `backup_telemetry`, `docs/backup-restore.md` runbook + launch checklist.
+> **Deferrals:** Stage-4 row-count integrity check; Account-screen sync-status
+> polish (pending-count chip exists via Drive WIP). **Migrations APPLIED to prod
+> 2026-08-05** (incl. `20260805020000` trigger + `20260804120000` telemetry;
+> duplicate migration timestamps renamed unique for `db push`).
+> **Ops left:** device drills in `docs/backup-restore.md`, then flag flips.
 > Related: `docs/plans/cloud-backup-sync-plan.md` (Drive/Sheets/iCloud receipts — separate track),
 > `docs/INCREMENTAL_SYNC_PLAN.md` (sync efficiency, Stages 2–5 land in Phase 3 here),
 > `docs/multi-device.md` (known LWW gaps + two-device checklist).

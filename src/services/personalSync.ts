@@ -19,6 +19,7 @@ import { resolveReceiptImageUri } from '../utils/receiptImage';
 import { uploadReceiptImage, ensureLocalReceiptImage, removeAllPersonalReceiptImages } from './receiptImageSync';
 import { reportBackupIssue } from './backupTelemetry';
 import { planPushRows, planDirtyClear, type PushedSnapshot } from './personalSyncDirty';
+import { cursorSince, advanceWatermark, maxSeenUpdatedAt } from './personalSyncCursor';
 import {
   txToRemote, walletToRemote, transferToRemote, subToRemote, budgetToRemote,
   goalToRemote, debtToRemote, splitToRemote, contactToRemote, savingsToRemote, receiptToRemote,
@@ -47,6 +48,10 @@ export function isPersonalSyncIncomplete(): boolean { return _syncIncomplete; }
 let _accountMismatch = false;
 export function isPersonalAccountMismatch(): boolean { return _accountMismatch; }
 export function clearPersonalAccountMismatch(): void { _accountMismatch = false; }
+
+// Per-table server MAX(updated_at) seen by the latest pullAll — consumed by
+// syncPersonal to advance the Stage-3 watermarks after a clean pull+push.
+let _lastPullMaxSeen: Record<string, string> = {};
 
 /** True when ANY personal-mode store holds user data locally. */
 export function hasLocalPersonalData(): boolean {
@@ -111,6 +116,9 @@ type PullResult<TLocal> = {
   // local_ids of rows the CLOUD reports soft-deleted (deleted_at set) — the
   // authoritative cloud tombstones. M1: populated for EVERY synced table.
   remoteDeletedIds: Set<string>;
+  // Newest server updated_at seen across the pulled rows (incl. tombstones) —
+  // the watermark-advance input. null when nothing was pulled.
+  maxUpdatedAt: string | null;
 } | null;
 
 const PULL_PAGE = 1000;
@@ -120,19 +128,33 @@ async function pullTable<TLocal>(
   userId: string,
   fromRemote: (r: any) => TLocal,
   tombstoneIds?: Set<string>,
+  since: string | null = null,
 ): Promise<PullResult<TLocal>> {
   const allData: any[] = [];
   let from = 0;
   for (;;) {
-    const { data, error } = await supabase
+    let q = supabase
       .from(table)
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', userId);
+    if (since) {
+      // Stage-3 cursor pull: only rows changed at/after the (overlap-adjusted)
+      // watermark, ordered by the cursor column. Pagination stays .range() —
+      // with a STABLE full ordering + inclusive overlap + the id-keyed
+      // idempotent merge, a row moving mid-pagination is re-fetched (never
+      // lost), and deltas are far too small for deep-offset cost to matter.
+      // (The plan's keyset option remains for scale; .range is loss-free here.)
+      q = q
+        .gte('updated_at', since)
+        .order('updated_at', { ascending: true })
+        .order('local_id', { ascending: true });
+    } else {
       // Deterministic ordering is REQUIRED for correct pagination: without an
       // explicit order, PostgREST's row order between .range() pages is undefined,
       // so a >1000-row pull could skip or duplicate rows across page boundaries.
-      .order('local_id', { ascending: true })
-      .range(from, from + PULL_PAGE - 1);
+      q = q.order('local_id', { ascending: true });
+    }
+    const { data, error } = await q.range(from, from + PULL_PAGE - 1);
     if (error) return null;
     if (data && data.length) allData.push(...data);
     if (!data || data.length < PULL_PAGE) break;
@@ -154,7 +176,10 @@ async function pullTable<TLocal>(
   );
   const remote = filtered.map(fromRemote);
   const ids = new Set<string>(filtered.map((r: any) => r.local_id).filter(Boolean));
-  return { remote, remoteLocalIds: ids, remoteDeletedIds };
+  // Newest server updated_at SEEN (incl. tombstone rows — their stamp bumps at
+  // soft-delete). pullAll forwards this for watermark advancement.
+  const maxUpdatedAt = maxSeenUpdatedAt(allData);
+  return { remote, remoteLocalIds: ids, remoteDeletedIds, maxUpdatedAt };
 }
 
 // M1: SOFT delete (set deleted_at) instead of a hard DELETE — for EVERY synced
@@ -271,6 +296,22 @@ async function pullAll(userId: string): Promise<boolean> {
     const tsReceipt = mergeTs(r._deletedReceiptIds);
     const tsNote = mergeTs(n._deletedNoteIds);
 
+    // Stage-3 cursor pull (docs/INCREMENTAL_SYNC_PLAN.md): with the flag on and
+    // an established sync history for THIS account, pull only rows changed since
+    // each table's server-timestamp watermark. cursorSince returns null for a
+    // missing/stale watermark → that table FULL-pulls (first run, account
+    // switch, >80d stale = the periodic full-reconcile safety net).
+    const settings = useSettingsStore.getState();
+    const incrementalPull =
+      PERSONAL_SYNC_INCREMENTAL &&
+      !!settings.lastPersonalSyncAt &&
+      settings.lastSyncedUserId === userId;
+    const watermarks = settings.personalSyncWatermarks ?? {};
+    const nowMs = Date.now();
+    const sinceFor = (table: string): string | null =>
+      incrementalPull ? cursorSince(watermarks[table] ?? null, nowMs) : null;
+    _lastPullMaxSeen = {};
+
     const [
       transactions,
       wallets,
@@ -287,23 +328,43 @@ async function pullAll(userId: string): Promise<boolean> {
     ] = await Promise.all([
       // M1: EVERY table is soft-delete-aware — pullTable partitions deleted_at
       // rows into remoteDeletedIds (authoritative cloud tombstones).
-      pullTable('personal_transactions', userId, txFromRemote, tsTx),
-      pullTable('personal_wallets', userId, walletFromRemote, tsWallet),
-      pullTable('personal_wallet_transfers', userId, transferFromRemote, tsTransfer),
-      pullTable('personal_subscriptions', userId, subFromRemote, tsSub),
-      pullTable('personal_budgets', userId, budgetFromRemote, tsBud),
-      pullTable('personal_goals', userId, goalFromRemote, tsGoal),
-      pullTable('personal_debts', userId, debtFromRemote, tsDebt),
-      pullTable('personal_splits', userId, splitFromRemote, tsSplit),
-      pullTable('personal_contacts', userId, contactFromRemote, tsContact),
-      pullTable('personal_savings_accounts', userId, savingsFromRemote, tsSavings),
-      pullTable('personal_receipts', userId, receiptFromRemote, tsReceipt),
-      pullTable('personal_notes', userId, noteFromRemote, tsNote),
+      pullTable('personal_transactions', userId, txFromRemote, tsTx, sinceFor('personal_transactions')),
+      pullTable('personal_wallets', userId, walletFromRemote, tsWallet, sinceFor('personal_wallets')),
+      pullTable('personal_wallet_transfers', userId, transferFromRemote, tsTransfer, sinceFor('personal_wallet_transfers')),
+      pullTable('personal_subscriptions', userId, subFromRemote, tsSub, sinceFor('personal_subscriptions')),
+      pullTable('personal_budgets', userId, budgetFromRemote, tsBud, sinceFor('personal_budgets')),
+      pullTable('personal_goals', userId, goalFromRemote, tsGoal, sinceFor('personal_goals')),
+      pullTable('personal_debts', userId, debtFromRemote, tsDebt, sinceFor('personal_debts')),
+      pullTable('personal_splits', userId, splitFromRemote, tsSplit, sinceFor('personal_splits')),
+      pullTable('personal_contacts', userId, contactFromRemote, tsContact, sinceFor('personal_contacts')),
+      pullTable('personal_savings_accounts', userId, savingsFromRemote, tsSavings, sinceFor('personal_savings_accounts')),
+      pullTable('personal_receipts', userId, receiptFromRemote, tsReceipt, sinceFor('personal_receipts')),
+      pullTable('personal_notes', userId, noteFromRemote, tsNote, sinceFor('personal_notes')),
     ]);
 
     if (!transactions || !wallets || !transfers || !subscriptions || !budgets || !goals || !debts || !splits || !contacts || !savings || !receipts || !notes) {
       if (__DEV__) console.warn('[personalSync] pullAll: one or more tables failed to fetch');
       return false;
+    }
+
+    // Watermark inputs for the post-success advance (consumed by syncPersonal
+    // ONLY after a fully-successful pull+push — a failed cycle leaves the
+    // stored watermarks untouched so nothing is ever skipped).
+    for (const [table, res] of [
+      ['personal_transactions', transactions],
+      ['personal_wallets', wallets],
+      ['personal_wallet_transfers', transfers],
+      ['personal_subscriptions', subscriptions],
+      ['personal_budgets', budgets],
+      ['personal_goals', goals],
+      ['personal_debts', debts],
+      ['personal_splits', splits],
+      ['personal_contacts', contacts],
+      ['personal_savings_accounts', savings],
+      ['personal_receipts', receipts],
+      ['personal_notes', notes],
+    ] as const) {
+      if (res.maxUpdatedAt) _lastPullMaxSeen[table] = res.maxUpdatedAt;
     }
 
     // Re-read snapshot post-fetch so local edits during pull aren't lost
@@ -925,6 +986,20 @@ export function syncPersonal(): Promise<void> {
       throw new Error('push incomplete — will retry; sync state not advanced');
     }
     _syncIncomplete = false;
+    // Stage 3: advance per-table watermarks from the server's own
+    // MAX(updated_at) seen this cycle — never device time, never backward, and
+    // ONLY here (after a fully-successful pull+push), so a failed cycle can
+    // never skip rows.
+    {
+      const st = useSettingsStore.getState();
+      const current = st.personalSyncWatermarks ?? {};
+      const next: Record<string, string> = { ...current };
+      for (const [table, seen] of Object.entries(_lastPullMaxSeen)) {
+        const adv = advanceWatermark(current[table] ?? null, seen);
+        if (adv) next[table] = adv;
+      }
+      st.setPersonalSyncWatermarks?.(next);
+    }
     useSettingsStore.getState().setLastPersonalSyncAt(new Date());
     useSettingsStore.getState().setLastSyncedUserId?.(session.user.id);
     // A clean pull+push — clear any prior failure notice.
@@ -954,6 +1029,9 @@ export async function disablePersonalSync(wipeRemote = false): Promise<void> {
   settings.setPersonalSyncEnabled(false);
   settings.setLastPersonalSyncAt(null);
   settings.setLastPersonalSyncError?.(null);
+  // Stage-3 watermarks must die with the sync history — a stale cursor after
+  // re-enable (or a different account) could skip rows. Full pull follows.
+  settings.setPersonalSyncWatermarks?.({});
 
   if (!wipeRemote) return;
   const session = await getSession();

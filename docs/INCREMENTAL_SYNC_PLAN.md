@@ -1,16 +1,24 @@
 # Incremental Sync — safe migration plan
 
-> Status (2026-08-04): **Stage 0a + Stage 1 + Stage 2 BUILT & tested.** Stage 2
-> (dirty-only push) landed behind `EXPO_PUBLIC_SYNC_INCREMENTAL`
-> (`src/constants/flags.ts`, default OFF): push targets are `planPushRows`
-> (dirty ∖ deleted), race-safe clear is `planDirtyClear` — both pure in
-> `src/services/personalSyncDirty.ts`, 15 new checks in `scripts/test-sync-dirty.ts`
-> (25 total, green). Full push still forces on first-sync / account-switch / flag-off.
-> Also landed with it: `receiptStore.setRemoteImagePath` (no dirty churn — uploaded
-> ids are force-included in that cycle's targets instead), `setDefaultWallet` demote
-> LWW fix, `deleteContact` rename propagation fix. Stages 3–5 still planned. Sync is
-> **beta-dormant** (`CLOUD_BACKUP_ENABLED` off) and incremental is flag-off — zero
-> live-data risk either way. See memory `prod-readiness-scale-audit`.
+> Status (2026-08-04, later): **Stages 0a, 1, 2, 3, 4, 5 BUILT & tested — the plan is
+> COMPLETE.** All behind flags, zero live-data risk until flipped:
+> - **Stage 2** (dirty push) — `src/services/personalSyncDirty.ts`, 25 checks in
+>   `test-sync-dirty.ts`. Also: `setRemoteImagePath` (no dirty churn),
+>   `setDefaultWallet` demote LWW fix, `deleteContact` rename propagation.
+> - **Stage 3** (cursor pull) — `src/services/personalSyncCursor.ts` (18 checks in
+>   `test-sync-cursor.ts`), per-table watermarks in `settingsStore.personalSyncWatermarks`,
+>   advanced only from server MAX(updated_at) after a clean pull+push; missing/stale
+>   (>80d) watermark = full pull. Migration `20260805020000` (INSERT+UPDATE
+>   server-stamped updated_at) — APPLIED to prod 2026-08-05. Pagination note: kept
+>   `.range()` over the keyset option — stable order + inclusive overlap + idempotent
+>   id-keyed merge make it loss-free, and deltas never reach deep offsets.
+> - **Stage 4** (reconcile) — automatic: >80d watermark forces full pull; manual:
+>   "Sync now" clears watermarks first (full pull+push). DEFERRED: the
+>   local-vs-remote row-count integrity check (needs per-table count queries).
+> - **Stage 5** (coverage) — receipt/budgetProfile/category/learning subscriptions
+>   added to `PersonalSyncManager`. Gradual flag enable remains an ops decision.
+> Both flags default OFF (`EXPO_PUBLIC_CLOUD_BACKUP`, `EXPO_PUBLIC_SYNC_INCREMENTAL`).
+> Rollout order: internal → % → all, watching `backup_telemetry`.
 
 ## Progress
 - ✅ **Stage 0a — `(user_id, updated_at)` index** on all 12 personal_* row tables

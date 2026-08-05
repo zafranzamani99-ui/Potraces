@@ -16,6 +16,10 @@ import { useWalletStore } from '../../store/walletStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useNotesStore } from '../../store/notesStore';
 import { useSavingsStore } from '../../store/savingsStore';
+import { useReceiptStore } from '../../store/receiptStore';
+import { useBudgetProfileStore } from '../../store/budgetProfileStore';
+import { useCategoryStore } from '../../store/categoryStore';
+import { useLearningStore } from '../../store/learningStore';
 
 const runSync = () => withBackoff('personalSync', syncPersonal);
 
@@ -175,12 +179,32 @@ export default function PersonalSyncManager() {
     const unsubS = useSavingsStore.subscribe((s, p) => {
       if (s.accounts !== p.accounts) schedule();
     });
+    // Stage 5 coverage gaps (docs/INCREMENTAL_SYNC_PLAN.md): receipts and the
+    // three single-row LWW blobs (budget profile, categories, learning) never
+    // kicked a debounced push — a change there sat local-only until some OTHER
+    // store mutated or the app was backgrounded+reopened.
+    const unsubR = useReceiptStore.subscribe((s, p) => {
+      if (s.receipts !== p.receipts) schedule();
+    });
+    const unsubBP = useBudgetProfileStore.subscribe((s, p) => {
+      if (s.updatedAt !== p.updatedAt) schedule();
+    });
+    const unsubC = useCategoryStore.subscribe((s, p) => {
+      if (s.updatedAt !== p.updatedAt) schedule();
+    });
+    const unsubL = useLearningStore.subscribe((s, p) => {
+      if (s.updatedAt !== p.updatedAt) schedule();
+    });
     return () => {
       unsubP();
       unsubW();
       unsubD();
       unsubN();
       unsubS();
+      unsubR();
+      unsubBP();
+      unsubC();
+      unsubL();
       if (timer) clearTimeout(timer);
     };
   }, [enabled]);

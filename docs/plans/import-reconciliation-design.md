@@ -13,7 +13,7 @@ deployed), tier-1 date merges (bank date wins, silent), same-day add-time warnin
 in QuickAddExpense (`findSameDayDuplicate`), FX-exact engine pass (exact foreign
 amount + currency → tier 1; imported FX rows store originalAmount/fxRate),
 reconcile horizon (`Wallet.reconciledUntil` + migration
-`20260805000000_wallet_reconciled_until.sql` + filtering on both screens +
+`20260805010000_wallet_reconciled_until.sql` + filtering on both screens +
 post-import offer on the statement screen), multi-account grouping on the
 statement screen (per-account wallet pickers, per-wallet matching + deltas).
 Verification: full suite green — 51+ tsx suites + tsc. NOTE: `npm test` hangs when

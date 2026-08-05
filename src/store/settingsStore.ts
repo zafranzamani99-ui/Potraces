@@ -315,6 +315,12 @@ interface SettingsState {
    *  'incomplete' (push didn't finish — retry), 'schema' (app/DB out of date —
    *  backup paused), 'session' (re-authentication needed). */
   lastPersonalSyncError: string | null;
+  /** Per-table server `updated_at` watermarks for Stage-3 cursor pull
+   *  (incremental sync). Empty map = full pull (first run / account switch /
+   *  after wipe). Advanced only from server MAX(updated_at) after a clean
+   *  pull+push — never from device time. See docs/INCREMENTAL_SYNC_PLAN.md. */
+  personalSyncWatermarks: Record<string, string>;
+  setPersonalSyncWatermarks: (value: Record<string, string>) => void;
   setPersonalSyncEnabled: (value: boolean) => void;
   setLastPersonalSyncAt: (value: Date | null) => void;
   setLastSyncedUserId: (value: string | null) => void;
@@ -686,6 +692,8 @@ export const useSettingsStore = create<SettingsState>()(
       lastPersonalSyncAt: null,
       lastSyncedUserId: null,
       lastPersonalSyncError: null,
+      personalSyncWatermarks: {},
+      setPersonalSyncWatermarks: (personalSyncWatermarks) => set({ personalSyncWatermarks }),
       spendingAlertsEnabled: true,
       quickAddConfirm: false,
       tapToPayEnabled: false,
@@ -865,6 +873,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({
           paymentQrs: [],
           personalSyncEnabled: false,
+          personalSyncWatermarks: {},
           lastPersonalSyncAt: null,
           lastSyncedUserId: null,
           lastPersonalSyncError: null,
@@ -1100,6 +1109,10 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (typeof state.personalSyncEnabled !== 'boolean') {
           state.personalSyncEnabled = false;
+        }
+        // Stage-3 cursor watermarks (added 2026-08) — must be a plain object.
+        if (!state.personalSyncWatermarks || typeof state.personalSyncWatermarks !== 'object' || Array.isArray(state.personalSyncWatermarks)) {
+          state.personalSyncWatermarks = {};
         }
         // Google backup fields (added after some installs shipped)
         if (typeof state.driveBackupEnabled !== 'boolean') {

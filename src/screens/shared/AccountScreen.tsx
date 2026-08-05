@@ -275,6 +275,10 @@ export default function AccountScreen() {
     lightTap();
     setSyncing(true);
     resetBackoff('personalSync');
+    // Stage 4 manual reconcile: "Sync now" always forces a FULL pull+push by
+    // clearing the Stage-3 watermarks first — the user's self-healing escape
+    // hatch. With incremental sync off this changes nothing (already full).
+    useSettingsStore.getState().setPersonalSyncWatermarks({});
     showToast(tr.settings.syncing, 'info');
     try {
       await syncPersonal();

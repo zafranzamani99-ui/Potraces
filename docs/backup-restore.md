@@ -70,8 +70,11 @@ the user-held copy that outlives both.
 - **Downgrade/cancel**: syncing stops, server data is KEPT for **90 days**
   (see `site/privacy.html` clause 4) — restore within that window works;
   "turn off & wipe" deletes rows AND bucket photos immediately.
-- **Incremental sync** (efficiency): Stage 0a/1 built; Stage 2 (dirty push) in
-  progress — see `docs/INCREMENTAL_SYNC_PLAN.md` for stages 3–5.
+- **Incremental sync** (efficiency): **all 5 stages built** (dirty push +
+  cursor pull + reconcile net + coverage gaps) behind
+  `EXPO_PUBLIC_SYNC_INCREMENTAL` — see `docs/INCREMENTAL_SYNC_PLAN.md`. Requires
+  migration `20260805020000` (server-stamped `updated_at` on INSERT+UPDATE)
+  applied before the flag flips.
 
 ## Layer 4 — OS backups
 
@@ -109,8 +112,9 @@ app launch. Watch these after unlocking the flag.
 
 ## Launch checklist (before setting EXPO_PUBLIC_CLOUD_BACKUP=1)
 
-- [ ] All sync migrations applied to prod (incl. `20260801020000` indexes).
-- [ ] `backup_telemetry` migration applied to prod.
+- [x] All sync migrations applied to prod (incl. `20260801020000` indexes,
+      `20260805020000` INSERT+UPDATE `updated_at` trigger — REQUIRED for cursor pull).
+- [x] `backup_telemetry` migration applied to prod (`20260804120000`).
 - [ ] Two-device checklist green (`docs/multi-device.md` B1–B3: delete propagates,
       photo reaches cloud, survives reinstall, cross-device edit keeps photo).
 - [ ] Restore drill on physical iOS + Android: corrupt a store → day restore →
