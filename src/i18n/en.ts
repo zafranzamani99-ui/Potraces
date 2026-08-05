@@ -112,6 +112,7 @@ export const en = {
     skip: 'Skip',
     next: 'Next',
     later: 'Later',
+    notNow: 'not now',
     gotIt: 'Got it',
     clear: 'Clear',
     reset: 'Reset',
@@ -449,6 +450,36 @@ export const en = {
     notSyncedYet: 'Not synced yet',
     syncNow: 'Sync now',
 
+    // Google backup (Drive receipt backup + Sheets sync)
+    googleBackup: {
+      sectionTitle: 'Google Backup',
+      connect: 'Connect Google',
+      disconnect: 'Disconnect',
+      disconnectConfirmTitle: 'Disconnect Google?',
+      disconnectConfirmMsg: 'Backups to Google Drive and Sheets will stop. Files already in your Drive stay there.',
+      connectedAs: 'Connected as',
+      driveBackup: 'Drive receipt backup',
+      driveBackupDesc: 'Auto-save receipt photos & PDFs to a “Potraces” folder in your Google Drive',
+      sheetsSync: 'Google Sheets sync',
+      sheetsSyncDesc: 'Append new transactions to a “Potraces Transactions” spreadsheet in your Drive',
+      sheetsNote: 'New transactions only — edits and deletions are not synced. Use Full re-sync to rebuild the sheet.',
+      openSheet: 'Open spreadsheet',
+      fullResync: 'Full re-sync',
+      fullResyncConfirmTitle: 'Rebuild spreadsheet?',
+      fullResyncConfirmMsg: 'This clears the synced rows and re-adds all transactions. Duplicates are skipped by ID.',
+      backUpNow: 'Back up now',
+      lastBackup: 'Last backup',
+      never: 'Never',
+      pendingSuffix: 'pending',
+      wifiOnly: 'Wi-Fi only',
+      reconnect: 'Reconnect Google',
+      reconnectMsg: 'Google access expired — reconnect to continue backups. Nothing is lost; pending items will resume.',
+      backupFailed: 'Backup failed',
+      backupDone: 'Backup complete',
+      sheetSyncDone: 'Sheet synced',
+      connectFirst: 'Connect Google to use backup features',
+    },
+
     // Payment methods & units
     paymentMethods: 'Payment Methods',
     manageUnits: 'Manage Units',
@@ -513,6 +544,8 @@ export const en = {
     viewReports: 'View Reports',
     importFromStatement: 'Import from Bank Statement',
     importFromCsv: 'Import from CSV',
+    statementReminder: 'Monthly Statement Reminder',
+    statementReminderDesc: 'a nudge on the 1st to import your bank statement',
     backupsRestore: 'Backups & Restore',
     inviteFriends: 'Invite Friends',
     redeemCode: 'Redeem Code',
@@ -522,6 +555,27 @@ export const en = {
     // About
     appLabel: 'App',
     aboutSection: 'About',
+
+    // Help & Community (feedback form + Discord)
+    helpCommunity: 'Help & Community',
+    reportProblem: 'Report a bug or idea',
+    reportProblemDesc: 'Found something off? Tell me.',
+    joinDiscord: 'Join our Discord',
+    joinDiscordDesc: 'Chat with me & other users',
+    fbIntro: "Tell me what's not working, or an idea to make Potraces better. I read every one.",
+    fbBug: 'Bug',
+    fbIdea: 'Idea',
+    fbDescLabel: 'What happened?',
+    fbDescPlaceholder: 'Describe the bug or your idea…',
+    fbAttach: 'Attach screenshot (optional)',
+    fbScreenshotWarning: "A screenshot may show your balances — attach only if you're OK with that.",
+    fbRemove: 'Remove',
+    fbConsent: 'I store this to fix issues and may follow up.',
+    fbSignInBenefit: "You'll sign in so I can tell you when it's fixed.",
+    fbSend: 'Send',
+    fbSent: 'Got it — thank you! I read every one.',
+    fbSendFailed: "Couldn't send — check your connection and try again.",
+    fbRateLimited: 'Too many reports in a short time — give it a few minutes.',
     privacyPolicy: 'Privacy Policy',
     termsOfUse: 'Terms of Use',
     restorePurchases: 'Restore Purchases',
@@ -598,6 +652,14 @@ export const en = {
     syncIssueIncomplete: "Your last backup didn't finish. Tap “Sync now” to retry.",
     syncIssueSchema: 'Backup is paused — update the app to keep backing up your data.',
     syncIssueSession: 'Sign in again to resume cloud backup.',
+    syncMismatchTitle: 'Cloud backup paused',
+    syncMismatchBody:
+      'This phone still holds data from a different account, so syncing is stopped to protect both accounts. Sign back into the original account, or erase this device’s local data and sync fresh.',
+    cloudRestoreTitle: 'Restore your cloud backup?',
+    cloudRestoreBody:
+      'This account has a backup in the cloud. Restore it onto this phone now? You can also do it later from the Account screen.',
+    cloudRestoreYes: 'Restore my data',
+    cloudRestoreLater: 'Not now',
     notificationsEnabledToast: 'Notifications enabled',
     notificationsDisabledToast: 'Notifications disabled',
     notifPermissionTitle: 'Notifications are off for Potraces',
@@ -1944,6 +2006,9 @@ export const en = {
     dupBody: 'you logged {name} ({amount}) {mins} min ago. keep both or skip?',
     dupSkip: 'skip',
     dupKeepBoth: 'keep both',
+    sameDayTitle: 'already logged today?',
+    sameDayMsg: 'you logged {amount} to {wallet} earlier today ({description}) — add another?',
+    sameDayAdd: 'add anyway',
     pbTitle: 'create a playbook?',
     pbSub: 'track how you spend this {currency} {amount}',
     notNow: 'not now',
@@ -4079,6 +4144,8 @@ export const en = {
     delete: 'Delete',
     updateTitle: 'Update available',
     updateBody: 'A newer version is ready — tap to update.',
+    statementReminderTitle: 'Monthly statement check',
+    statementReminderBody: 'Did you miss anything? Import your bank statement to catch unlogged spending.',
     justNow: 'just now',
     minutesAgo: '{n}m ago',
     hoursAgo: '{n}h ago',
@@ -4252,6 +4319,12 @@ export const en = {
       professional: { name: 'young professional', blurb: 'salary, car loan, growing savings' },
       family: { name: 'family & home', blurb: 'mortgage, kids, bigger goals' },
     },
+  },
+
+  statementBackfill: {
+    bannerTitle: 'have history?',
+    bannerSubtitle: "import last month's bank statement — start with your spending already filled in.",
+    cta: 'import a statement',
   },
 
   gettingStarted: {
@@ -4667,6 +4740,17 @@ export const en = {
     noDescription: '(no description)',
     badDate: '⚠ bad date',
     imported: '(imported)',
+    importedToast: 'imported {n}',
+    skippedSuffix: ' · skipped {n} already logged',
+    undo: 'undo',
+    selectAll: 'select all',
+    clear: 'clear',
+    reviewSummary: "{start}–{end} · {logged} already logged · {fresh} new — we'll only add the new ones",
+    sectionNew: 'new · {n}',
+    sectionReview: 'needs review · {n}',
+    sectionLogged: 'already logged · {n}',
+    matchContext: 'you logged {amount} to {wallet} · {n}d apart',
+    matchContextSameDay: 'you logged {amount} to {wallet} · same day',
     // Column roles
     roleIgnore: 'ignore',
     roleDate: 'date',
@@ -4676,6 +4760,7 @@ export const en = {
     roleCredit: 'amount (credit/income)',
     roleType: 'type (income/expense)',
     roleCategory: 'category',
+    beforeReconciled: '{n} row(s) on/before your reconciled date ({date}) are skipped',
   },
 
   importStatement: {
@@ -4720,6 +4805,30 @@ export const en = {
     unlockBtn: 'unlock',
     unlocking: 'unlocking…',
     wrongPassword: "That password didn't work — try again.",
+    importedToast: 'imported {n}',
+    skippedSuffix: ' · skipped {n} already logged',
+    undo: 'undo',
+    reviewSummary: "{start}–{end} · {logged} already logged · {fresh} new — we'll only add the new ones",
+    sectionNew: 'new · {n}',
+    sectionReview: 'needs review · {n}',
+    sectionLogged: 'already logged · {n}',
+    matchContext: 'you logged {amount} to {wallet} · {n}d apart',
+    matchContextSameDay: 'you logged {amount} to {wallet} · same day',
+    currencyMismatchTitle: 'Wrong currency',
+    currencyMismatchMsg:
+      'This statement is in {currency}, but your app currency is {appCurrency}. Import a statement in your app currency.',
+    timeoutTitle: 'Statement too large',
+    timeoutMsg:
+      'Processing timed out — try a statement with fewer months, or split the PDF and import each part.',
+    notAuthenticatedTitle: 'Sign in to import',
+    notAuthenticatedMsg:
+      'Statement import needs an account — sign in from the Account screen, then try again.',
+    beforeReconciled: '{n} row(s) on/before your reconciled date ({date}) are skipped',
+    reconcileOfferTitle: 'mark as reconciled?',
+    reconcileOfferMsg:
+      "future imports of {wallet} will skip rows on/before {date} — use this once you've checked the statement matches.",
+    reconcileOfferConfirm: 'mark reconciled',
+    accountGroupTitle: 'account ··{account}',
   },
 
   forcedUpdate: {
@@ -4978,6 +5087,30 @@ export const en = {
     wrongAccountTitle: 'Backup belongs to a different account',
     wrongAccountBody:
       "This day's backup was made on a different account (or before signing in), so it can't be restored here — it would overwrite this account's data.",
+    // too-new + signed-out-backup guards (2026-08-04, file-based engine)
+    tooNewTitle: 'Made by a newer app version',
+    tooNewBody:
+      "This backup was saved by a newer version of Potraces ({version}) and can't be restored here. Update the app, then restore.",
+    localNote: 'This backup was made before you signed in. Restoring it brings that data into this account.',
+    // restore preview sheet + undo (2026-08-04)
+    countsLegend: 'in backup → on this phone',
+    keepsCurrent: 'keeps current data',
+    savedAt: 'Saved {datetime}',
+    fromAppVersion: 'app v{version}',
+    undoTitle: 'Undo last restore',
+    undoBody: 'The data from right before the last restore ({date}) is still saved — you can put it back.',
+    undo: 'Undo',
+    // export / import — off-device copy (2026-08-04)
+    exportImportTitle: 'Off-device copy',
+    exportDesc:
+      'Save your whole backup as one file — keep it in Drive, email it to yourself, or move it to a new phone. Import it here to restore.',
+    exportButton: 'Export backup',
+    importButton: 'Import backup',
+    exportFailedTitle: "Couldn't export",
+    exportFailedBody: 'No backup file was created. Please try again.',
+    importInvalidTitle: 'Not a Potraces backup',
+    importInvalidBody:
+      "That file couldn't be read as a Potraces backup. Choose a file that was exported from Potraces.",
     stores: {
       'debt-storage': 'Debts & splits',
       'personal-storage': 'Transactions',
@@ -4996,6 +5129,7 @@ export const en = {
       'playbook-storage': 'Playbook',
       'notes-storage': 'Notes',
       'category-storage': 'Categories',
+      'learning-storage': 'AI learning',
     },
   },
 

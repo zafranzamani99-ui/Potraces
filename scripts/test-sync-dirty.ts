@@ -15,6 +15,7 @@
 import { usePersonalStore } from '../src/store/personalStore';
 import { useWalletStore } from '../src/store/walletStore';
 import { useDebtStore } from '../src/store/debtStore';
+import { planPushRows, planDirtyClear } from '../src/services/personalSyncDirty';
 
 const D = new Date('2026-06-20T08:00:00.000Z');
 const failures: string[] = [];
@@ -91,6 +92,75 @@ check('deleteTransfer scrubs the deleted transfer out of the dirty set',
   !has(useWalletStore.getState()._dirtyTransferIds, 'T1'));
 check('deleteTransfer tombstones the deleted transfer',
   has(useWalletStore.getState()._deletedTransferIds, 'T1'));
+
+// ── Stage 2 pure rules: planPushRows / planDirtyClear (personalSyncDirty) ────
+const rowsX = [
+  { id: 'a', updatedAt: 1 },
+  { id: 'b', updatedAt: 2 },
+  { id: 'c', updatedAt: 3 },
+];
+check('full push returns all live rows minus deleted',
+  JSON.stringify(planPushRows(rowsX, { incremental: false, dirtyIds: [], deletedIds: ['c'] }).map((r) => r.id)) === '["a","b"]');
+check('incremental push returns dirty minus deleted (ghost-row guard)',
+  JSON.stringify(planPushRows(rowsX, { incremental: true, dirtyIds: ['b', 'c'], deletedIds: ['c'] }).map((r) => r.id)) === '["b"]');
+check('incremental push with empty dirty pushes nothing',
+  planPushRows(rowsX, { incremental: true, dirtyIds: [] }).length === 0);
+
+const PT1 = new Date('2026-06-01T00:00:00Z');
+const PT2 = new Date('2026-06-02T00:00:00Z');
+const liveAfterPush = [
+  { id: 'a', updatedAt: PT1 }, // pushed, unchanged
+  { id: 'b', updatedAt: PT2 }, // pushed, edited mid-push (stamp moved)
+  { id: 'c', updatedAt: PT1 }, // not pushed, still live
+  // 'd' — dirty id whose row vanished mid-push
+];
+const cleared = planDirtyClear(
+  ['a', 'b', 'c', 'd'],
+  liveAfterPush,
+  [
+    { id: 'a', updatedAt: PT1 },
+    { id: 'b', updatedAt: PT1 },
+  ],
+);
+check('cleanly-pushed row clears dirty', !cleared.includes('a'));
+check('row edited mid-push keeps dirty (race-safe clear)', cleared.includes('b'));
+check('live row marked dirty mid-push (not pushed) keeps dirty', cleared.includes('c'));
+check('dirty id whose row vanished is dropped', !cleared.includes('d'));
+
+// ── Stage 2 load-bearing fixes: demote LWW + contact-rename propagation ──────
+useWalletStore.setState({
+  wallets: [
+    { ...mkWallet('WA', 0), isDefault: true, updatedAt: D },
+    { ...mkWallet('WB', 0), isDefault: false, updatedAt: D },
+  ],
+  transfers: [], _dirtyWalletIds: [], _deletedWalletIds: [], selectedWalletId: null,
+} as any);
+useWalletStore.getState().setDefaultWallet('WB');
+const waAfter = useWalletStore.getState().wallets.find((x) => x.id === 'WA')!;
+const wbAfter = useWalletStore.getState().wallets.find((x) => x.id === 'WB')!;
+check('setDefaultWallet promotes the new default', wbAfter.isDefault === true);
+check('setDefaultWallet demotes the old default', waAfter.isDefault === false);
+check('setDefaultWallet bumps BOTH updatedAt stamps (a stale demote loses LWW)',
+  waAfter.updatedAt > D && wbAfter.updatedAt > D);
+check('setDefaultWallet marks both wallets dirty',
+  has(useWalletStore.getState()._dirtyWalletIds, 'WA') && has(useWalletStore.getState()._dirtyWalletIds, 'WB'));
+
+useDebtStore.setState({
+  debts: [{ id: 'DC1', contact: { id: 'C1', name: 'Ali' }, payments: [], updatedAt: D } as any],
+  splits: [{ id: 'SP1', participants: [{ contact: { id: 'C1', name: 'Ali' } }], updatedAt: D } as any],
+  contacts: [{ id: 'C1', name: 'Ali' } as any],
+  _dirtyDebtIds: [], _dirtySplitIds: [], _deletedContactIds: [],
+} as any);
+useDebtStore.getState().deleteContact('C1');
+const dc1 = useDebtStore.getState().debts.find((x) => x.id === 'DC1')!;
+const sp1 = useDebtStore.getState().splits.find((x) => x.id === 'SP1')!;
+check('deleteContact renames the contact inside debts/splits',
+  (dc1.contact as any).name === '(deleted)' && (sp1.participants[0].contact as any).name === '(deleted)');
+check('deleteContact bumps the renamed debt updatedAt + marks it dirty (rename propagates)',
+  dc1.updatedAt > D && has(useDebtStore.getState()._dirtyDebtIds, 'DC1'));
+check('deleteContact bumps the renamed split updatedAt + marks it dirty',
+  sp1.updatedAt > D && has(useDebtStore.getState()._dirtySplitIds, 'SP1'));
+check('deleteContact tombstones the contact', has(useDebtStore.getState()._deletedContactIds, 'C1'));
 
 // ── result ───────────────────────────────────────────────────────────────────
 if (failures.length) {

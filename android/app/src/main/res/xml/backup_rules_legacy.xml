@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Legacy full-backup rules (API 23–30). Mirrors backup_rules.xml: keep the live
+  stores + receipts in Auto Backup; exclude the redundant in-app snapshot dir
+  and the transient receipt upload queue. See backup_rules.xml for the rationale.
+-->
+<full-backup-content>
+  <exclude domain="file" path="backups" />
+  <exclude domain="file" path="receipt-queue" />
+</full-backup-content>

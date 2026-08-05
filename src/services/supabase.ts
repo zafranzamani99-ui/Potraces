@@ -202,6 +202,31 @@ export async function clearBusinessDataRemote(client: Client = supabaseBusiness)
 }
 
 /**
+ * Every personal_* table that holds user-synced rows. SINGLE SOURCE OF TRUTH for
+ * "delete all of this user's personal cloud data" — used by clearPersonalDataRemote
+ * (account/data deletion) and personalSync.disablePersonalSync(wipeRemote). The
+ * two lists diverged once (2026-08: categories/learning missing here), leaving
+ * cloud rows behind on a data-only wipe — keep this the only list.
+ */
+export const PERSONAL_SYNC_TABLES = [
+  'personal_transactions',
+  'personal_wallets',
+  'personal_wallet_transfers',
+  'personal_subscriptions',
+  'personal_budgets',
+  'personal_goals',
+  'personal_debts',
+  'personal_splits',
+  'personal_contacts',
+  'personal_savings_accounts',
+  'personal_receipts',
+  'personal_notes',
+  'personal_budget_profile',
+  'personal_categories',
+  'personal_learning',
+] as const;
+
+/**
  * Delete ALL of this user's PERSONAL cloud rows (the personal_* tables), leaving
  * the auth user and any business data fully intact. Client-side; RLS scopes every
  * delete to the signed-in user. A personal-only user who never signed in has no
@@ -211,24 +236,27 @@ export async function clearPersonalDataRemote(client: Client = supabasePersonal)
   const { data: { session } } = await client.auth.getSession();
   if (!session) return;
   const userId = session.user.id;
-  const tables = [
-    'personal_transactions',
-    'personal_wallets',
-    'personal_wallet_transfers',
-    'personal_subscriptions',
-    'personal_budgets',
-    'personal_goals',
-    'personal_debts',
-    'personal_splits',
-    'personal_contacts',
-    'personal_savings_accounts',
-    'personal_receipts',
-    'personal_notes',
-    'personal_budget_profile',
-  ];
   await Promise.allSettled(
-    tables.map((t) => client.from(t).delete().eq('user_id', userId)),
+    PERSONAL_SYNC_TABLES.map((t) => client.from(t).delete().eq('user_id', userId)),
   );
+  // Rows alone leave receipt PHOTOS orphaned in Storage — sweep the bucket too.
+  // Inline (not receiptImageSync.removeAllPersonalReceiptImages) because that
+  // module imports this one; path convention: receiptImageSync.ts.
+  try {
+    const prefix = `${userId}/personal`;
+    for (;;) {
+      const { data, error } = await client.storage
+        .from('receipt-images')
+        .list(prefix, { limit: 1000 });
+      if (error || !data || data.length === 0) break;
+      const { error: rmErr } = await client.storage
+        .from('receipt-images')
+        .remove(data.map((e) => `${prefix}/${e.name}`));
+      if (rmErr || data.length < 1000) break;
+    }
+  } catch {
+    /* best-effort */
+  }
 }
 
 /**

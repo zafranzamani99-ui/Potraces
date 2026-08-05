@@ -42,6 +42,7 @@ const fixtures = {
     mode: 'personal', walletId: 'w1', receiptUrl: 'https://r/1.jpg', tags: ['lunch', 'work'],
     timeContext: 'night', dayContext: 'weekend', sizeContext: 'medium', frequencyContext: 'clustered',
     emotionalFlag: true, rawInput: 'lunch rm25.50', inputMethod: 'text', confidence: 'high',
+    externalRef: 'DN-20260611-001', importBatchId: 'batch-1',
     linkedPaymentId: 'pay1', linkedDebtId: 'd1', linkedGoalId: 'g1', linkedGoalContributionId: 'gc1',
     playbookLinks: [{ playbookId: 'pb1', amount: 10 }],
     originalAmount: 6.2, originalCurrency: 'USD', fxRate: 4.1, categoryExplanation: 'because lunch',

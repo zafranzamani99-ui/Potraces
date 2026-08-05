@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (API 31+) backup/device-transfer rules.
+
+  The OS layer (Auto Backup, 25MB cap) backs up the LIVE stores (AsyncStorage DB)
+  and user content (receipts/) — that's the device-loss safety net. Excluded:
+  - backups/       — the app's own rolling snapshot history. Redundant in the OS
+                     backup (it duplicates the live stores) and would multiply
+                     quota usage; restoring an OS backup resurrects it anyway via
+                     the live data it mirrors.
+  - receipt-queue/ — transient upload staging; re-created on demand.
+-->
+<data-extraction-rules>
+  <cloud-backup>
+    <exclude domain="file" path="backups" />
+    <exclude domain="file" path="receipt-queue" />
+  </cloud-backup>
+  <device-transfer>
+    <exclude domain="file" path="backups" />
+    <exclude domain="file" path="receipt-queue" />
+  </device-transfer>
+</data-extraction-rules>

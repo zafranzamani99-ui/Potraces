@@ -33,7 +33,7 @@ import {
   unregisterBroadcastDevice,
 } from '../../services/pushNotifications';
 import { isLiveAudioAvailable } from '../../services/liveAudioSource';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha, TERMS_URL, PRIVACY_URL } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha, TERMS_URL, PRIVACY_URL, DISCORD_URL } from '../../constants';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { useCalm } from '../../hooks/useCalm';
@@ -72,7 +72,7 @@ const CURRENCY_OPTIONS = [
  * personal shows the master push toggle.
  */
 const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 'security' | 'about'> }> = ({ section }) => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const C = useCalm();
   const t = useT();
@@ -477,6 +477,22 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
 
         {section === 'about' && (
           <>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.helpCommunity}</Text>
+              <SettingRow
+                icon="i/bug-outline"
+                chipColor="#B2780A"
+                label={t.settings.reportProblem}
+                sublabel={t.settings.reportProblemDesc}
+                onPress={() => { lightTap(); navigation.navigate('FeedbackForm'); }}
+              />
+              <SettingRow
+                icon="i/logo-discord"
+                chipColor="#5865F2"
+                label={t.settings.joinDiscord}
+                sublabel={t.settings.joinDiscordDesc}
+                onPress={() => { lightTap(); Linking.openURL(DISCORD_URL).catch(() => {}); }}
+                external
+              />
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.aboutSection}</Text>
               <SettingRow
                 icon="i/information-circle-outline"

@@ -75,6 +75,31 @@ export async function hasGoogleDriveAccess(): Promise<boolean> {
 }
 
 /**
+ * Email of the native Google session's account, for pinning cloud backups to a
+ * specific Google account (shown in settings). Null when no native session.
+ */
+export async function getConnectedGoogleEmail(): Promise<string | null> {
+  if (!GoogleSignin) return null;
+  try {
+    const current = await GoogleSignin.getCurrentUser();
+    return current?.user?.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Full Drive disconnect — revokes the app's grant and signs out the native
+ * session. App account (Supabase session) is untouched; Drive/Sheets backups
+ * stop until the user reconnects.
+ */
+export async function disconnectGoogle(): Promise<void> {
+  if (!GoogleSignin) return;
+  try { await GoogleSignin.revokeAccess(); } catch {}
+  try { await GoogleSignin.signOut(); } catch {}
+}
+
+/**
  * Access token from the last native Google sign-in, for calling Google APIs
  * (Drive upload). Null when the native module is missing, nobody is signed in
  * natively, or token retrieval fails for any reason.
@@ -87,6 +112,18 @@ export async function getGoogleAccessToken(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Drop a specific cached access token from the native SDK. Android caches
+ * tokens and will happily hand back a dead one — googleApiFetch calls this on
+ * HTTP 401 so the next getGoogleAccessToken() fetches a fresh token. No-op
+ * when the native module is missing; failures are swallowed (the retried
+ * request will surface any real problem).
+ */
+export async function clearGoogleTokenCache(token: string): Promise<void> {
+  if (!GoogleSignin) return;
+  try { await GoogleSignin.clearCachedAccessToken(token); } catch {}
 }
 
 /**

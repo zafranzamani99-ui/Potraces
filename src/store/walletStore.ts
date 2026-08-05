@@ -105,13 +105,16 @@ export const useWalletStore = create<WalletState>()(
 
       setDefaultWallet: (id) =>
         set((state) => ({
-          wallets: state.wallets.map((w) => ({
-            ...w,
-            isDefault: w.id === id,
-            updatedAt: w.id === id ? new Date() : w.updatedAt,
-          })),
-          // The new default (updatedAt bumped) plus any previously-default wallet
-          // whose isDefault flag flips — both rows changed and must push.
+          wallets: state.wallets.map((w) =>
+            w.id === id || w.isDefault
+              ? // Both the new default AND the demoted old one changed — bump
+                // BOTH updatedAt stamps (a stale demote timestamp loses the LWW
+                // tiebreak and the demotion silently reverts on merge).
+                { ...w, isDefault: w.id === id, updatedAt: new Date() }
+              : w,
+          ),
+          // The new default plus any previously-default wallet whose isDefault
+          // flag flips — both rows changed and must push.
           _dirtyWalletIds: [
             ...(state._dirtyWalletIds ?? []),
             ...state.wallets.filter((w) => w.id === id || w.isDefault).map((w) => w.id),
@@ -172,6 +175,14 @@ export const useWalletStore = create<WalletState>()(
             w.id === id ? { ...w, balance, updatedAt: new Date() } : w
           ),
           _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), id],
+        })),
+
+      setReconciledUntil: (walletId, date) =>
+        set((state) => ({
+          wallets: state.wallets.map((w) =>
+            w.id === walletId ? { ...w, reconciledUntil: date, updatedAt: new Date() } : w
+          ),
+          _dirtyWalletIds: [...(state._dirtyWalletIds ?? []), walletId],
         })),
 
       transferBetweenWallets: (fromId, toId, amount, note) =>

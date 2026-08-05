@@ -1,9 +1,16 @@
 # Incremental Sync — safe migration plan
 
-> Status (2026-08-01): **Stage 0a + Stage 1 BUILT & tested** (uncommitted on branch
-> `fix/import-freeze-collectz-indexes`); Stages 2–5 still planned. Sync is **beta-dormant**
-> (`CLOUD_BACKUP_ENABLED` off) so everything built so far is inert until a flag flips it on — zero
-> live-data risk. See memory `prod-readiness-scale-audit`.
+> Status (2026-08-04): **Stage 0a + Stage 1 + Stage 2 BUILT & tested.** Stage 2
+> (dirty-only push) landed behind `EXPO_PUBLIC_SYNC_INCREMENTAL`
+> (`src/constants/flags.ts`, default OFF): push targets are `planPushRows`
+> (dirty ∖ deleted), race-safe clear is `planDirtyClear` — both pure in
+> `src/services/personalSyncDirty.ts`, 15 new checks in `scripts/test-sync-dirty.ts`
+> (25 total, green). Full push still forces on first-sync / account-switch / flag-off.
+> Also landed with it: `receiptStore.setRemoteImagePath` (no dirty churn — uploaded
+> ids are force-included in that cycle's targets instead), `setDefaultWallet` demote
+> LWW fix, `deleteContact` rename propagation fix. Stages 3–5 still planned. Sync is
+> **beta-dormant** (`CLOUD_BACKUP_ENABLED` off) and incremental is flag-off — zero
+> live-data risk either way. See memory `prod-readiness-scale-audit`.
 
 ## Progress
 - ✅ **Stage 0a — `(user_id, updated_at)` index** on all 12 personal_* row tables

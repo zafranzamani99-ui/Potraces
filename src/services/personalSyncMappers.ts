@@ -93,6 +93,8 @@ export function txToRemote(userId: string, t: Transaction) {
     original_amount: finiteOrNull(t.originalAmount),
     original_currency: t.originalCurrency ?? null,
     fx_rate: finiteOrNull(t.fxRate),
+    external_ref: t.externalRef ?? null,
+    import_batch_id: t.importBatchId ?? null,
     edit_log: (t.editLog ?? []).map((e) => ({ ...e, editedAt: iso(e.editedAt) })),
     updated_at: iso(t.updatedAt),
     client_edit_at: iso(t.updatedAt),
@@ -115,6 +117,7 @@ export function walletToRemote(userId: string, w: Wallet) {
     preset_id: w.presetId ?? null,
     credit_bank: w.creditBank ?? null,
     credit_network: w.creditNetwork ?? null,
+    reconciled_until: w.reconciledUntil ?? null,
     updated_at: iso(w.updatedAt),
     client_edit_at: iso(w.updatedAt),
   };
@@ -348,6 +351,8 @@ export function txFromRemote(r: any): Transaction {
     tags: Array.isArray(r.tags) ? r.tags : undefined,
     rawInput: r.raw_input ?? undefined,
     inputMethod: r.input_method ?? undefined,
+    externalRef: r.external_ref ?? undefined,
+    importBatchId: r.import_batch_id ?? undefined,
     linkedPaymentId: r.linked_payment_id ?? undefined,
     linkedDebtId: r.linked_debt_id ?? undefined,
     linkedGoalId: r.linked_goal_id ?? undefined,
@@ -377,6 +382,7 @@ export function walletFromRemote(r: any): Wallet {
     creditNetwork: r.credit_network ?? undefined,
     usedCredit: numOrUndef(r.used_credit),
     creditLimit: numOrUndef(r.credit_limit),
+    reconciledUntil: r.reconciled_until ?? undefined,
     createdAt: sd(r.created_at),
     updatedAt: sd(r.client_edit_at ?? r.updated_at),
   };

@@ -34,6 +34,17 @@ Pipeline (same as the Back Tap builder):
     npx supabase storage cp "shortcut/Potraces Auto Log.shortcut" \
         ss:///web/PotracesAutoLog.shortcut --experimental \
         --content-type application/x-apple-shortcut
+
+DISTRIBUTION (2026-08-04, post-corruption postmortem): the iCloud share link is
+now the PRIMARY channel — Apple's servers re-serialize the workflow for the
+importing device/OS, which is the only transport that repairs version skew.
+Self-signed files wrap our bytes as-is: any serialization quirk ships verbatim
+(2026-08-04 incident: bare WFTextTokenAttachment inputs were dropped by the
+iOS 26 importer → parameters degraded to bare "Ask Each Time" text prompts).
+Share from a device that has been visually verified (Replace actions show their
+variable chips, a manual Play asks ONLY "Amount (RM)?"), then point the site at
+the link. ALWAYS delete any same-named shortcut before importing a new build —
+iOS silently skips same-name imports and keeps the old copy.
 """
 import plistlib
 import uuid
@@ -114,9 +125,13 @@ def var_ref(name):
 
 
 def set_var(name, value):
+    # WFInput is a text slot in the editor, so it must serialize as a
+    # WFTextTokenString (U+FFFC + attachmentsByRange) — the bare
+    # WFTextTokenAttachment shape is dropped by the iOS 26 importer and the
+    # parameter degrades to a runtime "Ask Each Time" prompt.
     return action("is.workflow.actions.setvariable", {
         "WFVariableName": name,
-        "WFInput": token_attachment(value),
+        "WFInput": token_string([value]),
     })
 
 
@@ -145,7 +160,7 @@ def dict_item(key, value_parts):
 def get_item(list_uuid, index):
     """Item at a 1-based index from a list."""
     return action("is.workflow.actions.getitemfromlist", {
-        "WFInput": token_attachment(out_ref(list_uuid, "List")),
+        "WFInput": token_string([out_ref(list_uuid, "List")]),
         "WFItemSpecifier": "Item At Index",
         "WFItemIndex": index,
     })
@@ -169,7 +184,7 @@ actions = [
     #   TEXT path (legacy) — the automation passed "amount|merchant|card".
     action("is.workflow.actions.text.split", {
         "UUID": U_SPLIT,
-        "WFInput": token_attachment(shortcut_input()),
+        "WFInput": token_string([shortcut_input()]),
         "WFTextSeparator": "Custom",
         "WFTextCustomSeparator": "|",
     }),
@@ -211,18 +226,18 @@ actions = [
     # amount we're done, otherwise behaviour is identical to before.
     action("is.workflow.actions.detect.number", {
         "UUID": U_GETNUM,
-        "WFInput": token_attachment(input_prop("Amount")),
+        "WFInput": token_string([input_prop("Amount")]),
     }),
     action("is.workflow.actions.text.replace", {
         "UUID": U_GETNUM_CLEAN,
-        "WFInput": token_attachment(out_ref(U_GETNUM, "Number")),
+        "WFInput": token_string([out_ref(U_GETNUM, "Number")]),
         "WFReplaceTextFind": "[^0-9.]",
-        "WFReplaceTextReplace": "",
+        # "Replace With" omitted (not "") — the corpus-canonical delete form
         "WFReplaceTextRegularExpression": True,
     }),
     action("is.workflow.actions.text.match", {
         "UUID": U_GETNUM_MATCH,
-        "WFMatchText": token_attachment(out_ref(U_GETNUM_CLEAN, "Updated Text")),
+        "WFMatchText": token_string([out_ref(U_GETNUM_CLEAN, "Updated Text")]),
         "WFMatchTextPattern": "[1-9]",
         "WFMatchTextCaseSensitive": False,
     }),
@@ -236,9 +251,8 @@ actions = [
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT0, "WFControlFlowMode": 1}),
     action("is.workflow.actions.text.replace", {
         "UUID": U_CLEAN1,
-        "WFInput": token_attachment(var_ref(VAR_RAWAMT)),
+        "WFInput": token_string([var_ref(VAR_RAWAMT)]),
         "WFReplaceTextFind": "[^0-9.,]",
-        "WFReplaceTextReplace": "",
         "WFReplaceTextRegularExpression": True,
     }),
     action("is.workflow.actions.conditional", {
@@ -255,9 +269,8 @@ actions = [
     }),
     action("is.workflow.actions.text.replace", {
         "UUID": U_CLEAN2,
-        "WFInput": token_attachment(out_ref(U_TEXT2, "Text")),
+        "WFInput": token_string([out_ref(U_TEXT2, "Text")]),
         "WFReplaceTextFind": "[^0-9.,]",
-        "WFReplaceTextReplace": "",
         "WFReplaceTextRegularExpression": True,
     }),
     action("is.workflow.actions.conditional", {
@@ -274,7 +287,7 @@ actions = [
     }),
     action("is.workflow.actions.text.match", {
         "UUID": U_MATCH,
-        "WFMatchText": token_attachment(out_ref(U_RAWTEXT, "Text")),
+        "WFMatchText": token_string([out_ref(U_RAWTEXT, "Text")]),
         "WFMatchTextPattern": "[0-9]+[.,][0-9]{2}",
         "WFMatchTextCaseSensitive": False,
     }),
@@ -330,7 +343,7 @@ actions = [
     # push is the confirmation.
     action("is.workflow.actions.getvalueforkey", {
         "UUID": U_OK,
-        "WFInput": token_attachment(out_ref(U_RESP, "Contents of URL")),
+        "WFInput": token_string([out_ref(U_RESP, "Contents of URL")]),
         "WFDictionaryKey": "ok",
     }),
     action("is.workflow.actions.conditional", {
@@ -356,7 +369,10 @@ actions = [
 ]
 
 workflow = {
-    "WFWorkflowClientVersion": "2605.0.5",
+    # iOS 17-era client version (the oldest OS with the Wallet Transaction
+    # trigger): signing/exporting fails when this targets an OS newer than the
+    # host, and old→new is the safe import direction.
+    "WFWorkflowClientVersion": "2038",
     "WFWorkflowMinimumClientVersion": 900,
     "WFWorkflowMinimumClientVersionString": "900",
     "WFWorkflowIcon": {"WFWorkflowIconStartColor": 4292093695, "WFWorkflowIconGlyphNumber": 59446},

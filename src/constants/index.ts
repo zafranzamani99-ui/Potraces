@@ -162,6 +162,10 @@ export const SPACING = {
 // charging (or repoint TERMS_URL at Apple's standard EULA).
 export const TERMS_URL = 'https://jejakbaki.my/terms.html';
 export const PRIVACY_URL = 'https://jejakbaki.my/privacy.html';
+// Community Discord invite — opened by the Settings "Join our Discord" row.
+// TODO(zafran): replace this placeholder with the real invite (https://discord.gg/XXXX)
+// before shipping. See docs/COMMUNITY_FEEDBACK_PLAN.md §7.
+export const DISCORD_URL = 'https://discord.gg/potraces';
 
 // ─── BORDER RADIUS ──────────────────────────────────────────
 export const RADIUS = {

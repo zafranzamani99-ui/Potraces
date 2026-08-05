@@ -89,6 +89,7 @@ import BreathingRoom from '../../components/common/BreathingRoom';
 import FreshStart from '../../components/common/FreshStart';
 import GettingStarted from '../../components/common/GettingStarted';
 import SampleDataBanner from '../../components/common/SampleDataBanner';
+import StatementBackfillBanner from '../../components/common/StatementBackfillBanner';
 import { useNotificationStore } from '../../store/notificationStore';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import ModalToastHost from '../../components/common/ModalToastHost';
@@ -946,9 +947,11 @@ const PersonalDashboard: React.FC = () => {
           <WeekBar transactions={transactions} />
         </RAnimated.View>
 
-        {/* First-run surfaces — exactly one renders at a time. See precedence
-            rule above. The sample-data banner (demo mode) wins the slot; else
-            FreshStart on days 1-5, GettingStarted otherwise. */}
+        {/* First-run surfaces — exactly one of FreshStart/GettingStarted renders
+            at a time (see precedence rule above). The sample-data banner (demo
+            mode) wins the slot. The statement-backfill banner is a separate
+            self-gated surface for fresh 0-transaction accounts (import as the
+            alternative first step) and may accompany the ladder. */}
         {sampleDataLoaded ? (
           // TEMP: demo-data banner hidden for now — restore via the
           // SHOW_SAMPLE_DATA_BANNER flag at the top of this file.
@@ -959,6 +962,7 @@ const PersonalDashboard: React.FC = () => {
           <>
             {showFreshStart && <FreshStart />}
             {showGettingStarted && <GettingStarted />}
+            <StatementBackfillBanner />
           </>
         )}
 

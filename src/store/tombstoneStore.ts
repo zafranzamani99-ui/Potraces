@@ -19,7 +19,7 @@ interface TombstoneState {
   /** Record a durable tombstone for one or more IDs */
   addTombstones: (ids: string[]) => void;
 
-  /** Remove tombstones older than 30 days */
+  /** Remove tombstones older than 180 days */
   pruneExpired: () => number;
 
   /** Check whether a given ID is tombstoned */

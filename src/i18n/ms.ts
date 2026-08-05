@@ -156,6 +156,7 @@ export const ms: Translations = {
     skip: 'Langkau',
     next: 'Seterusnya',
     later: 'Nanti',
+    notNow: 'lain kali',
     gotIt: 'Faham',
     clear: 'Kosongkan',
     reset: 'Set semula',
@@ -450,6 +451,36 @@ export const ms: Translations = {
     notSyncedYet: 'Belum disegerakkan',
     syncNow: 'Segerak sekarang',
 
+    // Google backup (Drive receipt backup + Sheets sync)
+    googleBackup: {
+      sectionTitle: 'Sandaran Google',
+      connect: 'Sambung Google',
+      disconnect: 'Nyahsambung',
+      disconnectConfirmTitle: 'Nyahsambung Google?',
+      disconnectConfirmMsg: 'Sandaran ke Google Drive dan Sheets akan berhenti. Fail yang sudah ada dalam Drive anda kekal di sana.',
+      connectedAs: 'Disambung sebagai',
+      driveBackup: 'Sandaran resit ke Drive',
+      driveBackupDesc: 'Simpan auto foto resit & PDF ke folder “Potraces” dalam Google Drive anda',
+      sheetsSync: 'Penyegerakan Google Sheets',
+      sheetsSyncDesc: 'Tambah transaksi baharu ke helaian “Potraces Transactions” dalam Drive anda',
+      sheetsNote: 'Transaksi baharu sahaja — pindaan dan pemadaman tidak disegerakkan. Guna Segerak semula penuh untuk bina semula helaian.',
+      openSheet: 'Buka helaian',
+      fullResync: 'Segerak semula penuh',
+      fullResyncConfirmTitle: 'Bina semula helaian?',
+      fullResyncConfirmMsg: 'Ini mengosongkan baris yang telah disegerakkan dan menambah semula semua transaksi. Pendua dilangkau mengikut ID.',
+      backUpNow: 'Sandar sekarang',
+      lastBackup: 'Sandaran terakhir',
+      never: 'Tidak pernah',
+      pendingSuffix: 'menunggu',
+      wifiOnly: 'Wi-Fi sahaja',
+      reconnect: 'Sambung semula Google',
+      reconnectMsg: 'Akses Google telah tamat — sambung semula untuk meneruskan sandaran. Tiada apa-apa yang hilang; item tertangguh akan diteruskan.',
+      backupFailed: 'Sandaran gagal',
+      backupDone: 'Sandaran selesai',
+      sheetSyncDone: 'Helaian disegerakkan',
+      connectFirst: 'Sambung Google untuk guna ciri sandaran',
+    },
+
     // Payment methods & units
     paymentMethods: 'Kaedah Bayaran',
     manageUnits: 'Urus Unit',
@@ -514,6 +545,8 @@ export const ms: Translations = {
     viewReports: 'Lihat Laporan',
     importFromStatement: 'Import dari Penyata Bank',
     importFromCsv: 'Import dari CSV',
+    statementReminder: 'Peringatan Penyata Bulanan',
+    statementReminderDesc: 'satu peringatan pada 1hb untuk import penyata bank anda',
     backupsRestore: 'Sandaran & Pulih',
     inviteFriends: 'Jemput Kawan',
     redeemCode: 'Tebus Kod',
@@ -523,6 +556,27 @@ export const ms: Translations = {
     // About
     appLabel: 'Aplikasi',
     aboutSection: 'Perihal',
+
+    // Help & Community (feedback form + Discord)
+    helpCommunity: 'Bantuan & Komuniti',
+    reportProblem: 'Lapor bug atau idea',
+    reportProblemDesc: 'Ada yang tak kena? Bagitau je.',
+    joinDiscord: 'Sertai Discord kami',
+    joinDiscordDesc: 'Borak dengan aku & pengguna lain',
+    fbIntro: 'Bagitau apa yang tak jalan, atau idea untuk buat Potraces lagi best. Aku baca satu-satu.',
+    fbBug: 'Bug',
+    fbIdea: 'Idea',
+    fbDescLabel: 'Apa jadi?',
+    fbDescPlaceholder: 'Cerita pasal bug atau idea kau…',
+    fbAttach: 'Lampir screenshot (pilihan)',
+    fbScreenshotWarning: 'Screenshot mungkin tunjuk baki duit kau — lampir kalau kau ok je.',
+    fbRemove: 'Buang',
+    fbConsent: 'Aku simpan ni untuk baiki isu & mungkin follow up.',
+    fbSignInBenefit: 'Kau sign in dulu supaya aku boleh bagitau bila dah baiki.',
+    fbSend: 'Hantar',
+    fbSent: 'Dah dapat — terima kasih! Aku baca satu-satu.',
+    fbSendFailed: 'Tak dapat hantar — check connection kau & cuba lagi.',
+    fbRateLimited: 'Terlalu banyak lapor dalam masa singkat — tunggu sekejap ya.',
     privacyPolicy: 'Dasar Privasi',
     termsOfUse: 'Terma Penggunaan',
     restorePurchases: 'Pulihkan Pembelian',
@@ -600,6 +654,14 @@ export const ms: Translations = {
       'Sandaran terakhir anda tidak selesai. Ketik “Segerak sekarang” untuk cuba semula.',
     syncIssueSchema: 'Sandaran dijeda — kemas kini apl untuk terus menyandarkan data anda.',
     syncIssueSession: 'Log masuk semula untuk menyambung sandaran awan.',
+    syncMismatchTitle: 'Sandaran awan dijeda',
+    syncMismatchBody:
+      'Telefon ini masih menyimpan data daripada akaun lain, jadi penyegerakan dihentikan untuk melindungi kedua-dua akaun. Log masuk semula ke akaun asal, atau padam data tempatan peranti ini dan segerak semula.',
+    cloudRestoreTitle: 'Pulihkan sandaran awan anda?',
+    cloudRestoreBody:
+      'Akaun ini mempunyai sandaran dalam awan. Pulihkannya ke telefon ini sekarang? Anda juga boleh lakukannya kemudian dari skrin Akaun.',
+    cloudRestoreYes: 'Pulihkan data saya',
+    cloudRestoreLater: 'Belum sekarang',
     notificationsEnabledToast: 'Pemberitahuan diaktifkan',
     notificationsDisabledToast: 'Pemberitahuan dimatikan',
     notifPermissionTitle: 'Pemberitahuan dimatikan untuk Potraces',
@@ -1941,6 +2003,9 @@ export const ms: Translations = {
     dupBody: 'anda catat {name} ({amount}) {mins} min lalu. simpan dua-dua atau langkau?',
     dupSkip: 'langkau',
     dupKeepBoth: 'simpan dua-dua',
+    sameDayTitle: 'dah catat hari ini?',
+    sameDayMsg: 'anda catat {amount} ke {wallet} tadi ({description}) — tambah satu lagi?',
+    sameDayAdd: 'tambah juga',
     pbTitle: 'buat playbook?',
     pbSub: 'jejak cara anda guna {currency} {amount} ini',
     notNow: 'lain kali',
@@ -4055,6 +4120,8 @@ export const ms: Translations = {
     delete: 'Padam',
     updateTitle: 'Ada kemas kini',
     updateBody: 'Versi baru dah sedia — tap untuk kemas kini.',
+    statementReminderTitle: 'Semakan penyata bulanan',
+    statementReminderBody: 'Ada apa-apa yang terlepas? Import penyata bank anda untuk tangkap perbelanjaan yang belum dilog.',
     justNow: 'baru je',
     minutesAgo: '{n}m lepas',
     hoursAgo: '{n}j lepas',
@@ -4227,6 +4294,12 @@ export const ms: Translations = {
       professional: { name: 'pekerja muda', blurb: 'gaji, loan kereta, simpanan membesar' },
       family: { name: 'keluarga & rumah', blurb: 'pinjaman rumah, anak, matlamat besar' },
     },
+  },
+
+  statementBackfill: {
+    bannerTitle: 'ada sejarah?',
+    bannerSubtitle: 'import penyata bank bulan lepas — mula dengan perbelanjaan anda dah terisi',
+    cta: 'import penyata',
   },
 
   gettingStarted: {
@@ -4643,6 +4716,17 @@ export const ms: Translations = {
     noDescription: '(tiada keterangan)',
     badDate: '⚠ tarikh tak sah',
     imported: '(diimport)',
+    importedToast: '{n} diimport',
+    skippedSuffix: ' · {n} dilangkau, sudah dilog',
+    undo: 'buat asal',
+    selectAll: 'pilih semua',
+    clear: 'kosongkan',
+    reviewSummary: '{start}–{end} · {logged} sudah dilog · {fresh} baru — kami hanya tambah yang baru',
+    sectionNew: 'baru · {n}',
+    sectionReview: 'perlu semakan · {n}',
+    sectionLogged: 'sudah dilog · {n}',
+    matchContext: 'anda log {amount} ke {wallet} · beza {n} hari',
+    matchContextSameDay: 'anda log {amount} ke {wallet} · hari yang sama',
     // Peranan lajur
     roleIgnore: 'abaikan',
     roleDate: 'tarikh',
@@ -4652,6 +4736,7 @@ export const ms: Translations = {
     roleCredit: 'jumlah (kredit/pendapatan)',
     roleType: 'jenis (masuk/keluar)',
     roleCategory: 'kategori',
+    beforeReconciled: '{n} baris pada atau sebelum tarikh sepadan ({date}) dilangkau',
   },
 
   importStatement: {
@@ -4696,6 +4781,30 @@ export const ms: Translations = {
     unlockBtn: 'buka kunci',
     unlocking: 'membuka…',
     wrongPassword: 'Kata laluan tak kena — cuba lagi.',
+    importedToast: '{n} diimport',
+    skippedSuffix: ' · {n} dilangkau, sudah dilog',
+    undo: 'buat asal',
+    reviewSummary: '{start}–{end} · {logged} sudah dilog · {fresh} baru — kami hanya tambah yang baru',
+    sectionNew: 'baru · {n}',
+    sectionReview: 'perlu semakan · {n}',
+    sectionLogged: 'sudah dilog · {n}',
+    matchContext: 'anda log {amount} ke {wallet} · beza {n} hari',
+    matchContextSameDay: 'anda log {amount} ke {wallet} · hari yang sama',
+    currencyMismatchTitle: 'Salah mata wang',
+    currencyMismatchMsg:
+      'Penyata ini dalam {currency}, tetapi mata wang aplikasi anda ialah {appCurrency}. Import penyata dalam mata wang aplikasi anda.',
+    timeoutTitle: 'Penyata terlalu besar',
+    timeoutMsg:
+      'Pemprosesan tamat masa — cuba penyata dengan kurang bulan, atau bahagikan PDF dan import setiap bahagian.',
+    notAuthenticatedTitle: 'Log masuk untuk import',
+    notAuthenticatedMsg:
+      'Import penyata perlukan akaun — log masuk dari skrin Akaun, kemudian cuba lagi.',
+    beforeReconciled: '{n} baris pada atau sebelum tarikh sepadan ({date}) dilangkau',
+    reconcileOfferTitle: 'tanda sebagai sepadan?',
+    reconcileOfferMsg:
+      'import {wallet} akan datang akan langkau baris pada atau sebelum {date} — guna ini bila anda dah semak penyata itu padan.',
+    reconcileOfferConfirm: 'tanda sepadan',
+    accountGroupTitle: 'akaun ··{account}',
   },
 
   forcedUpdate: {
@@ -4953,6 +5062,30 @@ export const ms: Translations = {
     wrongAccountTitle: 'Sandaran milik akaun lain',
     wrongAccountBody:
       'Sandaran hari ini dibuat pada akaun lain (atau sebelum log masuk), jadi ia tak boleh dipulihkan di sini — ia akan menimpa data akaun ini.',
+    // too-new + sandaran-sebelum-log-masuk guards (2026-08-04, enjin berasaskan fail)
+    tooNewTitle: 'Dibuat oleh versi app lebih baharu',
+    tooNewBody:
+      'Sandaran ini disimpan oleh versi Potraces yang lebih baharu ({version}) dan tak boleh dipulihkan di sini. Kemas kini app dahulu, kemudian pulihkan.',
+    localNote: 'Sandaran ini dibuat sebelum anda log masuk. Memulihkannya akan membawa data tersebut ke dalam akaun ini.',
+    // pratonton pemulihan + buat asal (2026-08-04)
+    countsLegend: 'dalam sandaran → di telefon ini',
+    keepsCurrent: 'kekal data semasa',
+    savedAt: 'Disimpan {datetime}',
+    fromAppVersion: 'app v{version}',
+    undoTitle: 'Batalkan pemulihan lepas',
+    undoBody: 'Data sebelum pemulihan lepas ({date}) masih disimpan — anda boleh kembalikannya.',
+    undo: 'Buat asal',
+    // eksport / import — salinan luar peranti (2026-08-04)
+    exportImportTitle: 'Salinan luar peranti',
+    exportDesc:
+      'Simpan keseluruhan sandaran anda sebagai satu fail — simpan dalam Drive, e-mel pada diri sendiri, atau pindah ke telefon baharu. Import di sini untuk pulihkan.',
+    exportButton: 'Eksport sandaran',
+    importButton: 'Import sandaran',
+    exportFailedTitle: 'Tak dapat eksport',
+    exportFailedBody: 'Tiada fail sandaran dibuat. Sila cuba lagi.',
+    importInvalidTitle: 'Bukan sandaran Potraces',
+    importInvalidBody:
+      'Fail itu tak dapat dibaca sebagai sandaran Potraces. Pilih fail yang dieksport daripada Potraces.',
     stores: {
       'debt-storage': 'Hutang & split',
       'personal-storage': 'Transaksi',
@@ -4971,6 +5104,7 @@ export const ms: Translations = {
       'playbook-storage': 'Playbook',
       'notes-storage': 'Nota',
       'category-storage': 'Kategori',
+      'learning-storage': 'Pembelajaran AI',
     },
   },
 

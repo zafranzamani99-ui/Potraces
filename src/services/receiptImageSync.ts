@@ -16,6 +16,30 @@ const BUCKET = 'receipt-images';
 const RECEIPT_DIR = `${FileSystem.documentDirectory}receipts/`;
 
 /**
+ * Delete EVERY receipt-image object under `<userId>/personal/` — called when
+ * personal cloud data is wiped WITHOUT deleting the account (toggle-off-wipe,
+ * data-only clear). Row deletes alone orphan the photos in the bucket; the
+ * deletion right must cover them too. Best-effort, never throws.
+ */
+export async function removeAllPersonalReceiptImages(userId: string): Promise<void> {
+  try {
+    const prefix = `${userId}/personal`;
+    for (;;) {
+      const { data, error } = await supabase.storage
+        .from(BUCKET)
+        .list(prefix, { limit: 1000 });
+      if (error || !data || data.length === 0) return;
+      const paths = data.map((e) => `${prefix}/${e.name}`);
+      const { error: rmErr } = await supabase.storage.from(BUCKET).remove(paths);
+      if (rmErr) return;
+      if (data.length < 1000) return;
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
  * Compress + upload a local receipt image to Supabase Storage.
  * Returns the storage OBJECT PATH (`${userId}/personal/${localId}.jpg`) on
  * success, or null on any failure. Best-effort — NEVER throws (it runs inside

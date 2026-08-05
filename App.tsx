@@ -33,6 +33,7 @@ import {
 import { writeMetroHostFromBundleUrl } from './src/utils/shareExtBridge';
 import { drainQuickLogInbox, subscribeQuickLogInbox } from './src/services/quickLogInbox';
 import { refreshQuickLogConfigured } from './src/services/quickLogKey';
+import { syncStatementReminder } from './src/services/statementReminders';
 import './src/services/quickLogCategories'; // side-effect: keeps the Shortcut's live category list fresh
 import './src/services/profileSync'; // side-effect: keeps the shared avatar profile fresh
 import { parseAmountLoose } from './src/utils/parseAmountLoose';
@@ -40,6 +41,7 @@ import BiometricGate from './src/components/common/BiometricGate';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import ForcedUpdateGate from './src/components/common/ForcedUpdateGate';
 import PersonalSyncManager from './src/components/common/PersonalSyncManager';
+import CloudBackupManager from './src/components/common/CloudBackupManager';
 import { initBilling } from './src/services/billing';
 import { refreshEntitlement, claimStagedReferral, stagePendingReferral, maybeShowRewardsIntro } from './src/services/entitlements';
 import { usePremiumStore } from './src/store/premiumStore';
@@ -783,6 +785,16 @@ function App() {
         }, delay);
         return;
       }
+      if (data?.type === 'statement_reminder') {
+        // Monthly statement nudge → straight to the import screen it points at.
+        useAppStore.getState().setMode('personal');
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            (navigationRef as any).navigate('ImportFromStatement');
+          }
+        }, delay);
+        return;
+      }
       if (data?.type === 'quick_log' || data?.type === 'share_logged') {
         // Switch to personal mode (RootNavigator re-renders to PersonalNavigator)
         // and open the full transactions list, where the new entry is visible.
@@ -864,6 +876,17 @@ function App() {
     return () => sub.remove();
   }, []);
 
+  // Monthly statement reminder: arm on launch + re-arm on every foreground. The
+  // one-shot schedule self-destructs when it fires, so without this a default-on
+  // user who never opens Settings would never get scheduled (the other call sites
+  // are the settings toggle and each successful statement import).
+  React.useEffect(() => {
+    const sync = () => void syncStatementReminder(useSettingsStore.getState().statementReminderEnabled);
+    sync();
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') sync(); });
+    return () => sub.remove();
+  }, []);
+
   // Forced-update / kill-switch gate — fail-open (see services/appConfig.ts).
   React.useEffect(() => {
     checkForcedUpdate().then((u) => {
@@ -938,6 +961,7 @@ function App() {
                       <StatusBar style={isDark ? 'light' : 'dark'} />
                       <BiometricGate>
                         <PersonalSyncManager />
+                        <CloudBackupManager />
                         <TapToPayProvider>
                           <>
                             <RootNavigator />

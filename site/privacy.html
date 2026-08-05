@@ -94,7 +94,7 @@
       <ul>
         <li><strong>Transactions you enter</strong>: amount, category, note, date, wallet, receipt image, and edit history.</li>
         <li><strong>Account info</strong> (business mode only): phone number, encrypted session tokens, and an Expo push notification token used only to alert you about new online orders.</li>
-        <li><strong>Device info</strong>: OS version, app version, and crash/error logs (no personal content is included).</li>
+        <li><strong>Device info</strong>: OS version, app version, crash/error logs, and backup-failure diagnostics (the failure type only — no personal or financial content is included).</li>
         <li><strong>Invite links</strong>: the app reads the clipboard once at launch, solely to detect a Potraces invite token from a link you tapped — other clipboard content is ignored and never leaves your device. On Android, an install referrer may be used for this in the future.</li>
       </ul>
 
@@ -116,10 +116,11 @@
 
       <h2 id="en-4"><span class="cl" aria-hidden="true">Cl. 4</span>4. How long we keep it</h2>
       <p>As long as your account exists. If you delete your account, we purge all associated rows from the database within 7 days. Cached files on disk are removed immediately when you uninstall or use the in-app deletion flow.</p>
+      <p><strong>Cloud backup after a plan ends</strong>: if your paid plan ends or you turn cloud backup off, syncing stops but your last synced data is kept for <strong>90 days</strong> — so you can restore it (for example, onto a new phone) or resubscribe without losing anything. After 90 days it may be deleted. Choosing “turn off &amp; wipe”, or deleting your account, removes it straight away (within 7 days).</p>
 
       <h2 id="en-5"><span class="cl" aria-hidden="true">Cl. 5</span>5. Your rights</h2>
       <ul>
-        <li><strong>Export</strong>: Settings → Export Data. You can download everything as CSV or PDF.</li>
+        <li><strong>Export</strong>: Settings → Export Data (CSV or PDF), or a full machine-readable backup file via Settings → Backup &amp; Restore → Export backup.</li>
         <li><strong>Delete</strong>: in the app, go to Account → Delete account. This permanently deletes your account and all your data (personal and seller) and signs you out. You can also request deletion — including if you've already uninstalled the app — on our <a href="delete-account.html">account &amp; data deletion page</a>.</li>
         <li><strong>Access</strong>: email us for a copy of what we have.</li>
       </ul>
@@ -161,7 +162,7 @@
       <ul>
         <li><strong>Transaksi yang anda masukkan</strong>: jumlah, kategori, nota, tarikh, dompet, imej resit, dan sejarah suntingan.</li>
         <li><strong>Maklumat akaun</strong> (mod perniagaan sahaja): nombor telefon, token sesi yang disulitkan, dan token notifikasi Expo yang digunakan hanya untuk memberitahu anda tentang pesanan dalam talian yang baharu.</li>
-        <li><strong>Maklumat peranti</strong>: versi OS, versi aplikasi, dan log ralat (tiada kandungan peribadi disertakan).</li>
+        <li><strong>Maklumat peranti</strong>: versi OS, versi aplikasi, log ralat, dan diagnostik kegagalan sandaran (jenis kegagalan sahaja — tiada kandungan peribadi atau kewangan disertakan).</li>
         <li><strong>Pautan jemputan</strong>: aplikasi membaca papan klip sekali semasa dilancarkan, semata-mata untuk mengesan token jemputan Potraces daripada pautan yang anda ketik — kandungan papan klip lain diabaikan dan tidak keluar dari peranti anda. Pada Android, install referrer mungkin digunakan untuk tujuan ini pada masa hadapan.</li>
       </ul>
 
@@ -183,10 +184,11 @@
 
       <h2 id="ms-4"><span class="cl" aria-hidden="true">Fs. 4</span>4. Berapa lama kami simpan</h2>
       <p>Selagi akaun anda wujud. Jika anda padam akaun, kami akan memadam semua baris berkaitan dari pangkalan data dalam 7 hari. Fail cache pada peranti dipadam serta-merta apabila anda nyahpasang atau gunakan aliran padam dalam aplikasi.</p>
+      <p><strong>Sandaran awan selepas pelan tamat</strong>: jika pelan berbayar anda tamat atau anda matikan sandaran awan, penyegerakan berhenti tetapi data segerakan terakhir anda disimpan selama <strong>90 hari</strong> — supaya anda boleh memulihkannya (cth. ke telefon baharu) atau melanggan semula tanpa kehilangan apa-apa. Selepas 90 hari ia mungkin dipadam. Memilih “matikan &amp; padam”, atau memadam akaun anda, akan membuangnya serta-merta (dalam 7 hari).</p>
 
       <h2 id="ms-5"><span class="cl" aria-hidden="true">Fs. 5</span>5. Hak anda</h2>
       <ul>
-        <li><strong>Eksport</strong>: Tetapan → Eksport Data. Anda boleh muat turun semua sebagai CSV atau PDF.</li>
+        <li><strong>Eksport</strong>: Tetapan → Eksport Data (CSV atau PDF), atau fail sandaran penuh mesra-mesin melalui Tetapan → Sandaran &amp; Pemulihan → Eksport sandaran.</li>
         <li><strong>Padam</strong>: dalam app, pergi ke Akaun → Padam akaun. Ini memadam akaun dan semua data anda (peribadi dan penjual) secara kekal dan mengeluarkan anda dari akaun. Anda juga boleh memohon pemadaman — termasuk jika anda telah pun menyahpasang aplikasi — di <a href="delete-account.html">halaman pemadaman akaun &amp; data</a> kami.</li>
         <li><strong>Akses</strong>: emel kami untuk salinan data yang kami simpan.</li>
       </ul>

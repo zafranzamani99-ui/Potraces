@@ -5,6 +5,8 @@ export interface CsvParseResult {
   headers: string[];
   rows: string[][];
   filename: string;
+  /** Picker's cache-directory copy — pass to cleanupCsvFile() once read. */
+  uri: string;
 }
 
 /** RFC-4180-ish CSV parser. Handles quoted fields, doubled quotes, embedded
@@ -66,7 +68,17 @@ export async function pickCsv(): Promise<CsvParseResult | null> {
     encoding: FileSystem.EncodingType.UTF8,
   });
   const { headers, rows } = parseCsv(text);
-  return { headers, rows, filename: asset.name ?? 'import.csv' };
+  return { headers, rows, filename: asset.name ?? 'import.csv', uri: asset.uri };
+}
+
+/** Best-effort delete of the picker's cache-directory copy. Safe on an already-
+ *  deleted file; failures are swallowed (a leftover cache file is harmless). */
+export async function cleanupCsvFile(uri: string): Promise<void> {
+  try {
+    await FileSystem.deleteAsync(uri, { idempotent: true });
+  } catch {
+    // best-effort
+  }
 }
 
 // ─── Date parsing (multiple formats MY banks use) ───────────────────────────

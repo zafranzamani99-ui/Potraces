@@ -793,8 +793,14 @@ export interface Transaction {
   frequencyContext?: 'isolated' | 'clustered';
   emotionalFlag?: boolean;
   rawInput?: string;
-  inputMethod?: 'manual' | 'text' | 'photo' | 'voice' | 'share';
+  inputMethod?: 'manual' | 'text' | 'photo' | 'voice' | 'share' | 'statement-import' | 'csv-import';
   confidence?: 'high' | 'low';
+  // Import provenance: bank reference number when the parser has one (statement `raw`
+  // lines carry DN-/ref-prefixed IDs) — v1 stores it when available, no UI.
+  externalRef?: string;
+  // Set on every row created by a statement/CSV import; enables batch undo and
+  // "what did that import add" queries.
+  importBatchId?: string;
   createdAt: Date;
   updatedAt: Date;
   linkedPaymentId?: string;
@@ -1295,6 +1301,8 @@ export interface ReceiptState {
   // Dirty-tracking (incremental-sync Stage 1, dormant): ids created/edited since last push.
   _dirtyReceiptIds?: string[];
   clearReceiptDirty?: () => void;
+  /** Sync-side: record the cloud bucket path without dirty-marking (see store impl). */
+  setRemoteImagePath?: (id: string, path: string) => void;
   addReceipt: (receipt: Omit<SavedReceipt, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateReceipt: (id: string, updates: Partial<SavedReceipt>) => void;
   deleteReceipt: (id: string) => void;
@@ -1579,6 +1587,9 @@ export interface Wallet {
   creditNetwork?: string;
   creditLimit?: number;
   usedCredit?: number;
+  /** Reconcile horizon (YYYY-MM-DD, local calendar): this wallet's rows on/before
+   *  it are frozen out of import matching — a reconciled period is locked. */
+  reconciledUntil?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1619,6 +1630,8 @@ export interface WalletState {
   repayCredit: (id: string, amount: number) => void;
   /** Overwrite a wallet's balance. Used by reconciliation. */
   setWalletBalance: (id: string, balance: number) => void;
+  /** Set/clear the reconcile horizon (YYYY-MM-DD; undefined clears). */
+  setReconciledUntil: (walletId: string, date?: string) => void;
 }
 
 export interface PremiumState {

@@ -22,6 +22,16 @@ export const useReceiptStore = create<ReceiptState>()(
 
       clearReceiptDirty: () => set({ _dirtyReceiptIds: [] }),
 
+      // Sync-side channel: record the cloud bucket path after upload WITHOUT
+      // bumping updatedAt or marking dirty — a cloud-applied value is not a user
+      // edit (dirty push would otherwise re-push every freshly-uploaded receipt
+      // every cycle). The id is force-included in that cycle's push targets by
+      // personalSync, so the path still propagates immediately.
+      setRemoteImagePath: (id, path) =>
+        set((state) => ({
+          receipts: state.receipts.map((r) => (r.id === id ? { ...r, remoteImagePath: path } : r)),
+        })),
+
       addReceipt: (receipt) => {
         const id = newId();
         set((state) => ({

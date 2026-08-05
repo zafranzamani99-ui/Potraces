@@ -14,13 +14,13 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useNeu } from '../../components/common/neu';
-import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
+import { signInWithGoogle, statusCodes, hasGoogleDriveAccess, connectGoogleDrive, getConnectedGoogleEmail, disconnectGoogle } from '../../services/googleAuth';
 import { signInWithApple } from '../../services/appleAuth';
 import { signOut, getAuthSession, signInWithPhone, signUpWithPhone, deleteAccountRemote, clearPersonalDataRemote, supabasePersonal } from '../../services/supabase';
 import { syncPersonal, disablePersonalSync } from '../../services/personalSync';
@@ -28,8 +28,12 @@ import { revokeQuickLogKey } from '../../services/quickLogKey';
 import { confirmReuse } from '../../services/reuseAccount';
 import { planDelete } from '../../services/deleteAccountFlow';
 import { resetBackoff } from '../../services/syncBackoff';
+import { runCloudBackupDrain, enqueueAllReceiptsForDriveBackup } from '../../services/cloudBackupRunner';
+import { pendingBackupJobCount, clearBackupQueue, retryFailedBackupJobs } from '../../services/cloudBackupQueue';
+import { fullResyncTransactions } from '../../services/sheetsSync';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useBackupStore } from '../../store/backupStore';
 import { usePremiumStore } from '../../store/premiumStore';
 import { CLOUD_BACKUP_ENABLED } from '../../constants/flags';
 import PaywallModal from '../../components/common/PaywallModal';
@@ -86,12 +90,27 @@ export default function AccountScreen() {
   const personalSyncEnabled = useSettingsStore((s) => s.personalSyncEnabled);
   const lastPersonalSyncAt = useSettingsStore((s) => s.lastPersonalSyncAt);
   const lastPersonalSyncError = useSettingsStore((s) => s.lastPersonalSyncError);
+  // Google Backup (Drive receipts + Sheets) — separate from the Supabase
+  // personal sync above: these ride the NATIVE Google session, so they work
+  // for Apple/phone accounts too.
+  const googleDriveEmail = useSettingsStore((s) => s.googleDriveEmail);
+  const driveBackupEnabled = useSettingsStore((s) => s.driveBackupEnabled);
+  const googleSheetsSyncEnabled = useSettingsStore((s) => s.googleSheetsSyncEnabled);
+  const backupWifiOnly = useSettingsStore((s) => s.backupWifiOnly);
+  const lastDriveBackupAt = useSettingsStore((s) => s.lastDriveBackupAt);
+  const lastDriveBackupError = useSettingsStore((s) => s.lastDriveBackupError);
+  const lastSheetsSyncAt = useSettingsStore((s) => s.lastSheetsSyncAt);
+  const lastSheetsSyncError = useSettingsStore((s) => s.lastSheetsSyncError);
+  const spreadsheetId = useBackupStore((s) => s.spreadsheetId);
 
   const [email, setEmail] = useState<string | null>(null);
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [backupPaywallVisible, setBackupPaywallVisible] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Google Backup in-flight action (drives button spinners + disables rows).
+  const [googleBusy, setGoogleBusy] = useState<'connect' | 'disconnect' | 'drive' | 'sheets' | 'resync' | 'backup' | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
   // Phone form
   const [isLogin, setIsLogin] = useState(true);
@@ -292,6 +311,189 @@ export default function AccountScreen() {
       },
     ]);
   }, [enableBackup, showToast, tr]);
+
+  // ── Google Backup (Drive + Sheets) ──────────────────────────────────────
+  const needsReconnect = lastDriveBackupError === 'NEEDS_REAUTH' || lastSheetsSyncError === 'NEEDS_REAUTH';
+
+  const refreshPending = useCallback(async () => {
+    try {
+      setPendingCount(await pendingBackupJobCount());
+    } catch {}
+  }, []);
+
+  // Queue depth: load on focus, then poll every 5s while THIS screen is
+  // focused only — the interval dies on blur/unmount.
+  useFocusEffect(
+    useCallback(() => {
+      refreshPending();
+      const id = setInterval(refreshPending, 5000);
+      return () => clearInterval(id);
+    }, [refreshPending]),
+  );
+
+  // Drive-only native connect — the app account (Google/Apple/phone) is untouched.
+  const handleGoogleConnect = useCallback(async () => {
+    if (googleBusy) return;
+    lightTap();
+    setGoogleBusy('connect');
+    try {
+      if (!(await hasGoogleDriveAccess())) await connectGoogleDrive();
+      useSettingsStore.getState().setGoogleDriveEmail(await getConnectedGoogleEmail());
+    } catch (e: any) {
+      if (e?.code === statusCodes.SIGN_IN_CANCELLED) return; // user bailed — silent
+      showToast(e?.message || tr.auth.errSomethingWrong, 'error');
+    } finally {
+      setGoogleBusy(null);
+    }
+  }, [googleBusy, showToast, tr]);
+
+  const handleGoogleDisconnect = useCallback(() => {
+    if (googleBusy) return;
+    lightTap();
+    Alert.alert(tr.settings.googleBackup.disconnectConfirmTitle, tr.settings.googleBackup.disconnectConfirmMsg, [
+      { text: tr.common.cancel, style: 'cancel' },
+      {
+        text: tr.settings.googleBackup.disconnect,
+        style: 'destructive',
+        onPress: async () => {
+          setGoogleBusy('disconnect');
+          try {
+            await disconnectGoogle();
+            useSettingsStore.getState().setGoogleDriveEmail(null);
+            // Nothing may re-upload against an account that is no longer linked.
+            await clearBackupQueue();
+            useBackupStore.getState().resetGoogleBackup();
+            const settings = useSettingsStore.getState();
+            settings.setDriveBackupEnabled(false);
+            settings.setGoogleSheetsSyncEnabled(false);
+            refreshPending();
+          } finally {
+            setGoogleBusy(null);
+          }
+        },
+      },
+    ]);
+  }, [googleBusy, tr, refreshPending]);
+
+  // Same gate order as the personal cloud-backup toggle (beta lock → paywall),
+  // plus a Google connection before anything can run.
+  const handleToggleDriveBackup = useCallback((value: boolean) => {
+    lightTap();
+    if (!value) { useSettingsStore.getState().setDriveBackupEnabled(false); return; }
+    if (!CLOUD_BACKUP_ENABLED) { showToast(tr.settings.cloudBackupBeta, 'info'); return; }
+    if (!usePremiumStore.getState().hasCloudBackup()) { setBackupPaywallVisible(true); return; }
+    if (!useSettingsStore.getState().googleDriveEmail) { showToast(tr.settings.googleBackup.connectFirst, 'info'); return; }
+    useSettingsStore.getState().setDriveBackupEnabled(true);
+    (async () => {
+      setGoogleBusy('drive');
+      try {
+        // Catch up the existing receipt backlog, then drain right away. The
+        // drain isolates + records per-job errors itself — nothing to catch.
+        await enqueueAllReceiptsForDriveBackup();
+        await runCloudBackupDrain();
+      } catch {
+        // Unexpected (the drain does not throw per-job errors) — leave the
+        // queue as-is; the next drain retries.
+      } finally {
+        setGoogleBusy(null);
+        refreshPending();
+      }
+    })();
+  }, [showToast, tr, refreshPending]);
+
+  const handleToggleSheetsSync = useCallback((value: boolean) => {
+    lightTap();
+    if (!value) { useSettingsStore.getState().setGoogleSheetsSyncEnabled(false); return; }
+    if (!CLOUD_BACKUP_ENABLED) { showToast(tr.settings.cloudBackupBeta, 'info'); return; }
+    if (!usePremiumStore.getState().hasCloudBackup()) { setBackupPaywallVisible(true); return; }
+    if (!useSettingsStore.getState().googleDriveEmail) { showToast(tr.settings.googleBackup.connectFirst, 'info'); return; }
+    useSettingsStore.getState().setGoogleSheetsSyncEnabled(true);
+    (async () => {
+      setGoogleBusy('sheets');
+      try {
+        await runCloudBackupDrain();
+      } catch {
+        // Same as the Drive toggle — the queue owns retry bookkeeping.
+      } finally {
+        setGoogleBusy(null);
+        refreshPending();
+      }
+    })();
+  }, [showToast, tr, refreshPending]);
+
+  const handleOpenSheet = useCallback(() => {
+    if (!spreadsheetId) return;
+    lightTap();
+    Linking.openURL(`https://docs.google.com/spreadsheets/d/${spreadsheetId}`);
+  }, [spreadsheetId]);
+
+  const handleFullResync = useCallback(() => {
+    if (googleBusy) return;
+    lightTap();
+    if (!useSettingsStore.getState().googleDriveEmail) { showToast(tr.settings.googleBackup.connectFirst, 'info'); return; }
+    Alert.alert(tr.settings.googleBackup.fullResyncConfirmTitle, tr.settings.googleBackup.fullResyncConfirmMsg, [
+      { text: tr.common.cancel, style: 'cancel' },
+      {
+        text: tr.common.confirm,
+        onPress: async () => {
+          setGoogleBusy('resync');
+          try {
+            await fullResyncTransactions();
+            showToast(tr.settings.googleBackup.sheetSyncDone, 'success');
+          } catch (e: any) {
+            showToast(e?.message || tr.auth.errSomethingWrong, 'error');
+          } finally {
+            setGoogleBusy(null);
+          }
+        },
+      },
+    ]);
+  }, [googleBusy, showToast, tr]);
+
+  const handleBackUpNow = useCallback(async () => {
+    if (googleBusy) return;
+    lightTap();
+    if (!useSettingsStore.getState().googleDriveEmail) { showToast(tr.settings.googleBackup.connectFirst, 'info'); return; }
+    setGoogleBusy('backup');
+    try {
+      await runCloudBackupDrain();
+      showToast(tr.settings.googleBackup.backupDone, 'success');
+    } catch (e: any) {
+      showToast(e?.message || tr.auth.errSomethingWrong, 'error');
+    } finally {
+      setGoogleBusy(null);
+      refreshPending();
+    }
+  }, [googleBusy, showToast, tr, refreshPending]);
+
+  const handleToggleWifiOnly = useCallback((value: boolean) => {
+    lightTap();
+    useSettingsStore.getState().setBackupWifiOnly(value);
+  }, []);
+
+  // Expired Google access: reconnect natively, then re-arm the failed jobs and
+  // drain. The drain re-stamps NEEDS_REAUTH if the session is somehow still dead.
+  const handleReconnect = useCallback(async () => {
+    if (googleBusy) return;
+    lightTap();
+    setGoogleBusy('connect');
+    try {
+      if (!(await hasGoogleDriveAccess())) await connectGoogleDrive();
+      const settings = useSettingsStore.getState();
+      settings.setGoogleDriveEmail(await getConnectedGoogleEmail());
+      // Re-auth just succeeded, so the stamps are stale — clear them even when
+      // the queue is empty (a drain only clears them when it completes jobs).
+      if (settings.lastDriveBackupError === 'NEEDS_REAUTH') settings.setLastDriveBackupError(null);
+      if (settings.lastSheetsSyncError === 'NEEDS_REAUTH') settings.setLastSheetsSyncError(null);
+      await retryFailedBackupJobs();
+      await runCloudBackupDrain();
+      refreshPending();
+    } catch (e: any) {
+      if (e?.code !== statusCodes.SIGN_IN_CANCELLED) showToast(e?.message || tr.auth.errSomethingWrong, 'error');
+    } finally {
+      setGoogleBusy(null);
+    }
+  }, [googleBusy, showToast, tr, refreshPending]);
 
   const handleSignOut = useCallback(() => {
     lightTap();
@@ -673,6 +875,197 @@ export default function AccountScreen() {
                     </View>
                   </>
                 )}
+              </View>
+
+              {/* Google Backup — Drive receipts + Sheets sync via the native
+                  Google session (any sign-in provider). */}
+              <Text style={styles.sectionTitle}>{tr.settings.googleBackup.sectionTitle}</Text>
+              <View style={[styles.card, neu.raisedSoft]}>
+                {needsReconnect && (
+                  <Pressable
+                    style={[styles.syncIssueRow, { marginTop: SPACING.sm }]}
+                    onPress={handleReconnect}
+                    disabled={googleBusy !== null}
+                    accessibilityRole="button"
+                    accessibilityLabel={tr.settings.googleBackup.reconnect}
+                  >
+                    <Feather name="alert-triangle" size={16} color={C.bronze} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.reconnectTitle}>{tr.settings.googleBackup.reconnect}</Text>
+                      <Text style={styles.syncIssueText}>{tr.settings.googleBackup.reconnectMsg}</Text>
+                    </View>
+                    {googleBusy === 'connect' && <ActivityIndicator color={C.bronze} size="small" />}
+                  </Pressable>
+                )}
+
+                {/* Connection */}
+                {googleDriveEmail == null ? (
+                  <Pressable
+                    style={[styles.socialBtn, { marginTop: SPACING.sm }, googleBusy !== null && { opacity: 0.6 }]}
+                    onPress={handleGoogleConnect}
+                    disabled={googleBusy !== null}
+                    accessibilityRole="button"
+                    accessibilityLabel={tr.settings.googleBackup.connect}
+                  >
+                    {({ pressed }) => (
+                      <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
+                        {googleBusy === 'connect' ? (
+                          <ActivityIndicator color={C.textPrimary} size="small" />
+                        ) : (
+                          <>
+                            <GoogleGLogo size={18} />
+                            <Text style={styles.socialBtnText}>{tr.settings.googleBackup.connect}</Text>
+                          </>
+                        )}
+                      </View>
+                    )}
+                  </Pressable>
+                ) : (
+                  <View style={styles.settingRow}>
+                    <View style={styles.settingLabelWrap}>
+                      <View style={styles.settingLabelRow}>
+                        <GoogleGLogo size={18} />
+                        <Text style={styles.settingLabel} numberOfLines={1}>
+                          {tr.settings.googleBackup.connectedAs} {googleDriveEmail}
+                        </Text>
+                      </View>
+                    </View>
+                    <Pressable
+                      style={[styles.disconnectBtn, googleBusy !== null && { opacity: 0.6 }]}
+                      onPress={handleGoogleDisconnect}
+                      disabled={googleBusy !== null}
+                      accessibilityRole="button"
+                      accessibilityLabel={tr.settings.googleBackup.disconnect}
+                    >
+                      {googleBusy === 'disconnect'
+                        ? <ActivityIndicator color={C.bronze} size="small" />
+                        : <Text style={styles.disconnectText}>{tr.settings.googleBackup.disconnect}</Text>}
+                    </Pressable>
+                  </View>
+                )}
+
+                <View style={styles.divider} />
+
+                {/* Drive receipt backup */}
+                <View style={styles.settingRow}>
+                  <View style={styles.settingLabelWrap}>
+                    <View style={styles.settingLabelRow}>
+                      <Feather name="upload-cloud" size={18} color={C.textSecondary} />
+                      <Text style={styles.settingLabel}>{tr.settings.googleBackup.driveBackup}</Text>
+                    </View>
+                    <Text style={styles.settingDesc}>{tr.settings.googleBackup.driveBackupDesc}</Text>
+                    <Text style={styles.settingDesc}>
+                      {tr.settings.googleBackup.lastBackup}: {lastDriveBackupAt ? new Date(lastDriveBackupAt).toLocaleString() : tr.settings.googleBackup.never}
+                      {pendingCount > 0 ? ` · ${pendingCount} ${tr.settings.googleBackup.pendingSuffix}` : ''}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={driveBackupEnabled}
+                    onValueChange={handleToggleDriveBackup}
+                    disabled={googleBusy !== null}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                </View>
+
+                <View style={styles.divider} />
+
+                {/* Google Sheets sync */}
+                <View style={styles.settingRow}>
+                  <View style={styles.settingLabelWrap}>
+                    <View style={styles.settingLabelRow}>
+                      <Feather name="grid" size={18} color={C.textSecondary} />
+                      <Text style={styles.settingLabel}>{tr.settings.googleBackup.sheetsSync}</Text>
+                    </View>
+                    <Text style={styles.settingDesc}>{tr.settings.googleBackup.sheetsSyncDesc}</Text>
+                    <Text style={styles.settingDesc}>{tr.settings.googleBackup.sheetsNote}</Text>
+                    <Text style={styles.settingDesc}>
+                      {tr.settings.googleBackup.lastBackup}: {lastSheetsSyncAt ? new Date(lastSheetsSyncAt).toLocaleString() : tr.settings.googleBackup.never}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={googleSheetsSyncEnabled}
+                    onValueChange={handleToggleSheetsSync}
+                    disabled={googleBusy !== null}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                </View>
+
+                {/* Open spreadsheet — only once one has been provisioned. */}
+                {spreadsheetId && (
+                  <>
+                    <View style={styles.divider} />
+                    <Pressable
+                      style={styles.settingRow}
+                      onPress={handleOpenSheet}
+                      accessibilityRole="button"
+                      accessibilityLabel={tr.settings.googleBackup.openSheet}
+                    >
+                      <View style={styles.settingLabelWrap}>
+                        <View style={styles.settingLabelRow}>
+                          <Feather name="external-link" size={18} color={C.textSecondary} />
+                          <Text style={styles.settingLabel}>{tr.settings.googleBackup.openSheet}</Text>
+                        </View>
+                      </View>
+                      <Feather name="chevron-right" size={18} color={C.textMuted} />
+                    </Pressable>
+                  </>
+                )}
+
+                <View style={styles.divider} />
+
+                {/* Full re-sync */}
+                <Pressable
+                  style={[styles.settingRow, googleBusy !== null && { opacity: 0.6 }]}
+                  onPress={handleFullResync}
+                  disabled={googleBusy !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel={tr.settings.googleBackup.fullResync}
+                >
+                  <View style={styles.settingLabelWrap}>
+                    <View style={styles.settingLabelRow}>
+                      <Feather name="refresh-cw" size={18} color={C.textSecondary} />
+                      <Text style={styles.settingLabel}>{tr.settings.googleBackup.fullResync}</Text>
+                    </View>
+                  </View>
+                  {googleBusy === 'resync'
+                    ? <ActivityIndicator color={C.accent} size="small" />
+                    : <Feather name="chevron-right" size={18} color={C.textMuted} />}
+                </Pressable>
+
+                <View style={styles.divider} />
+
+                {/* Back up now */}
+                <Pressable
+                  style={[styles.syncNowBtn, styles.backUpNowBtn, googleBusy !== null && { opacity: 0.6 }]}
+                  onPress={handleBackUpNow}
+                  disabled={googleBusy !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel={tr.settings.googleBackup.backUpNow}
+                >
+                  {googleBusy === 'backup'
+                    ? <ActivityIndicator color={C.accent} size="small" />
+                    : <Text style={styles.syncNowText}>{tr.settings.googleBackup.backUpNow}</Text>}
+                </Pressable>
+
+                <View style={styles.divider} />
+
+                {/* Wi-Fi only */}
+                <View style={styles.settingRow}>
+                  <View style={styles.settingLabelWrap}>
+                    <View style={styles.settingLabelRow}>
+                      <Feather name="wifi" size={18} color={C.textSecondary} />
+                      <Text style={styles.settingLabel}>{tr.settings.googleBackup.wifiOnly}</Text>
+                    </View>
+                  </View>
+                  <Switch
+                    value={backupWifiOnly}
+                    onValueChange={handleToggleWifiOnly}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                </View>
               </View>
 
               {/* Sign out */}
@@ -1095,6 +1488,40 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     color: C.bronze,
     lineHeight: TYPOGRAPHY.size.sm * 1.4,
+  },
+  // ── Google Backup ─────────────────────────────────────────
+  sectionTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: -0.2,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  reconnectTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+    marginBottom: 2,
+  },
+  disconnectBtn: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.5),
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    minWidth: 72,
+    alignItems: 'center',
+  },
+  disconnectText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
+  },
+  backUpNowBtn: {
+    alignSelf: 'stretch',
+    marginVertical: SPACING.sm,
   },
   signOutBtn: {
     marginTop: SPACING.sm,

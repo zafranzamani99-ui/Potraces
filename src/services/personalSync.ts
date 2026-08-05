@@ -1,6 +1,6 @@
 // Personal sync is a wholly-personal module — bind `supabase` to the personal
 // client so every personal_* call routes to the personal account.
-import { supabasePersonal as supabase } from './supabase';
+import { supabasePersonal as supabase, PERSONAL_SYNC_TABLES } from './supabase';
 import { usePersonalStore } from '../store/personalStore';
 import { useWalletStore } from '../store/walletStore';
 import { useDebtStore } from '../store/debtStore';
@@ -8,7 +8,7 @@ import { useReceiptStore } from '../store/receiptStore';
 import { useSavingsStore } from '../store/savingsStore';
 import { useNotesStore } from '../store/notesStore';
 import { useSettingsStore } from '../store/settingsStore';
-import { CLOUD_BACKUP_ENABLED } from '../constants/flags';
+import { CLOUD_BACKUP_ENABLED, PERSONAL_SYNC_INCREMENTAL } from '../constants/flags';
 import { useTombstoneStore } from '../store/tombstoneStore';
 import { useBudgetProfileStore } from '../store/budgetProfileStore';
 import { useCategoryStore } from '../store/categoryStore';
@@ -16,7 +16,9 @@ import { useLearningStore } from '../store/learningStore';
 import { autoReconcileWallets } from '../utils/walletReconcile';
 import * as FileSystem from 'expo-file-system/legacy';
 import { resolveReceiptImageUri } from '../utils/receiptImage';
-import { uploadReceiptImage, ensureLocalReceiptImage } from './receiptImageSync';
+import { uploadReceiptImage, ensureLocalReceiptImage, removeAllPersonalReceiptImages } from './receiptImageSync';
+import { reportBackupIssue } from './backupTelemetry';
+import { planPushRows, planDirtyClear, type PushedSnapshot } from './personalSyncDirty';
 import {
   txToRemote, walletToRemote, transferToRemote, subToRemote, budgetToRemote,
   goalToRemote, debtToRemote, splitToRemote, contactToRemote, savingsToRemote, receiptToRemote,
@@ -46,7 +48,8 @@ let _accountMismatch = false;
 export function isPersonalAccountMismatch(): boolean { return _accountMismatch; }
 export function clearPersonalAccountMismatch(): void { _accountMismatch = false; }
 
-function hasLocalPersonalData(): boolean {
+/** True when ANY personal-mode store holds user data locally. */
+export function hasLocalPersonalData(): boolean {
   const p = usePersonalStore.getState();
   const w = useWalletStore.getState();
   const d = useDebtStore.getState();
@@ -74,6 +77,27 @@ async function getSession() {
   }
   _sessionExpired = false;
   return session;
+}
+
+/**
+ * Cheap probe: does this account hold ANY personal cloud rows? Used by the
+ * restore-on-new-device prompt to avoid offering an empty "restore". One
+ * head-only count query against the canonical table — no row data transferred.
+ */
+export async function cloudHasPersonalData(): Promise<boolean> {
+  try {
+    const session = await getSession();
+    if (!session) return false;
+    const { count, error } = await supabase
+      .from('personal_transactions')
+      .select('local_id', { count: 'exact', head: true })
+      .eq('user_id', session.user.id)
+      .limit(1);
+    if (error) return false;
+    return (count ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Mappers ─────────────────────────────────────────────────────────────────
@@ -539,12 +563,23 @@ async function pushLearning(userId: string): Promise<boolean> {
 }
 
 async function pushAll(userId: string): Promise<boolean> {
+  const settings = useSettingsStore.getState();
   const p = usePersonalStore.getState();
   const w = useWalletStore.getState();
   const d = useDebtStore.getState();
   const r = useReceiptStore.getState();
   const s = useSavingsStore.getState();
   const n = useNotesStore.getState();
+
+  // Stage 2 (dirty-only push, docs/INCREMENTAL_SYNC_PLAN.md): with the flag on,
+  // upsert only dirty-tracked rows instead of re-stamping the user's entire
+  // history every cycle. FULL push stays for the first sync and after an
+  // account switch — only a full re-stamp guarantees convergence at those
+  // moments (and it's the instant-rollback path when the flag is off).
+  const incremental =
+    PERSONAL_SYNC_INCREMENTAL &&
+    !!settings.lastPersonalSyncAt &&
+    settings.lastSyncedUserId === userId;
 
   // 1) Explicit tombstone deletes first — authoritative against zombies
   const tombstones: Array<[string, string[] | undefined]> = [
@@ -571,35 +606,62 @@ async function pushAll(userId: string): Promise<boolean> {
   );
 
   // 1.5) B1: upload personal receipt images to Supabase Storage BEFORE upserting
-  //      receipt rows. For each local receipt that has a resolvable ON-DEVICE image
-  //      but no remoteImagePath yet, upload it and record the bucket path on the
-  //      local store. Best-effort — a failed upload just leaves remoteImagePath
-  //      unset for the next cycle; skip receipts whose image is already remote (http).
+  //      receipt rows. setRemoteImagePath deliberately does NOT dirty-mark (a
+  //      cloud-applied value is not a user edit); the uploaded ids are instead
+  //      force-included in this cycle's push targets below, so the bucket path
+  //      still propagates immediately without infinite dirty churn.
+  const uploadedImageIds: string[] = [];
   for (const rec of r.receipts ?? []) {
     if (rec.remoteImagePath) continue;
     const localUri = resolveReceiptImageUri(rec.imageUri);
     if (!localUri || /^https?:\/\//i.test(localUri)) continue;
     const path = await uploadReceiptImage(localUri, userId, rec.id);
-    if (path) useReceiptStore.getState().updateReceipt(rec.id, { remoteImagePath: path });
+    if (path) {
+      useReceiptStore.getState().setRemoteImagePath?.(rec.id, path);
+      uploadedImageIds.push(rec.id);
+    }
   }
   // Re-read receipts so the upsert below carries any freshly-set remoteImagePath.
   const receiptsForPush = useReceiptStore.getState().receipts ?? [];
 
-  // 2) Upsert current state (chunked; track success). A swallowed push failure
-  //    must NOT advance the sync clock or trigger reconcile/tombstone-clear.
+  // 2) Upsert this cycle's rows — incremental mode pushes dirty (∖ deleted, so
+  //    a stale/deleted dirty id can never push a ghost row); full mode pushes
+  //    everything live. The pushed rows are snapshotted NOW so the post-success
+  //    clear can keep rows edited mid-push dirty (race-safe). A swallowed push
+  //    failure must NOT advance the sync clock or trigger reconcile/clears.
+  interface TableSpec {
+    key: string;
+    table: string;
+    rows: { id: string; updatedAt?: unknown }[];
+    dirtyIds?: readonly string[];
+    deletedIds?: readonly string[];
+    toRemote: (u: string, row: any) => any;
+  }
+  const specs: TableSpec[] = [
+    { key: 'transactions', table: 'personal_transactions', rows: p.transactions, dirtyIds: p._dirtyTransactionIds, deletedIds: p._deletedTransactionIds, toRemote: txToRemote },
+    { key: 'wallets', table: 'personal_wallets', rows: w.wallets, dirtyIds: w._dirtyWalletIds, deletedIds: w._deletedWalletIds, toRemote: walletToRemote },
+    { key: 'transfers', table: 'personal_wallet_transfers', rows: w.transfers ?? [], dirtyIds: w._dirtyTransferIds, deletedIds: w._deletedTransferIds, toRemote: transferToRemote },
+    { key: 'subscriptions', table: 'personal_subscriptions', rows: p.subscriptions, dirtyIds: p._dirtySubscriptionIds, deletedIds: p._deletedSubscriptionIds, toRemote: subToRemote },
+    { key: 'budgets', table: 'personal_budgets', rows: p.budgets, dirtyIds: p._dirtyBudgetIds, deletedIds: p._deletedBudgetIds, toRemote: budgetToRemote },
+    { key: 'goals', table: 'personal_goals', rows: p.goals, dirtyIds: p._dirtyGoalIds, deletedIds: p._deletedGoalIds, toRemote: goalToRemote },
+    { key: 'debts', table: 'personal_debts', rows: d.debts, dirtyIds: d._dirtyDebtIds, deletedIds: d._deletedDebtIds, toRemote: debtToRemote },
+    { key: 'splits', table: 'personal_splits', rows: d.splits, dirtyIds: d._dirtySplitIds, deletedIds: d._deletedSplitIds, toRemote: splitToRemote },
+    { key: 'contacts', table: 'personal_contacts', rows: d.contacts, dirtyIds: d._dirtyContactIds, deletedIds: d._deletedContactIds, toRemote: contactToRemote },
+    { key: 'savings', table: 'personal_savings_accounts', rows: s.accounts, dirtyIds: s._dirtySavingsIds, deletedIds: s._deletedSavingsIds, toRemote: savingsToRemote },
+    { key: 'receipts', table: 'personal_receipts', rows: receiptsForPush, dirtyIds: [...(r._dirtyReceiptIds ?? []), ...uploadedImageIds], deletedIds: r._deletedReceiptIds, toRemote: receiptToRemote },
+    { key: 'notes', table: 'personal_notes', rows: n.pages, dirtyIds: n._dirtyNoteIds, deletedIds: n._deletedNoteIds, toRemote: noteToRemote },
+  ];
+  const pushedByKey = new Map<string, PushedSnapshot[]>();
   const upsertResults = await Promise.all([
-    upsertBatch('personal_transactions', p.transactions.map((t) => txToRemote(userId, t))),
-    upsertBatch('personal_wallets', w.wallets.map((x) => walletToRemote(userId, x))),
-    upsertBatch('personal_wallet_transfers', (w.transfers ?? []).map((x) => transferToRemote(userId, x))),
-    upsertBatch('personal_subscriptions', p.subscriptions.map((x) => subToRemote(userId, x))),
-    upsertBatch('personal_budgets', p.budgets.map((x) => budgetToRemote(userId, x))),
-    upsertBatch('personal_goals', p.goals.map((x) => goalToRemote(userId, x))),
-    upsertBatch('personal_debts', d.debts.map((x) => debtToRemote(userId, x))),
-    upsertBatch('personal_splits', d.splits.map((x) => splitToRemote(userId, x))),
-    upsertBatch('personal_contacts', d.contacts.map((x) => contactToRemote(userId, x))),
-    upsertBatch('personal_savings_accounts', s.accounts.map((x) => savingsToRemote(userId, x))),
-    upsertBatch('personal_receipts', receiptsForPush.map((x) => receiptToRemote(userId, x))),
-    upsertBatch('personal_notes', n.pages.map((x) => noteToRemote(userId, x))),
+    ...specs.map((spec) => {
+      const targets = planPushRows(spec.rows, {
+        incremental,
+        dirtyIds: spec.dirtyIds,
+        deletedIds: spec.deletedIds,
+      });
+      pushedByKey.set(spec.key, targets.map((t) => ({ id: t.id, updatedAt: t.updatedAt })));
+      return upsertBatch(spec.table, targets.map((x) => spec.toRemote(userId, x)));
+    }),
     pushBudgetProfile(userId),
     pushCategories(userId),
     pushLearning(userId),
@@ -617,6 +679,34 @@ async function pushAll(userId: string): Promise<boolean> {
     r.clearReceiptTombstones?.();
     s.clearSavingsTombstones?.();
     n.clearNotesTombstones?.();
+
+    // Stage 2 race-safe dirty clear — in BOTH modes (a full push races mid-push
+    // edits too). Keep: rows edited mid-push (updatedAt moved since the
+    // snapshot) and live rows marked dirty mid-push. Drop: cleanly-pushed rows
+    // and ids whose row was deleted mid-push (the tombstone path owns deletes).
+    const scrub = (
+      store: { getState: () => any; setState: (partial: object) => void },
+      dirtyKey: string,
+      rowsKey: string,
+      snapKey: string,
+    ) => {
+      const st = store.getState();
+      store.setState({
+        [dirtyKey]: planDirtyClear(st[dirtyKey], st[rowsKey] ?? [], pushedByKey.get(snapKey) ?? []),
+      });
+    };
+    scrub(usePersonalStore, '_dirtyTransactionIds', 'transactions', 'transactions');
+    scrub(usePersonalStore, '_dirtySubscriptionIds', 'subscriptions', 'subscriptions');
+    scrub(usePersonalStore, '_dirtyBudgetIds', 'budgets', 'budgets');
+    scrub(usePersonalStore, '_dirtyGoalIds', 'goals', 'goals');
+    scrub(useWalletStore, '_dirtyWalletIds', 'wallets', 'wallets');
+    scrub(useWalletStore, '_dirtyTransferIds', 'transfers', 'transfers');
+    scrub(useDebtStore, '_dirtyDebtIds', 'debts', 'debts');
+    scrub(useDebtStore, '_dirtySplitIds', 'splits', 'splits');
+    scrub(useDebtStore, '_dirtyContactIds', 'contacts', 'contacts');
+    scrub(useSavingsStore, '_dirtySavingsIds', 'accounts', 'savings');
+    scrub(useReceiptStore, '_dirtyReceiptIds', 'receipts', 'receipts');
+    scrub(useNotesStore, '_dirtyNoteIds', 'pages', 'notes');
   }
 
   return allTombstonesSucceeded && allUpsertsSucceeded;
@@ -746,8 +836,10 @@ function scheduleRerun(): void {
 }
 
 // Personal cloud sync is GATED, not hard-disabled. It runs ONLY when ALL hold:
-//   1. settings.personalSyncEnabled === true (default false; forced false on
-//      rehydrate — no UI enables it until personal sign-in ships)
+//   0. CLOUD_BACKUP_ENABLED build flag (the beta lock above — the actual
+//      launch gate; everything below assumes it)
+//   1. settings.personalSyncEnabled === true (default false; a persisted true
+//      SURVIVES rehydrate — settingsStore only coerces non-boolean values)
 //   2. a valid Supabase session exists
 //   3. the schema preflight passes (every mapper column present remotely)
 // A failed preflight (or a schema error mid-push, see upsertBatch) auto-disables
@@ -791,6 +883,7 @@ export function syncPersonal(): Promise<void> {
     const lastUser = settings.lastSyncedUserId;
     if (lastUser && lastUser !== session.user.id && hasLocalPersonalData()) {
       _accountMismatch = true;
+      reportBackupIssue('account-mismatch', 'sync blocked: signed-in account differs from last-synced account with local data present');
       console.warn('[personalSync] account mismatch — sync blocked pending explicit merge decision');
       return;
     }
@@ -803,6 +896,7 @@ export function syncPersonal(): Promise<void> {
     if (schemaVerdict === 'missing') {
       settings.setPersonalSyncEnabled(false);
       settings.setLastPersonalSyncError?.('schema');
+      reportBackupIssue('schema-disabled', 'remote schema incomplete — sync auto-disabled');
       console.warn('[personalSync] DISABLED — remote schema incomplete. Apply the latest migrations, then re-enable.');
       return;
     }
@@ -813,7 +907,7 @@ export function syncPersonal(): Promise<void> {
       return;
     }
 
-    // Prune expired durable tombstones (>30 days) before sync
+    // Prune expired durable tombstones (>180 days) before sync
     const pruned = useTombstoneStore.getState().pruneExpired();
     if (pruned > 0 && __DEV__) {
       console.log(`[personalSync] pruned ${pruned} expired tombstones`);
@@ -865,28 +959,12 @@ export async function disablePersonalSync(wipeRemote = false): Promise<void> {
   const session = await getSession();
   if (!session) return;
   const userId = session.user.id;
-  const tables = [
-    'personal_transactions',
-    'personal_wallets',
-    'personal_wallet_transfers',
-    'personal_subscriptions',
-    'personal_budgets',
-    'personal_goals',
-    'personal_debts',
-    'personal_splits',
-    'personal_contacts',
-    'personal_savings_accounts',
-    'personal_receipts',
-    // Added 2026-07-22: notes were missing from the wipe (oversight — the table
-    // shipped 20260719), and the budget profile row must go too (its delete
-    // matches on user_id alone, which is its PK; .in('local_id') would miss it,
-    // but the .eq('user_id') filter below covers every table shape).
-    'personal_notes',
-    'personal_budget_profile',
-    'personal_categories',
-    'personal_learning',
-  ];
+  // PERSONAL_SYNC_TABLES is the single source of truth (supabase.ts) — the
+  // .eq('user_id') filter covers every table shape, including the single-row
+  // budget-profile/categories/learning blobs keyed by user_id alone.
   await Promise.allSettled(
-    tables.map((t) => supabase.from(t).delete().eq('user_id', userId)),
+    PERSONAL_SYNC_TABLES.map((t) => supabase.from(t).delete().eq('user_id', userId)),
   );
+  // Rows alone leave the receipt PHOTOS orphaned in Storage — sweep them too.
+  await removeAllPersonalReceiptImages(userId);
 }

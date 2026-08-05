@@ -17,7 +17,7 @@ import {
 import { ScrollView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { findRecentDuplicate } from '../../utils/findDuplicateTransaction';
+import { findRecentDuplicate, findSameDayDuplicate } from '../../utils/findDuplicateTransaction';
 import { SUPPORTED_CURRENCIES, getRates, toMyr } from '../../services/fxRates';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePersonalStore } from '../../store/personalStore';
@@ -459,6 +459,33 @@ const QuickAddExpense = forwardRef<QuickAddExpenseHandle, QuickAddExpenseProps>(
           [
             { text: t.quickAdd.dupSkip, style: 'cancel' },
             { text: t.quickAdd.dupKeepBoth, onPress: () => saveTransactionUnchecked(catId, catName, walletId) },
+          ],
+        );
+        return;
+      }
+      // Same-day cross-channel guard (design §10): the 10-minute check above only
+      // catches double-taps — also warn when the same amount + wallet + type was
+      // already logged earlier TODAY (manual, share, quick-log), more than 10 min
+      // ago. One-shot per attempt; "add anyway" takes the normal unchecked path.
+      const sameDayDup = findSameDayDuplicate(
+        usePersonalStore.getState().transactions,
+        {
+          amount: parsed,
+          walletId: walletId || undefined,
+          type: txType,
+        },
+      );
+      if (sameDayDup) {
+        const walletName = (walletId && useWalletStore.getState().wallets.find((w) => w.id === walletId)?.name) || '—';
+        Alert.alert(
+          t.quickAdd.sameDayTitle,
+          t.quickAdd.sameDayMsg
+            .replace('{amount}', parsed.toFixed(2))
+            .replace('{wallet}', walletName)
+            .replace('{description}', sameDayDup.description || sameDayDup.category),
+          [
+            { text: t.common.cancel, style: 'cancel' },
+            { text: t.quickAdd.sameDayAdd, onPress: () => saveTransactionUnchecked(catId, catName, walletId) },
           ],
         );
         return;

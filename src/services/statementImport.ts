@@ -4,7 +4,7 @@ import { supabasePersonal as supabase } from './supabase'; // personal client (s
 
 export interface ParsedTransaction {
   date: string;              // YYYY-MM-DD
-  amount: number;            // positive
+  amount: number;            // positive (MYR settled figure on FX rows)
   type: 'income' | 'expense';
   description: string;
   raw?: string;
@@ -12,6 +12,16 @@ export interface ParsedTransaction {
   /** True when the AI flagged this row as a transfer between the user's OWN
    *  accounts. Optional — older parse-statement deploys never set it. */
   is_transfer?: boolean;
+  /** Last-4 of the account this row belongs to, sent only for multi-account
+   *  statements. Optional by design, both directions compatible: older deployed
+   *  functions never send it, older clients ignore it. */
+  account?: string | null;
+  /** Foreign-currency original units for FX rows (amount stays the MYR settled
+   *  figure). Optional by design — older deployed functions never send it. */
+  originalAmount?: number | null;
+  /** 3-letter ISO currency of originalAmount (e.g. "USD"). Optional by design —
+   *  older deployed functions never send it. */
+  originalCurrency?: string | null;
 }
 
 export interface StatementParseResult {
@@ -29,8 +39,11 @@ export interface StatementParseError {
   remaining?: number;
 }
 
-/** Open system picker. Returns { base64, filename } or null if cancelled. */
-export async function pickStatementPdf(): Promise<{ base64: string; filename: string; sizeBytes: number } | null> {
+/** Open system picker. Returns { base64, filename, sizeBytes, uri } or null if
+ *  cancelled. `uri` is the picker's cache-directory copy — the caller MUST pass it
+ *  to cleanupStatementFile() once the whole parse sequence is done (statements are
+ *  sensitive; don't leave them on disk). */
+export async function pickStatementPdf(): Promise<{ base64: string; filename: string; sizeBytes: number; uri: string } | null> {
   const res = await DocumentPicker.getDocumentAsync({
     type: 'application/pdf',
     multiple: false,
@@ -47,7 +60,32 @@ export async function pickStatementPdf(): Promise<{ base64: string; filename: st
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
-  return { base64, filename: asset.name ?? 'statement.pdf', sizeBytes: size };
+  return { base64, filename: asset.name ?? 'statement.pdf', sizeBytes: size, uri };
+}
+
+/** Best-effort delete of the picker's cache-directory copy. Safe on an already-
+ *  deleted file; failures are swallowed (a leftover cache file is harmless). */
+export async function cleanupStatementFile(uri: string): Promise<void> {
+  try {
+    await FileSystem.deleteAsync(uri, { idempotent: true });
+  } catch {
+    // best-effort
+  }
+}
+
+/** True when the statement's currency clearly differs from the app currency.
+ *  'RM' (display symbol) and 'MYR' (ISO code) are the same currency. A missing
+ *  statement/app currency → false: never block on ambiguity. */
+export function isCurrencyMismatch(statementCurrency?: string, appCurrency?: string): boolean {
+  const canon = (v?: string): string => {
+    const s = (v ?? '').trim().toUpperCase();
+    return s === 'RM' ? 'MYR' : s;
+  };
+  const statement = canon(statementCurrency);
+  if (!statement) return false;
+  const app = canon(appCurrency);
+  if (!app) return false;
+  return statement !== app;
 }
 
 /** Call the parse-statement edge function with the picked PDF. */

@@ -247,6 +247,15 @@ interface SettingsState {
   echoDailyCheckin: boolean;
   /** Daily check-in reminder times, 24h "HH:mm" (local notifications fire daily at each). */
   echoCheckinTimes: string[];
+  /** Monthly "did you miss anything? import your statement" local notification
+   *  (10:00 on the 1st). One-shot DATE trigger re-armed on every sync — see
+   *  services/statementReminders.ts. Default ON. */
+  statementReminderEnabled: boolean;
+  setStatementReminderEnabled: (value: boolean) => void;
+  /** One-time: the "have history?" statement-backfill dashboard banner was
+   *  dismissed (X) — hides forever. A successful import also retires it. */
+  statementBackfillDismissed: boolean;
+  setStatementBackfillDismissed: (value: boolean) => void;
   /** Cached "user has an active Quick-Log key" (server truth lives in
    *  quick_log_keys). Refreshed at app start + sign-in; lets Echo and other
    *  screens know auto-log is set up without a server call. */
@@ -310,6 +319,26 @@ interface SettingsState {
   setLastPersonalSyncAt: (value: Date | null) => void;
   setLastSyncedUserId: (value: string | null) => void;
   setLastPersonalSyncError: (value: string | null) => void;
+  /** Google Drive receipt backup (photos & PDFs → "Potraces" folder). Opt-in, default off. */
+  driveBackupEnabled: boolean;
+  setDriveBackupEnabled: (value: boolean) => void;
+  /** Google Sheets sync (appends new transactions to a "Potraces Transactions" spreadsheet). */
+  googleSheetsSyncEnabled: boolean;
+  setGoogleSheetsSyncEnabled: (value: boolean) => void;
+  /** Google account the backup features are connected to. null = not connected. */
+  googleDriveEmail: string | null;
+  setGoogleDriveEmail: (value: string | null) => void;
+  /** When true, Drive backups only run on unmetered (Wi-Fi) connections. */
+  backupWifiOnly: boolean;
+  setBackupWifiOnly: (value: boolean) => void;
+  lastDriveBackupAt: number | null;
+  setLastDriveBackupAt: (value: number | null) => void;
+  lastDriveBackupError: string | null;
+  setLastDriveBackupError: (value: string | null) => void;
+  lastSheetsSyncAt: number | null;
+  setLastSheetsSyncAt: (value: number | null) => void;
+  lastSheetsSyncError: string | null;
+  setLastSheetsSyncError: (value: string | null) => void;
   spendingAlertsEnabled: boolean;
   setSpendingAlertsEnabled: (value: boolean) => void;
   quickAddConfirm: boolean;
@@ -616,6 +645,8 @@ export const useSettingsStore = create<SettingsState>()(
       quickActionOrder: [...DEFAULT_QUICK_ACTION_ORDER],
       echoDailyCheckin: false,
       echoCheckinTimes: ['21:00'],
+      statementReminderEnabled: true,
+      statementBackfillDismissed: false,
       quickLogConfigured: false,
       quickLogPromoSeen: false,
       businessModeEnabled: false,
@@ -670,6 +701,22 @@ export const useSettingsStore = create<SettingsState>()(
       setLastPersonalSyncAt: (lastPersonalSyncAt) => set({ lastPersonalSyncAt }),
       setLastSyncedUserId: (lastSyncedUserId) => set({ lastSyncedUserId }),
       setLastPersonalSyncError: (lastPersonalSyncError) => set({ lastPersonalSyncError }),
+      driveBackupEnabled: false,
+      setDriveBackupEnabled: (driveBackupEnabled) => set({ driveBackupEnabled }),
+      googleSheetsSyncEnabled: false,
+      setGoogleSheetsSyncEnabled: (googleSheetsSyncEnabled) => set({ googleSheetsSyncEnabled }),
+      googleDriveEmail: null,
+      setGoogleDriveEmail: (googleDriveEmail) => set({ googleDriveEmail }),
+      backupWifiOnly: false,
+      setBackupWifiOnly: (backupWifiOnly) => set({ backupWifiOnly }),
+      lastDriveBackupAt: null,
+      setLastDriveBackupAt: (lastDriveBackupAt) => set({ lastDriveBackupAt }),
+      lastDriveBackupError: null,
+      setLastDriveBackupError: (lastDriveBackupError) => set({ lastDriveBackupError }),
+      lastSheetsSyncAt: null,
+      setLastSheetsSyncAt: (lastSheetsSyncAt) => set({ lastSheetsSyncAt }),
+      lastSheetsSyncError: null,
+      setLastSheetsSyncError: (lastSheetsSyncError) => set({ lastSheetsSyncError }),
       setSpendingAlertsEnabled: (spendingAlertsEnabled) => set({ spendingAlertsEnabled }),
       setQuickAddConfirm: (quickAddConfirm) => set({ quickAddConfirm }),
       setTapToPayEnabled: (tapToPayEnabled) => set({ tapToPayEnabled }),
@@ -711,6 +758,8 @@ export const useSettingsStore = create<SettingsState>()(
       setHapticEnabled: (hapticEnabled) => set({ hapticEnabled }),
       setEchoDailyCheckin: (echoDailyCheckin) => set({ echoDailyCheckin }),
       setEchoCheckinTimes: (echoCheckinTimes) => set({ echoCheckinTimes }),
+      setStatementReminderEnabled: (statementReminderEnabled) => set({ statementReminderEnabled }),
+      setStatementBackfillDismissed: (statementBackfillDismissed) => set({ statementBackfillDismissed }),
       setQuickLogConfigured: (quickLogConfigured) => set({ quickLogConfigured }),
       setQuickLogPromoSeen: (quickLogPromoSeen) => set({ quickLogPromoSeen }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
@@ -833,6 +882,11 @@ export const useSettingsStore = create<SettingsState>()(
           notificationsEnabled: true,
           orderNotificationsEnabled: true,
           echoDailyCheckin: false,
+          // Clean slate replays the first-run surfaces (GettingStarted and the
+          // statement-backfill banner), and the monthly nudge returns to its
+          // default ON — same semantics as notificationsEnabled above.
+          statementReminderEnabled: true,
+          statementBackfillDismissed: false,
           // `currency` is NOT a device preference — it is the unit every BUSINESS
           // screen and PDF export renders the preserved shop figures in. Resetting
           // it for a business user would relabel their SGD sales as RM without
@@ -1047,9 +1101,31 @@ export const useSettingsStore = create<SettingsState>()(
         if (typeof state.personalSyncEnabled !== 'boolean') {
           state.personalSyncEnabled = false;
         }
+        // Google backup fields (added after some installs shipped)
+        if (typeof state.driveBackupEnabled !== 'boolean') {
+          state.driveBackupEnabled = false;
+        }
+        if (typeof state.googleSheetsSyncEnabled !== 'boolean') {
+          state.googleSheetsSyncEnabled = false;
+        }
+        if (typeof state.googleDriveEmail !== 'string') state.googleDriveEmail = null;
+        if (typeof state.backupWifiOnly !== 'boolean') {
+          state.backupWifiOnly = false;
+        }
+        if (typeof state.lastDriveBackupAt !== 'number') state.lastDriveBackupAt = null;
+        if (typeof state.lastDriveBackupError !== 'string') state.lastDriveBackupError = null;
+        if (typeof state.lastSheetsSyncAt !== 'number') state.lastSheetsSyncAt = null;
+        if (typeof state.lastSheetsSyncError !== 'string') state.lastSheetsSyncError = null;
         // Check-in reminder times (added after some installs shipped)
         if (!Array.isArray(state.echoCheckinTimes)) {
           state.echoCheckinTimes = ['21:00'];
+        }
+        // Statement reminder + backfill banner (added after some installs shipped)
+        if (typeof state.statementReminderEnabled !== 'boolean') {
+          state.statementReminderEnabled = true;
+        }
+        if (typeof state.statementBackfillDismissed !== 'boolean') {
+          state.statementBackfillDismissed = false;
         }
         if (typeof state.quickLogConfigured !== 'boolean') {
           state.quickLogConfigured = false;

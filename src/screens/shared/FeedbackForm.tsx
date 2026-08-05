@@ -1,0 +1,324 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Image, Keyboard } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import NeuButton from '../../components/common/NeuButton';
+import KeyboardDoneFab from '../../components/common/KeyboardDoneFab';
+import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
+import { useNeu } from '../../components/common/neu';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
+import { useToast } from '../../context/ToastContext';
+import { lightTap } from '../../services/haptics';
+import { supabasePersonal } from '../../services/supabase';
+import { submitFeedback, NotSignedInError } from '../../services/betaFeedback';
+import { useFeedbackDraftStore, type FeedbackType } from '../../store/feedbackDraftStore';
+
+/**
+ * "Report a bug / idea" — writes into the shared `beta_feedback` table (the same
+ * one the web form + admin board use). Reached from Settings → About → Help &
+ * Community. Users can type without an account; sign-in is only asked at Send and
+ * the typed draft is preserved across the sign-in round-trip (persisted to disk).
+ */
+const FeedbackForm: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const insets = useSafeAreaInsets();
+  const neu = useNeu(undefined, { faintDark: true });
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const { showToast } = useToast();
+  const navigation = useNavigation<any>();
+
+  const draft = useFeedbackDraftStore((s) => s.draft);
+  const setDraft = useFeedbackDraftStore((s) => s.setDraft);
+  const clearDraft = useFeedbackDraftStore((s) => s.clearDraft);
+
+  // Initialise from the persisted draft (covers a process-kill remount). The
+  // native stack keeps this screen mounted across the Account sign-in trip, so
+  // live state also survives the normal round trip.
+  const [type, setType] = useState<FeedbackType>(draft?.type ?? 'bug');
+  const [body, setBody] = useState(draft?.body ?? '');
+  const [shot, setShot] = useState<string | null>(draft?.screenshotUri ?? null);
+  const [submitting, setSubmitting] = useState(false);
+  const [signedIn, setSignedIn] = useState(true); // assume signed in until checked (hides the benefit line)
+  const [multilineFocused, setMultilineFocused] = useState(false);
+
+  const { keyboardVisible, keyboardHeight } = useKeyboardVisible(() => setMultilineFocused(false));
+
+  // Re-check the personal session on focus (also when returning from Account) to
+  // toggle the "you'll sign in so I can tell you when it's fixed" benefit line.
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      supabasePersonal.auth.getSession().then(({ data }) => {
+        if (alive) setSignedIn(!!data.session);
+      });
+      return () => { alive = false; };
+    }, []),
+  );
+
+  // Persist the draft (debounced) so it survives the sign-in trip AND a
+  // low-memory kill during OAuth. Clear when there's nothing worth keeping.
+  useEffect(() => {
+    const hasContent = body.trim().length > 0 || !!shot;
+    const h = setTimeout(() => {
+      if (hasContent) setDraft({ type, body, screenshotUri: shot });
+      else clearDraft();
+    }, 400);
+    return () => clearTimeout(h);
+  }, [type, body, shot, setDraft, clearDraft]);
+
+  const pickScreenshot = useCallback(async () => {
+    lightTap();
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    if (res.canceled || !res.assets[0]) return;
+    let uri = res.assets[0].uri;
+    // Copy out of the picker's tmp cache into documents so it survives a restart.
+    try {
+      if (FileSystem.documentDirectory) {
+        const dest = `${FileSystem.documentDirectory}feedback-shot-${Date.now()}.jpg`;
+        await FileSystem.copyAsync({ from: uri, to: dest });
+        uri = dest;
+      }
+    } catch {
+      // fall back to the picker uri (works until the OS purges tmp)
+    }
+    setShot(uri);
+  }, []);
+
+  const removeScreenshot = useCallback(() => { lightTap(); setShot(null); }, []);
+
+  const handleSend = useCallback(async () => {
+    if (!body.trim() || submitting) return;
+    Keyboard.dismiss();
+    setSubmitting(true);
+    try {
+      await submitFeedback({ type, body, screenshotUri: shot });
+      clearDraft();
+      setBody('');
+      setShot(null);
+      setType('bug');
+      showToast(t.settings.fbSent, 'success');
+      navigation.goBack();
+    } catch (e: any) {
+      if (e instanceof NotSignedInError) {
+        setDraft({ type, body, screenshotUri: shot }); // force-save before leaving
+        setSubmitting(false);
+        navigation.navigate('Account', { returnTo: 'FeedbackForm' });
+        return;
+      }
+      const msg = String(e?.message ?? '');
+      showToast(msg.includes('rate_limit') ? t.settings.fbRateLimited : t.settings.fbSendFailed, 'error');
+      setSubmitting(false);
+    }
+  }, [body, shot, type, submitting, clearDraft, setDraft, showToast, t, navigation]);
+
+  return (
+    <View style={styles.container}>
+      <KeyboardAwareScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bottomOffset={20}
+      >
+        <Text style={styles.intro}>{t.settings.fbIntro}</Text>
+
+        {/* Bug / Idea — Neu Pills */}
+        <View style={styles.typeRow}>
+          {(['bug', 'idea'] as FeedbackType[]).map((opt) => {
+            const active = type === opt;
+            return (
+              <TouchableOpacity
+                key={opt}
+                style={[styles.typePill, neu.raised, active && styles.typePillActive]}
+                onPress={() => { lightTap(); setType(opt); }}
+                activeOpacity={0.85}
+              >
+                <Feather
+                  name={opt === 'bug' ? 'alert-circle' : 'zap'}
+                  size={16}
+                  color={active ? C.onAccent : C.textSecondary}
+                />
+                <Text style={[styles.typePillText, active && styles.typePillTextActive]}>
+                  {opt === 'bug' ? t.settings.fbBug : t.settings.fbIdea}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Description — Note Field */}
+        <Text style={styles.label}>{t.settings.fbDescLabel}</Text>
+        <View style={[styles.fieldCard, neu.raisedSoft]}>
+          <TextInput
+            style={styles.input}
+            value={body}
+            onChangeText={setBody}
+            placeholder={t.settings.fbDescPlaceholder}
+            placeholderTextColor={C.textMuted}
+            multiline
+            textAlignVertical="top"
+            onFocus={() => setMultilineFocused(true)}
+            onBlur={() => setMultilineFocused(false)}
+          />
+        </View>
+
+        {/* Optional screenshot */}
+        {shot ? (
+          <View style={styles.shotWrap}>
+            {/* Seam rule: neu shadow on the outer view, overflow-clip on the inner. */}
+            <View style={[styles.shotShadow, neu.raised]}>
+              <View style={styles.shotClip}>
+                <Image source={{ uri: shot }} style={styles.shotImg} resizeMode="cover" />
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.shotRemove}
+              onPress={removeScreenshot}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t.settings.fbRemove}
+            >
+              <Feather name="x" size={14} color={C.onAccent} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.attachRow, neu.raised]}
+            onPress={pickScreenshot}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t.settings.fbAttach}
+          >
+            <Feather name="image" size={18} color={C.textSecondary} />
+            <Text style={styles.attachText}>{t.settings.fbAttach}</Text>
+          </TouchableOpacity>
+        )}
+        <Text style={styles.warning}>{t.settings.fbScreenshotWarning}</Text>
+
+        {!signedIn && <Text style={styles.benefit}>{t.settings.fbSignInBenefit}</Text>}
+
+        <View style={styles.sendWrap}>
+          <NeuButton
+            icon="send"
+            label={t.settings.fbSend}
+            onPress={handleSend}
+            disabled={!body.trim() || submitting}
+          />
+        </View>
+
+        <Text style={styles.consent}>{t.settings.fbConsent}</Text>
+      </KeyboardAwareScrollView>
+
+      <KeyboardDoneFab visible={keyboardVisible && multilineFocused} keyboardHeight={keyboardHeight} />
+    </View>
+  );
+};
+
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.background },
+  scroll: { flex: 1 },
+  content: { padding: SPACING.lg, maxWidth: 680, width: '100%', alignSelf: 'center' as const },
+  intro: {
+    fontSize: TYPOGRAPHY.size.base,
+    lineHeight: 22,
+    color: C.textSecondary,
+    marginBottom: SPACING.lg,
+  },
+  // Bug / Idea — Neu Pills (faintDark raised idle, olive fill when selected).
+  typeRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
+  typePill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
+  },
+  typePillActive: { backgroundColor: C.accent },
+  typePillText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  typePillTextActive: { color: C.onAccent, fontWeight: TYPOGRAPHY.weight.bold },
+  label: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    marginBottom: SPACING.sm,
+    marginLeft: SPACING.xs,
+  },
+  // Neu Card (borderless C.background + neu.raisedSoft).
+  fieldCard: {
+    borderRadius: RADIUS.lg,
+    backgroundColor: C.background,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  input: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    minHeight: 96,
+    padding: 0,
+  },
+  attachRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
+  },
+  attachText: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  shotWrap: { alignSelf: 'flex-start', position: 'relative' },
+  shotShadow: { borderRadius: RADIUS.lg },
+  shotClip: { borderRadius: RADIUS.lg, overflow: 'hidden' },
+  shotImg: { width: 120, height: 120 },
+  shotRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warning: {
+    fontSize: TYPOGRAPHY.size.xs,
+    lineHeight: 16,
+    color: C.textMuted,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  benefit: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+  },
+  sendWrap: { marginTop: SPACING.xs },
+  consent: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    textAlign: 'center',
+    marginTop: SPACING.md,
+  },
+});
+
+export default FeedbackForm;

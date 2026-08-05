@@ -625,19 +625,40 @@ export const useDebtStore = create<DebtState>()(
 
       deleteContact: (id) => {
         useTombstoneStore.getState().addTombstones([id]);
-        set((state) => ({
-          contacts: state.contacts.filter((c) => c.id !== id),
-          _deletedContactIds: [...(state._deletedContactIds ?? []), id],
-          debts: state.debts.map((d) =>
-            d.contact?.id === id ? { ...d, contact: { ...d.contact, name: '(deleted)' } } : d
-          ),
-          splits: state.splits.map((s) => ({
-            ...s,
-            participants: s.participants.map((p) =>
-              p.contact.id === id ? { ...p, contact: { ...p.contact, name: '(deleted)' } } : p
+        set((state) => {
+          // The '(deleted)' rename inside debts/splits is a REAL edit to those
+          // rows — bump updatedAt and mark dirty, otherwise it never propagates
+          // (and an LWW merge could resurrect the old name from the cloud).
+          const now = new Date();
+          const affectedDebtIds = state.debts
+            .filter((d) => d.contact?.id === id)
+            .map((d) => d.id);
+          const affectedSplitIds = state.splits
+            .filter((s) => s.participants.some((p) => p.contact.id === id))
+            .map((s) => s.id);
+          return {
+            contacts: state.contacts.filter((c) => c.id !== id),
+            _deletedContactIds: [...(state._deletedContactIds ?? []), id],
+            debts: state.debts.map((d) =>
+              d.contact?.id === id
+                ? { ...d, contact: { ...d.contact, name: '(deleted)' }, updatedAt: now }
+                : d
             ),
-          })),
-        }));
+            splits: state.splits.map((s) =>
+              affectedSplitIds.includes(s.id)
+                ? {
+                    ...s,
+                    participants: s.participants.map((p) =>
+                      p.contact.id === id ? { ...p, contact: { ...p.contact, name: '(deleted)' } } : p
+                    ),
+                    updatedAt: now,
+                  }
+                : s
+            ),
+            _dirtyDebtIds: [...(state._dirtyDebtIds ?? []), ...affectedDebtIds],
+            _dirtySplitIds: [...(state._dirtySplitIds ?? []), ...affectedSplitIds],
+          };
+        });
       },
     }),
     {

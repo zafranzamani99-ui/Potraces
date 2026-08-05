@@ -42,6 +42,7 @@ import { exportTransactionsCsv, exportWalletsCsv, exportSubscriptionsCsv, export
 import { exportMonthlyStatement, exportTaxYearPdf } from '../../services/pdfExport';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { syncCheckinReminders, formatCheckinTime } from '../../services/checkinReminders';
+import { syncStatementReminder } from '../../services/statementReminders';
 import { loadSampleData, SAMPLE_PROFILES, type SampleBracket } from '../../utils/sampleData';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { RootStackParamList, SettingsSection } from '../../types';
@@ -103,13 +104,17 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
   const setEchoDailyCheckin = useSettingsStore((s) => s.setEchoDailyCheckin);
   const echoCheckinTimes = useSettingsStore((s) => s.echoCheckinTimes);
   const setEchoCheckinTimes = useSettingsStore((s) => s.setEchoCheckinTimes);
+  const statementReminderEnabled = useSettingsStore((s) => s.statementReminderEnabled);
+  const setStatementReminderEnabled = useSettingsStore((s) => s.setStatementReminderEnabled);
 
-  // Check-in toggle/time changes re-sync the OS notification schedule.
+  // Check-in toggle/time changes re-sync the OS notification schedule. The
+  // monthly statement reminder re-arms alongside (same call sites, fire-and-forget).
   const applyCheckin = useCallback(async (enabled: boolean, times: string[]) => {
     setEchoDailyCheckin(enabled);
     setEchoCheckinTimes(times);
     const ok = await syncCheckinReminders(enabled, times);
     if (enabled && !ok) showToast(t.settings.checkinPermissionNeeded, 'info');
+    void syncStatementReminder(statementReminderEnabled);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t]);
   const quickAddConfirm = useSettingsStore((s) => s.quickAddConfirm);
@@ -638,6 +643,24 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 chipColor="#6BA3BE"
                 label={t.settings.importFromCsv}
                 onPress={() => { lightTap(); navigation.navigate('ImportFromCsv' as never); }}
+              />
+              <SettingRow
+                icon="i/calendar-outline"
+                chipColor="#6BA3BE"
+                label={t.settings.statementReminder}
+                sublabel={t.settings.statementReminderDesc}
+                rightElement={
+                  <Switch
+                    value={statementReminderEnabled}
+                    onValueChange={(v) => {
+                      lightTap();
+                      setStatementReminderEnabled(v);
+                      void syncStatementReminder(v);
+                    }}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                }
               />
               <SettingRow
                 icon="i/cloud-upload-outline"
