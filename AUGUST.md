@@ -26,6 +26,54 @@ separately (`audit/ECHO_UNFINISHED.md`).
 
 ---
 
+## 🏦 Statement import → reconciliation (added 2026-08-05)
+
+Source of truth: `docs/plans/import-reconciliation-design.md`. Phases 0–3
+code-complete (tiered matcher, three-section review UI, batch undo, FX-exact pass,
+reconcile horizon, multi-account grouping, monthly nudge). **Parser v2 DEPLOYED
+2026-08-05** (`parse-statement` live; e-wallet top-ups as transfers, per-row
+account/FX fields). Both migrations (`import_batch_fields`,
+`wallet_reconciled_until`) confirmed applied on remote. Explore tile shipped the
+same day: the inline dashboard backfill banner was removed (felt pushy) — statement
+import now surfaces via the first quick action ("Explore" sheet in
+`src/components/common/QuickActions.tsx`, 6 rows: statement / quick-log / CSV /
+backup / Google sign-in / receipt scan). Quick-action defaults reordered; reports +
+pulse now unpinned (See-All only).
+
+**Remaining (must do before store):**
+- [ ] **Device dogfood — day-15 test** (design doc §10): log ~2 weeks via manual /
+      share / quick log on one wallet, import that account's statement → zero dupes
+      auto-imported, ambiguous rows in Needs review, twins survive. Also: FX rows,
+      multi-account PDF, password-protected PDF, reconcile offer.
+- [ ] **Watch: e-wallet top-up over-flagging** — parser v2's TnG/GrabPay top-up →
+      transfer detection is unverified against real statements.
+- [ ] **§6 compliance** — Gemini paid-tier data terms confirmed in writing (record
+      in `docs/legal/`) + privacy policy: statements uploaded for server-side AI
+      processing, not stored, password never persisted, processor named.
+- [ ] **§7 parser fixtures** — 1–2 anonymized statements per bank (Maybank, CIMB,
+      Bank Islam, Hong Leong + TnG) + golden parse test. Gemini churn broke this
+      pipeline twice; fixtures are the only ground truth.
+- [ ] Full §11 production-readiness checklist before flag → 100%.
+
+**Decisions pending:**
+- [ ] **Force-reset saved quick-action layouts?** Existing users' saved
+      `quickActionOrder` never shows the Explore tile (one-time layout-version
+      migration vs leave custom layouts alone; only fresh installs get it pinned).
+- [ ] Statement quota cap (6th import): currently friendly message → CSV path.
+      Paywall/upsell is a product decision, later.
+
+**Nice-to-haves (not scheduled):**
+- Explore sheet: strict re-open (only on direct swipe-back, not any Home refocus);
+  per-row "tried" dimming; remote-config rows.
+- Tier-2 window tuning from instrumentation (design doc §8); force-include on
+  Tier-1 rows (v2); month-range picker for 12-month statements; tombstones for
+  deleted imports.
+- Leftover from backup plan: Account-screen sync-status rows; incremental-sync
+  flag rollout (`EXPO_PUBLIC_SYNC_INCREMENTAL`, stages 3–5 built); cloud-backup
+  flag unlock at launch.
+
+---
+
 ## 🛠️ Pending deploy — dev AI-cap bypass (NOT launch-blocking)
 - [ ] **Deploy `ai-proxy` + set the dev-unlimited secret** (project `jngmanwvhbpkpkeklfiv`).
       Why: heavy Echo testing hits the proxy's monthly cap (`MONTHLY_TOKEN_CAP` 1.5M /
