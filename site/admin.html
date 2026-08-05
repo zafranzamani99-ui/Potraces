@@ -176,6 +176,10 @@ main{flex:1;padding:32px 0 64px}
 .rmodal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
 .rmodal-head h2{font-size:1.05rem;font-weight:var(--fw-medium);letter-spacing:var(--tracking-tight)}
 
+/* screenshot lightbox — view full size on the same page, click anywhere to close */
+.shotbox{position:fixed;inset:0;z-index:90;background:rgba(10,8,6,.9);display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out}
+.shotbox img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:var(--shadow-lg)}
+
 @media (prefers-reduced-motion:reduce){
   .signout,.refresh,.afoot-btn,.tablist .tab,.rcode{transition:none}
 }
@@ -428,6 +432,9 @@ main{flex:1;padding:32px 0 64px}
 
 <div class="flash" id="flash" role="status" aria-live="polite"></div>
 
+<!-- screenshot lightbox: click a thumbnail, view full size on the same page -->
+<div id="shotBox" class="shotbox hide" role="dialog" aria-modal="true" aria-label="Screenshot preview"><img id="shotBoxImg" alt="screenshot full size"></div>
+
 <!-- rewards — redemptions modal -->
 <div id="rwModal" class="rmodal hide" role="dialog" aria-modal="true" aria-labelledby="rwModalTitle">
   <div class="rmodal-card">
@@ -627,12 +634,15 @@ listEl.addEventListener('change', async (e) => {
   showFlash('Status → '+statusText(val));
 });
 
-/* ── screenshot (signed URL) + delete ── */
+/* ── screenshot (signed URL → lightbox) + delete ── */
+const shotBox=$('shotBox'), shotBoxImg=$('shotBoxImg');
+shotBox.addEventListener('click', () => { shotBox.classList.add('hide'); shotBoxImg.src=''; });
+document.addEventListener('keydown', (e) => { if (e.key==='Escape' && !shotBox.classList.contains('hide')){ shotBox.classList.add('hide'); shotBoxImg.src=''; } });
 listEl.addEventListener('click', async (e) => {
   const shotImg = e.target.closest('.ashot');
   if (shotImg){
     const url = shotImg.getAttribute('data-url');
-    if (url) window.open(url, '_blank', 'noopener');
+    if (url){ shotBoxImg.src = url; shotBox.classList.remove('hide'); }
     else showFlash('Could not open screenshot');
     return;
   }
