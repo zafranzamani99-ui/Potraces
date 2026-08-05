@@ -525,7 +525,7 @@ async function loadAll(){
   listEl.innerHTML = `<div class="loading"><div class="spinner" aria-hidden="true"></div><p>Loading reports…</p></div>`;
   const { data, error } = await sb
     .from('beta_feedback')
-    .select('id, created_at, email, screen, severity, body, screenshot_path, status')
+    .select('id, created_at, email, screen, severity, body, screenshot_path, screenshot_paths, status')
     .order('created_at', { ascending:false });
   if (error){ listEl.innerHTML = `<div class="empty">Could not load reports.<br><small>${esc(error.message)}</small></div>`; statsEl.innerHTML=''; return; }
   allReports = data || [];
@@ -565,9 +565,10 @@ function render(){
   listEl.innerHTML = rows.map(r => {
     const sev = r.severity ? `<span class="ri-chip s-${escA(r.severity)}">${esc(SEV[r.severity]||r.severity)}</span>` : '';
     const screen = r.screen ? `<span class="ri-screen">${esc(r.screen)}</span>` : '';
-    const shot = r.screenshot_path
-      ? `<button type="button" class="afoot-btn ashot" data-shot="${escA(r.screenshot_path)}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Screenshot</button>`
-      : '';
+    const shotPaths = [ ...(r.screenshot_path ? [r.screenshot_path] : []), ...(Array.isArray(r.screenshot_paths) ? r.screenshot_paths : []) ];
+    const shot = shotPaths.map((p, i) =>
+      `<button type="button" class="afoot-btn ashot" data-shot="${escA(p)}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Screenshot${shotPaths.length > 1 ? ' ' + (i + 1) : ''}</button>`
+    ).join('');
     return `<article class="arow" data-id="${escA(r.id)}">
       <div class="arow-head">${sev}${screen}<span class="arow-email">${esc(r.email||'—')}</span><span class="ri-date">${esc(fmtDate(r.created_at))}</span></div>
       <div class="ri-body">${esc(r.body)}</div>
@@ -618,7 +619,8 @@ listEl.addEventListener('click', async (e) => {
     delBtn.disabled = true;
     const { error } = await sb.from('beta_feedback').delete().eq('id', id);
     if (error){ delBtn.disabled=false; showFlash('Could not delete'); return; }
-    if (r?.screenshot_path){ sb.storage.from(BUCKET).remove([r.screenshot_path]).catch(()=>{}); }
+    const allShots = [ ...(r?.screenshot_path ? [r.screenshot_path] : []), ...(Array.isArray(r?.screenshot_paths) ? r.screenshot_paths : []) ];
+    if (allShots.length){ sb.storage.from(BUCKET).remove(allShots).catch(()=>{}); }
     allReports = allReports.filter(x => x.id!==id);
     renderStats(); render();
     showFlash('Deleted');

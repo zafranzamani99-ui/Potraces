@@ -4,15 +4,16 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { supabasePersonal } from './supabase';
 import type { FeedbackType } from '../store/feedbackDraftStore';
 
-// In-app "Report a bug / idea" submission → the shared `beta_feedback` table
+// In-app "Report a bug / idea" submission, into the shared `beta_feedback` table
 // (the same table the web form + admin board use). Reports always go through the
 // PERSONAL client: the Account sign-in screen only ever creates a personal
 // session, and a business phone login carries a fake @potraces.app email we could
 // never reply to.
 
 const SCREENSHOTS_BUCKET = 'beta-screenshots';
+const MAX_SCREENSHOTS = 3;
 
-/** No personal session — the caller routes the user to the Account sign-in
+/** No personal session, so the caller routes the user to the Account sign-in
  *  screen and preserves the draft, then re-sends. */
 export class NotSignedInError extends Error {
   constructor() {
@@ -24,14 +25,14 @@ export class NotSignedInError extends Error {
 export interface FeedbackInput {
   type: FeedbackType; // 'bug' | 'idea'
   body: string;
-  screenshotUri?: string | null;
+  screenshotUris?: string[]; // up to 3, best-effort
 }
 
 /**
  * Submit a report. Ordering matters: insert the ROW first (the valuable part),
- * then best-effort upload the optional screenshot and patch `screenshot_path`.
+ * then best-effort upload the optional screenshots and patch screenshot_paths.
  * A failed/offline upload therefore loses neither the report nor leaves an
- * orphaned file. Throws `NotSignedInError` when there's no personal session;
+ * orphaned reference. Throws NotSignedInError when there's no personal session;
  * re-throws any DB error (e.g. the rate-limit trigger) for the caller to surface.
  */
 export async function submitFeedback(input: FeedbackInput): Promise<void> {
@@ -46,7 +47,7 @@ export async function submitFeedback(input: FeedbackInput): Promise<void> {
   const { data: inserted, error } = await supabasePersonal
     .from('beta_feedback')
     .insert({
-      email: session.user.email ?? null, // real JWT email (RLS checks it) — never user-typed
+      email: session.user.email ?? null, // real JWT email (RLS checks it), never user-typed
       severity,
       body: input.body.trim(),
       app_version: Application.nativeApplicationVersion ?? 'unknown',
@@ -56,26 +57,33 @@ export async function submitFeedback(input: FeedbackInput): Promise<void> {
     .single();
   if (error) throw error;
 
-  // Optional screenshot — best effort, never fails an already-saved report.
-  if (input.screenshotUri && inserted?.id) {
-    try {
-      const png = await manipulateAsync(input.screenshotUri, [{ resize: { width: 1080 } }], {
-        format: SaveFormat.PNG,
-      });
-      const path = `${userId}/feedback-${Date.now()}.png`; // DB CHECK requires the <uid>/ prefix
-      const formData = new FormData();
-      formData.append('', { uri: png.uri, name: 'feedback.png', type: 'image/png' } as any);
-      const { error: upErr } = await supabasePersonal.storage
-        .from(SCREENSHOTS_BUCKET)
-        .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
-      if (!upErr) {
-        await supabasePersonal
-          .from('beta_feedback')
-          .update({ screenshot_path: path })
-          .eq('id', inserted.id);
+  // Optional screenshots (up to 3), best effort. Each upload is independent, so
+  // one failure doesn't lose the others or the already-saved report.
+  const uris = (input.screenshotUris ?? []).slice(0, MAX_SCREENSHOTS);
+  if (uris.length && inserted?.id) {
+    const paths: string[] = [];
+    for (const uri of uris) {
+      try {
+        const png = await manipulateAsync(uri, [{ resize: { width: 1080 } }], {
+          format: SaveFormat.PNG,
+        });
+        // DB CHECK requires the <uid>/ prefix; index keeps names unique within a ms.
+        const path = `${userId}/feedback-${Date.now()}-${paths.length}.png`;
+        const formData = new FormData();
+        formData.append('', { uri: png.uri, name: 'feedback.png', type: 'image/png' } as any);
+        const { error: upErr } = await supabasePersonal.storage
+          .from(SCREENSHOTS_BUCKET)
+          .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
+        if (!upErr) paths.push(path);
+      } catch {
+        // best-effort per image
       }
-    } catch {
-      // screenshot is a nice-to-have — the report is already saved
+    }
+    if (paths.length) {
+      await supabasePersonal
+        .from('beta_feedback')
+        .update({ screenshot_paths: paths })
+        .eq('id', inserted.id);
     }
   }
 }

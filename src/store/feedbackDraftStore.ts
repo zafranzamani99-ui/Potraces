@@ -3,16 +3,16 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Unsent "Report a bug / idea" draft. Persisted to disk so a report survives the
-// sign-in round-trip (tap Send while signed out → Account screen → back) AND a
-// low-memory process kill during Google/Apple OAuth. Written on change, cleared
-// only on a successful submit. One slot, last-write-wins (no multi-draft — YAGNI).
+// sign-in round-trip (tap Send while signed out, go to the Account screen, come
+// back) AND a low-memory process kill during Google/Apple OAuth. Written on
+// change, cleared only on a successful submit. One slot, last-write-wins.
 
 export type FeedbackType = 'bug' | 'idea';
 
 export interface FeedbackDraft {
   type: FeedbackType;
   body: string;
-  screenshotUri?: string | null;
+  screenshotUris?: string[]; // up to 3
 }
 
 interface FeedbackDraftState {

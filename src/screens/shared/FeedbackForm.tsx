@@ -19,11 +19,14 @@ import { supabasePersonal } from '../../services/supabase';
 import { submitFeedback, NotSignedInError } from '../../services/betaFeedback';
 import { useFeedbackDraftStore, type FeedbackType } from '../../store/feedbackDraftStore';
 
+const MAX_SHOTS = 3;
+
 /**
- * "Report a bug / idea" — writes into the shared `beta_feedback` table (the same
- * one the web form + admin board use). Reached from Settings → About → Help &
+ * "Report a bug / idea", writes into the shared `beta_feedback` table (the same
+ * one the web form + admin board use). Reached from Settings, About, Help &
  * Community. Users can type without an account; sign-in is only asked at Send and
  * the typed draft is preserved across the sign-in round-trip (persisted to disk).
+ * Up to 3 optional screenshots.
  */
 const FeedbackForm: React.FC = () => {
   const C = useCalm();
@@ -43,7 +46,7 @@ const FeedbackForm: React.FC = () => {
   // live state also survives the normal round trip.
   const [type, setType] = useState<FeedbackType>(draft?.type ?? 'bug');
   const [body, setBody] = useState(draft?.body ?? '');
-  const [shot, setShot] = useState<string | null>(draft?.screenshotUri ?? null);
+  const [shots, setShots] = useState<string[]>(draft?.screenshotUris ?? []);
   const [submitting, setSubmitting] = useState(false);
   const [signedIn, setSignedIn] = useState(true); // assume signed in until checked (hides the benefit line)
   const [multilineFocused, setMultilineFocused] = useState(false);
@@ -51,7 +54,7 @@ const FeedbackForm: React.FC = () => {
   const { keyboardVisible, keyboardHeight } = useKeyboardVisible(() => setMultilineFocused(false));
 
   // Re-check the personal session on focus (also when returning from Account) to
-  // toggle the "you'll sign in so I can tell you when it's fixed" benefit line.
+  // toggle the "sign in so we can update you" benefit line.
   useFocusEffect(
     useCallback(() => {
       let alive = true;
@@ -65,49 +68,64 @@ const FeedbackForm: React.FC = () => {
   // Persist the draft (debounced) so it survives the sign-in trip AND a
   // low-memory kill during OAuth. Clear when there's nothing worth keeping.
   useEffect(() => {
-    const hasContent = body.trim().length > 0 || !!shot;
+    const hasContent = body.trim().length > 0 || shots.length > 0;
     const h = setTimeout(() => {
-      if (hasContent) setDraft({ type, body, screenshotUri: shot });
+      if (hasContent) setDraft({ type, body, screenshotUris: shots });
       else clearDraft();
     }, 400);
     return () => clearTimeout(h);
-  }, [type, body, shot, setDraft, clearDraft]);
+  }, [type, body, shots, setDraft, clearDraft]);
 
-  const pickScreenshot = useCallback(async () => {
+  const pickScreenshots = useCallback(async () => {
     lightTap();
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
-    if (res.canceled || !res.assets[0]) return;
-    let uri = res.assets[0].uri;
-    // Copy out of the picker's tmp cache into documents so it survives a restart.
-    try {
-      if (FileSystem.documentDirectory) {
-        const dest = `${FileSystem.documentDirectory}feedback-shot-${Date.now()}.jpg`;
-        await FileSystem.copyAsync({ from: uri, to: dest });
-        uri = dest;
+    const remaining = MAX_SHOTS - shots.length;
+    if (remaining <= 0) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
+    });
+    if (res.canceled || !res.assets?.length) return;
+    // Copy each picked file out of the picker's tmp cache into documents so it
+    // survives a restart.
+    const added: string[] = [];
+    for (const asset of res.assets.slice(0, remaining)) {
+      let uri = asset.uri;
+      try {
+        if (FileSystem.documentDirectory) {
+          const dest = `${FileSystem.documentDirectory}feedback-shot-${Date.now()}-${added.length}.jpg`;
+          await FileSystem.copyAsync({ from: uri, to: dest });
+          uri = dest;
+        }
+      } catch {
+        // fall back to the picker uri (works until the OS purges tmp)
       }
-    } catch {
-      // fall back to the picker uri (works until the OS purges tmp)
+      added.push(uri);
     }
-    setShot(uri);
-  }, []);
+    setShots((prev) => [...prev, ...added].slice(0, MAX_SHOTS));
+  }, [shots.length]);
 
-  const removeScreenshot = useCallback(() => { lightTap(); setShot(null); }, []);
+  const removeShot = useCallback((idx: number) => {
+    lightTap();
+    setShots((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
 
   const handleSend = useCallback(async () => {
     if (!body.trim() || submitting) return;
     Keyboard.dismiss();
     setSubmitting(true);
     try {
-      await submitFeedback({ type, body, screenshotUri: shot });
+      await submitFeedback({ type, body, screenshotUris: shots });
       clearDraft();
       setBody('');
-      setShot(null);
+      setShots([]);
       setType('bug');
       showToast(t.settings.fbSent, 'success');
       navigation.goBack();
     } catch (e: any) {
       if (e instanceof NotSignedInError) {
-        setDraft({ type, body, screenshotUri: shot }); // force-save before leaving
+        setDraft({ type, body, screenshotUris: shots }); // force-save before leaving
         setSubmitting(false);
         navigation.navigate('Account', { returnTo: 'FeedbackForm' });
         return;
@@ -116,7 +134,7 @@ const FeedbackForm: React.FC = () => {
       showToast(msg.includes('rate_limit') ? t.settings.fbRateLimited : t.settings.fbSendFailed, 'error');
       setSubmitting(false);
     }
-  }, [body, shot, type, submitting, clearDraft, setDraft, showToast, t, navigation]);
+  }, [body, shots, type, submitting, clearDraft, setDraft, showToast, t, navigation]);
 
   return (
     <View style={styles.container}>
@@ -129,7 +147,7 @@ const FeedbackForm: React.FC = () => {
       >
         <Text style={styles.intro}>{t.settings.fbIntro}</Text>
 
-        {/* Bug / Idea — Neu Pills */}
+        {/* Bug / Idea, Neu Pills */}
         <View style={styles.typeRow}>
           {(['bug', 'idea'] as FeedbackType[]).map((opt) => {
             const active = type === opt;
@@ -153,7 +171,7 @@ const FeedbackForm: React.FC = () => {
           })}
         </View>
 
-        {/* Description — Note Field */}
+        {/* Description, Note Field */}
         <Text style={styles.label}>{t.settings.fbDescLabel}</Text>
         <View style={[styles.fieldCard, neu.raisedSoft]}>
           <TextInput
@@ -169,37 +187,40 @@ const FeedbackForm: React.FC = () => {
           />
         </View>
 
-        {/* Optional screenshot */}
-        {shot ? (
-          <View style={styles.shotWrap}>
-            {/* Seam rule: neu shadow on the outer view, overflow-clip on the inner. */}
-            <View style={[styles.shotShadow, neu.raised]}>
-              <View style={styles.shotClip}>
-                <Image source={{ uri: shot }} style={styles.shotImg} resizeMode="cover" />
+        {/* Optional screenshots (up to 3) */}
+        <Text style={styles.label}>{t.settings.fbAttach}</Text>
+        <View style={styles.shotsRow}>
+          {shots.map((uri, idx) => (
+            <View key={`${uri}-${idx}`} style={styles.shotWrap}>
+              {/* Seam rule: neu shadow on the outer view, overflow-clip on the inner. */}
+              <View style={[styles.shotShadow, neu.raised]}>
+                <View style={styles.shotClip}>
+                  <Image source={{ uri }} style={styles.shotImg} resizeMode="cover" />
+                </View>
               </View>
+              <TouchableOpacity
+                style={styles.shotRemove}
+                onPress={() => removeShot(idx)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.settings.fbRemove}
+              >
+                <Feather name="x" size={12} color={C.onAccent} />
+              </TouchableOpacity>
             </View>
+          ))}
+          {shots.length < MAX_SHOTS && (
             <TouchableOpacity
-              style={styles.shotRemove}
-              onPress={removeScreenshot}
+              style={[styles.addTile, neu.raised]}
+              onPress={pickScreenshots}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel={t.settings.fbRemove}
+              accessibilityLabel={t.settings.fbAttach}
             >
-              <Feather name="x" size={14} color={C.onAccent} />
+              <Feather name="plus" size={22} color={C.textSecondary} />
             </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={[styles.attachRow, neu.raised]}
-            onPress={pickScreenshot}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={t.settings.fbAttach}
-          >
-            <Feather name="image" size={18} color={C.textSecondary} />
-            <Text style={styles.attachText}>{t.settings.fbAttach}</Text>
-          </TouchableOpacity>
-        )}
+          )}
+        </View>
         <Text style={styles.warning}>{t.settings.fbScreenshotWarning}</Text>
 
         {!signedIn && <Text style={styles.benefit}>{t.settings.fbSignInBenefit}</Text>}
@@ -231,7 +252,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
-  // Bug / Idea — Neu Pills (faintDark raised idle, olive fill when selected).
+  // Bug / Idea, Neu Pills (faintDark raised idle, olive fill when selected).
   typeRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
   typePill: {
     flex: 1,
@@ -270,31 +291,26 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     minHeight: 96,
     padding: 0,
   },
-  attachRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(C.textPrimary, 0.03),
-  },
-  attachText: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  shotWrap: { alignSelf: 'flex-start', position: 'relative' },
+  shotsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  shotWrap: { position: 'relative' },
   shotShadow: { borderRadius: RADIUS.lg },
   shotClip: { borderRadius: RADIUS.lg, overflow: 'hidden' },
-  shotImg: { width: 120, height: 120 },
+  shotImg: { width: 84, height: 84 },
+  addTile: {
+    width: 84,
+    height: 84,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
+  },
   shotRemove: {
     position: 'absolute',
     top: -6,
     right: -6,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
