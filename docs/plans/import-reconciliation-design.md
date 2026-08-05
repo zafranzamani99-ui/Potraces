@@ -7,6 +7,10 @@ quota aligned to 5 (needs edge-fn deploy), currency guard, cache wipe, toast+Und
 on both import screens, §9 backfill banner (`StatementBackfillBanner` on personal
 Dashboard) + monthly nudge (`src/services/statementReminders.ts`, re-armed on
 foreground/import/settings), localized timeout/auth copy.
+UPDATE 2026-08-05: the inline backfill banner was REMOVED from the Dashboard (user
+found it pushy) — statement import now surfaces via the Explore tile (first quick
+action) → Explore sheet in `src/components/common/QuickActions.tsx`. The banner
+component file remains but is unused.
 Phase 3 built: parser v2 (e-wallet top-ups as transfers, per-row `account` last-4
 for multi-account PDFs, per-row `originalAmount`/`originalCurrency` — NOT yet
 deployed), tier-1 date merges (bank date wins, silent), same-day add-time warning
