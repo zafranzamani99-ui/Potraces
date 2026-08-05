@@ -89,7 +89,6 @@ import BreathingRoom from '../../components/common/BreathingRoom';
 import FreshStart from '../../components/common/FreshStart';
 import GettingStarted from '../../components/common/GettingStarted';
 import SampleDataBanner from '../../components/common/SampleDataBanner';
-import StatementBackfillBanner from '../../components/common/StatementBackfillBanner';
 import { useNotificationStore } from '../../store/notificationStore';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import ModalToastHost from '../../components/common/ModalToastHost';
@@ -807,7 +806,13 @@ const PersonalDashboard: React.FC = () => {
         screen === 'FinancialPulse' ||
         screen === 'ReceiptHistory' ||
         screen === 'Calculator' ||
-        screen === 'CollectzHome'
+        screen === 'CollectzHome' ||
+        screen === 'ImportFromStatement' ||
+        screen === 'ImportFromCsv' ||
+        screen === 'QuickLogSetup' ||
+        screen === 'BackupRestore' ||
+        screen === 'Account' ||
+        screen === 'ReceiptScanner'
       ) {
         navigation.getParent()?.navigate(screen);
       } else {
@@ -949,9 +954,8 @@ const PersonalDashboard: React.FC = () => {
 
         {/* First-run surfaces — exactly one of FreshStart/GettingStarted renders
             at a time (see precedence rule above). The sample-data banner (demo
-            mode) wins the slot. The statement-backfill banner is a separate
-            self-gated surface for fresh 0-transaction accounts (import as the
-            alternative first step) and may accompany the ladder. */}
+            mode) wins the slot. Statement backfill is no longer an inline
+            surface — it lives as the Import tile in Quick Actions. */}
         {sampleDataLoaded ? (
           // TEMP: demo-data banner hidden for now — restore via the
           // SHOW_SAMPLE_DATA_BANNER flag at the top of this file.
@@ -962,7 +966,6 @@ const PersonalDashboard: React.FC = () => {
           <>
             {showFreshStart && <FreshStart />}
             {showGettingStarted && <GettingStarted />}
-            <StatementBackfillBanner />
           </>
         )}
 

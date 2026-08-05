@@ -14,15 +14,16 @@ automation. DUAL-MODE input (2026-07-22 redesign, competitor-parity):
      by a Text action + Run Shortcut. Detected by the Amount property having no
      value (a plain string has no Amount) → split on "|" as before.
 
-Both paths converge, then the amount is resolved in up to FIVE layers
+Both paths converge, then the amount is resolved in layers
 (2026-07-24 rebuild — device evidence: the Amount property arrived digitless
 on current iOS, server echoed got:"", while Merchant survived): Get Numbers
 from the raw Amount property (2026-07-30 — reads the number out of the typed
 currency value, bypassing the coercion that nulls it) → regex-clean the
-property → clean an explicit Text-action rendering of the property →
-decimal-pattern match on the transaction's raw text form → Ask once (Number
-keyboard). Category defaults to 'other'; the user re-categorises from the
-confirmation push. Layer 4 means a log is NEVER silently lost again.
+property → clean an explicit Text-action rendering of the property → Ask
+once (Number keyboard). Category defaults to 'other'; the user re-categorises
+from the confirmation push. The Ask layer means a log is NEVER silently lost.
+(The former decimal-match layer was dropped 2026-08-05 — text.match is
+intent-backed on OS 26 and the importer drops all refs to its outputs.)
 
 Requires `potraces-key.txt` to exist — the Back Tap first log saves it.
 
@@ -68,8 +69,6 @@ U_CLEAN1 = new_uuid()
 U_TEXT2 = new_uuid()
 U_CLEAN2 = new_uuid()
 U_RAWTEXT = new_uuid()
-U_MATCH = new_uuid()
-U_MATCH1 = new_uuid()
 U_ASK = new_uuid()
 U_KEY = new_uuid()
 U_RESP = new_uuid()
@@ -78,11 +77,10 @@ G_RESULT = new_uuid()
 G_MODE = new_uuid()   # transaction-vs-text input discriminator If/Otherwise
 G_AMT1 = new_uuid()   # amount layer 1 (cleaned property) If/Otherwise
 G_AMT2 = new_uuid()   # amount layer 2 (Text-action coercion) If/Otherwise
-G_AMT3 = new_uuid()   # amount layer 3 (decimal match in raw text) If/Otherwise
 G_AMT0 = new_uuid()   # amount layer 0 (Get Numbers from Input) If/Otherwise
 U_GETNUM = new_uuid()
 U_GETNUM_CLEAN = new_uuid()
-U_GETNUM_MATCH = new_uuid()
+U_NONZERO = new_uuid()
 
 # The two paths converge into these variables before the POST.
 VAR_RAWAMT = "PotracesRawAmount"
@@ -101,6 +99,19 @@ def out_ref(u, name):
 
 def token_attachment(value):
     return {"WFSerializationType": "WFTextTokenAttachment", "Value": value}
+
+
+def cond_var(value):
+    # If-condition input slot — bare WFTextTokenAttachment is the ONLY shape the
+    # 26 importer accepts here (2026-08-05, macOS 26.5.1 probe-verified):
+    #   bare ExtensionInput ref                 → works
+    #   bare ActionOutput ref to NATIVE action  → works (gettext/replace/…)
+    #   WFTextTokenString shape in this slot    → rejected ("choose a value")
+    #   ANY ref to an INTENT-BACKED action's output (text.match runs as
+    #   WFHandleCustomIntentAction on 26), in ANY slot shape
+    #     → dropped by the importer → runtime "Ask Each Time" text prompt
+    # So conditions may reference native outputs only; no text.match anywhere.
+    return {"Type": "Variable", "Variable": token_attachment(value)}
 
 
 def shortcut_input():
@@ -174,7 +185,7 @@ actions = [
         "GroupingIdentifier": G_MODE,
         "WFControlFlowMode": 0,
         "WFCondition": 100,  # "has any value"
-        "WFInput": {"Type": "Variable", "Variable": token_attachment(input_prop("Amount"))},
+        "WFInput": cond_var(input_prop("Amount")),
     }),
     #   TRANSACTION path — extract the fields ourselves (user builds nothing).
     set_var(VAR_RAWAMT, input_prop("Amount")),
@@ -199,20 +210,20 @@ actions = [
     set_var(VAR_CARD, out_ref(U_CARD, "Item from List")),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_MODE, "WFControlFlowMode": 2}),
 
-    # ── Converged: resolve the amount, LAYERED (2026-07-24 rebuild) ──────────
+    # ── Converged: resolve the amount, LAYERED ─────────────────────────────────
     # Device evidence (RM3.80 @ 7-Eleven, server echoed got:""): the Amount
     # PROPERTY arrives digitless through Set Variable → Replace Text — the
     # value dies in that coercion on current iOS, while Merchant (a text
-    # property) survives fine. So the amount is resolved in five layers (layer 0
+    # property) survives fine. So the amount is resolved in layers (layer 0
     # below is tried FIRST); the first to produce digits wins, last never fails silently:
     #   1. regex-clean the property value (the pre-2026-07-24 behavior)
     #   2. route the property through an explicit Text action first — numbers
     #      and currency measurements render properly THERE — then clean
-    #   3. decimal-pattern match ([0-9]+[.,][0-9]{2}) on the transaction's raw
-    #      text form — the decimal is REQUIRED, so merchant digits
-    #      ("1274-7-Eleven") can never become a garbage amount
-    #   4. Ask once (Number keyboard) — iOS hid the amount, the user types it.
+    #   3. Ask once (Number keyboard) — iOS hid the amount, the user types it.
     #      The log ALWAYS lands; silent data loss becomes impossible.
+    #   (The old layer 3, a decimal-pattern Match on the raw text, was removed
+    #   2026-08-05: text.match is intent-backed on OS 26 and the importer drops
+    #   all references to its outputs — see cond_var.)
     # ── Amount layer 0 (2026-07-30): Get Numbers from Input ──────────────────
     # Root cause found: the Amount is a currency-TYPED value (symbol + locale
     # format), not a plain number. Feeding it through Set Variable / Replace
@@ -220,10 +231,11 @@ actions = [
     # Numbers from Input" read STRAIGHT off the raw input property — NOT
     # VAR_RAWAMT, which is already the coerced-dead copy — pulls the number out
     # of the typed value, which is the recipe every working Apple Pay expense
-    # shortcut uses. Guarded by a [1-9] match: Get Numbers can yield 0/empty on
-    # a genuine miss, and this guarantees such a miss falls through to layers
-    # 1-4 (→ Ask) instead of silently posting RM0. Tried first; if it lands the
-    # amount we're done, otherwise behaviour is identical to before.
+    # shortcut uses. Guarded by a zero-strip (see below): Get Numbers can yield
+    # 0/empty on a genuine miss, and the guard guarantees such a miss falls
+    # through to layers 1-3 (→ Ask) instead of silently posting RM0. Tried
+    # first; if it lands the amount we're done, otherwise behaviour is
+    # identical to before.
     action("is.workflow.actions.detect.number", {
         "UUID": U_GETNUM,
         "WFInput": token_string([input_prop("Amount")]),
@@ -235,17 +247,27 @@ actions = [
         # "Replace With" omitted (not "") — the corpus-canonical delete form
         "WFReplaceTextRegularExpression": True,
     }),
-    action("is.workflow.actions.text.match", {
-        "UUID": U_GETNUM_MATCH,
-        "WFMatchText": token_string([out_ref(U_GETNUM_CLEAN, "Updated Text")]),
-        "WFMatchTextPattern": "[1-9]",
-        "WFMatchTextCaseSensitive": False,
+    # Nonzero guard WITHOUT text.match (intent-backed on 26 → refs to its output
+    # are dropped): strip zeros/dots/commas from the cleaned number — "has any
+    # value" afterwards ⇔ a non-zero digit existed. "0.00" correctly misses.
+    # NOTE: deeper guard attempts (numeric >0 conditions, extra Get Numbers)
+    # were abandoned 2026-08-05 — OS 26's empty/zero/skip semantics around
+    # nothing-valued action outputs are inconsistent; this simple form matches
+    # the long-running July production behavior. (For future reference,
+    # probe-verified on 26.5.1: numeric conditions serialize as WFCondition 5
+    # = "Is Greater Than" with the operand in WFConditionalActionString as a
+    # WFTextTokenString; the pre-26 WFNumberValue key no longer exists.)
+    action("is.workflow.actions.text.replace", {
+        "UUID": U_NONZERO,
+        "WFInput": token_string([out_ref(U_GETNUM_CLEAN, "Updated Text")]),
+        "WFReplaceTextFind": "[0.,]",
+        "WFReplaceTextRegularExpression": True,
     }),
     action("is.workflow.actions.conditional", {
         "GroupingIdentifier": G_AMT0,
         "WFControlFlowMode": 0,
         "WFCondition": 100,  # a non-zero digit exists → a real amount came through
-        "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_GETNUM_MATCH, "Matches"))},
+        "WFInput": cond_var(out_ref(U_NONZERO, "Updated Text")),
     }),
     set_var(VAR_FINALAMT, out_ref(U_GETNUM_CLEAN, "Updated Text")),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT0, "WFControlFlowMode": 1}),
@@ -259,7 +281,7 @@ actions = [
         "GroupingIdentifier": G_AMT1,
         "WFControlFlowMode": 0,
         "WFCondition": 100,  # cleaned property has digits → done
-        "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_CLEAN1, "Updated Text"))},
+        "WFInput": cond_var(out_ref(U_CLEAN1, "Updated Text")),
     }),
     set_var(VAR_FINALAMT, out_ref(U_CLEAN1, "Updated Text")),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT1, "WFControlFlowMode": 1}),
@@ -277,7 +299,7 @@ actions = [
         "GroupingIdentifier": G_AMT2,
         "WFControlFlowMode": 0,
         "WFCondition": 100,
-        "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_CLEAN2, "Updated Text"))},
+        "WFInput": cond_var(out_ref(U_CLEAN2, "Updated Text")),
     }),
     set_var(VAR_FINALAMT, out_ref(U_CLEAN2, "Updated Text")),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT2, "WFControlFlowMode": 1}),
@@ -285,29 +307,16 @@ actions = [
         "UUID": U_RAWTEXT,
         "WFTextActionText": token_string([shortcut_input()]),
     }),
-    action("is.workflow.actions.text.match", {
-        "UUID": U_MATCH,
-        "WFMatchText": token_string([out_ref(U_RAWTEXT, "Text")]),
-        "WFMatchTextPattern": "[0-9]+[.,][0-9]{2}",
-        "WFMatchTextCaseSensitive": False,
-    }),
-    action("is.workflow.actions.conditional", {
-        "GroupingIdentifier": G_AMT3,
-        "WFControlFlowMode": 0,
-        "WFCondition": 100,  # a decimal-looking match exists (empty list → Otherwise)
-        "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_MATCH, "Matches"))},
-    }),
-    {**get_item(U_MATCH, 1), "WFWorkflowActionParameters":
-        {**get_item(U_MATCH, 1)["WFWorkflowActionParameters"], "UUID": U_MATCH1}},
-    set_var(VAR_FINALAMT, out_ref(U_MATCH1, "Item from List")),
-    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT3, "WFControlFlowMode": 1}),
+    # (Layer 3 — decimal-pattern match on the raw text — removed 2026-08-05:
+    # text.match is intent-backed on OS 26 and the importer drops every
+    # reference to its output. The Ask below is the guaranteed backstop; no log
+    # is ever silently lost, the user just types the amount once.)
     action("is.workflow.actions.ask", {
         "UUID": U_ASK,
         "WFAskActionPrompt": "Amount (RM)? iOS hid it from Auto Log — type it once.",
         "WFInputType": "Number",
     }),
     set_var(VAR_FINALAMT, out_ref(U_ASK, "Provided Input")),
-    action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT3, "WFControlFlowMode": 2}),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT2, "WFControlFlowMode": 2}),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT1, "WFControlFlowMode": 2}),
     action("is.workflow.actions.conditional", {"GroupingIdentifier": G_AMT0, "WFControlFlowMode": 2}),
@@ -350,7 +359,7 @@ actions = [
         "GroupingIdentifier": G_RESULT,
         "WFControlFlowMode": 0,
         "WFCondition": 101,  # ok has NO value → failed
-        "WFInput": {"Type": "Variable", "Variable": token_attachment(out_ref(U_OK, "Dictionary Value"))},
+        "WFInput": cond_var(out_ref(U_OK, "Dictionary Value")),
     }),
     # Body includes the server's response so failures are diagnosable
     # (missing-key vs bad-amount vs invalid-key). Since 2026-07-24 it also

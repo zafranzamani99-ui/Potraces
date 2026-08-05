@@ -1,13 +1,15 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Image, Modal } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { Feather } from '@expo/vector-icons';
 import { useNeu } from '../../components/common/neu';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
+import { supabasePersonal } from '../../services/supabase';
 import {
   listMyFeedback,
   NotSignedInError,
@@ -29,9 +31,11 @@ const FeedbackReports: React.FC = () => {
   const navigation = useNavigation<any>();
 
   const [reports, setReports] = useState<MyFeedbackReport[] | null>(null); // null = loading
+  const [shotUrls, setShotUrls] = useState<Record<string, string>>({}); // storage path -> signed URL
   const [signedOut, setSignedOut] = useState(false);
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null); // fullscreen photo viewer
 
   const load = useCallback(async () => {
     setError(false);
@@ -39,6 +43,21 @@ const FeedbackReports: React.FC = () => {
       const rows = await listMyFeedback();
       setSignedOut(false);
       setReports(rows);
+      // Sign every attached screenshot so the thumbnails render (owner read
+      // policy lets a user sign their own <uid>/ files).
+      const paths = rows.flatMap((r) => shotPathsOf(r));
+      if (paths.length) {
+        const { data: signed } = await supabasePersonal.storage
+          .from('beta-screenshots')
+          .createSignedUrls(paths, 3600);
+        const map: Record<string, string> = {};
+        if (Array.isArray(signed)) {
+          for (const s of signed) if (s?.path && s?.signedUrl) map[s.path] = s.signedUrl;
+        }
+        setShotUrls(map);
+      } else {
+        setShotUrls({});
+      }
     } catch (e) {
       if (e instanceof NotSignedInError) {
         setSignedOut(true);
@@ -119,10 +138,53 @@ const FeedbackReports: React.FC = () => {
                 <Text style={styles.date}>{fmtDate(r.created_at)}</Text>
               </View>
               <Text style={styles.body}>{r.body}</Text>
+              {(() => {
+                const urls = shotPathsOf(r)
+                  .map((p) => shotUrls[p])
+                  .filter((u): u is string => !!u);
+                if (!urls.length) return null;
+                return (
+                  <View style={styles.shotsRow}>
+                    {urls.map((u) => (
+                      <TouchableOpacity key={u} onPress={() => { lightTap(); setViewerUrl(u); }} activeOpacity={0.85}>
+                        <Image source={{ uri: u }} style={styles.shot} resizeMode="cover" />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                );
+              })()}
             </View>
           );
         })}
       </ScrollView>
+
+      {/* Fullscreen photo viewer: opaque black page, X at top right,
+          tap the photo to close */}
+      <Modal
+        visible={!!viewerUrl}
+        animationType="fade"
+        onRequestClose={() => setViewerUrl(null)}
+      >
+        <View style={styles.viewerBackdrop}>
+          <TouchableOpacity
+            style={styles.viewerTapArea}
+            activeOpacity={1}
+            onPress={() => setViewerUrl(null)}
+          >
+            {viewerUrl && (
+              <Image source={{ uri: viewerUrl }} style={styles.viewerImg} resizeMode="contain" />
+            )}
+          </TouchableOpacity>
+          {/* Big bottom close button, impossible to miss */}
+          <TouchableOpacity
+            style={[styles.viewerCloseBottom, { bottom: insets.bottom + 28 }]}
+            onPress={() => setViewerUrl(null)}
+            hitSlop={12}
+          >
+            <Feather name="x" size={26} color="#000" />
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -133,6 +195,14 @@ function fmtDate(iso: string): string {
   } catch {
     return '';
   }
+}
+
+/** All screenshot storage paths attached to a report (single web one + the in-app array). */
+function shotPathsOf(r: MyFeedbackReport): string[] {
+  return [
+    ...(r.screenshot_path ? [r.screenshot_path] : []),
+    ...(Array.isArray(r.screenshot_paths) ? r.screenshot_paths : []),
+  ];
 }
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
@@ -199,6 +269,29 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     lineHeight: 21,
     color: C.textPrimary,
+  },
+  shotsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.sm },
+  shot: { width: 72, height: 72, borderRadius: RADIUS.md },
+  viewerBackdrop: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  viewerTapArea: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerImg: { width: '100%', height: '85%' },
+  viewerCloseBottom: {
+    position: 'absolute',
+    alignSelf: 'center',
+    zIndex: 2,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

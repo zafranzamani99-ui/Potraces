@@ -7,13 +7,14 @@ import { usePersonalStore } from '../../store/personalStore';
 import { withBackoff } from '../../services/syncBackoff';
 import { runCloudBackupDrain } from '../../services/cloudBackupRunner';
 import { enqueueReceiptDriveBackup } from '../../services/driveBackup';
+import { enqueueReceiptIcloudBackup } from '../../services/icloudBackup';
 import { enqueueBackupJob } from '../../services/cloudBackupQueue';
 
 const runDrain = () => withBackoff('cloudBackup', runCloudBackupDrain);
 
 const anyBackupFeatureOn = () => {
   const s = useSettingsStore.getState();
-  return s.driveBackupEnabled || s.googleSheetsSyncEnabled;
+  return s.driveBackupEnabled || s.googleSheetsSyncEnabled || s.icloudBackupEnabled;
 };
 
 /**
@@ -22,8 +23,9 @@ const anyBackupFeatureOn = () => {
  *   - AppState foreground transitions
  *   - offline → online transitions
  *   - debounced (~1.5s) receipt / transaction mutations
- *     (receipt added → enqueue its Drive job; transactions changed → enqueue
- *     one dedupe'd 'sheets:transactions' job covering all new rows)
+ *     (receipt added → enqueue its Drive and/or iCloud job; transactions
+ *     changed → enqueue one dedupe'd 'sheets:transactions' job covering all
+ *     new rows)
  *
  * All gating (flag, premium tier, network, token) lives in cloudBackupRunner —
  * this component only decides WHEN to ask for a drain. Renders nothing.
@@ -31,7 +33,8 @@ const anyBackupFeatureOn = () => {
 export default function CloudBackupManager() {
   const driveEnabled = useSettingsStore((s) => s.driveBackupEnabled);
   const sheetsEnabled = useSettingsStore((s) => s.googleSheetsSyncEnabled);
-  const anyEnabled = driveEnabled || sheetsEnabled;
+  const icloudEnabled = useSettingsStore((s) => s.icloudBackupEnabled);
+  const anyEnabled = driveEnabled || sheetsEnabled || icloudEnabled;
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const didInitialDrain = useRef(false);
 
@@ -94,15 +97,17 @@ export default function CloudBackupManager() {
     return () => unsub();
   }, []);
 
-  // Drive backup: receipt added → enqueue its file job, then debounce a drain.
-  // Subscribed only while driveBackupEnabled is on.
+  // Receipt backup: receipt added → enqueue its file job(s), then debounce a
+  // drain. Subscribed while Drive and/or iCloud receipt backup is on; each
+  // provider's enqueue is gated on its own toggle.
   useEffect(() => {
-    if (!driveEnabled) return;
+    if (!driveEnabled && !icloudEnabled) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        if (useSettingsStore.getState().driveBackupEnabled) {
+        const s = useSettingsStore.getState();
+        if (s.driveBackupEnabled || s.icloudBackupEnabled) {
           runDrain().catch(() => {});
         }
       }, 1500);
@@ -112,10 +117,12 @@ export default function CloudBackupManager() {
       const prevIds = new Set(p.receipts.map((r) => r.id));
       const added = s.receipts.filter((r) => !prevIds.has(r.id));
       if (added.length === 0) return;
+      const settings = useSettingsStore.getState();
       for (const r of added) {
-        // Queue dedupes on `drive:<id>`; the processor no-ops if the receipt
-        // has no artifact or is already backed up.
-        void enqueueReceiptDriveBackup(r.id).catch(() => {});
+        // Queues dedupe on `drive:<id>` / `icloud:<id>`; the processors no-op
+        // if the receipt has no artifact or is already backed up.
+        if (settings.driveBackupEnabled) void enqueueReceiptDriveBackup(r.id).catch(() => {});
+        if (settings.icloudBackupEnabled) void enqueueReceiptIcloudBackup(r.id).catch(() => {});
       }
       schedule();
     });
@@ -123,7 +130,7 @@ export default function CloudBackupManager() {
       unsub();
       if (timer) clearTimeout(timer);
     };
-  }, [driveEnabled]);
+  }, [driveEnabled, icloudEnabled]);
 
   // Sheets sync: transactions changed → enqueue one dedupe'd job (a single
   // pending 'sheets:transactions' job covers any number of new rows), then

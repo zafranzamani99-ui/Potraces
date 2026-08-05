@@ -225,6 +225,12 @@
           ]
         }
       ],
+      [
+        "react-native-cloud-storage",
+        {
+          "iCloudContainerIdentifier": "iCloud.com.potraces.app"
+        }
+      ],
       "expo-localization",
       "expo-web-browser",
       "expo-mail-composer",

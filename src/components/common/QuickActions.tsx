@@ -15,7 +15,7 @@
 //   <QuickActions onAction={handleQuickAction} billsBadge={billsBadge} />
 // (handleQuickAction is the existing `(screen) => { … navigation.navigate(screen); }`.)
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
+import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DraggableFlatList, {
@@ -42,7 +43,11 @@ import NeuButton from './NeuButton';
 import BottomSheet from './BottomSheet';
 
 // Same set as the old Dashboard.getQuickActions — keep keys/screens identical.
+// 'explore' is special: its tile opens the in-component Explore sheet (features
+// users tend to overlook) instead of navigating — see EXPLORE_ROWS below.
+const EXPLORE_SCREEN = '__explore';
 const getQuickActions = (C: typeof CALM) => [
+  { key: 'explore' as const, icon: 'i/compass', screen: EXPLORE_SCREEN, color: C.accent },
   { key: 'wallets' as const, icon: 'i/wallet', screen: 'WalletManagement', color: C.accent },
   { key: 'savings' as const, icon: 'm/piggy-bank', screen: 'SavingsTracker', color: C.gold },
   { key: 'debts' as const, icon: 'm/hand-coin', screen: 'DebtTracking', color: C.bronze },
@@ -54,6 +59,18 @@ const getQuickActions = (C: typeof CALM) => [
   { key: 'chat' as const, icon: 'i/flash', screen: 'MoneyChat', color: C.gold },
   { key: 'pulse' as const, icon: 'i/pulse', screen: 'FinancialPulse', color: C.accent },
   { key: 'collectz' as const, icon: 'm/account-group', screen: 'CollectzHome', color: C.deepOlive },
+];
+
+// Explore sheet rows — the genuinely useful features users tend to miss
+// ("terlepas pandang"). Calm, static, no badges or rotation: the tile is the
+// invitation, the sheet is the tour. Each row navigates to a root screen.
+const getExploreRows = (C: typeof CALM) => [
+  { key: 'statement', icon: 'i/document-text', screen: 'ImportFromStatement', color: C.bronze },
+  { key: 'quicklog', icon: 'i/flash', screen: 'QuickLogSetup', color: C.gold },
+  { key: 'csv', icon: 'i/grid', screen: 'ImportFromCsv', color: C.deepOlive },
+  { key: 'backup', icon: 'i/cloud-upload', screen: 'BackupRestore', color: C.accent },
+  { key: 'google', icon: 'i/logo-google', screen: 'Account', color: C.bronze },
+  { key: 'scan', icon: 'i/camera', screen: 'ReceiptScanner', color: C.gold },
 ];
 
 type QuickAction = ReturnType<typeof getQuickActions>[number];
@@ -78,6 +95,7 @@ const QuickActions: React.FC<Props> = ({ onAction, billsBadge = 0, receiptsBadge
   const neu = useNeu();
   const styles = useMemo(() => makeStyles(C), [C]);
   const actions = useMemo(() => getQuickActions(C), [C]);
+  const exploreRows = useMemo(() => getExploreRows(C), [C]);
   const specByKey = useMemo(
     () => new Map<string, QuickAction>(actions.map((a) => [a.key, a])),
     [actions]
@@ -99,7 +117,22 @@ const QuickActions: React.FC<Props> = ({ onAction, billsBadge = 0, receiptsBadge
 
   const [pressedKey, setPressedKey] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [showExplore, setShowExplore] = useState(false);
   const [editing, setEditing] = useState(false);
+  // Explore rows navigate AWAY, so the sheet closes for the push — but the tour
+  // isn't done. Remember that and re-open the sheet when the user comes back
+  // (swipe-back / nav back refocuses this screen).
+  const navigation = useNavigation();
+  const resumeExplore = useRef(false);
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => {
+      if (resumeExplore.current) {
+        resumeExplore.current = false;
+        setShowExplore(true);
+      }
+    });
+    return unsub;
+  }, [navigation]);
   // The pressed-tile inset can get STUCK when a horizontal row-scroll steals the
   // gesture mid-press (onPressOut never fires) — that's the "one tile looks
   // sunken" bug. Reset the highlight whenever the surface changes.
@@ -351,7 +384,8 @@ const QuickActions: React.FC<Props> = ({ onAction, billsBadge = 0, receiptsBadge
             {row.map((action) =>
               renderTile(action, () => {
                 lightTap();
-                onAction(action.screen);
+                if (action.key === 'explore') setShowExplore(true);
+                else onAction(action.screen);
               })
             )}
           </ScrollView>
@@ -398,11 +432,67 @@ const QuickActions: React.FC<Props> = ({ onAction, billsBadge = 0, receiptsBadge
               () => {
                 lightTap();
                 closeSheet();
-                onAction(action.screen);
+                if (action.key === 'explore') {
+                  // Close-then-present needs a beat on iOS — the same-frame
+                  // sheet swap misroutes touches (see editDialog note above).
+                  setTimeout(() => setShowExplore(true), 350);
+                } else {
+                  onAction(action.screen);
+                }
               },
               gridTileWidth
             )
           )}
+        </View>
+      </BottomSheet>
+
+      {/* Explore sheet — calm tour of the easily-missed features. Static rows,
+          no badges/counts: the tile is the invitation, this is the tour. Each
+          row closes the sheet for the push, then the focus listener above
+          re-opens it when the user comes back. */}
+      <BottomSheet
+        visible={showExplore}
+        onClose={() => setShowExplore(false)}
+        header={
+          <View style={styles.sheetHeaderRow}>
+            <Text style={styles.sheetTitle}>{t.dashboard.exploreTitle}</Text>
+          </View>
+        }
+        closeLabel={t.common.close}
+        maxHeightPct={0.8}
+      >
+        <Text style={styles.exploreSubtitle}>{t.dashboard.exploreSubtitle}</Text>
+        <View style={styles.exploreList}>
+          {exploreRows.map((row) => {
+            const titleKey = `explore${row.key[0].toUpperCase()}${row.key.slice(1)}`;
+            const title = (t.dashboard as any)[titleKey] as string;
+            const desc = (t.dashboard as any)[`${titleKey}Desc`] as string;
+            return (
+              <Pressable
+                key={row.key}
+                style={styles.exploreRow}
+                onPress={() => {
+                  lightTap();
+                  resumeExplore.current = true;
+                  setShowExplore(false);
+                  onAction(row.screen);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`${title}. ${desc}`}
+              >
+                <NeuSurface
+                  style={[styles.exploreRowChip, { backgroundColor: withAlpha(row.color, 0.15) }]}
+                >
+                  {renderActionIcon(row.icon, row.color, 22)}
+                </NeuSurface>
+                <View style={styles.exploreRowText}>
+                  <Text style={styles.exploreRowTitle}>{title}</Text>
+                  <Text style={styles.exploreRowDesc}>{desc}</Text>
+                </View>
+                <Feather name="chevron-right" size={16} color={C.textMuted} />
+              </Pressable>
+            );
+          })}
         </View>
       </BottomSheet>
     </View>
@@ -499,6 +589,42 @@ const makeStyles = (C: typeof CALM) =>
       paddingTop: SPACING.md,
       paddingBottom: SPACING.lg,
       paddingHorizontal: SPACING.xl,
+    },
+    exploreSubtitle: {
+      fontSize: 12,
+      color: C.textMuted,
+      paddingHorizontal: SPACING.xl,
+      paddingTop: SPACING.xs,
+    },
+    exploreList: {
+      paddingHorizontal: SPACING.xl,
+      paddingTop: SPACING.md,
+      paddingBottom: SPACING.lg,
+      gap: SPACING.xs,
+    },
+    exploreRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      paddingVertical: SPACING.sm,
+    },
+    exploreRowChip: {
+      width: 40,
+      height: 40,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    exploreRowText: { flex: 1, gap: 1 },
+    exploreRowTitle: {
+      fontSize: 14,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textPrimary,
+    },
+    exploreRowDesc: {
+      fontSize: 12,
+      color: C.textMuted,
+      lineHeight: 16,
     },
     // Floating edit dialog (own Modal, stacked over the sheet) — centered card
     // like CategoryManager but taller: card caps at 80% of the screen and the

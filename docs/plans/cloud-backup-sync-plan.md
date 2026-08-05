@@ -98,6 +98,20 @@ Key design decisions:
 
 ## Phase 3 — iCloud backup (native dep → new EAS dev build)
 
+Status 2026-08-05: **code complete, pending EAS dev build + device testing.**
+`react-native-cloud-storage` ^3 added (plugin container `iCloud.com.potraces.app`),
+`src/services/icloudBackup.ts` + `icloudBackupLogic.ts` (`npm run test:icloud`),
+`icloud-file` drain wired into `cloudBackupRunner` (per-provider preflights —
+a dead Google session no longer blocks iCloud jobs and vice versa; queue drains
+take an `onlyKinds` filter), settings keys (`icloudBackupEnabled`,
+`lastIcloudBackupAt/Error`), AccountScreen iCloud section (iOS-only: toggle,
+last-backup, Back Up Now, Restore), en+ms strings. Restore is deliberately
+file-level: it re-materializes receipt FILES for receipt RECORDS already on
+the device (records return via account data restore / personal sync); merge =
+missing files only, replace = re-download all. Restore is flag-gated but NOT
+paywall-gated (recovery must not be blocked by a lapsed subscription).
+Remaining: steps 1 (rebuild) and 5 (device testing) below.
+
 1. Add `react-native-cloud-storage` + app.json plugin (container `iCloud.com.potraces.app`); rebuild dev client (iOS entitlements change).
 2. `src/services/icloudBackup.ts` (new) — availability check (`useIsCloudAvailable`; unsigned-into-iCloud → disabled row with plain-language reason), write files to visible `Potraces/Receipts` (Documents scope — browsable in Files app, App Store guideline 2.5.15-friendly), `manifest.json` (IDs, updatedAt, tombstones — written last), restore with two modes: **Replace this device** / **Merge** (dedupe by ID, LWW on updatedAt).
 3. New queue kind `icloud-file` in cloudBackupQueue + drain path in CloudBackupManager.

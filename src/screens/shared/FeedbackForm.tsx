@@ -45,6 +45,7 @@ const FeedbackForm: React.FC = () => {
   // native stack keeps this screen mounted across the Account sign-in trip, so
   // live state also survives the normal round trip.
   const [type, setType] = useState<FeedbackType>(draft?.type ?? 'bug');
+  const [title, setTitle] = useState(draft?.title ?? '');
   const [body, setBody] = useState(draft?.body ?? '');
   const [shots, setShots] = useState<string[]>(draft?.screenshotUris ?? []);
   const [submitting, setSubmitting] = useState(false);
@@ -68,13 +69,13 @@ const FeedbackForm: React.FC = () => {
   // Persist the draft (debounced) so it survives the sign-in trip AND a
   // low-memory kill during OAuth. Clear when there's nothing worth keeping.
   useEffect(() => {
-    const hasContent = body.trim().length > 0 || shots.length > 0;
+    const hasContent = title.trim().length > 0 || body.trim().length > 0 || shots.length > 0;
     const h = setTimeout(() => {
-      if (hasContent) setDraft({ type, body, screenshotUris: shots });
+      if (hasContent) setDraft({ type, title, body, screenshotUris: shots });
       else clearDraft();
     }, 400);
     return () => clearTimeout(h);
-  }, [type, body, shots, setDraft, clearDraft]);
+  }, [type, title, body, shots, setDraft, clearDraft]);
 
   const pickScreenshots = useCallback(async () => {
     lightTap();
@@ -116,21 +117,23 @@ const FeedbackForm: React.FC = () => {
     Keyboard.dismiss();
     setSubmitting(true);
     try {
-      const res = await submitFeedback({ type, body, screenshotUris: shots });
+      const res = await submitFeedback({ type, title, body, screenshotUris: shots });
       clearDraft();
+      setTitle('');
       setBody('');
       setShots([]);
       setType('bug');
-      if (res.requested > 0 && res.uploaded < res.requested) {
-        // Temporary diagnostic: surface exactly why screenshots didn't attach.
-        Alert.alert('Report sent', `${res.uploaded}/${res.requested} screenshots attached.\n\n${res.error ?? 'unknown error'}`);
-      } else {
-        showToast(t.settings.fbSent, 'success');
-      }
+      // Temporary diagnostic: ALWAYS show the attach outcome while we debug
+      // missing screenshots. Revert to toast-only after the cause is known.
+      Alert.alert(
+        'Report sent (debug)',
+        `${res.uploaded}/${res.requested} screenshots attached.${res.error ? `\n\n${res.error}` : ''}`,
+      );
+      showToast(t.settings.fbSent, 'success');
       navigation.goBack();
     } catch (e: any) {
       if (e instanceof NotSignedInError) {
-        setDraft({ type, body, screenshotUris: shots }); // force-save before leaving
+        setDraft({ type, title, body, screenshotUris: shots }); // force-save before leaving
         setSubmitting(false);
         navigation.navigate('Account', { returnTo: 'FeedbackForm' });
         return;
@@ -139,7 +142,7 @@ const FeedbackForm: React.FC = () => {
       showToast(msg.includes('rate_limit') ? t.settings.fbRateLimited : t.settings.fbSendFailed, 'error');
       setSubmitting(false);
     }
-  }, [body, shots, type, submitting, clearDraft, setDraft, showToast, t, navigation]);
+  }, [title, body, shots, type, submitting, clearDraft, setDraft, showToast, t, navigation]);
 
   return (
     <View style={styles.container}>
@@ -174,6 +177,20 @@ const FeedbackForm: React.FC = () => {
               </TouchableOpacity>
             );
           })}
+        </View>
+
+        {/* Title, single line, above the details */}
+        <Text style={styles.label}>{t.settings.fbTitleLabel}</Text>
+        <View style={[styles.fieldCard, neu.raisedSoft]}>
+          <TextInput
+            style={styles.titleInput}
+            value={title}
+            onChangeText={setTitle}
+            placeholder={t.settings.fbTitlePlaceholder}
+            placeholderTextColor={C.textMuted}
+            maxLength={120}
+            returnKeyType="next"
+          />
         </View>
 
         {/* Description, Note Field */}
@@ -295,6 +312,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     minHeight: 96,
+    padding: 0,
+  },
+  // Same field treatment as the details box, single line so no minHeight.
+  titleInput: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
     padding: 0,
   },
   shotsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },

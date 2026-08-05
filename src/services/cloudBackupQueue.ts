@@ -105,11 +105,16 @@ export async function pendingBackupJobCount(): Promise<number> {
  *  - Failure: the attempt is recorded; once the job exhausts its attempts it
  *    moves to the failed list.
  *  - Jobs still cooling down are left alone and counted as `skipped`.
+ *  - `onlyKinds` (optional) restricts the drain to those kinds — jobs of
+ *    other kinds are left UNTOUCHED (not counted, no attempt recorded) so a
+ *    drain that can't serve a provider (e.g. dead Google token) doesn't
+ *    burn those jobs' retries.
  * Each job is processed in its own try/catch so one bad job can't poison the
  * drain.
  */
 export async function processBackupJobs(
   processor: (job: BackupJob) => Promise<void>,
+  onlyKinds?: BackupJobKind[],
 ): Promise<{ done: number; failed: number; skipped: number }> {
   const now = Date.now();
   const list = await load();
@@ -120,6 +125,7 @@ export async function processBackupJobs(
   let failed = 0;
   let skipped = 0;
   for (const job of list) {
+    if (onlyKinds && !onlyKinds.includes(job.kind)) continue;
     if (!shouldAttemptJob(job, now)) {
       skipped++;
       continue;

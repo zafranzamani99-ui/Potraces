@@ -21,6 +21,8 @@ export interface MyFeedbackReport {
   severity: string | null;
   body: string;
   status: FeedbackStatus;
+  screenshot_path: string | null;  // web form (single)
+  screenshot_paths: string[] | null; // in-app (up to 3)
 }
 
 /** No personal session, so the caller routes the user to the Account sign-in
@@ -34,6 +36,7 @@ export class NotSignedInError extends Error {
 
 export interface FeedbackInput {
   type: FeedbackType; // 'bug' | 'idea'
+  title?: string; // short summary, stored in the existing `screen` column (admin board shows it as a chip)
   body: string;
   screenshotUris?: string[]; // up to 3, best-effort
 }
@@ -59,6 +62,8 @@ export async function submitFeedback(input: FeedbackInput): Promise<SubmitResult
 
   // The `severity` column doubles as the type: 'idea' for ideas; bugs come in
   // unset so the founder assigns priority on the admin board (matches the web form).
+  // The short title rides in the existing `screen` column (the app has no screen
+  // picker; the admin board renders it as a chip and includes it in search).
   const severity = input.type === 'idea' ? 'idea' : null;
 
   const { data: inserted, error } = await supabasePersonal
@@ -66,6 +71,7 @@ export async function submitFeedback(input: FeedbackInput): Promise<SubmitResult
     .insert({
       email: session.user.email ?? null, // real JWT email (RLS checks it), never user-typed
       severity,
+      screen: input.title?.trim().slice(0, 120) || null,
       body: input.body.trim(),
       app_version: Application.nativeApplicationVersion ?? 'unknown',
       user_agent: `${Platform.OS} ${Platform.Version}`.slice(0, 500),
@@ -131,7 +137,7 @@ export async function listMyFeedback(): Promise<MyFeedbackReport[]> {
   if (!session) throw new NotSignedInError();
   const { data, error } = await supabasePersonal
     .from('beta_feedback')
-    .select('id, created_at, severity, body, status')
+    .select('id, created_at, severity, body, status, screenshot_path, screenshot_paths')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as MyFeedbackReport[];

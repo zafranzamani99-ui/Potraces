@@ -8,11 +8,14 @@
  *   1. Build flag + premium gate — CLOUD_BACKUP_ENABLED (beta lock) AND the
  *      paid-tier hasCloudBackup() capability must both hold.
  *   2. Feature gate — at least one of driveBackupEnabled /
- *      googleSheetsSyncEnabled must be on.
+ *      googleSheetsSyncEnabled / icloudBackupEnabled must be on.
  *   3. Network gate — offline (or non-wifi while backupWifiOnly) → no-op.
- *   4. Token preflight — no Google session → stamp 'NEEDS_REAUTH' on each
- *      enabled feature's error field (the settings UI maps that code to a
- *      reconnect prompt) and no-op. Nothing is attempted against a dead token.
+ *   4. Provider preflights — Google: no session → stamp 'NEEDS_REAUTH' on
+ *      each enabled Google feature (the settings UI maps that code to a
+ *      reconnect prompt); those jobs are excluded from the drain so they
+ *      don't burn retries. iCloud: container unreachable → stamp
+ *      'ICLOUD_UNAVAILABLE'. A provider going down never blocks the other
+ *      provider's jobs — the drain runs with only the servable kinds.
  *
  * Queue semantics stay in cloudBackupQueue: per-job try/catch isolation,
  * retry caps + cooldown, failed-list parking. The processor here MUST NOT
@@ -23,14 +26,22 @@
  * near-simultaneous triggers can never run overlapping drains; the late
  * caller just awaits the same run.
  */
+import { Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { CLOUD_BACKUP_ENABLED } from '../constants/flags';
 import { usePremiumStore } from '../store/premiumStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useReceiptStore } from '../store/receiptStore';
 import { processBackupJobs } from './cloudBackupQueue';
+import { BackupJobKind } from './cloudBackupLogic';
 import { enqueueReceiptDriveBackup, processDriveFileJob } from './driveBackup';
 import { processSheetSyncJob } from './sheetsSync';
+import {
+  enqueueReceiptIcloudBackup,
+  isIcloudAvailable,
+  processIcloudFileJob,
+  writeIcloudManifest,
+} from './icloudBackup';
 import { hasGoogleDriveAccess } from './googleAuth';
 
 export type CloudBackupDrainResult = { done: number; failed: number };
@@ -51,10 +62,12 @@ export function runCloudBackupDrain(): Promise<CloudBackupDrainResult> {
   if (!usePremiumStore.getState().hasCloudBackup()) return Promise.resolve(NOOP);
 
   const settings = useSettingsStore.getState();
-  // Gate 2 — at least one backup feature opted in.
+  // Gate 2 — at least one backup feature opted in. iCloud is iOS-only; an
+  // Android session can never serve icloud-file jobs.
   const driveOn = settings.driveBackupEnabled;
   const sheetsOn = settings.googleSheetsSyncEnabled;
-  if (!driveOn && !sheetsOn) return Promise.resolve(NOOP);
+  const icloudOn = settings.icloudBackupEnabled && Platform.OS === 'ios';
+  if (!driveOn && !sheetsOn && !icloudOn) return Promise.resolve(NOOP);
 
   // Claim the inflight lock synchronously — `inflight = settled` executes in
   // the same tick as this check with no await between them, so the guard is a
@@ -68,37 +81,59 @@ export function runCloudBackupDrain(): Promise<CloudBackupDrainResult> {
     if (!net.isConnected || net.isInternetReachable === false) return NOOP;
     if (settings.backupWifiOnly && net.type !== 'wifi') return NOOP;
 
-    // Gate 4 — token preflight. No native Google session means every Drive /
-    // Sheets call would 401 anyway — surface the reconnect state instead of
-    // burning per-job attempts. Errors here are USER state, not transient
-    // failure, so this returns clean (no throw → no backoff penalty).
-    if (!(await hasGoogleDriveAccess())) {
+    // Gate 4 — provider preflights. Errors here are USER state, not transient
+    // failure, so they return clean (no throw → no backoff penalty). Each
+    // provider is checked independently: a dead Google session stamps
+    // NEEDS_REAUTH on the Google features and excludes their jobs, but the
+    // iCloud drain still runs (and vice versa).
+    const allowedKinds: BackupJobKind[] = [];
+    let googleServable = driveOn || sheetsOn;
+    if (googleServable && !(await hasGoogleDriveAccess())) {
+      // No native Google session means every Drive / Sheets call would 401
+      // anyway — surface the reconnect state instead of burning per-job
+      // attempts.
       if (driveOn) settings.setLastDriveBackupError('NEEDS_REAUTH');
       if (sheetsOn) settings.setLastSheetsSyncError('NEEDS_REAUTH');
-      return NOOP;
+      googleServable = false;
     }
+    if (googleServable) allowedKinds.push('drive-file', 'sheet-rows');
+    let icloudServable = false;
+    if (icloudOn) {
+      icloudServable = await isIcloudAvailable();
+      if (!icloudServable) settings.setLastIcloudBackupError('ICLOUD_UNAVAILABLE');
+      else allowedKinds.push('icloud-file');
+    }
+    if (allowedKinds.length === 0) return NOOP;
 
     // Per-job errors are isolated and recorded inside processBackupJobs —
     // do NOT wrap these in try/catch (that would hide failures from the
     // queue's retry bookkeeping).
-    const { done, failed } = await processBackupJobs((job) =>
-      job.kind === 'drive-file'
-        ? processDriveFileJob(job)
-        : job.kind === 'sheet-rows'
-          ? processSheetSyncJob()
-          : // 'icloud-file' — no provider wired yet; resolve so the job drains.
-            Promise.resolve(),
-    );
+    let icloudDone = 0;
+    const { done, failed } = await processBackupJobs((job) => {
+      if (job.kind === 'icloud-file') {
+        return processIcloudFileJob(job).then(() => {
+          icloudDone++;
+        });
+      }
+      return job.kind === 'drive-file' ? processDriveFileJob(job) : processSheetSyncJob();
+    }, allowedKinds);
 
     if (done > 0) {
       const now = Date.now();
-      if (driveOn) {
+      if (googleServable && driveOn) {
         settings.setLastDriveBackupAt(now);
         settings.setLastDriveBackupError(null);
       }
-      if (sheetsOn) {
+      if (googleServable && sheetsOn) {
         settings.setLastSheetsSyncAt(now);
         settings.setLastSheetsSyncError(null);
+      }
+      if (icloudDone > 0) {
+        settings.setLastIcloudBackupAt(now);
+        settings.setLastIcloudBackupError(null);
+        // Manifest goes up LAST, once the run's uploads are confirmed —
+        // best-effort: a manifest failure must not fail the drain.
+        writeIcloudManifest().catch(() => {});
       }
     }
     // failed > 0: no timestamp, no error write — the queue already recorded
@@ -124,6 +159,22 @@ export async function enqueueAllReceiptsForDriveBackup(): Promise<number> {
   for (const r of receipts) {
     if (!r.imageUri && !r.pdfUri) continue;
     await enqueueReceiptDriveBackup(r.id);
+    enqueued++;
+  }
+  return enqueued;
+}
+
+/**
+ * iCloud twin of enqueueAllReceiptsForDriveBackup — queue dedupes on
+ * `icloud:<id>`. Used when the user toggles iCloud backup ON and the
+ * existing backlog needs to be caught up.
+ */
+export async function enqueueAllReceiptsForIcloudBackup(): Promise<number> {
+  const receipts = useReceiptStore.getState().receipts;
+  let enqueued = 0;
+  for (const r of receipts) {
+    if (!r.imageUri && !r.pdfUri) continue;
+    await enqueueReceiptIcloudBackup(r.id);
     enqueued++;
   }
   return enqueued;

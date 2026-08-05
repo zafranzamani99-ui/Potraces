@@ -11,6 +11,8 @@ import {
   Alert,
   Keyboard,
   Linking,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,9 +30,10 @@ import { revokeQuickLogKey } from '../../services/quickLogKey';
 import { confirmReuse } from '../../services/reuseAccount';
 import { planDelete } from '../../services/deleteAccountFlow';
 import { resetBackoff } from '../../services/syncBackoff';
-import { runCloudBackupDrain, enqueueAllReceiptsForDriveBackup } from '../../services/cloudBackupRunner';
+import { runCloudBackupDrain, enqueueAllReceiptsForDriveBackup, enqueueAllReceiptsForIcloudBackup } from '../../services/cloudBackupRunner';
 import { pendingBackupJobCount, clearBackupQueue, retryFailedBackupJobs } from '../../services/cloudBackupQueue';
 import { fullResyncTransactions } from '../../services/sheetsSync';
+import { isIcloudAvailable, restoreFromIcloud, IcloudRestoreMode } from '../../services/icloudBackup';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useBackupStore } from '../../store/backupStore';
@@ -101,6 +104,10 @@ export default function AccountScreen() {
   const lastDriveBackupError = useSettingsStore((s) => s.lastDriveBackupError);
   const lastSheetsSyncAt = useSettingsStore((s) => s.lastSheetsSyncAt);
   const lastSheetsSyncError = useSettingsStore((s) => s.lastSheetsSyncError);
+  // iCloud backup (iOS only) — rides the device's iCloud account, no sign-in.
+  const icloudBackupEnabled = useSettingsStore((s) => s.icloudBackupEnabled);
+  const lastIcloudBackupAt = useSettingsStore((s) => s.lastIcloudBackupAt);
+  const lastIcloudBackupError = useSettingsStore((s) => s.lastIcloudBackupError);
   const spreadsheetId = useBackupStore((s) => s.spreadsheetId);
 
   const [email, setEmail] = useState<string | null>(null);
@@ -109,8 +116,13 @@ export default function AccountScreen() {
   const [backupPaywallVisible, setBackupPaywallVisible] = useState(false);
   const [deleting, setDeleting] = useState(false);
   // Google Backup in-flight action (drives button spinners + disables rows).
-  const [googleBusy, setGoogleBusy] = useState<'connect' | 'disconnect' | 'drive' | 'sheets' | 'resync' | 'backup' | null>(null);
+  const [googleBusy, setGoogleBusy] = useState<'connect' | 'disconnect' | 'drive' | 'sheets' | 'resync' | 'backup' | 'icloud' | 'restore' | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  // Probed on focus (iOS only): is the device's iCloud account usable.
+  const [icloudAvailable, setIcloudAvailable] = useState<boolean | null>(null);
+  // Which backup provider's detail modal is open (keeps the page short —
+  // the full controls live in a floating modal, not inline on the page).
+  const [backupModal, setBackupModal] = useState<'google' | 'icloud' | null>(null);
 
   // Phone form
   const [isLogin, setIsLogin] = useState(true);
@@ -335,6 +347,21 @@ export default function AccountScreen() {
     }, [refreshPending]),
   );
 
+  // iCloud availability probe — on focus only (iOS); the result decides
+  // whether the section shows the toggle or the "sign in to iCloud" reason.
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'ios') return;
+      let alive = true;
+      isIcloudAvailable().then((ok) => {
+        if (alive) setIcloudAvailable(ok);
+      });
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
+
   // Drive-only native connect — the app account (Google/Apple/phone) is untouched.
   const handleGoogleConnect = useCallback(async () => {
     if (googleBusy) return;
@@ -474,6 +501,82 @@ export default function AccountScreen() {
     lightTap();
     useSettingsStore.getState().setBackupWifiOnly(value);
   }, []);
+
+  // ── iCloud Backup (iOS) ───────────────────────────────────────────────
+  // Same gate order as the Drive toggle (beta lock → paywall); iCloud needs
+  // no sign-in — it rides the device's iCloud account. Restore is gated on
+  // the build flag only, NOT the paywall: recovering your own files must
+  // never be blocked by a lapsed subscription.
+  const handleToggleIcloudBackup = useCallback((value: boolean) => {
+    lightTap();
+    if (!value) { useSettingsStore.getState().setIcloudBackupEnabled(false); return; }
+    if (!CLOUD_BACKUP_ENABLED) { showToast(tr.settings.cloudBackupBeta, 'info'); return; }
+    if (!usePremiumStore.getState().hasCloudBackup()) { setBackupPaywallVisible(true); return; }
+    if (icloudAvailable === false) { showToast(tr.settings.icloudBackup.unavailableMsg, 'info'); return; }
+    useSettingsStore.getState().setIcloudBackupEnabled(true);
+    (async () => {
+      setGoogleBusy('icloud');
+      try {
+        // Catch up the existing receipt backlog, then drain right away. The
+        // drain isolates + records per-job errors itself — nothing to catch.
+        await enqueueAllReceiptsForIcloudBackup();
+        await runCloudBackupDrain();
+      } catch {
+        // Unexpected (the drain does not throw per-job errors) — leave the
+        // queue as-is; the next drain retries.
+      } finally {
+        setGoogleBusy(null);
+        refreshPending();
+      }
+    })();
+  }, [showToast, tr, refreshPending, icloudAvailable]);
+
+  const handleIcloudBackUpNow = useCallback(async () => {
+    if (googleBusy) return;
+    lightTap();
+    setGoogleBusy('icloud');
+    try {
+      await runCloudBackupDrain();
+      showToast(tr.settings.icloudBackup.backupDone, 'success');
+    } catch (e: any) {
+      showToast(e?.message || tr.auth.errSomethingWrong, 'error');
+    } finally {
+      setGoogleBusy(null);
+      refreshPending();
+    }
+  }, [googleBusy, showToast, tr, refreshPending]);
+
+  const handleIcloudRestore = useCallback(() => {
+    if (googleBusy) return;
+    lightTap();
+    const run = async (mode: IcloudRestoreMode) => {
+      setGoogleBusy('restore');
+      try {
+        const { restored } = await restoreFromIcloud(mode);
+        showToast(
+          restored > 0
+            ? tr.settings.icloudBackup.restoreDone.replace('{n}', String(restored))
+            : tr.settings.icloudBackup.restoreNone,
+          'success',
+        );
+      } catch (e: any) {
+        const msg =
+          e?.message === 'NO_BACKUP_FOUND'
+            ? tr.settings.icloudBackup.noBackupFound
+            : e?.message === 'ICLOUD_UNAVAILABLE'
+              ? tr.settings.icloudBackup.unavailableMsg
+              : e?.message || tr.auth.errSomethingWrong;
+        showToast(msg, 'error');
+      } finally {
+        setGoogleBusy(null);
+      }
+    };
+    Alert.alert(tr.settings.icloudBackup.restoreConfirmTitle, tr.settings.icloudBackup.restoreConfirmMsg, [
+      { text: tr.common.cancel, style: 'cancel' },
+      { text: tr.settings.icloudBackup.restoreMerge, onPress: () => void run('merge') },
+      { text: tr.settings.icloudBackup.restoreReplace, style: 'destructive', onPress: () => void run('replace') },
+    ]);
+  }, [googleBusy, showToast, tr]);
 
   // Expired Google access: reconnect natively, then re-arm the failed jobs and
   // drain. The drain re-stamps NEEDS_REAUTH if the session is somehow still dead.
@@ -881,196 +984,345 @@ export default function AccountScreen() {
                 )}
               </View>
 
-              {/* Google Backup — Drive receipts + Sheets sync via the native
-                  Google session (any sign-in provider). */}
-              <Text style={styles.sectionTitle}>{tr.settings.googleBackup.sectionTitle}</Text>
+              {/* Backup providers — compact rows on the page; each opens a
+                  floating modal with the full controls so this screen stays
+                  short (no inline dropdowns). */}
+              <Text style={styles.sectionTitle}>{tr.settings.backupServices}</Text>
               <View style={[styles.card, neu.raisedSoft]}>
-                {needsReconnect && (
-                  <Pressable
-                    style={[styles.syncIssueRow, { marginTop: SPACING.sm }]}
-                    onPress={handleReconnect}
-                    disabled={googleBusy !== null}
-                    accessibilityRole="button"
-                    accessibilityLabel={tr.settings.googleBackup.reconnect}
-                  >
-                    <Feather name="alert-triangle" size={16} color={C.bronze} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.reconnectTitle}>{tr.settings.googleBackup.reconnect}</Text>
-                      <Text style={styles.syncIssueText}>{tr.settings.googleBackup.reconnectMsg}</Text>
-                    </View>
-                    {googleBusy === 'connect' && <ActivityIndicator color={C.bronze} size="small" />}
-                  </Pressable>
-                )}
-
-                {/* Connection */}
-                {googleDriveEmail == null ? (
-                  <Pressable
-                    style={[styles.socialBtn, { marginTop: SPACING.sm }, googleBusy !== null && { opacity: 0.6 }]}
-                    onPress={handleGoogleConnect}
-                    disabled={googleBusy !== null}
-                    accessibilityRole="button"
-                    accessibilityLabel={tr.settings.googleBackup.connect}
-                  >
-                    {({ pressed }) => (
-                      <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
-                        {googleBusy === 'connect' ? (
-                          <ActivityIndicator color={C.textPrimary} size="small" />
-                        ) : (
-                          <>
-                            <GoogleGLogo size={18} />
-                            <Text style={styles.socialBtnText}>{tr.settings.googleBackup.connect}</Text>
-                          </>
-                        )}
-                      </View>
-                    )}
-                  </Pressable>
-                ) : (
-                  <View style={styles.settingRow}>
-                    <View style={styles.settingLabelWrap}>
-                      <View style={styles.settingLabelRow}>
-                        <GoogleGLogo size={18} />
-                        <Text style={styles.settingLabel} numberOfLines={1}>
-                          {tr.settings.googleBackup.connectedAs} {googleDriveEmail}
-                        </Text>
-                      </View>
-                    </View>
-                    <Pressable
-                      style={[styles.disconnectBtn, googleBusy !== null && { opacity: 0.6 }]}
-                      onPress={handleGoogleDisconnect}
-                      disabled={googleBusy !== null}
-                      accessibilityRole="button"
-                      accessibilityLabel={tr.settings.googleBackup.disconnect}
-                    >
-                      {googleBusy === 'disconnect'
-                        ? <ActivityIndicator color={C.bronze} size="small" />
-                        : <Text style={styles.disconnectText}>{tr.settings.googleBackup.disconnect}</Text>}
-                    </Pressable>
-                  </View>
-                )}
-
-                <View style={styles.divider} />
-
-                {/* Drive receipt backup */}
-                <View style={styles.settingRow}>
+                <Pressable
+                  style={styles.settingRow}
+                  onPress={() => { lightTap(); setBackupModal('google'); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={tr.settings.googleBackup.sectionTitle}
+                >
                   <View style={styles.settingLabelWrap}>
                     <View style={styles.settingLabelRow}>
-                      <Feather name="upload-cloud" size={18} color={C.textSecondary} />
-                      <Text style={styles.settingLabel}>{tr.settings.googleBackup.driveBackup}</Text>
+                      <GoogleGLogo size={18} />
+                      <Text style={styles.settingLabel}>{tr.settings.googleBackup.sectionTitle}</Text>
+                      {needsReconnect && <Feather name="alert-triangle" size={14} color={C.bronze} />}
                     </View>
-                    <Text style={styles.settingDesc}>{tr.settings.googleBackup.driveBackupDesc}</Text>
-                    <Text style={styles.settingDesc}>
-                      {tr.settings.googleBackup.lastBackup}: {lastDriveBackupAt ? new Date(lastDriveBackupAt).toLocaleString() : tr.settings.googleBackup.never}
-                      {pendingCount > 0 ? ` · ${pendingCount} ${tr.settings.googleBackup.pendingSuffix}` : ''}
+                    <Text style={styles.settingDesc} numberOfLines={1}>
+                      {googleDriveEmail ?? tr.settings.googleBackup.notConnected}
                     </Text>
                   </View>
-                  <Switch
-                    value={driveBackupEnabled}
-                    onValueChange={handleToggleDriveBackup}
-                    disabled={googleBusy !== null}
-                    trackColor={{ false: C.border, true: C.positive }}
-                    thumbColor={C.surface}
-                  />
-                </View>
+                  <Feather name="chevron-right" size={18} color={C.textMuted} />
+                </Pressable>
 
-                <View style={styles.divider} />
-
-                {/* Google Sheets sync */}
-                <View style={styles.settingRow}>
-                  <View style={styles.settingLabelWrap}>
-                    <View style={styles.settingLabelRow}>
-                      <Feather name="grid" size={18} color={C.textSecondary} />
-                      <Text style={styles.settingLabel}>{tr.settings.googleBackup.sheetsSync}</Text>
-                    </View>
-                    <Text style={styles.settingDesc}>{tr.settings.googleBackup.sheetsSyncDesc}</Text>
-                    <Text style={styles.settingDesc}>{tr.settings.googleBackup.sheetsNote}</Text>
-                    <Text style={styles.settingDesc}>
-                      {tr.settings.googleBackup.lastBackup}: {lastSheetsSyncAt ? new Date(lastSheetsSyncAt).toLocaleString() : tr.settings.googleBackup.never}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={googleSheetsSyncEnabled}
-                    onValueChange={handleToggleSheetsSync}
-                    disabled={googleBusy !== null}
-                    trackColor={{ false: C.border, true: C.positive }}
-                    thumbColor={C.surface}
-                  />
-                </View>
-
-                {/* Open spreadsheet — only once one has been provisioned. */}
-                {spreadsheetId && (
+                {Platform.OS === 'ios' && (
                   <>
                     <View style={styles.divider} />
                     <Pressable
                       style={styles.settingRow}
-                      onPress={handleOpenSheet}
+                      onPress={() => { lightTap(); setBackupModal('icloud'); }}
                       accessibilityRole="button"
-                      accessibilityLabel={tr.settings.googleBackup.openSheet}
+                      accessibilityLabel={tr.settings.icloudBackup.sectionTitle}
                     >
                       <View style={styles.settingLabelWrap}>
                         <View style={styles.settingLabelRow}>
-                          <Feather name="external-link" size={18} color={C.textSecondary} />
-                          <Text style={styles.settingLabel}>{tr.settings.googleBackup.openSheet}</Text>
+                          <Feather name="cloud" size={18} color={C.textSecondary} />
+                          <Text style={styles.settingLabel}>{tr.settings.icloudBackup.sectionTitle}</Text>
                         </View>
+                        <Text style={styles.settingDesc} numberOfLines={1}>
+                          {icloudAvailable === false || lastIcloudBackupError === 'ICLOUD_UNAVAILABLE'
+                            ? tr.settings.icloudBackup.unavailable
+                            : `${tr.settings.icloudBackup.lastBackup}: ${lastIcloudBackupAt ? new Date(lastIcloudBackupAt).toLocaleString() : tr.settings.icloudBackup.never}`}
+                        </Text>
                       </View>
                       <Feather name="chevron-right" size={18} color={C.textMuted} />
                     </Pressable>
                   </>
                 )}
-
-                <View style={styles.divider} />
-
-                {/* Full re-sync */}
-                <Pressable
-                  style={[styles.settingRow, googleBusy !== null && { opacity: 0.6 }]}
-                  onPress={handleFullResync}
-                  disabled={googleBusy !== null}
-                  accessibilityRole="button"
-                  accessibilityLabel={tr.settings.googleBackup.fullResync}
-                >
-                  <View style={styles.settingLabelWrap}>
-                    <View style={styles.settingLabelRow}>
-                      <Feather name="refresh-cw" size={18} color={C.textSecondary} />
-                      <Text style={styles.settingLabel}>{tr.settings.googleBackup.fullResync}</Text>
-                    </View>
-                  </View>
-                  {googleBusy === 'resync'
-                    ? <ActivityIndicator color={C.accent} size="small" />
-                    : <Feather name="chevron-right" size={18} color={C.textMuted} />}
-                </Pressable>
-
-                <View style={styles.divider} />
-
-                {/* Back up now */}
-                <Pressable
-                  style={[styles.syncNowBtn, styles.backUpNowBtn, googleBusy !== null && { opacity: 0.6 }]}
-                  onPress={handleBackUpNow}
-                  disabled={googleBusy !== null}
-                  accessibilityRole="button"
-                  accessibilityLabel={tr.settings.googleBackup.backUpNow}
-                >
-                  {googleBusy === 'backup'
-                    ? <ActivityIndicator color={C.accent} size="small" />
-                    : <Text style={styles.syncNowText}>{tr.settings.googleBackup.backUpNow}</Text>}
-                </Pressable>
-
-                <View style={styles.divider} />
-
-                {/* Wi-Fi only */}
-                <View style={styles.settingRow}>
-                  <View style={styles.settingLabelWrap}>
-                    <View style={styles.settingLabelRow}>
-                      <Feather name="wifi" size={18} color={C.textSecondary} />
-                      <Text style={styles.settingLabel}>{tr.settings.googleBackup.wifiOnly}</Text>
-                    </View>
-                  </View>
-                  <Switch
-                    value={backupWifiOnly}
-                    onValueChange={handleToggleWifiOnly}
-                    trackColor={{ false: C.border, true: C.positive }}
-                    thumbColor={C.surface}
-                  />
-                </View>
               </View>
+
+              {/* Backup detail modal — the full per-provider controls in a
+                  floating card; tap the dimmed backdrop or X to close. */}
+              <Modal
+                visible={backupModal !== null}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setBackupModal(null)}
+              >
+                <Pressable style={styles.backupModalBackdrop} onPress={() => setBackupModal(null)}>
+                  {/* Inner press swallows taps so only the backdrop dismisses. */}
+                  <Pressable style={styles.backupModalCard} onPress={() => {}}>
+                    <View style={styles.backupModalHeader}>
+                      <Text style={styles.backupModalTitle}>
+                        {backupModal === 'icloud' ? tr.settings.icloudBackup.sectionTitle : tr.settings.googleBackup.sectionTitle}
+                      </Text>
+                      <Pressable
+                        onPress={() => setBackupModal(null)}
+                        accessibilityRole="button"
+                        accessibilityLabel={tr.common.close}
+                        hitSlop={8}
+                      >
+                        <Feather name="x" size={20} color={C.textSecondary} />
+                      </Pressable>
+                    </View>
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                      {backupModal === 'icloud' ? (
+                        <>
+                          {(icloudAvailable === false || lastIcloudBackupError === 'ICLOUD_UNAVAILABLE') && (
+                            <View style={styles.syncIssueRow}>
+                              <Feather name="alert-triangle" size={16} color={C.bronze} />
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.reconnectTitle}>{tr.settings.icloudBackup.unavailable}</Text>
+                                <Text style={styles.syncIssueText}>{tr.settings.icloudBackup.unavailableMsg}</Text>
+                              </View>
+                            </View>
+                          )}
+
+                          {/* iCloud receipt backup */}
+                          <View style={styles.settingRow}>
+                            <View style={styles.settingLabelWrap}>
+                              <View style={styles.settingLabelRow}>
+                                <Feather name="cloud" size={18} color={C.textSecondary} />
+                                <Text style={styles.settingLabel}>{tr.settings.icloudBackup.backup}</Text>
+                              </View>
+                              <Text style={styles.settingDesc}>{tr.settings.icloudBackup.backupDesc}</Text>
+                              <Text style={styles.settingDesc}>{tr.settings.icloudBackup.privacyNote}</Text>
+                              <Text style={styles.settingDesc}>
+                                {tr.settings.icloudBackup.lastBackup}: {lastIcloudBackupAt ? new Date(lastIcloudBackupAt).toLocaleString() : tr.settings.icloudBackup.never}
+                                {pendingCount > 0 ? ` · ${pendingCount} ${tr.settings.icloudBackup.pendingSuffix}` : ''}
+                              </Text>
+                            </View>
+                            <Switch
+                              value={icloudBackupEnabled}
+                              onValueChange={handleToggleIcloudBackup}
+                              disabled={googleBusy !== null || icloudAvailable === false}
+                              trackColor={{ false: C.border, true: C.positive }}
+                              thumbColor={C.surface}
+                            />
+                          </View>
+
+                          <View style={styles.divider} />
+
+                          {/* Back up now */}
+                          <Pressable
+                            style={[styles.syncNowBtn, styles.backUpNowBtn, googleBusy !== null && { opacity: 0.6 }]}
+                            onPress={handleIcloudBackUpNow}
+                            disabled={googleBusy !== null}
+                            accessibilityRole="button"
+                            accessibilityLabel={tr.settings.icloudBackup.backUpNow}
+                          >
+                            {googleBusy === 'icloud'
+                              ? <ActivityIndicator color={C.accent} size="small" />
+                              : <Text style={styles.syncNowText}>{tr.settings.icloudBackup.backUpNow}</Text>}
+                          </Pressable>
+
+                          <View style={styles.divider} />
+
+                          {/* Restore */}
+                          <Pressable
+                            style={[styles.settingRow, googleBusy !== null && { opacity: 0.6 }]}
+                            onPress={handleIcloudRestore}
+                            disabled={googleBusy !== null}
+                            accessibilityRole="button"
+                            accessibilityLabel={tr.settings.icloudBackup.restore}
+                          >
+                            <View style={styles.settingLabelWrap}>
+                              <View style={styles.settingLabelRow}>
+                                <Feather name="download-cloud" size={18} color={C.textSecondary} />
+                                <Text style={styles.settingLabel}>{tr.settings.icloudBackup.restore}</Text>
+                              </View>
+                            </View>
+                            {googleBusy === 'restore'
+                              ? <ActivityIndicator color={C.accent} size="small" />
+                              : <Feather name="chevron-right" size={18} color={C.textMuted} />}
+                          </Pressable>
+                        </>
+                      ) : (
+                        <>
+                          {needsReconnect && (
+                            <Pressable
+                              style={styles.syncIssueRow}
+                              onPress={handleReconnect}
+                              disabled={googleBusy !== null}
+                              accessibilityRole="button"
+                              accessibilityLabel={tr.settings.googleBackup.reconnect}
+                            >
+                              <Feather name="alert-triangle" size={16} color={C.bronze} />
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.reconnectTitle}>{tr.settings.googleBackup.reconnect}</Text>
+                                <Text style={styles.syncIssueText}>{tr.settings.googleBackup.reconnectMsg}</Text>
+                              </View>
+                              {googleBusy === 'connect' && <ActivityIndicator color={C.bronze} size="small" />}
+                            </Pressable>
+                          )}
+
+                          {/* Connection */}
+                          {googleDriveEmail == null ? (
+                            <Pressable
+                              style={[styles.socialBtn, googleBusy !== null && { opacity: 0.6 }]}
+                              onPress={handleGoogleConnect}
+                              disabled={googleBusy !== null}
+                              accessibilityRole="button"
+                              accessibilityLabel={tr.settings.googleBackup.connect}
+                            >
+                              {({ pressed }) => (
+                                <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
+                                  {googleBusy === 'connect' ? (
+                                    <ActivityIndicator color={C.textPrimary} size="small" />
+                                  ) : (
+                                    <>
+                                      <GoogleGLogo size={18} />
+                                      <Text style={styles.socialBtnText}>{tr.settings.googleBackup.connect}</Text>
+                                    </>
+                                  )}
+                                </View>
+                              )}
+                            </Pressable>
+                          ) : (
+                            <View style={styles.settingRow}>
+                              <View style={styles.settingLabelWrap}>
+                                <View style={styles.settingLabelRow}>
+                                  <GoogleGLogo size={18} />
+                                  <Text style={styles.settingLabel} numberOfLines={1}>
+                                    {tr.settings.googleBackup.connectedAs} {googleDriveEmail}
+                                  </Text>
+                                </View>
+                              </View>
+                              <Pressable
+                                style={[styles.disconnectBtn, googleBusy !== null && { opacity: 0.6 }]}
+                                onPress={handleGoogleDisconnect}
+                                disabled={googleBusy !== null}
+                                accessibilityRole="button"
+                                accessibilityLabel={tr.settings.googleBackup.disconnect}
+                              >
+                                {googleBusy === 'disconnect'
+                                  ? <ActivityIndicator color={C.bronze} size="small" />
+                                  : <Text style={styles.disconnectText}>{tr.settings.googleBackup.disconnect}</Text>}
+                              </Pressable>
+                            </View>
+                          )}
+
+                          <View style={styles.divider} />
+
+                          {/* Drive receipt backup */}
+                          <View style={styles.settingRow}>
+                            <View style={styles.settingLabelWrap}>
+                              <View style={styles.settingLabelRow}>
+                                <Feather name="upload-cloud" size={18} color={C.textSecondary} />
+                                <Text style={styles.settingLabel}>{tr.settings.googleBackup.driveBackup}</Text>
+                              </View>
+                              <Text style={styles.settingDesc}>{tr.settings.googleBackup.driveBackupDesc}</Text>
+                              <Text style={styles.settingDesc}>
+                                {tr.settings.googleBackup.lastBackup}: {lastDriveBackupAt ? new Date(lastDriveBackupAt).toLocaleString() : tr.settings.googleBackup.never}
+                                {pendingCount > 0 ? ` · ${pendingCount} ${tr.settings.googleBackup.pendingSuffix}` : ''}
+                              </Text>
+                            </View>
+                            <Switch
+                              value={driveBackupEnabled}
+                              onValueChange={handleToggleDriveBackup}
+                              disabled={googleBusy !== null}
+                              trackColor={{ false: C.border, true: C.positive }}
+                              thumbColor={C.surface}
+                            />
+                          </View>
+
+                          <View style={styles.divider} />
+
+                          {/* Google Sheets sync */}
+                          <View style={styles.settingRow}>
+                            <View style={styles.settingLabelWrap}>
+                              <View style={styles.settingLabelRow}>
+                                <Feather name="grid" size={18} color={C.textSecondary} />
+                                <Text style={styles.settingLabel}>{tr.settings.googleBackup.sheetsSync}</Text>
+                              </View>
+                              <Text style={styles.settingDesc}>{tr.settings.googleBackup.sheetsSyncDesc}</Text>
+                              <Text style={styles.settingDesc}>{tr.settings.googleBackup.sheetsNote}</Text>
+                              <Text style={styles.settingDesc}>
+                                {tr.settings.googleBackup.lastBackup}: {lastSheetsSyncAt ? new Date(lastSheetsSyncAt).toLocaleString() : tr.settings.googleBackup.never}
+                              </Text>
+                            </View>
+                            <Switch
+                              value={googleSheetsSyncEnabled}
+                              onValueChange={handleToggleSheetsSync}
+                              disabled={googleBusy !== null}
+                              trackColor={{ false: C.border, true: C.positive }}
+                              thumbColor={C.surface}
+                            />
+                          </View>
+
+                          {/* Open spreadsheet — only once one has been provisioned. */}
+                          {spreadsheetId && (
+                            <>
+                              <View style={styles.divider} />
+                              <Pressable
+                                style={styles.settingRow}
+                                onPress={handleOpenSheet}
+                                accessibilityRole="button"
+                                accessibilityLabel={tr.settings.googleBackup.openSheet}
+                              >
+                                <View style={styles.settingLabelWrap}>
+                                  <View style={styles.settingLabelRow}>
+                                    <Feather name="external-link" size={18} color={C.textSecondary} />
+                                    <Text style={styles.settingLabel}>{tr.settings.googleBackup.openSheet}</Text>
+                                  </View>
+                                </View>
+                                <Feather name="chevron-right" size={18} color={C.textMuted} />
+                              </Pressable>
+                            </>
+                          )}
+
+                          <View style={styles.divider} />
+
+                          {/* Full re-sync */}
+                          <Pressable
+                            style={[styles.settingRow, googleBusy !== null && { opacity: 0.6 }]}
+                            onPress={handleFullResync}
+                            disabled={googleBusy !== null}
+                            accessibilityRole="button"
+                            accessibilityLabel={tr.settings.googleBackup.fullResync}
+                          >
+                            <View style={styles.settingLabelWrap}>
+                              <View style={styles.settingLabelRow}>
+                                <Feather name="refresh-cw" size={18} color={C.textSecondary} />
+                                <Text style={styles.settingLabel}>{tr.settings.googleBackup.fullResync}</Text>
+                              </View>
+                            </View>
+                            {googleBusy === 'resync'
+                              ? <ActivityIndicator color={C.accent} size="small" />
+                              : <Feather name="chevron-right" size={18} color={C.textMuted} />}
+                          </Pressable>
+
+                          <View style={styles.divider} />
+
+                          {/* Back up now */}
+                          <Pressable
+                            style={[styles.syncNowBtn, styles.backUpNowBtn, googleBusy !== null && { opacity: 0.6 }]}
+                            onPress={handleBackUpNow}
+                            disabled={googleBusy !== null}
+                            accessibilityRole="button"
+                            accessibilityLabel={tr.settings.googleBackup.backUpNow}
+                          >
+                            {googleBusy === 'backup'
+                              ? <ActivityIndicator color={C.accent} size="small" />
+                              : <Text style={styles.syncNowText}>{tr.settings.googleBackup.backUpNow}</Text>}
+                          </Pressable>
+
+                          <View style={styles.divider} />
+
+                          {/* Wi-Fi only */}
+                          <View style={styles.settingRow}>
+                            <View style={styles.settingLabelWrap}>
+                              <View style={styles.settingLabelRow}>
+                                <Feather name="wifi" size={18} color={C.textSecondary} />
+                                <Text style={styles.settingLabel}>{tr.settings.googleBackup.wifiOnly}</Text>
+                              </View>
+                            </View>
+                            <Switch
+                              value={backupWifiOnly}
+                              onValueChange={handleToggleWifiOnly}
+                              trackColor={{ false: C.border, true: C.positive }}
+                              thumbColor={C.surface}
+                            />
+                          </View>
+                        </>
+                      )}
+                    </ScrollView>
+                  </Pressable>
+                </Pressable>
+              </Modal>
 
               {/* Sign out */}
               <Pressable
@@ -1526,6 +1778,34 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   backUpNowBtn: {
     alignSelf: 'stretch',
     marginVertical: SPACING.sm,
+  },
+  // ── Backup detail modal (floating card over a dimmed backdrop) ──────
+  backupModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: SPACING.xl,
+  },
+  backupModalCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
+    maxHeight: '85%',
+  },
+  backupModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.md,
+  },
+  backupModalTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: -0.2,
   },
   signOutBtn: {
     marginTop: SPACING.sm,

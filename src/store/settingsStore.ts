@@ -209,16 +209,16 @@ const stripProfileId = ({ id, ...rest }: SavedBusinessProfile): BusinessProfile 
  * from a user's saved order appear under the sheet's "More actions" instead.
  */
 export const DEFAULT_QUICK_ACTION_ORDER: string[] = [
+  'explore',
   'wallets',
-  'savings',
   'debts',
   'bills',
-  'reports',
   'calculator',
-  'goals',
+  'collectz',
+  'savings',
   'receipts',
   'chat',
-  'collectz',
+  'goals',
 ];
 
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -345,6 +345,13 @@ interface SettingsState {
   setLastSheetsSyncAt: (value: number | null) => void;
   lastSheetsSyncError: string | null;
   setLastSheetsSyncError: (value: string | null) => void;
+  /** iCloud receipt backup (photos & PDFs → "Potraces" folder in iCloud Drive). iOS-only, opt-in, default off. */
+  icloudBackupEnabled: boolean;
+  setIcloudBackupEnabled: (value: boolean) => void;
+  lastIcloudBackupAt: number | null;
+  setLastIcloudBackupAt: (value: number | null) => void;
+  lastIcloudBackupError: string | null;
+  setLastIcloudBackupError: (value: string | null) => void;
   spendingAlertsEnabled: boolean;
   setSpendingAlertsEnabled: (value: boolean) => void;
   quickAddConfirm: boolean;
@@ -725,6 +732,12 @@ export const useSettingsStore = create<SettingsState>()(
       setLastSheetsSyncAt: (lastSheetsSyncAt) => set({ lastSheetsSyncAt }),
       lastSheetsSyncError: null,
       setLastSheetsSyncError: (lastSheetsSyncError) => set({ lastSheetsSyncError }),
+      icloudBackupEnabled: false,
+      setIcloudBackupEnabled: (icloudBackupEnabled) => set({ icloudBackupEnabled }),
+      lastIcloudBackupAt: null,
+      setLastIcloudBackupAt: (lastIcloudBackupAt) => set({ lastIcloudBackupAt }),
+      lastIcloudBackupError: null,
+      setLastIcloudBackupError: (lastIcloudBackupError) => set({ lastIcloudBackupError }),
       setSpendingAlertsEnabled: (spendingAlertsEnabled) => set({ spendingAlertsEnabled }),
       setQuickAddConfirm: (quickAddConfirm) => set({ quickAddConfirm }),
       setTapToPayEnabled: (tapToPayEnabled) => set({ tapToPayEnabled }),
@@ -1129,6 +1142,12 @@ export const useSettingsStore = create<SettingsState>()(
         if (typeof state.lastDriveBackupError !== 'string') state.lastDriveBackupError = null;
         if (typeof state.lastSheetsSyncAt !== 'number') state.lastSheetsSyncAt = null;
         if (typeof state.lastSheetsSyncError !== 'string') state.lastSheetsSyncError = null;
+        // iCloud backup fields (added after some installs shipped)
+        if (typeof state.icloudBackupEnabled !== 'boolean') {
+          state.icloudBackupEnabled = false;
+        }
+        if (typeof state.lastIcloudBackupAt !== 'number') state.lastIcloudBackupAt = null;
+        if (typeof state.lastIcloudBackupError !== 'string') state.lastIcloudBackupError = null;
         // Check-in reminder times (added after some installs shipped)
         if (!Array.isArray(state.echoCheckinTimes)) {
           state.echoCheckinTimes = ['21:00'];

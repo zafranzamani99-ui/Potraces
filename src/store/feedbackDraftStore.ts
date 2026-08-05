@@ -11,6 +11,7 @@ export type FeedbackType = 'bug' | 'idea';
 
 export interface FeedbackDraft {
   type: FeedbackType;
+  title?: string; // short summary, stored in the `screen` column on submit
   body: string;
   screenshotUris?: string[]; // up to 3
 }
