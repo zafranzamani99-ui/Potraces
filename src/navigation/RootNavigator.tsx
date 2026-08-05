@@ -31,6 +31,7 @@ import QuickLogSetup from '../screens/personal/QuickLogSetup';
 import BackupRestore from '../screens/shared/BackupRestore';
 import AccountScreen from '../screens/shared/AccountScreen';
 import FeedbackForm from '../screens/shared/FeedbackForm';
+import FeedbackReports from '../screens/shared/FeedbackReports';
 import Notifications from '../screens/shared/Notifications';
 import NotificationDetail from '../screens/shared/NotificationDetail';
 import Onboarding from '../screens/shared/Onboarding';
@@ -401,6 +402,11 @@ const RootNavigator: React.FC = () => {
           name="FeedbackForm"
           component={FeedbackForm}
           options={makeBackHeader(C, mode, 'Report a bug or idea')}
+        />
+        <Stack.Screen
+          name="FeedbackReports"
+          component={FeedbackReports}
+          options={makeBackHeader(C, mode, 'Your reports')}
         />
         <Stack.Screen
           name="Notifications"

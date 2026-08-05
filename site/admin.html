@@ -269,6 +269,7 @@ main{flex:1;padding:32px 0 64px}
         </div>
 
         <div class="stats" id="stats"></div>
+        <div style="margin:0 0 12px;"><button type="button" id="refreshBtn" class="afoot-btn">↻ Refresh</button></div>
 
         <div class="toolbar">
           <select id="fStatus" aria-label="Filter by status">
@@ -482,6 +483,7 @@ let rwGate = { on:false, start:null };
 
 const STATUS = [['new','New'],['triaged','Looking into it'],['fixed','Fixed'],['wontfix','Noted'],['dup','Duplicate'],['done','Done']];
 const SEV = { idea:'Idea', minor:'Minor', major:'Annoying', blocker:'Blocks me' };
+let shotUrls = {}; // path -> signed URL, populated in loadAll so screenshots show inline
 
 function setMsg(el,text,kind){ el.textContent=text; el.className='msg show '+(kind||'info'); }
 function clearMsg(el){ el.textContent=''; el.className='msg'; }
@@ -529,9 +531,21 @@ async function loadAll(){
     .order('created_at', { ascending:false });
   if (error){ listEl.innerHTML = `<div class="empty">Could not load reports.<br><small>${esc(error.message)}</small></div>`; statsEl.innerHTML=''; return; }
   allReports = data || [];
+  // Batch-sign every screenshot path so the thumbnails render inline (no click-through).
+  const paths = [];
+  for (const r of allReports){
+    if (r.screenshot_path) paths.push(r.screenshot_path);
+    if (Array.isArray(r.screenshot_paths)) for (const p of r.screenshot_paths) paths.push(p);
+  }
+  shotUrls = {};
+  if (paths.length){
+    const { data: signed } = await sb.storage.from(BUCKET).createSignedUrls(paths, 3600);
+    if (Array.isArray(signed)) for (const s of signed){ if (s && s.path && s.signedUrl) shotUrls[s.path] = s.signedUrl; }
+  }
   renderStats();
   render();
 }
+document.getElementById('refreshBtn')?.addEventListener('click', () => { loadAll(); });
 
 function renderStats(){
   const total = allReports.length;
@@ -566,15 +580,18 @@ function render(){
     const sev = r.severity ? `<span class="ri-chip s-${escA(r.severity)}">${esc(SEV[r.severity]||r.severity)}</span>` : '';
     const screen = r.screen ? `<span class="ri-screen">${esc(r.screen)}</span>` : '';
     const shotPaths = [ ...(r.screenshot_path ? [r.screenshot_path] : []), ...(Array.isArray(r.screenshot_paths) ? r.screenshot_paths : []) ];
-    const shot = shotPaths.map((p, i) =>
-      `<button type="button" class="afoot-btn ashot" data-shot="${escA(p)}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Screenshot${shotPaths.length > 1 ? ' ' + (i + 1) : ''}</button>`
-    ).join('');
+    const shot = shotPaths.map((p) => {
+      const url = shotUrls[p];
+      return url
+        ? `<img class="ashot" src="${escA(url)}" data-url="${escA(url)}" alt="screenshot" loading="lazy" style="width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--ink-12)">`
+        : '';
+    }).join('');
     return `<article class="arow" data-id="${escA(r.id)}">
       <div class="arow-head">${sev}${screen}<span class="arow-email">${esc(r.email||'—')}</span><span class="ri-date">${esc(fmtDate(r.created_at))}</span></div>
       <div class="ri-body">${esc(r.body)}</div>
+      ${shot ? `<div class="ashots" style="display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 10px;">${shot}</div>` : ''}
       <div class="arow-foot">
         <label>Status <select class="status-sel st-${escA(r.status)}" data-id="${escA(r.id)}">${statusOptions(r.status)}</select></label>
-        ${shot}
         <button type="button" class="afoot-btn adel" data-del="${escA(r.id)}">Delete</button>
       </div>
     </article>`;
@@ -601,14 +618,11 @@ listEl.addEventListener('change', async (e) => {
 
 /* ── screenshot (signed URL) + delete ── */
 listEl.addEventListener('click', async (e) => {
-  const shotBtn = e.target.closest('.ashot');
-  if (shotBtn){
-    const path = shotBtn.getAttribute('data-shot');
-    shotBtn.disabled = true;
-    const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, 3600);
-    shotBtn.disabled = false;
-    if (error || !data?.signedUrl){ showFlash('Could not open screenshot'); return; }
-    window.open(data.signedUrl, '_blank', 'noopener');
+  const shotImg = e.target.closest('.ashot');
+  if (shotImg){
+    const url = shotImg.getAttribute('data-url');
+    if (url) window.open(url, '_blank', 'noopener');
+    else showFlash('Could not open screenshot');
     return;
   }
   const delBtn = e.target.closest('.adel');

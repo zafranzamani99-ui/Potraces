@@ -6,7 +6,7 @@
 // reads muddy over the solid olive fill). Part of the surface-design standard.
 
 import React, { useCallback } from 'react';
-import { Pressable, Text, View, StyleSheet, StyleProp, ViewStyle } from 'react-native';
+import { Pressable, Text, View, StyleSheet, StyleProp, ViewStyle, ActivityIndicator } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
@@ -22,6 +22,8 @@ interface Props {
   label: string;
   icon?: keyof typeof Feather.glyphMap;
   disabled?: boolean;
+  /** Show a spinner instead of the icon/label and block presses (e.g. while submitting). */
+  loading?: boolean;
   /** Fill color; defaults to the mode accent (olive). */
   color?: string;
   /** Optional gradient fill (≥2 colors) layered over `color`. Opt-in — omit for the
@@ -36,7 +38,7 @@ interface Props {
   style?: StyleProp<ViewStyle>;
 }
 
-const NeuButton: React.FC<Props> = ({ onPress, label, icon, disabled, color, gradient, textColor, accessibilityLabel, style }) => {
+const NeuButton: React.FC<Props> = ({ onPress, label, icon, disabled, loading, color, gradient, textColor, accessibilityLabel, style }) => {
   const C = useCalm();
   const neu = useNeu();
   const fill = color ?? C.accent;
@@ -62,11 +64,11 @@ const NeuButton: React.FC<Props> = ({ onPress, label, icon, disabled, color, gra
     <Pressable
       onPressIn={onIn}
       onPressOut={onOut}
-      onPress={() => { if (disabled) return; lightTap(); onPress(); }}
-      disabled={disabled}
+      onPress={() => { if (disabled || loading) return; lightTap(); onPress(); }}
+      disabled={disabled || loading}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled: !!disabled }}
+      accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
     >
       <Animated.View
         style={[
@@ -88,8 +90,14 @@ const NeuButton: React.FC<Props> = ({ onPress, label, icon, disabled, color, gra
           />
         )}
         <View style={styles.inner}>
-          {icon && <Feather name={icon} size={16} color={fg} />}
-          <Text style={[styles.label, { color: fg }]}>{label}</Text>
+          {loading ? (
+            <ActivityIndicator size="small" color={fg} />
+          ) : (
+            <>
+              {icon && <Feather name={icon} size={16} color={fg} />}
+              <Text style={[styles.label, { color: fg }]}>{label}</Text>
+            </>
+          )}
         </View>
       </Animated.View>
     </Pressable>

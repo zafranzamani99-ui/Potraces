@@ -230,7 +230,8 @@ const FeedbackForm: React.FC = () => {
             icon="send"
             label={t.settings.fbSend}
             onPress={handleSend}
-            disabled={!body.trim() || submitting}
+            disabled={!body.trim()}
+            loading={submitting}
           />
         </View>
 

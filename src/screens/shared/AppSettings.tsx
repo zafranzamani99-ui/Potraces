@@ -486,6 +486,13 @@ const AppSettings: React.FC<{ section: Extract<SettingsSection, 'preferences' | 
                 onPress={() => { lightTap(); navigation.navigate('FeedbackForm'); }}
               />
               <SettingRow
+                icon="i/time-outline"
+                chipColor="#6BA3BE"
+                label={t.settings.yourReports}
+                sublabel={t.settings.yourReportsDesc}
+                onPress={() => { lightTap(); navigation.navigate('FeedbackReports'); }}
+              />
+              <SettingRow
                 icon="i/logo-discord"
                 chipColor="#5865F2"
                 label={t.settings.joinDiscord}
