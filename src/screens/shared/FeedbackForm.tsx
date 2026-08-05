@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Image, Keyboard } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Image, Keyboard, Alert } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -116,12 +116,17 @@ const FeedbackForm: React.FC = () => {
     Keyboard.dismiss();
     setSubmitting(true);
     try {
-      await submitFeedback({ type, body, screenshotUris: shots });
+      const res = await submitFeedback({ type, body, screenshotUris: shots });
       clearDraft();
       setBody('');
       setShots([]);
       setType('bug');
-      showToast(t.settings.fbSent, 'success');
+      if (res.requested > 0 && res.uploaded < res.requested) {
+        // Temporary diagnostic: surface exactly why screenshots didn't attach.
+        Alert.alert('Report sent', `${res.uploaded}/${res.requested} screenshots attached.\n\n${res.error ?? 'unknown error'}`);
+      } else {
+        showToast(t.settings.fbSent, 'success');
+      }
       navigation.goBack();
     } catch (e: any) {
       if (e instanceof NotSignedInError) {

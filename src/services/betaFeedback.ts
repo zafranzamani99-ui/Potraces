@@ -46,7 +46,13 @@ export interface FeedbackInput {
  * so 3 images don't stack up serially. Throws NotSignedInError when there's no
  * personal session; re-throws any DB error (e.g. the rate-limit trigger).
  */
-export async function submitFeedback(input: FeedbackInput): Promise<void> {
+export interface SubmitResult {
+  requested: number; // how many screenshots the user attached
+  uploaded: number;  // how many actually made it to storage + the row
+  error?: string;    // first failure reason (for surfacing during testing)
+}
+
+export async function submitFeedback(input: FeedbackInput): Promise<SubmitResult> {
   const { data: { session } } = await supabasePersonal.auth.getSession();
   if (!session) throw new NotSignedInError();
   const userId = session.user.id;
@@ -71,7 +77,10 @@ export async function submitFeedback(input: FeedbackInput): Promise<void> {
   // Optional screenshots (up to 3), best effort, compressed and uploaded in
   // parallel. One failure doesn't lose the others or the already-saved report.
   const uris = (input.screenshotUris ?? []).slice(0, MAX_SCREENSHOTS);
-  if (uris.length && inserted?.id) {
+  const requested = uris.length;
+  let uploaded = 0;
+  let firstError: string | undefined;
+  if (requested && inserted?.id) {
     const results = await Promise.all(
       uris.map(async (uri, i) => {
         try {
@@ -85,20 +94,32 @@ export async function submitFeedback(input: FeedbackInput): Promise<void> {
           const { error: upErr } = await supabasePersonal.storage
             .from(SCREENSHOTS_BUCKET)
             .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
-          return upErr ? null : path;
-        } catch {
+          if (upErr) {
+            firstError = firstError ?? `upload: ${upErr.message}`;
+            return null;
+          }
+          return path;
+        } catch (e: any) {
+          firstError = firstError ?? `img: ${String(e?.message ?? e)}`;
           return null;
         }
       }),
     );
     const paths = results.filter((p): p is string => !!p);
+    uploaded = paths.length;
     if (paths.length) {
-      await supabasePersonal
+      const { error: updErr } = await supabasePersonal
         .from('beta_feedback')
         .update({ screenshot_paths: paths })
         .eq('id', inserted.id);
+      if (updErr) {
+        firstError = firstError ?? `db: ${updErr.message}`;
+        uploaded = 0;
+      }
     }
   }
+
+  return { requested, uploaded, error: firstError };
 }
 
 /**
