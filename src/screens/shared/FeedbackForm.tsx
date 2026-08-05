@@ -123,13 +123,12 @@ const FeedbackForm: React.FC = () => {
       setBody('');
       setShots([]);
       setType('bug');
-      // Temporary diagnostic: ALWAYS show the attach outcome while we debug
-      // missing screenshots. Revert to toast-only after the cause is known.
-      Alert.alert(
-        'Report sent (debug)',
-        `${res.uploaded}/${res.requested} screenshots attached.${res.error ? `\n\n${res.error}` : ''}`,
-      );
-      showToast(t.settings.fbSent, 'success');
+      if (res.requested > 0 && res.uploaded < res.requested) {
+        // Screenshots are best-effort: if any failed, say so but keep the report.
+        Alert.alert('Report sent', `${res.uploaded}/${res.requested} screenshots attached.\n\n${res.error ?? 'unknown error'}`);
+      } else {
+        showToast(t.settings.fbSent, 'success');
+      }
       navigation.goBack();
     } catch (e: any) {
       if (e instanceof NotSignedInError) {
