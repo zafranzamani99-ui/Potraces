@@ -16,18 +16,22 @@ alter table public.beta_feedback
 
 -- At most 3 elements, and every element under the owner's <uid>/ folder
 -- (defense in depth, same rule as the single screenshot_path column).
+-- A CHECK constraint cannot contain a subquery, so the per-element test lives in
+-- an IMMUTABLE helper function (a CHECK is allowed to call a function).
+create or replace function public.beta_feedback_paths_ok(paths text[], uid uuid)
+  returns boolean
+  language sql immutable as $$
+  select coalesce(array_length(paths, 1), 0) <= 3
+     and coalesce(
+           (select bool_and(p like uid::text || '/%') from unnest(paths) as p),
+           true
+         );
+$$;
+
 alter table public.beta_feedback drop constraint if exists beta_feedback_shotpaths_chk;
 alter table public.beta_feedback
-  add constraint beta_feedback_shotpaths_chk check (
-    screenshot_paths is null
-    or (
-      coalesce(array_length(screenshot_paths, 1), 0) <= 3
-      and (
-        select bool_and(p like user_id::text || '/%')
-        from unnest(screenshot_paths) as p
-      )
-    )
-  );
+  add constraint beta_feedback_shotpaths_chk
+  check (public.beta_feedback_paths_ok(screenshot_paths, user_id));
 
 -- Testers may write their own screenshot_paths (a content column, mirroring the
 -- existing screenshot_path grant). Row scope is the existing update_own policy.
