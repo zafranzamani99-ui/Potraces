@@ -86,8 +86,7 @@ involves a **cross-border transfer** of your personal data (section 5).
 | Provider | What it does for us | Data it may handle | Location |
 |---|---|---|---|
 | **Supabase** | Cloud database, authentication, file/receipt storage | Account, financial records, synced contacts/debts, receipts, seller data | Outside Malaysia `[confirm region]` |
-| **Anthropic (Claude AI)** | Powers AI parsing & Money Chat answers | Your note / receipt-OCR / order text, your question, and a financial summary you submit | United States / Anthropic |
-| **Google (Gemini AI)** | Turns your free-text notes into suggested structured entries | The note text and limited financial context you submit | United States / Google global |
+| **Google (Gemini AI)** | Powers AI parsing, receipt/statement reading & Money Chat answers | Your note / receipt-OCR / order text, your question, and the limited financial context you submit | United States / Google global |
 | **Telegram** | Delivers the one-time verification code | Your phone number and the code | Outside Malaysia |
 | **Stripe** | Card acceptance (Tap to Pay) for sellers | Payment/card data handled by Stripe (PCI-compliant); we don't store card numbers | United States / global |
 | **Expo (EAS) push** | Delivers push notifications | Device push token, notification content | United States |
@@ -107,12 +106,12 @@ clauses) with the provider, supported by a transfer assessment. We keep records 
 transfers. If you do not want cross-border processing, you can avoid it by **not enabling
 Cloud Sync, AI features, or business sign-in**, and by keeping contacts on your device.
 
-## 6. AI features (Anthropic Claude & Google Gemini)
+## 6. AI features (Google Gemini)
 
 If you use the optional AI features (note-to-entry, receipt/order parsing, Money Chat), the
 text you submit and limited context (such as your category and wallet names, or a summary of
-your finances when you ask Money Chat a question) are sent to **Anthropic (Claude)** and/or
-**Google (Gemini)** to suggest a structured entry or answer your question.
+your finances when you ask Money Chat a question) are sent to **Google (Gemini)** to suggest
+a structured entry or answer your question.
 We aim to minimise what is sent and avoid sending more personal data than needed. The AI
 provides **general assistance only** — it does **not** provide financial, investment, tax, or
 legal advice, and any savings/investment figures shown are estimates, not promises. You can
@@ -277,8 +276,7 @@ jadi menggunakan ciri ini melibatkan **pemindahan merentas sempadan** data perib
 | Pembekal | Fungsinya untuk kami | Data yang mungkin dikendalikan | Lokasi |
 |---|---|---|---|
 | **Supabase** | Pangkalan data awan, pengesahan, storan fail/resit | Akaun, rekod kewangan, kenalan/hutang yang disegerak, resit, data penjual | Luar Malaysia `[sahkan kawasan]` |
-| **Anthropic (Claude AI)** | Menggerakkan penghuraian AI & jawapan Money Chat | Teks nota / OCR resit / pesanan, soalan anda, dan ringkasan kewangan yang anda serahkan | Amerika Syarikat / Anthropic |
-| **Google (Gemini AI)** | Menukar nota teks bebas anda kepada cadangan entri berstruktur | Teks nota dan konteks kewangan terhad yang anda serahkan | Amerika Syarikat / global Google |
+| **Google (Gemini AI)** | Menggerakkan penghuraian AI, bacaan resit/penyata & jawapan Money Chat | Teks nota / OCR resit / pesanan, soalan anda, dan konteks kewangan terhad yang anda serahkan | Amerika Syarikat / global Google |
 | **Telegram** | Menghantar kod pengesahan sekali guna | Nombor telefon anda dan kod | Luar Malaysia |
 | **Stripe** | Penerimaan kad (Tap to Pay) untuk penjual | Data pembayaran/kad dikendalikan Stripe (mematuhi PCI); kami tidak simpan nombor kad | Amerika Syarikat / global |
 | **Expo (EAS) push** | Menghantar notifikasi tolak | Token tolak peranti, kandungan notifikasi | Amerika Syarikat |
@@ -299,12 +297,12 @@ pemindahan ini. Jika anda tidak mahu pemprosesan merentas sempadan, anda boleh m
 dengan **tidak mendayakan Penyegerakan Awan, ciri AI, atau log masuk perniagaan**, dan dengan
 menyimpan kenalan di peranti anda.
 
-## 6. Ciri AI (Anthropic Claude & Google Gemini)
+## 6. Ciri AI (Google Gemini)
 
 Jika anda menggunakan ciri AI pilihan (nota-ke-entri, penghuraian resit/pesanan, Money Chat),
 teks yang anda serahkan dan konteks terhad (seperti nama kategori dan dompet, atau ringkasan
-kewangan anda apabila bertanya Money Chat) dihantar ke **Anthropic (Claude)** dan/atau
-**Google (Gemini)** untuk mencadangkan entri berstruktur atau menjawab soalan anda. Kami
+kewangan anda apabila bertanya Money Chat) dihantar ke **Google (Gemini)** untuk mencadangkan
+entri berstruktur atau menjawab soalan anda. Kami
 berusaha mengurangkan apa yang dihantar dan mengelak menghantar data peribadi melebihi
 keperluan. AI memberi **bantuan umum sahaja** — ia **tidak** memberi nasihat kewangan,
 pelaburan, cukai, atau guaman, dan sebarang angka simpanan/pelaburan yang dipaparkan ialah

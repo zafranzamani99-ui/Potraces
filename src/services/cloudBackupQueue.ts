@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { newId } from '../utils/id';
 import {
   BackupJob, BackupJobKind,
-  shouldAttemptJob, recordAttempt, upsertJob, partitionDrained,
+  shouldAttemptJob, recordAttempt, upsertJob, partitionDrained, newlyFailedJobs,
 } from './cloudBackupLogic';
 
 /**
@@ -109,13 +109,16 @@ export async function pendingBackupJobCount(): Promise<number> {
  *    other kinds are left UNTOUCHED (not counted, no attempt recorded) so a
  *    drain that can't serve a provider (e.g. dead Google token) doesn't
  *    burn those jobs' retries.
+ * Returns `newlyFailed` — jobs parked in the failed list by THIS drain — so
+ * the caller can report the exact moment a backup becomes a permanent
+ * failure (failure telemetry; dedupe/reporting is the caller's job).
  * Each job is processed in its own try/catch so one bad job can't poison the
  * drain.
  */
 export async function processBackupJobs(
   processor: (job: BackupJob) => Promise<void>,
   onlyKinds?: BackupJobKind[],
-): Promise<{ done: number; failed: number; skipped: number }> {
+): Promise<{ done: number; failed: number; skipped: number; newlyFailed: BackupJob[] }> {
   const now = Date.now();
   const list = await load();
   const doneIds: string[] = [];
@@ -141,13 +144,15 @@ export async function processBackupJobs(
       failed++;
     }
   }
-  const { remaining, failed: failedList } = partitionDrained(working, doneIds, await loadFailed());
+  const prevFailed = await loadFailed();
+  const { remaining, failed: failedList } = partitionDrained(working, doneIds, prevFailed);
   await save(remaining);
   // A succeeded job clears any older failed entry for the same work.
-  await saveFailed(
-    failedList.filter((f) => !succeeded.some((s) => s.kind === f.kind && s.dedupeKey === f.dedupeKey)),
+  const keptFailed = failedList.filter(
+    (f) => !succeeded.some((s) => s.kind === f.kind && s.dedupeKey === f.dedupeKey),
   );
-  return { done, failed, skipped };
+  await saveFailed(keptFailed);
+  return { done, failed, skipped, newlyFailed: newlyFailedJobs(keptFailed, prevFailed) };
 }
 
 /** Move every failed job back into the pending queue for another try (resets

@@ -51,9 +51,8 @@ import { useBusinessStore } from '../store/businessStore';
 import BusinessSetup from '../screens/business/Setup';
 import Settings from '../screens/shared/Settings';
 import MyPlan from '../screens/shared/MyPlan';
-import InviteFriends from '../screens/shared/InviteFriends';
+import EarnPro from '../screens/shared/EarnPro';
 import EchoNotebook from '../screens/personal/EchoNotebook';
-import RedeemCode from '../screens/shared/RedeemCode';
 import ManageCategories from '../screens/shared/ManageCategories';
 import BusinessProfile from '../screens/business/BusinessProfile';
 import LogIncome from '../screens/business/LogIncome';
@@ -542,14 +541,23 @@ const RootNavigator: React.FC = () => {
           options={makeBackHeader(C, mode, 'My Plan')}
         />
         <Stack.Screen
+          name="EarnPro"
+          component={EarnPro}
+          options={makeBackHeader(C, mode, 'Earn Pro')}
+        />
+        {/* Legacy routes — redirect into the Earn Pro hub on the matching tab
+            so old deep links keep working. */}
+        <Stack.Screen
           name="InviteFriends"
-          component={InviteFriends}
-          options={makeBackHeader(C, mode, 'Invite friends')}
+          component={EarnPro}
+          initialParams={{ tab: 'invite' }}
+          options={makeBackHeader(C, mode, 'Earn Pro')}
         />
         <Stack.Screen
           name="RedeemCode"
-          component={RedeemCode}
-          options={makeBackHeader(C, mode, 'Redeem code')}
+          component={EarnPro}
+          initialParams={{ tab: 'redeem' }}
+          options={makeBackHeader(C, mode, 'Earn Pro')}
         />
         <Stack.Screen
           name="EchoNotebook"

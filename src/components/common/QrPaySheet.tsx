@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  ScrollView,
   useWindowDimensions,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
@@ -98,13 +99,22 @@ export default function QrPaySheet(props: QrPaySheetProps) {
   const t = useT();
   // Expire the provider QR after its validity window (measured from when the QR
   // appears). Resets whenever a fresh payload arrives (i.e. after refresh).
-  const [expired, setExpired] = useState(false);
+  // remainingSec also drives the visible countdown under the QR.
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [remainingSec, setRemainingSec] = useState(QR_VALIDITY_MS / 1000);
   useEffect(() => {
-    setExpired(false);
-    if (!props.visible || !props.providerPayload || props.loading) return;
-    const timer = setTimeout(() => setExpired(true), QR_VALIDITY_MS);
-    return () => clearTimeout(timer);
+    if (!props.visible || !props.providerPayload || props.loading) {
+      setExpiresAt(null);
+      return;
+    }
+    const end = Date.now() + QR_VALIDITY_MS;
+    setExpiresAt(end);
+    const tick = () => setRemainingSec(Math.max(0, Math.ceil((end - Date.now()) / 1000)));
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
   }, [props.visible, props.providerPayload, props.loading]);
+  const expired = expiresAt != null && remainingSec <= 0;
 
   if (!props.visible) return null;
   // Guard the close while a payment is LIVE — the buyer may be mid-scan, so
@@ -123,9 +133,9 @@ export default function QrPaySheet(props: QrPaySheetProps) {
       visible={props.visible}
       onClose={props.onClose}
       onAttemptClose={guardClose}
-      maxHeightPct={0.9}
+      maxHeightPct={0.93}
     >
-      <PayBody {...props} expired={expired} />
+      <PayBody {...props} expired={expired} remainingSec={remainingSec} />
     </BottomSheet>
   );
 }
@@ -142,7 +152,11 @@ function merchantFromPayload(payload?: string): string | undefined {
   }
 }
 
-function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPayload, waiting, loading, testRef, onRefresh, expired }: QrPaySheetProps & { expired?: boolean }) {
+/** mm:ss for the QR validity countdown. */
+const formatCountdown = (sec: number) =>
+  `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+
+function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPayload, waiting, loading, testRef, onRefresh, expired, remainingSec = 0 }: QrPaySheetProps & { expired?: boolean; remainingSec?: number }) {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -150,7 +164,9 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPa
   const { width } = useWindowDimensions();
 
   const amountText = formatAmount(amountCents / 100, currency);
-  const qrSize = Math.min(Math.round(width * 0.6), 250);
+  // Sized so the whole sheet (card + actions + close) fits under the sheet cap
+  // with room to spare — no scrolling on phone-size screens.
+  const qrSize = Math.min(Math.round(width * 0.54), 220);
 
   // Build the exact-amount QR payload. Falls back to the stored image if there
   // is no decoded payload, or if embedding fails for any reason.
@@ -216,9 +232,18 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPa
   );
 
   return (
-    <View style={styles.wrap} onStartShouldSetResponder={() => true}>
-      {/* Self-contained payment ticket. QR stays pure black-on-white so it scans
-          even in dark mode. */}
+    // BottomSheet children must manage their own scroll — without it, tall
+    // content (QR card + actions) overflows the sheet's max height and the
+    // pinned close footer paints ON TOP of the buttons.
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.wrap}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      onStartShouldSetResponder={() => true}
+    >
+      {/* Self-contained payment ticket. QR renders in DuitNow magenta on white
+          (the scheme's own standee look) — dark enough to scan reliably. */}
       <View style={styles.qrCard}>
         <Image source={DUITNOW_LOGO} style={styles.duitnowLogo} resizeMode="contain" />
 
@@ -240,7 +265,7 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPa
             <QRCode
               value={qrValue}
               size={qrSize}
-              color="#111111"
+              color={DUITNOW_PINK}
               backgroundColor="#FFFFFF"
               ecl="M"
             />
@@ -259,6 +284,18 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPa
         {!loading && !expired && (
           <View style={styles.scanPill}>
             <Text style={styles.scanPillText}>{t.qrPay.payTitle}</Text>
+          </View>
+        )}
+
+        {/* Live validity countdown — provider QRs lapse (QR_VALIDITY_MS), so say
+            so BEFORE the buyer is mid-scan. Static/image QRs never expire. Turns
+            amber in the last minute so an about-to-die QR can't be missed. */}
+        {!loading && !expired && !!providerPayload && (
+          <View style={styles.expiryRow}>
+            <Feather name="clock" size={13} color={remainingSec <= 60 ? '#B45309' : '#5B5B5B'} />
+            <Text style={[styles.expiryText, remainingSec <= 60 && { color: '#B45309' }]}>
+              {t.qrPay.expiresIn.replace('{time}', formatCountdown(remainingSec))}
+            </Text>
           </View>
         )}
 
@@ -312,7 +349,7 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPa
           )}
         </View>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -340,6 +377,11 @@ const liveDotStyles = StyleSheet.create({
 
 const makeStyles = (C: typeof CALM) =>
   StyleSheet.create({
+    scroll: {
+      alignSelf: 'stretch',
+      width: '100%',
+      flexShrink: 1, // shrink within the sheet's maxHeight and SCROLL — never overflow into the close footer
+    },
     wrap: {
       paddingHorizontal: SPACING.xl,
       paddingTop: SPACING.sm,
@@ -353,7 +395,7 @@ const makeStyles = (C: typeof CALM) =>
       backgroundColor: '#FFFFFF',
       borderRadius: RADIUS.xl,
       alignItems: 'center',
-      paddingVertical: SPACING.xl,
+      paddingVertical: SPACING.lg,
       paddingHorizontal: SPACING.lg,
       borderWidth: 1,
       borderColor: withAlpha('#000000', 0.05),
@@ -365,15 +407,15 @@ const makeStyles = (C: typeof CALM) =>
       elevation: 6,
     },
     duitnowLogo: {
-      width: 62,
-      height: 55, // 600×534 source aspect
+      width: 54,
+      height: 48, // 600×534 source aspect
     },
     amount: {
-      fontSize: 38,
-      lineHeight: 44,
+      fontSize: 34,
+      lineHeight: 40,
       fontWeight: TYPOGRAPHY.weight.bold,
       color: '#111111',
-      marginTop: SPACING.md,
+      marginTop: SPACING.sm,
     },
     merchant: {
       fontSize: TYPOGRAPHY.size.sm,
@@ -382,8 +424,8 @@ const makeStyles = (C: typeof CALM) =>
       textAlign: 'center',
     },
     qrHolder: {
-      marginTop: SPACING.lg,
-      marginBottom: SPACING.lg,
+      marginTop: SPACING.md,
+      marginBottom: SPACING.md,
     },
     loadingBox: {
       alignItems: 'center',
@@ -424,12 +466,24 @@ const makeStyles = (C: typeof CALM) =>
       letterSpacing: 1.2,
       textTransform: 'uppercase',
     },
+    expiryRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: SPACING.sm,
+    },
+    expiryText: {
+      fontSize: TYPOGRAPHY.size.sm,
+      color: '#5B5B5B',
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      fontVariant: ['tabular-nums'],
+    },
     poweredRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 5,
-      marginTop: SPACING.md,
+      marginTop: SPACING.sm,
     },
     poweredText: {
       fontSize: 11,
@@ -446,38 +500,52 @@ const makeStyles = (C: typeof CALM) =>
       opacity: 0,
     },
     testRef: {
-      fontSize: 11,
-      color: C.textMuted,
+      fontSize: 12,
+      color: C.textSecondary,
       textAlign: 'center',
-      marginTop: SPACING.md,
-      opacity: 0.7,
+      marginTop: SPACING.sm,
+      opacity: 0.9,
+      fontVariant: ['tabular-nums'],
     },
     actions: {
       width: '100%',
       alignItems: 'center',
-      marginTop: SPACING.xl,
+      marginTop: SPACING.md,
     },
+    // "Confirms automatically" — the sheet's key reassurance, so it reads as a
+    // status banner (tinted pill), not a caption.
     statusRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: SPACING.sm,
-      minHeight: 44,
+      minHeight: 40,
+      paddingHorizontal: SPACING.lg,
+      borderRadius: RADIUS.full,
+      backgroundColor: withAlpha(C.accent, 0.12),
     },
     statusText: {
       fontSize: TYPOGRAPHY.size.base,
       fontWeight: TYPOGRAPHY.weight.semibold,
-      color: C.textSecondary,
+      color: C.textPrimary,
     },
+    // Manual escape hatch — a real (if quiet) full-width button, so it's
+    // obviously tappable and reads as a distinct block above the close link.
     manualLink: {
-      marginTop: SPACING.sm,
-      paddingVertical: SPACING.sm,
+      marginTop: SPACING.md,
+      alignSelf: 'stretch',
+      alignItems: 'center',
+      minHeight: 44,
+      justifyContent: 'center',
       paddingHorizontal: SPACING.lg,
+      borderWidth: 1,
+      borderColor: C.border,
+      borderRadius: RADIUS.lg,
     },
     manualText: {
       fontSize: TYPOGRAPHY.size.sm,
       fontWeight: TYPOGRAPHY.weight.semibold,
-      color: C.textMuted,
+      color: C.textSecondary,
     },
     primaryBtn: {
       alignSelf: 'stretch',

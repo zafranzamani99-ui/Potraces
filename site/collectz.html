@@ -102,6 +102,15 @@
 .cz-chip--rejected{background:rgba(168,72,46,.10);color:var(--terracotta)}
 .cz-wait{font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--ink-45);margin:18px 0 -4px}
 
+/* report (Apple 1.2 UGC) — quiet flag per roster person, inline reason chips */
+.cz-report-btn{flex-shrink:0;border:0;background:none;cursor:pointer;color:var(--ink-45);padding:4px;border-radius:8px;display:inline-flex;align-items:center}
+.cz-report-btn:hover{color:var(--terracotta)}
+.cz-report-row{width:100%;display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.cz-report-row[hidden]{display:none}
+.cz-report-reason{border:0;background:var(--ink-06);color:var(--ink-65);font-family:var(--font-mono);font-size:var(--text-xs);padding:4px 10px;border-radius:var(--radius-pill);cursor:pointer}
+.cz-report-reason:hover{color:var(--terracotta)}
+.cz-report-done{width:100%;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--sage-text)}
+
 /* cancelled banner (head card) */
 .cz-cancel{padding:10px 14px;border-radius:12px;background:rgba(168,72,46,.10);color:var(--terracotta);font-size:.95rem;line-height:var(--leading-relaxed)}
 
@@ -437,7 +446,14 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       rejectReason: 'Reason',
       progFull: function(x, y, n, m){ return x + ' confirmed of ' + y + ' — ' + n + '/' + m + ' paid'; },
       progOpen: function(x, n, m){ return x + ' confirmed — ' + n + '/' + m + ' paid'; },
-      groupChip: 'Join the WhatsApp group'
+      groupChip: 'Join the WhatsApp group',
+      report: 'Report',
+      reportOffensive: 'Offensive name or content',
+      reportSpam: 'Spam or scam link',
+      reportHarassment: 'Harassment or bullying',
+      reportOther: 'Something else',
+      reported: 'Reported — thanks for keeping Collectz safe.',
+      reportFailed: 'Couldn’t send the report. Try again later.'
     },
     ms: {
       loading: 'Tengah load kutipan…',
@@ -462,7 +478,14 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
       rejectReason: 'Sebab',
       progFull: function(x, y, n, m){ return x + ' disahkan daripada ' + y + ' — ' + n + '/' + m + ' dah bayar'; },
       progOpen: function(x, n, m){ return x + ' disahkan — ' + n + '/' + m + ' dah bayar'; },
-      groupChip: 'Join group WhatsApp'
+      groupChip: 'Join group WhatsApp',
+      report: 'Lapor',
+      reportOffensive: 'Nama atau isi menyinggung',
+      reportSpam: 'Spam atau link tipu',
+      reportHarassment: 'Gangguan / buli',
+      reportOther: 'Benda lain',
+      reported: 'Dah dilaporkan — terima kasih jaga Collectz.',
+      reportFailed: 'Tak dapat hantar laporan. Cuba lagi nanti.'
     }
   };
 
@@ -676,14 +699,24 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     /* ── roster: actives first, then the waiting list ── */
     var actives = parts.filter(function(p){ return p.slot !== 'reserve'; });
     var reserves = parts.filter(function(p){ return p.slot === 'reserve'; });
+    /* Apple 1.2 UGC: every name one user typed and another sees gets a Report
+       flag → inline preset reasons → the public report-content function. */
+    var FLAG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>';
     function person(p){
       var status = s[p.status] || p.status || s.unpaid;
       var chip = '<span class="cz-chip cz-chip--' + esc(p.status || 'unpaid') + '">' + esc(status) + '</span>';
       var share = rm(p.effective_share);
       var note = (p.status === 'rejected' && p.reject_note)
         ? '<span class="cz-reject-note">' + esc(s.rejectReason + ': ' + p.reject_note) + '</span>' : '';
+      var report = p.id
+        ? '<button type="button" class="cz-report-btn" data-pid="' + esc(p.id) + '" aria-label="' + esc(s.report) + '" title="' + esc(s.report) + '">' + FLAG + '</button>' +
+          '<span class="cz-report-row" hidden>' +
+          [['offensive', s.reportOffensive], ['spam', s.reportSpam], ['harassment', s.reportHarassment], ['other', s.reportOther]]
+            .map(function(r){ return '<button type="button" class="cz-report-reason" data-reason="' + r[0] + '">' + esc(r[1]) + '</button>'; }).join('') +
+          '</span>'
+        : '';
       return '<li class="cz-person"><span class="cz-name">' + esc(p.name) + '</span>' +
-        (share ? '<span class="cz-share">' + esc(share) + '</span>' : '') + chip + note + '</li>';
+        (share ? '<span class="cz-share">' + esc(share) + '</span>' : '') + chip + note + report + '</li>';
     }
     var rosterHtml = '<p class="mono-caps">' + esc(s.roster) + '</p><ul class="cz-roster">' +
       actives.map(person).join('') + '</ul>';
@@ -695,6 +728,38 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
 
     showState('session');
   }
+
+  /* ── Report flow (Apple 1.2 UGC): flag → inline preset reason → POST to the
+        public report-content edge function (no account needed; the function
+        validates, length-caps and flood-caps per reporter ip). ── */
+  els.roster.addEventListener('click', function(ev){
+    var flag = ev.target.closest ? ev.target.closest('.cz-report-btn') : null;
+    if (flag) {
+      var row = flag.parentElement.querySelector('.cz-report-row');
+      if (row) row.hidden = !row.hidden;
+      return;
+    }
+    var reasonBtn = ev.target.closest ? ev.target.closest('.cz-report-reason') : null;
+    if (!reasonBtn) return;
+    var li = reasonBtn.closest('.cz-person');
+    var pid = li && li.querySelector('.cz-report-btn') ? li.querySelector('.cz-report-btn').getAttribute('data-pid') : null;
+    if (!pid) return;
+    var row = reasonBtn.parentElement;
+    Array.prototype.forEach.call(row.querySelectorAll('button'), function(b){ b.disabled = true; });
+    fetch(SB_URL + '/functions/v1/report-content', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SB_KEY,
+        'Authorization': 'Bearer ' + SB_KEY
+      },
+      body: JSON.stringify({ context: 'collectz-member', targetId: pid, reason: reasonBtn.getAttribute('data-reason') })
+    }).then(function(res){
+      row.innerHTML = '<span class="cz-report-done">' + esc(res.ok ? t().reported : t().reportFailed) + '</span>';
+    }).catch(function(){
+      row.innerHTML = '<span class="cz-report-done">' + esc(t().reportFailed) + '</span>';
+    });
+  });
 
   function load(){
     if (!CODE) { showError('noCode'); return; }

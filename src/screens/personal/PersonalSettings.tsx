@@ -98,6 +98,8 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
   const setCommitmentEchoHidden = useSettingsStore((s) => s.setCommitmentEchoHidden);
   const savingsEchoHidden = useSettingsStore((s) => s.savingsEchoHidden);
   const setSavingsEchoHidden = useSettingsStore((s) => s.setSavingsEchoHidden);
+  const aiOptInEnabled = useSettingsStore((s) => s.aiOptInEnabled);
+  const setAiOptInEnabled = useSettingsStore((s) => s.setAiOptInEnabled);
   const pulseEchoHidden = useSettingsStore((s) => s.pulseEchoHidden);
   const setPulseEchoHidden = useSettingsStore((s) => s.setPulseEchoHidden);
   const echoDailyCheckin = useSettingsStore((s) => s.echoDailyCheckin);
@@ -381,16 +383,25 @@ const PersonalSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 onPress={() => { lightTap(); navigation.navigate('EchoNotebook'); }}
               />
               <SettingRow
-                icon="i/gift"
+                icon="i/sparkles-outline"
                 chipColor="#4F5104"
-                label={t.settings.inviteFriends}
-                onPress={() => { lightTap(); navigation.navigate('InviteFriends'); }}
+                label={t.settings.aiFeatures}
+                sublabel={t.settings.aiFeaturesDesc}
+                rightElement={
+                  <Switch
+                    value={aiOptInEnabled}
+                    onValueChange={(v) => { lightTap(); setAiOptInEnabled(v); }}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                }
               />
               <SettingRow
-                icon="i/ticket-outline"
-                chipColor="#9A6400"
-                label={t.settings.redeemCode}
-                onPress={() => { lightTap(); navigation.navigate('RedeemCode'); }}
+                icon="i/gift"
+                chipColor="#4F5104"
+                label={t.settings.earnPro}
+                sublabel={t.settings.earnProDesc}
+                onPress={() => { lightTap(); navigation.navigate('EarnPro'); }}
                 last
               />
 

@@ -173,6 +173,8 @@ export interface CollectzJoinView {
     /** 'requested' = waiting for the organizer; 'rejected' = declined. */
     join_status: CollectzJoinStatus;
   } | null;
+  /** Roster entries I've blocked (Apple 1.2) — mask these names client-side. */
+  blocked_participant_ids?: string[];
 }
 
 export interface CollectzSessionInput {
@@ -417,15 +419,21 @@ export async function listMySessions(): Promise<{
   joined: CollectzSession[];
 }> {
   const uid = await requireUserId();
-  const { data, error } = await supabase
-    .from('collectz_sessions')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const [{ data, error }, blocked] = await Promise.all([
+    supabase
+      .from('collectz_sessions')
+      .select('*')
+      .order('created_at', { ascending: false }),
+    listMyBlockedIds(),
+  ]);
   throwIfError(error, 'Could not load sessions.');
   const all = (data ?? []) as CollectzSession[];
+  // Apple 1.2 blocking: a blocked organizer's pools stop showing for the
+  // blocker. (My own sessions survive — user_blocks forbids self-rows.)
+  const visible = blocked.size > 0 ? all.filter((s) => !blocked.has(s.owner_id)) : all;
   return {
-    organizing: all.filter((s) => s.owner_id === uid),
-    joined: all.filter((s) => s.owner_id !== uid),
+    organizing: visible.filter((s) => s.owner_id === uid),
+    joined: visible.filter((s) => s.owner_id !== uid),
   };
 }
 
@@ -578,33 +586,68 @@ export async function rejectParticipant(id: string, note: string): Promise<void>
 }
 
 /**
- * Report a participant for offensive/abusive content (Apple 1.2 UGC). Writes a
- * row to `collectz_reports` for the team to review + act on. Fails SOFT: if the
- * table isn't deployed yet (migration 20260802* pending) or the insert is
- * refused, returns false so the UI shows "try again later" instead of throwing.
+ * Report objectionable content for review (Apple 1.2 UGC). Goes through the
+ * public `report-content` edge function — it also works signed OUT (the
+ * Collectz join page is public) and flood-caps per reporter server-side.
+ * Fails SOFT: returns false so the UI shows "try again later" instead of
+ * throwing.
  */
-export async function reportParticipant(input: {
-  sessionId: string;
-  participantId?: string | null;
-  reportedUserId?: string | null;
-  reportedName: string;
-  reason?: string;
+export async function reportContent(input: {
+  /** Surface tag, e.g. 'collectz-member' (a roster entry) or 'collectz-join'. */
+  context: string;
+  /** Opaque id of the reported thing (participant id, share code, …). */
+  targetId: string;
+  /** Preset tag ('offensive' | 'spam' | 'harassment' | 'other') or short text. */
+  reason: string;
 }): Promise<boolean> {
   try {
-    const { data } = await supabase.auth.getSession();
-    const reporterId = data.session?.user?.id;
-    if (!reporterId) return false;
-    const { error } = await supabase.from('collectz_reports').insert({
-      session_id: input.sessionId,
-      participant_id: input.participantId ?? null,
-      reported_user_id: input.reportedUserId ?? null,
-      reported_name: (input.reportedName ?? '').slice(0, 80),
-      reason: input.reason ?? 'user_report',
-      reporter_id: reporterId,
+    const { data, error } = await supabase.functions.invoke('report-content', {
+      body: { context: input.context, targetId: input.targetId, reason: input.reason },
     });
-    return !error;
+    if (error) return false;
+    return !!(data as { ok?: boolean } | null)?.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Block/unblock the ACCOUNT behind a roster entry (Apple 1.2 UGC), via the
+ * collectz-join edge function — account uids never reach the client. Returns
+ * 'account' when a server-side block row was written, 'local' when the entry
+ * has no account (offline name — mask locally only), or null when the call
+ * failed (signed out / offline — the local mask still applies).
+ */
+export async function setParticipantBlock(
+  shareCode: string,
+  participantId: string,
+  blocked: boolean,
+): Promise<'account' | 'local' | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('collectz-join', {
+      body: { share_code: shareCode, action: blocked ? 'block' : 'unblock', participant_id: participantId },
+    });
+    if (error) return null;
+    const payload = data as { ok?: boolean; account?: boolean } | null;
+    if (!payload?.ok) return null;
+    return payload.account ? 'account' : 'local';
+  } catch {
+    return null;
+  }
+}
+
+/** Ids of every account I've blocked (Apple 1.2). Fails soft → empty set. */
+export async function listMyBlockedIds(): Promise<Set<string>> {
+  try {
+    const uid = await requireUserId();
+    const { data, error } = await supabase
+      .from('user_blocks')
+      .select('blocked_id')
+      .eq('blocker_id', uid);
+    if (error) return new Set();
+    return new Set((data ?? []).map((r: { blocked_id: string }) => r.blocked_id));
+  } catch {
+    return new Set();
   }
 }
 
@@ -673,6 +716,7 @@ export function joinErrorMessage(code: string): string {
     case 'team_reserve': return 'Reserves join a team once they are playing.';
     case 'leave_failed': return 'Could not leave — try again.';
     case 'name_invalid': return 'Enter a valid name.';
+    case 'name_blocked': return t.collectz.validationContent;
     case 'rate_limited': return t.collectz.joinRateLimited;
     default: return code;
   }

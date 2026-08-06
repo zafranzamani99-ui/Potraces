@@ -162,9 +162,9 @@ check('Bare multi-amount list (no keywords) — not a payment', [
 check('Paywall pricing page — not a payment (guard beats the fail check)', [
   'Potraces Premium',
   'BASIC  PRO  PREMIUM',
-  'RM 14  RM 25',
-  'RM7.99/mo  RM10/mo  RM16.67/mo',
-  'RM120/yr  RM200/yr',
+  'RM 9.99  RM 20',
+  'RM3.99/mo  RM7.17/mo  RM13.33/mo',
+  'RM86/yr  RM160/yr',
   'cancelled anytime · restore purchase',
   '300 chats/mo',
 ], {

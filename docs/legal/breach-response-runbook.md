@@ -37,9 +37,9 @@ A personal-data breach = loss of, unauthorised/accidental access to, disclosure,
 | **Account-mismatch leak** | `_accountMismatch` guard in `syncPersonal` — a different account signing in on a device with local data could pull/push the wrong user's money if the guard is bypassed | Cross-user financial data |
 | **Third-party contact exposure** | `personal_contacts` holds non-users' names + phones imported via `ContactPicker` (`expo-contacts`); a leak exposes people who never signed up | Contact name + phone (PII of non-users) |
 | **Lost/stolen device** | Local AsyncStorage stores full financial data + `bak:*` rolling backups unencrypted at rest | Everything for that one user |
-| **Processor breach (cross-border)** | A breach at **Supabase / Anthropic / Google (Gemini) / Telegram / Stripe / Expo / Vercel** — they are processors; their breach is *your* notifiable breach to MY regulator | Depends on processor (see §3) |
+| **Processor breach (cross-border)** | A breach at **Supabase / Google (Gemini) / Telegram / Stripe / Expo / Vercel** — they are processors; their breach is *your* notifiable breach to MY regulator | Depends on processor (see §3) |
 | **Leaked secret** | Supabase service-role key / API key in a commit, log, or build artifact; exposed `.env` | Potentially all server data |
-| **AI free-text leak** | `aiService.ts` (→ Anthropic `api.anthropic.com`) and `intentEngine.ts` / `manglishParser.ts` (→ Gemini) send note/receipt-OCR/order text + financial summaries to US LLMs; a logging/prompt leak exposes free-text that may contain names/amounts/card numbers | Financial free-text, possibly names |
+| **AI free-text leak** | `aiService.ts`, `intentEngine.ts` / `manglishParser.ts` (all → Google Gemini via the `ai-proxy` edge function) send note/receipt-OCR/order text + financial summaries to a US LLM; a logging/prompt leak exposes free-text that may contain names/amounts/card numbers | Financial free-text, possibly names |
 | **Receipt/PII in storage bucket** | Receipt images in Supabase storage exposed via public URL / bad bucket policy | Receipt images (may show PAN, names) |
 
 **Rule of thumb:** if real user/contact data was *accessible to someone who shouldn't have it*, or was *altered/destroyed* in a way that harms the user, treat it as a breach and run this runbook. When unsure → run the runbook anyway; an over-cautious assessment is cheap, a missed 72h notification is not.
@@ -235,8 +235,7 @@ Each is outside Malaysia → a breach there is a cross-border + notifiable conce
 | Processor | Role in Potraces | Data it touches | Security contact (fill in) |
 |---|---|---|---|
 | **Supabase** | DB / auth / storage | All synced personal + financial data, receipts | [DPA signed? region? contact] |
-| **Anthropic (Claude)** | AI parsing + Money Chat (`aiService.ts` → api.anthropic.com) | Note / receipt-OCR / order text, questions, financial summary | [DPA / zero-retention? / contact] |
-| **Google (Gemini)** | AI intent/parsing (`intentEngine.ts`, `manglishParser.ts`, `aiService.ts`) | Transaction free-text + financial context | [DPA / contact] |
+| **Google (Gemini)** | All AI features (`aiService.ts`, `intentEngine.ts`, `manglishParser.ts` → `ai-proxy` → Gemini) | Note / receipt-OCR / order text, questions, financial summary | Terms record: `docs/legal/ai-data-terms.md` (paid-tier = no training; billing must stay active) |
 | **Telegram** | OTP verification | Phone number | [contact] |
 | **Stripe** | Tap-to-Pay (card) | Card/payment data (Stripe-held, PCI) | [contact] |
 | **Expo / EAS** | Push notifications, builds | Push tokens, device data | [contact] |

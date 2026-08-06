@@ -36,6 +36,7 @@ import {
   StatementParseResult,
   StatementParseError,
 } from '../../services/statementImport';
+import { requestAiAccess } from '../../services/aiConsent';
 import { usePersonalStore } from '../../store/personalStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -229,6 +230,8 @@ const ImportFromStatement: React.FC = () => {
         setNotice({ icon: 'alert-triangle', title: t.importStatement.timeoutTitle, message: t.importStatement.timeoutMsg });
       } else if (res.error === 'not_authenticated') {
         setNotice({ icon: 'lock', title: t.importStatement.notAuthenticatedTitle, message: t.importStatement.notAuthenticatedMsg });
+      } else if (res.error === 'ai_off') {
+        setNotice({ icon: 'lock', title: t.settings.aiFeatures, message: t.settings.aiOff });
       } else {
         setNotice({ icon: 'alert-triangle', title: t.importStatement.couldNotParse, message: res.message ?? res.error });
       }
@@ -302,6 +305,9 @@ const ImportFromStatement: React.FC = () => {
   const handlePick = useCallback(async () => {
     lightTap();
     setNotice(null);
+    // AI consent gate (PDPA) — statement pages leave the device for Gemini.
+    // Declining leaves everything untouched; the toggle lives in Settings.
+    if (!(await requestAiAccess(t))) return;
     try {
       const picked = await pickStatementPdf();
       if (!picked) return;

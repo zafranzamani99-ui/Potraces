@@ -40,6 +40,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { usePersonalStore } from '../../store/personalStore';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { requestAiAccess } from '../../services/aiConsent';
 import { useReceiptStore } from '../../store/receiptStore';
 import { useCategoryStore } from '../../store/categoryStore';
 import { useLearningStore } from '../../store/learningStore';
@@ -360,9 +361,21 @@ const ReceiptScanner: React.FC = () => {
       setPaywallVisible(true);
       return;
     }
+    // AI consent gate (PDPA): "Turn on" lets the photo go to Gemini; declining
+    // still gets the free on-device read — nothing leaves the phone.
+    let aiAllowed = useSettingsStore.getState().aiOptInEnabled;
+    if (!aiAllowed && !outOfScans) {
+      aiAllowed = await requestAiAccess(t);
+    }
+    const useLocal = outOfScans || !aiAllowed;
+    if (useLocal && !isLocalOcrAvailable()) {
+      // AI off + this build has no on-device reader → no scan path at all.
+      Alert.alert(t.settings.aiFeatures, t.settings.aiOff);
+      return;
+    }
     setLoading(true);
     try {
-      const extracted = await scanReceipt(imageUri, { localOnly: outOfScans });
+      const extracted = await scanReceipt(imageUri, { localOnly: useLocal });
       if (!extracted || !(extracted.total > 0) || !Array.isArray(extracted.items)) {
         throw new Error(t.receipts.noUsableData);
       }
@@ -415,7 +428,7 @@ const ReceiptScanner: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [imageUri, canScanReceipt, incrementScanCount, showToast]);
+  }, [imageUri, canScanReceipt, incrementScanCount, showToast, t]);
 
   // Share-to-Log receipt hand-off: load the shared image into state, then auto-run the scan
   // ONCE so the screen opens straight into the review flow (identical local/AI path a gallery

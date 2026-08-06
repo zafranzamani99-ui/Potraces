@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { checkContent } from './contentFilter.ts';
 
 /**
  * collectz-join — the public + authed gateway into a Collectz session.
@@ -11,7 +12,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  *              (no qr_payload, no user_ids, no proofs) — this powers the
  *              jejakbaki.my/collectz web page. Authed callers additionally
  *              get the organizer's QR (they hold the link, i.e. they're in
- *              the group) and their own participant row if already joined.
+ *              the group), their own participant row if already joined, and
+ *              the ids of roster entries they have blocked (Apple 1.2).
  *   claim    — authed. Links the caller's user_id to an unclaimed roster
  *              name the organizer pre-added ("Mael" → the real Mael).
  *              Always instant — pre-added names skip the approval queue.
@@ -30,6 +32,15 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  *   leave    — authed roster member. Undo a wrong claim / step out while still
  *              unpaid: a self-added row is deleted, a claimed organizer name is
  *              only freed (user_id cleared) so the roster slot survives.
+ *   block / unblock — authed. Blocks the ACCOUNT behind a roster entry
+ *              (user_blocks row), so the blocked user's pools stop showing
+ *              for the blocker. Offline names hold no account — the client
+ *              masks those locally instead. Allowed on any session status:
+ *              moderation doesn't expire when the session closes.
+ *
+ * Free-text names written here (add_self, set_team_name) pass the server-side
+ * content filter — the client filter is a UX guard only and is bypassed by
+ * calling this function directly.
  *
  * Public function (verify_jwt=false). Secrets (Deno env):
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY — auto-provided by the runtime.
@@ -124,7 +135,7 @@ Deno.serve(async (req: Request) => {
   const shareCode = String(body.share_code ?? '').trim();
   const action = String(body.action ?? '').trim();
   if (!shareCode || shareCode.length > 32) return json({ error: 'share_code required' }, 400);
-  if (!['view', 'claim', 'add_self', 'set_team', 'set_team_name', 'leave'].includes(action)) return json({ error: 'unknown action' }, 400);
+  if (!['view', 'claim', 'add_self', 'set_team', 'set_team_name', 'leave', 'block', 'unblock'].includes(action)) return json({ error: 'unknown action' }, 400);
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -173,8 +184,9 @@ Deno.serve(async (req: Request) => {
   // Cancelled: the join link is dead for mutations (410), but `view` still
   // returns the normal payload — the web page and app render the cancelled
   // state with the organizer's contact (socials/group_url) so paid
-  // participants can chase refunds.
-  if (session.status === 'cancelled' && action !== 'view') return json({ error: 'cancelled' }, 410);
+  // participants can chase refunds. block/unblock also survive cancellation:
+  // moderation doesn't expire with the session.
+  if (session.status === 'cancelled' && !['view', 'block', 'unblock'].includes(action)) return json({ error: 'cancelled' }, 410);
 
   const { data: participants } = await admin
     .from('collectz_participants')
@@ -268,6 +280,23 @@ Deno.serve(async (req: Request) => {
             reject_note: mine.status === 'rejected' ? mine.reject_note : null,
           }
         : null;
+
+      // Apple 1.2 blocking: which roster entries the caller has blocked, keyed
+      // by PARTICIPANT id so account uids never leave the server. The client
+      // masks those names; their pools are filtered out server-side elsewhere.
+      // Fails soft pre-migration (user_blocks absent → blocks is null).
+      const rosterUids = roster.map((p) => p.user_id).filter((u): u is string => !!u);
+      if (rosterUids.length > 0) {
+        const { data: blocks } = await admin
+          .from('user_blocks')
+          .select('blocked_id')
+          .eq('blocker_id', userId)
+          .in('blocked_id', rosterUids);
+        const blockedUids = new Set((blocks ?? []).map((b: { blocked_id: string }) => b.blocked_id));
+        payload.blocked_participant_ids = roster
+          .filter((p) => p.user_id && blockedUids.has(p.user_id))
+          .map((p) => p.id);
+      }
     }
 
     return json(payload);
@@ -275,6 +304,24 @@ Deno.serve(async (req: Request) => {
 
   // claim / add_self / set_team / set_team_name require auth and an open session.
   if (!userId) return json({ error: 'auth_required' }, 401);
+
+  if (action === 'block' || action === 'unblock') {
+    // Block the ACCOUNT behind a roster entry (Apple 1.2). Works on any session
+    // status — moderation doesn't expire when the session closes. Offline
+    // roster names hold no account: report account:false and the client masks
+    // them locally instead.
+    const participantId = String(body.participant_id ?? '');
+    const target = roster.find((p) => p.id === participantId);
+    if (!target) return json({ error: 'not_found' }, 404);
+    if (!target.user_id || target.user_id === userId) return json({ ok: true, account: false });
+    const { error } =
+      action === 'block'
+        ? await admin.from('user_blocks').upsert({ blocker_id: userId, blocked_id: target.user_id })
+        : await admin.from('user_blocks').delete().eq('blocker_id', userId).eq('blocked_id', target.user_id);
+    if (error) return json({ error: 'block_failed' }, 500);
+    return json({ ok: true, account: true });
+  }
+
   if (session.status !== 'open') return json({ error: 'session_closed' }, 409);
 
   if (action === 'set_team' || action === 'set_team_name') {
@@ -315,6 +362,8 @@ Deno.serve(async (req: Request) => {
     }
     const teamName = String(body.name ?? '').trim();
     if (!teamName || teamName.length > MAX_NAME_LEN) return json({ error: 'name_invalid' }, 400);
+    // Server-side content filter (Apple 1.2): team names show to the whole roster.
+    if (!checkContent(teamName).ok) return json({ error: 'name_blocked' }, 400);
     const names: string[] = (Array.isArray(session.team_names) ? session.team_names : [])
       .map((n: string | null) => n ?? '');
     while (names.length < teamCount) names.push('');
@@ -382,6 +431,8 @@ Deno.serve(async (req: Request) => {
   // add_self
   const name = String(body.name ?? '').trim();
   if (!name || name.length > MAX_NAME_LEN) return json({ error: 'name_invalid' }, 400);
+  // Server-side content filter (Apple 1.2): your name shows to everyone on the roster.
+  if (!checkContent(name).ok) return json({ error: 'name_blocked' }, 400);
 
   // Approval mode: unknown self-adds queue as join_status='requested' instead
   // of landing on the roster. Claims above are untouched — the organizer

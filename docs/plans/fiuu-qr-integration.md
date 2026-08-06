@@ -106,7 +106,13 @@ portal. No code changes needed.
 
 ## Notes
 
-- Seller (web-shop) QR flow untouched; this activates stall mode only.
+- Seller (web-shop) QR flow — **DEFERRED (owner, 2026-08-06): handle later.** Stall
+  mode got the full polish (instant loader, QR expiry + refresh, real error
+  surfacing, no-phantom-sale guard). `seller/OrderList.tsx` `openQrSheet` still
+  runs the OLD wiring: it `await`s the charge before opening the sheet (frozen
+  QR), swallows charge failures silently, and has no expiry/refresh. To reach
+  parity, port the stall `openProviderQr` helper + `handleRefreshQr` + the
+  `loading`/`onRefresh`/`testRef` props (all already on the shared `QrPaySheet`).
 - Stripe Tap to Pay (`EXPO_PUBLIC_TAP_TO_PAY_*`) is independent.
 - Fiuu OPA spec source: github.com/FiuuPayment/Documentation-Fiuu_API_Spec →
   `[OPA+MAP] Fiuu Offline Payment API v2.1.18.pdf` (precreate §5.6, notification

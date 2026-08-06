@@ -212,7 +212,7 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
           >
             {({ pressed }: { pressed: boolean }) => (
               <View style={[styles.closeLinkInner, pressed && { opacity: 0.55 }]}>
-                <Feather name="x" size={12} color={C.textMuted} />
+                <Feather name="x" size={14} color={C.textSecondary} />
                 <Text style={styles.closeLinkText}>{closeLabel}</Text>
               </View>
             )}
@@ -303,7 +303,7 @@ const makeStyles = (C: typeof CALM) =>
       flexShrink: 1,
     },
     closeZone: {
-      marginTop: SPACING.lg,
+      marginTop: SPACING.xl,
       alignItems: 'center',
     },
     closeLink: {
@@ -318,9 +318,9 @@ const makeStyles = (C: typeof CALM) =>
       paddingVertical: SPACING.sm,
     },
     closeLinkText: {
-      fontSize: TYPOGRAPHY.size.xs,
-      color: C.textMuted,
-      fontWeight: TYPOGRAPHY.weight.medium,
+      fontSize: TYPOGRAPHY.size.sm,
+      color: C.textSecondary,
+      fontWeight: TYPOGRAPHY.weight.semibold,
       letterSpacing: 0.2,
     },
   });

@@ -6,6 +6,13 @@ anyone yet.** The tier shape *and the specific feature gates* below are now deci
 today the in-app "Upgrade" button opens the paywall, whose Continue just flips a local
 premium flag for free. RevenueCat is the #1 blocker (see §6).
 
+> **Changelog — 2026-08-06:** yearly prices settled — keep the LEGACY discount rates:
+> **Pro RM86/yr** (RM7.17/mo, −28%), **Premium RM160/yr** (RM13.33/mo, −33%). Monthly
+> unchanged from the 2026-08-05 re-lock. Every struck "was" remains a real 12× monthly.
+>
+> **Changelog — 2026-08-05:** prices re-locked — **Basic RM3.99/mo** (monthly-only),
+> **Pro RM9.99/mo**, **Premium RM20/mo**. (Yearly settled the next day — see above.)
+>
 > **Changelog — 2026-07-22:** Pro price confirmed **RM14/mo · RM120/yr**; paywall hero
 > tier is **Basic** (pre-selected, "BEST VALUE" ribbon — not Pro); **×N multiplier copy
 > style adopted** (reverses the old "always absolute numbers" rule). See §3.
@@ -37,11 +44,11 @@ Dual goal: **genuinely help users AND make money.** The two must not fight.
 ## 2. The Tiers
 
 Four levels, RM/month. **Business mode (basic) is FREE at every level.** Prices:
-**Free · Basic RM7.99 · Pro RM14 ⭐ · Premium RM25.**
+**Free · Basic RM3.99 · Pro RM9.99 ⭐ · Premium RM20.**
 
 ### A. Personal (the everyday app)
 
-| Feature | Free | Basic RM7.99 | Pro RM14 ⭐ | Premium RM25 |
+| Feature | Free | Basic RM3.99 | Pro RM9.99 ⭐ | Premium RM20 |
 |---|---|---|---|---|
 | **Echo AI chat** / mo | 30 · lite model | 300 (10×) · lite | 800 · **smart** | 1500 · smart |
 | **"Ask Echo" on every screen** | — | ✓ | ✓ | ✓ |
@@ -69,7 +76,7 @@ server-side, so the "300 chats" number means real asks. Implemented 2026-07-18.*
 
 ### B. Business / storefront layer (business mode basic = free)
 
-| Feature | Free | Basic | Pro RM14 | Premium RM25 |
+| Feature | Free | Basic | Pro RM9.99 | Premium RM20 |
 |---|---|---|---|---|
 | Business mode (basic) | ✓ | ✓ | ✓ | ✓ |
 | Free storefront + custom domain + DuitNow QR | ✓ | ✓ | ✓ | ✓ |
@@ -78,9 +85,9 @@ server-side, so the "300 chats" number means real asks. Implemented 2026-07-18.*
 | **AI business insights** | — | — | preview | ✓ full |
 | **Storefront analytics** (views/clicks) | — | — | — | ✓ |
 
-### C. Premium's edge — the power / future tier (the RM25 story)
+### C. Premium's edge — the power / future tier (the RM20 story)
 
-| Feature | Pro RM14 | Premium RM25 |
+| Feature | Pro RM9.99 | Premium RM20 |
 |---|---|---|
 | **Tap-to-Pay** (accept cards) | — | ✓ |
 | **DuitNow QR — accept payments** / advanced | — | ✓ first access |
@@ -91,13 +98,13 @@ server-side, so the "300 chats" number means real asks. Implemented 2026-07-18.*
 > features land here first. See §3 for the launch-day caveat.
 
 **Tier positioning:**
-- **Basic (RM7.99)** — "turn Echo on + lift my everyday caps" for a **personal** power
+- **Basic (RM3.99)** — "turn Echo on + lift my everyday caps" for a **personal** power
   user. Key unlock is capability (Ask Echo everywhere, cloud backup, photo icons) plus
   5× the metered caps. Deliberately withholds *unlimited* and the whole business layer.
-- **Pro (RM14) ⭐ the hero** — everything personal goes **unlimited**, Echo gets the
+- **Pro (RM9.99) ⭐ the hero** — everything personal goes **unlimited**, Echo gets the
   **smart model**, and the seller layer opens (own shop, remove branding, custom design,
   insights preview).
-- **Premium (RM25)** — the business layer in full (analytics + full AI insights) **plus
+- **Premium (RM20)** — the business layer in full (analytics + full AI insights) **plus
   first access to the payment tools** (Tap-to-Pay, QR-accept) and priority. Aspirational;
   for serious sellers and early adopters.
 
@@ -106,26 +113,26 @@ also nudges annual-minded users up to Pro/Premium.
 
 | Plan | Monthly ×12 | **Annual** | You save | Per month |
 |---|---|---|---|---|
-| **Pro** RM14/mo | RM168 | **RM120** | RM48 (**29%**) | **RM10/mo** |
-| **Premium** RM25/mo | RM300 | **RM200** | RM100 (**33%**) | **RM16.67/mo** |
+| **Pro** RM9.99/mo | RM119.88 | **RM86** | RM33.88 (**28%**) | **RM7.17/mo** |
+| **Premium** RM20/mo | RM240 | **RM160** | RM80 (**33%**) | **RM13.33/mo** |
 
-- The paywall **leads with the per-month price** (RM10.83) and shows the annual total
-  (RM120/yr) as small print — never front-load the big number. **No "N months free"
+- The paywall **leads with the per-month price** (RM7.17) and shows the annual total
+  (RM86/yr) as small print — never front-load the big number. **No "N months free"
   framing** (removed by decision — it read as gimmicky).
-- Premium's annual discount (33%) is deeper than Pro's (28%); this nudges committed
-  annual buyers up toward Premium. Equalise if you'd rather keep Pro the hero on annual.
+- Annual discounts keep the **legacy −28% (Pro) / −33% (Premium)** rates (owner call
+  2026-08-06) — Premium's deeper cut nudges serious buyers annual.
 
 ### Data storage & cloud backup — what "on device" means
 
 Potraces is **local-first**: all financial data (transactions, wallets, budgets, debts,
 savings, goals…) persists to the **device** (`AsyncStorage`) and the app works fully
 offline. **Cloud backup is a separate, opt-in copy to the server — and it is PAID (Basic
-RM7.99+).** Cloud backup and auto-sync are the *same* switch, named for the benefit:
+RM3.99+).** Cloud backup and auto-sync are the *same* switch, named for the benefit:
 
 - **Free (no cloud backup):** data lives **only on the phone**. Reinstall, wipe, lose, or
   replace the phone → **the data is gone.** The free safety valve is **manual Export**
   (free at every tier) — the user can save a file themselves.
-- **Basic RM7.99+ (cloud backup on):** the sync engine continuously copies data to the
+- **Basic RM3.99+ (cloud backup on):** the sync engine continuously copies data to the
   server (~1.5s after each change, on app-open, on foreground), so losing the phone → log
   in on a new one → **everything restores.** This is also the foundation for multi-device.
 - **Restore = one device at a time → safe to sell now.** **Simultaneous multi-device**
@@ -149,16 +156,16 @@ Goal: make **Pro the obviously-right choice**, with Premium anchoring it from ab
 
 - **Basic → Pro = a big, easy jump.** Basic still *caps* everything and has no business
   layer. Pro makes all personal counts **unlimited**, upgrades Echo to the smart model,
-  and opens the shop — for only **+RM7**. Price gap ~2×, value gap much larger → feels
+  and opens the shop — for only **+RM6**. Price gap ~2.5×, value gap much larger → feels
   like a steal.
 - **Pro → Premium = deliberate hesitation.** Premium adds the full business analytics/
-  insights + the *payment* tools (Tap-to-Pay, QR-accept) + priority. For **+RM10 (+67%)**
+  insights + the *payment* tools (Tap-to-Pay, QR-accept) + priority. For **+RM10 (+100%)**
   the average personal user thinks "do I need to accept card payments?" and stays on Pro.
   That pause **anchors Pro as the smart buy** while **capturing serious sellers**.
 
 **UI tactics (already in the shipped paywall):**
 - **Hero tier = Basic** (owner decision 2026-07-22): the shipped paywall **pre-selects
-  Basic RM7.99** and puts the **"BEST VALUE" ribbon** on it. Owner's call: *"get everyone
+  Basic RM3.99** and puts the **"BEST VALUE" ribbon** on it. Owner's call: *"get everyone
   paying something, upsell later"* — the first conversion matters more than its size, and
   Basic→Pro upsells happen in-app at feature walls. A Pro-hero variant ("Most Popular"
   ribbon on Pro, centre-stage, pre-selected) is a possible **future A/B test**, not the
@@ -172,7 +179,7 @@ Goal: make **Pro the obviously-right choice**, with Premium anchoring it from ab
 - At a Basic-level wall (business insight / shop customise), CTA reads **"Upgrade with
   Pro"** — marquee features always pull toward Pro.
 
-### ⚠️ Launch-day Premium caveat (must-fix before charging RM25)
+### ⚠️ Launch-day Premium caveat (must-fix before charging RM20)
 Tap-to-Pay and QR-accept are **future** features. If Premium launches before they exist,
 its only edge over Pro is bigger metered caps (1500 vs 800 chats, 300 vs 150 scans) —
 caps almost nobody reaches. **You cannot charge +RM10 for a promise.** So at launch,
@@ -190,12 +197,12 @@ the business data they already track — e.g. `potraces.com/shop/their-name`.
 
 - **Free for all**, including **custom domain** — a real edge (Beacons charges ~RM45/mo
   for a custom domain; Linktree never offers one).
-- **"Made with Potraces" badge:** free/Basic keep it; **Pro (RM14) and Premium can remove
+- **"Made with Potraces" badge:** free/Basic keep it; **Pro (RM9.99) and Premium can remove
   it.** (Changed 2026-07-18 — previously permanent-on-all-tiers as a growth lock.
   **Trade-off:** removing it costs some free viral reach, but "remove the badge" is a
-  strong, concrete RM14 upgrade reason and most free stores still carry it.)
-- **Pro (RM14):** templates + custom colours/logo + AI business-insights *preview*.
-- **Premium (RM25):** storefront analytics (views/clicks) + *full* AI business insights.
+  strong, concrete RM9.99 upgrade reason and most free stores still carry it.)
+- **Pro (RM9.99):** templates + custom colours/logo + AI business-insights *preview*.
+- **Premium (RM20):** storefront analytics (views/clicks) + *full* AI business insights.
 
 Closest model: **Linktree / Beacons / Carrd** (free micro-site → pay to customise), *not*
 Shopify (paid from day one).
@@ -260,14 +267,14 @@ Gate only what works. Unfinished features are "coming soon" upside of the higher
 | Monarch | $14.99 | ~RM67 |
 | Wallet (BudgetBakers, in MY) | — | ~RM25 |
 | Spendee Premium (in MY) | — | ~RM7–53 |
-| **Potraces (Basic/Pro/Premium)** | — | **RM7.99 / 15 / 25** |
+| **Potraces (Basic/Pro/Premium)** | — | **RM3.99 / 9.99 / 20** |
 
 - Western budgeting apps cost **RM58–67/mo** — nobody in Malaysia pays that. Our whole
   ladder undercuts even local competitors. **Low price = low friction.**
 - **Business is the strongest paying segment.** Malaysian SMEs already pay **Bukku from
-  RM35/mo, Financio from RM40/mo** for accounting. Our RM14 business tier is ~half that →
-  **the RM14 tier may even be underpriced** (could support RM19). Low launch price is fine
-  for adoption; raise later.
+  RM35/mo, Financio from RM40/mo** for accounting. Our RM9.99 business tier is ~a third
+  that → **the RM9.99 tier may even be underpriced** (could support RM19). Low launch
+  price is fine for adoption; raise later.
 
 ---
 
@@ -277,10 +284,10 @@ Gate only what works. Unfinished features are "coming soon" upside of the higher
 
 - Mobile freemium converts ~**2%**; **fintech ~4%**. "Good" is 3–5%, "great" is 8–12%.
 - Plan for **~2–4% of active users paying.** Illustrative: 10,000 free users × 3% ×
-  ~RM12 avg ≈ **~RM3,600/mo**, scaling ~linearly with users.
+  ~RM7 avg ≈ **~RM2,100/mo**, scaling ~linearly with users.
 - **The lever is (a) how many free users we get and (b) how badly they need the gated
   feature** — not price. Free business mode + viral storefront drive (a); genuinely great
-  RM14 insights + shop drive (b).
+  RM9.99 insights + shop drive (b).
 - Metered walls (Echo, scans, imports) are the **highest-converting** upsells — the user
   hitting them already got value and has a concrete reason to pay. This is exactly why
   free Echo dropped **100 → 30**: at 100 almost nobody hit the wall, so the AI ladder
@@ -293,9 +300,9 @@ Gate only what works. Unfinished features are "coming soon" upside of the higher
 - ~~**Wallets "3× each"**~~ — RESOLVED: Basic = **13 total**, **4 per type** (free = 7 total, 2 per type).
 - Import caps (5 / 25 / 100 / 300) are the least-discussed metered row — tune to real
   server cost once measured.
-- Business/Pro tier at RM14 vs RM19 (SME willingness-to-pay suggests room).
-- Whether to add a **Basic annual** and whether to equalise Pro/Premium annual discounts
-  (28% vs 33%).
+- Business/Pro tier at RM9.99 vs RM19 (SME willingness-to-pay suggests room).
+- Whether to add a **Basic annual** (Pro/Premium annual discounts kept at legacy
+  −28%/−33% on 2026-08-06).
 - Exact scope of "AI business insights" (Pro preview vs Premium full — what does each
   actually tell a seller?).
 - Storefront MVP scope (free v1 vs paid customisation).

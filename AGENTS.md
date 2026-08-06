@@ -20,10 +20,12 @@
 - `npx tsc --noEmit` — typecheck
 - `npm run lint:i18n` — en/ms string parity (both locales must carry every new key)
 - `npx tsx scripts/test-<name>.ts` — unit tests (`test:sync`, `test:syncmerge`, `test:syncdirty` via npm scripts)
+- `GEMINI_API_KEY=... npm run test:statementparser` — parse-statement golden test (opt-in: network + secret key, NOT in `npm test`). Re-run on every Gemini model/prompt change; fixtures + oracles live in `supabase/functions/parse-statement/fixtures/`, shared prompt/model/normalization in `parserConfig.ts`.
 
 ## Conventions worth knowing
 
 - Cloud backup/sync is beta-locked by `EXPO_PUBLIC_CLOUD_BACKUP` (`src/constants/flags.ts`) — fail-closed, do not enable casually.
 - i18n: every user-facing string lives in `src/i18n/en.ts` AND `src/i18n/ms.ts`.
 - Receipt image paths are persisted RELATIVE (`receipts/x.jpg`); always resolve via `src/utils/receiptImage.ts`.
+- Keyboard-docked UI (cards/composers that must sit above the keyboard): **ONE mover only.** Drive position from the keyboard's own animation — `useReanimatedKeyboardAnimation` (continuous transform) or `KeyboardStickyView` — and NEVER combine `KeyboardAvoidingView` padding with your own translateY/inset, and never flip layout on a boolean/DID event. Two movers or a mid-animation flip = the visible "spring"/snap. Reference impls: `MoneyChat.tsx` composer (~line 1037, the original postmortem), `SellScreen.tsx` discount modal (`discountDockStyle`: card stays centered until the keyboard reaches it, then rides up), `FormatToolbar.tsx` (`KeyboardStickyView`).
 - Never run `git commit`/`push` unless the user explicitly asks.

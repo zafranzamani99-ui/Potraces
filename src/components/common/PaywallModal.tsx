@@ -143,23 +143,23 @@ const TIERS: Tier[] = [
   {
     id: 'basic',
     name: 'Basic',
-    monthly: { price: 'RM7.99', per: '/mo' },
-    yearly: { price: 'RM7.99', per: '/mo', bill: 'monthly only' },
-    under: { monthly: 'RM7.99/mo', yearly: 'RM7.99/mo' },
+    monthly: { price: 'RM3.99', per: '/mo' },
+    yearly: { price: 'RM3.99', per: '/mo', bill: 'monthly only' },
+    under: { monthly: 'RM3.99/mo', yearly: 'RM3.99/mo' },
   },
   {
     id: 'pro',
     name: 'Pro',
-    monthly: { price: 'RM14', per: '/mo' },
-    yearly: { was: 'RM14', price: 'RM10', per: '/mo', bill: 'RM120/yr', pill: '−28%' },
-    under: { monthly: 'RM14/mo', yearly: 'RM120/yr' },
+    monthly: { price: 'RM9.99', per: '/mo' },
+    yearly: { was: 'RM9.99', price: 'RM7.17', per: '/mo', bill: 'RM86/yr', pill: '−28%' },
+    under: { monthly: 'RM9.99/mo', yearly: 'RM86/yr' },
   },
   {
     id: 'prem',
     name: 'Premium',
-    monthly: { price: 'RM25', per: '/mo' },
-    yearly: { was: 'RM25', price: 'RM16.67', per: '/mo', bill: 'RM200/yr', pill: '−33%' },
-    under: { monthly: 'RM25/mo', yearly: 'RM200/yr' },
+    monthly: { price: 'RM20', per: '/mo' },
+    yearly: { was: 'RM20', price: 'RM13.33', per: '/mo', bill: 'RM160/yr', pill: '−33%' },
+    under: { monthly: 'RM20/mo', yearly: 'RM160/yr' },
   },
 ];
 
@@ -323,8 +323,8 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
     opacity: interpolate(sheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP),
   }));
 
-  // Basic (RM7.99) is the pushed hero — pre-selected + "BEST VALUE". Monthly leads so the
-  // RM7.99 → RM14 gap stays visible (yearly makes Pro ~RM10/mo, which cannibalises Basic).
+  // Basic (RM3.99) is the pushed hero — pre-selected + "BEST VALUE". Monthly leads so the
+  // RM3.99 → RM9.99 gap stays visible (yearly makes Pro ~RM7.17/mo, which cannibalises Basic).
   const [tier, setTier] = useState<PlanTier>('basic');
   const [billing, setBilling] = useState<Billing>('monthly');
   // Tap-to-open info dialogs (business roadmap / subscription details). Rendered as an
@@ -481,7 +481,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
 
             {/* Monthly / Yearly — the app's liquid-glass segmented control (same as the
                 Personal/Business mode toggle): genuine iOS-26 system glass, blur fallback
-                elsewhere. Monthly leads (keeps the RM7.99→RM14 gap; yearly is the upsell). */}
+                elsewhere. Monthly leads (keeps the RM3.99→RM9.99 gap; yearly is the upsell). */}
             <View style={styles.billingToggle}>
               <GlassSegmentedControl
                 values={[t.paywall.monthly, t.paywall.yearly]}
@@ -497,7 +497,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
                 const isHero = tr.id === 'basic';
                 const p = billing === 'yearly' ? tr.yearly : tr.monthly;
                 // '/mo' → localized; 'monthly only' is the ONE non-numeric bill (localize it,
-                // keep 'RM120/yr' etc. as-is).
+                // keep 'RM86/yr' etc. as-is).
                 const perLabel = p.per === '/mo' ? t.paywall.perMonth : p.per;
                 const billLabel = p.bill === 'monthly only' ? t.paywall.monthlyOnly : p.bill;
                 return (

@@ -440,6 +440,13 @@ verify_jwt = false
 [functions.register-device]
 verify_jwt = false
 
+# UGC report inbox (Apple 1.2). JWT-free: the PUBLIC Collectz join page (web +
+# signed-out app users) must be able to flag objectionable content. The
+# function validates + length-caps everything and flood-caps per reporter/ip;
+# a session JWT, when present, just ties the report to the account.
+[functions.report-content]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

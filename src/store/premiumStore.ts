@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { startOfMonth } from 'date-fns';
 import { PremiumState, PremiumTier } from '../types';
 import { canCreate, remainingOf, TIER_LIMITS } from '../constants/premium';
-import { effectiveTier } from '../constants/tiers';
+import { resolveEffectiveTier } from '../services/entitlementPolicy';
 import { disablePersonalSync } from '../services/personalSync';
 import { CLOUD_BACKUP_ENABLED } from '../constants/flags';
 
@@ -26,11 +26,15 @@ const enforceBackupEntitlement = (prev: PremiumTier, next: PremiumTier) => {
 // selected tier flows in via setTier(). Grandfathering is automatic: canCreate() blocks
 // the next create when a legacy user is already over a (now-lowered) cap, never deleting.
 //
-// `tier` is the EFFECTIVE tier (local vs server entitlement) — derived by recompute()
-// below from localTier (setTier / local unlock / future RevenueCat) and the server
-// grant ledger fields (reconcileEntitlement). While the server gate is off (open
-// beta) the effective tier IS the local tier, so all ~32 gate call sites behave
-// exactly as before. See docs/plans/premium-grants-and-rewards.md ("App work").
+// `tier` is the EFFECTIVE tier — derived by recompute() below from localTier
+// (setTier / local unlock / future RevenueCat) and the persisted SERVER
+// entitlement snapshot (reconcileEntitlement from my_entitlement /
+// get-entitlements). Merge rules live in src/services/entitlementPolicy.ts:
+// once the launch gate is on and the server has answered, the SERVER WINS for
+// signed-in users (a flipped localTier can't beat a server 'free'); on
+// network/server failure we fail OPEN on the cached snapshot (+ grace past
+// expiry); gate off / signed out / never verified → localTier exactly as
+// before, so the ~32 gate call sites and the dev free-unlock are unchanged.
 export const usePremiumStore = create<PremiumState>()(
   persist(
     (set, get) => {
@@ -40,7 +44,13 @@ export const usePremiumStore = create<PremiumState>()(
       // never toggle sync (same guarantee the old inline calls gave).
       const recompute = () => {
         const s = get();
-        const next = effectiveTier(s.localTier, s.serverTier, s.premiumUntil, s.gateOn, new Date());
+        const next = resolveEffectiveTier(s.localTier, {
+          tier: s.serverTier,
+          source: s.serverSource,
+          expiresAt: s.premiumUntil,
+          gateOn: s.gateOn,
+          fetchedAt: s.serverFetchedAt,
+        }, new Date());
         const prev = s.tier;
         if (next === prev) return;
         set({ tier: next });
@@ -51,8 +61,10 @@ export const usePremiumStore = create<PremiumState>()(
       tier: 'free',
       localTier: 'free',
       serverTier: 'free',
+      serverSource: 'none',
       premiumUntil: null,
       gateOn: false,
+      serverFetchedAt: null,
       subscribedAt: null,
       scanCount: 0,
       scanResetDate: startOfMonth(new Date()),
@@ -71,15 +83,24 @@ export const usePremiumStore = create<PremiumState>()(
         recompute();
       },
 
-      // Server entitlement (my_entitlement). A definitive server response always
-      // reconciles — including tier 'free' once the gate is on.
-      reconcileEntitlement: ({ tier, premiumUntil, gateOn }) => {
-        set({ serverTier: tier, premiumUntil, gateOn });
+      // Server entitlement (my_entitlement RPC or the get-entitlements edge
+      // function). A definitive server response always reconciles — including
+      // tier 'free' once the gate is on (server WINS: a local flip can't beat it).
+      reconcileEntitlement: ({ tier, premiumUntil, gateOn, source, fetchedAt }) => {
+        set({
+          serverTier: tier,
+          serverSource: source ?? (tier === 'free' ? 'none' : 'grant'),
+          premiumUntil,
+          gateOn,
+          serverFetchedAt: fetchedAt ?? new Date(),
+        });
         recompute();
       },
 
+      // Signed out: drop the whole server snapshot (the local unlock is
+      // untouched) — signed-out behavior stays purely local, as today.
       resetServerEntitlement: () => {
-        set({ serverTier: 'free', premiumUntil: null, gateOn: false });
+        set({ serverTier: 'free', serverSource: 'none', premiumUntil: null, gateOn: false, serverFetchedAt: null });
         recompute();
       },
 
@@ -171,8 +192,10 @@ export const usePremiumStore = create<PremiumState>()(
         tier: state.tier,
         localTier: state.localTier,
         serverTier: state.serverTier,
+        serverSource: state.serverSource,
         premiumUntil: state.premiumUntil instanceof Date ? state.premiumUntil.toISOString() : state.premiumUntil,
         gateOn: state.gateOn,
+        serverFetchedAt: state.serverFetchedAt instanceof Date ? state.serverFetchedAt.toISOString() : state.serverFetchedAt,
         subscribedAt: state.subscribedAt instanceof Date ? state.subscribedAt.toISOString() : state.subscribedAt,
         scanCount: state.scanCount,
         scanResetDate: state.scanResetDate instanceof Date ? state.scanResetDate.toISOString() : state.scanResetDate,
@@ -194,11 +217,21 @@ export const usePremiumStore = create<PremiumState>()(
         // | 'premium' are valid members of the 4-tier union, so no value mapping needed.)
         if (state.localTier == null) state.localTier = state.tier ?? 'free';
         state.serverTier = state.serverTier ?? 'free';
+        state.serverSource = state.serverSource ?? 'none';
         state.premiumUntil = sd(state.premiumUntil);
         state.gateOn = state.gateOn ?? false;
+        // Builds before server-wins enforcement persisted no fetchedAt → treated
+        // as "never verified" (fail-open, local rules) until the first refresh lands.
+        state.serverFetchedAt = sd(state.serverFetchedAt);
         // Recompute the effective tier from the rehydrated inputs — an expired server
         // grant drops out here even if `tier` was persisted while the grant was live.
-        state.tier = effectiveTier(state.localTier, state.serverTier, state.premiumUntil, state.gateOn, new Date());
+        state.tier = resolveEffectiveTier(state.localTier, {
+          tier: state.serverTier,
+          source: state.serverSource,
+          expiresAt: state.premiumUntil,
+          gateOn: state.gateOn,
+          fetchedAt: state.serverFetchedAt,
+        }, new Date());
       },
     }
   )

@@ -22,16 +22,15 @@ import ReAnimated, {
   withTiming,
   Easing as ReEasing,
 } from 'react-native-reanimated';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
-import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import { StallProduct, StallModifier } from '../../types';
@@ -46,12 +45,13 @@ import QrPaySheet from '../../components/common/QrPaySheet';
 import { qrProviderConfigured, createQrCharge } from '../../services/qrProvider';
 import { resolvePendingPayments } from '../../services/qrPaymentResolver';
 import { usePendingPaymentsStore } from '../../store/pendingPaymentsStore';
+import { useUILayoutStore } from '../../store/uiLayoutStore';
 import NewstInput, { newstOutline } from '../../components/business/NewstInput';
 import { useNeu } from '../../components/common/neu';
 import NeuIconButton from '../../components/common/NeuIconButton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CART_COLLAPSED_WIDTH = SCREEN_WIDTH * 0.30;
+const CART_COLLAPSED_WIDTH = SCREEN_WIDTH * 0.34;
 const CART_EXPANDED_WIDTH = SCREEN_WIDTH * 0.88;
 
 // Expanding search — collapsed circle width + the web pattern's ease curve.
@@ -59,6 +59,9 @@ const CART_EXPANDED_WIDTH = SCREEN_WIDTH * 0.88;
 // instead of the JS thread (which is why the JS-driver version felt like 30Hz).
 const SEARCH_COLLAPSED = 40;
 const SEARCH_EASING = ReEasing.bezier(0.16, 1, 0.3, 1);
+
+// Pressable that Reanimated can drive (discount card's keyboard docking).
+const AnimatedPressable = ReAnimated.createAnimatedComponent(Pressable);
 
 interface CartItem {
   // Unique cart line: productId + '|' + (modifier label || ''). Lets the same
@@ -78,11 +81,20 @@ const SellScreen: React.FC = () => {
   const neu = useNeu(undefined, { faintDark: true });
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  // Floating-tab-bar clearance, by navigator path:
+  //  · JS (LiquidGlassNavBar, Android / iOS < 26): the bar floats OVER content
+  //    and reports its real height into uiLayoutStore. This scene is already
+  //    bottom-inset by SafeAreaView, so subtract insets.bottom (else double-count).
+  //  · Native (iOS 26 system tab bar): the system seats our content above the
+  //    bar itself — measuredNavBar stays 0 and NO extra clearance is needed;
+  //    any padding here is pure dead space under the footer.
+  const measuredNavBar = useUILayoutStore((s) => s.navBarHeight);
+  const barClearance = measuredNavBar > 0 ? measuredNavBar - insets.bottom : 0;
   const t = useT();
 
   // Responsive register grid — 2 columns on phones, 3 on small tablets,
   // 4 on iPad. Recalculates on rotation / Stage Manager resize.
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const gridColumns = windowWidth >= 1000 ? 4 : windowWidth >= 700 ? 3 : 2;
   // Widths leave room for the SPACING.md column gap so 2 tiles reliably fit one row
   // (47.8% was exactly half → the gap tipped the 2nd tile onto its own row).
@@ -94,9 +106,13 @@ const SellScreen: React.FC = () => {
   } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const { showToast } = useToast();
-  // Keyboard state — lifts the cart footer's discount field above the keyboard
-  // (CLAUDE.md "Scroll screens": a tapped input must never hide behind it).
-  const { keyboardVisible, keyboardHeight } = useKeyboardVisible();
+  // Discount editor docking — driven purely by the keyboard's own Reanimated
+  // value (same source MoneyChat uses to avoid the "spring"): the card stays
+  // centered while the keyboard rises below it, then glides up in lockstep once
+  // the keyboard reaches it. NO KeyboardAvoidingView here — two movers (KAV
+  // padding + a translateY) was the glitch.
+  const { height: kbAnimHeight } = useReanimatedKeyboardAnimation();
+  const discountCardH = useSharedValue(280); // estimate until first onLayout
 
   // Tap to Pay (card) availability — re-renders on connectivity change so the
   // Card option enables/disables live. `cardConfigured` = this device/build can
@@ -242,6 +258,10 @@ const SellScreen: React.FC = () => {
   // Discount state
   const [discountValue, setDiscountValue] = useState('');
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  // Discount editor modal — draft state; committed to the above only on Apply.
+  const [discountVisible, setDiscountVisible] = useState(false);
+  const [discountDraft, setDiscountDraft] = useState('');
+  const [discountDraftType, setDiscountDraftType] = useState<'percentage' | 'fixed'>('percentage');
 
   // Cart expand/collapse
   const [cartExpanded, setCartExpanded] = useState(false);
@@ -643,6 +663,38 @@ const SellScreen: React.FC = () => {
     setSessionDefaultPayment((session.defaultPayment || 'cash') === 'cash' ? 'qr' : 'cash');
   }, [session, setSessionDefaultPayment]);
 
+  // ── Discount (footer button → floating editor) ──
+  const openDiscount = useCallback(() => {
+    lightTap();
+    setDiscountDraft(discountValue);
+    setDiscountDraftType(discountType);
+    setDiscountVisible(true);
+  }, [discountValue, discountType]);
+  const applyDiscount = useCallback(() => {
+    setDiscountValue(discountDraft);
+    setDiscountType(discountDraftType);
+    setDiscountVisible(false);
+    Keyboard.dismiss();
+    lightTap();
+  }, [discountDraft, discountDraftType]);
+  const clearDiscount = useCallback(() => {
+    setDiscountValue('');
+    setDiscountVisible(false);
+    Keyboard.dismiss();
+  }, []);
+
+  // Docking offset for the discount card — continuous in kb (no gate, no snap):
+  // kb ≈ 0 (closed) → centered, offset 0. As the keyboard rises, nothing moves
+  // until its top edge reaches the card's bottom (minus an sm gap) — from there
+  // the card rides the keyboard up. Clamped so the card never exits the top.
+  const discountDockStyle = useAnimatedStyle(() => {
+    const centeredBottom = windowHeight / 2 + discountCardH.value / 2;
+    const keyboardTop = windowHeight + kbAnimHeight.value; // value ≤ 0
+    const dock = keyboardTop - SPACING.sm - centeredBottom; // ≤ 0 once keyboard reaches the card
+    const minTy = insets.top + SPACING.sm - (windowHeight / 2 - discountCardH.value / 2);
+    return { transform: [{ translateY: Math.max(minTy, Math.min(0, dock)) }] };
+  }, [windowHeight, insets.top]);
+
   // ── Clearance ──
   const openClearance = useCallback(() => {
     setClearanceInput(clearance > 0 ? String(clearance) : '');
@@ -845,7 +897,11 @@ const SellScreen: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel={`Default payment ${defaultPayment === 'cash' ? t.stall.cashPrefix : t.stall.qrPrefix}. Tap to switch.`}
             >
-              <Feather name={defaultPayment === 'cash' ? 'dollar-sign' : 'smartphone'} size={13} color={C.bronze} />
+              {defaultPayment === 'cash' ? (
+                <Feather name="dollar-sign" size={13} color={C.bronze} />
+              ) : (
+                <Ionicons name="qr-code" size={13} color={C.bronze} />
+              )}
               <Text style={styles.payDefaultText}>{defaultPayment === 'cash' ? t.stall.cashPrefix : t.stall.qrPrefix}</Text>
               <Feather name="repeat" size={11} color={C.textSecondary} />
             </TouchableOpacity>
@@ -1018,7 +1074,7 @@ const SellScreen: React.FC = () => {
           {/* Product grid */}
           <ScrollView
             style={styles.productsScroll}
-            contentContainerStyle={[styles.productsGrid, { paddingBottom: insets.bottom + 88 }]}
+            contentContainerStyle={[styles.productsGrid, { paddingBottom: barClearance + SPACING.md }]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
@@ -1082,7 +1138,16 @@ const SellScreen: React.FC = () => {
                         {product.name}
                       </Text>
                       <View style={styles.priceLine}>
-                        <Text style={[styles.productPrice, isSoldOut && styles.productPriceSoldOut]}>
+                        {/* Cards are %-wide, so at narrow grid widths the price sits
+                            right at the fit boundary and one card wraps while its
+                            neighbour doesn't — shrink to fit one line instead
+                            (same pattern as productName above). */}
+                        <Text
+                          style={[styles.productPrice, isSoldOut && styles.productPriceSoldOut]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.6}
+                        >
                           {currency} {priceOf(product).toFixed(2)}
                         </Text>
                         {clearance > 0 && (
@@ -1151,11 +1216,16 @@ const SellScreen: React.FC = () => {
                 size={18}
                 color={C.bronze}
               />
-              <Text style={styles.cartTitle}>
-                {cartExpanded ? 'Review Order' : `Cart (${cart.length})`}
+              <Text style={styles.cartTitle} numberOfLines={1}>
+                {cartExpanded ? 'Review Order' : 'Cart'}
               </Text>
+              {!cartExpanded && cart.length > 0 && (
+                <View style={styles.cartCountBadge}>
+                  <Text style={styles.cartCountBadgeText}>{cart.length}</Text>
+                </View>
+              )}
             </TouchableOpacity>
-            {cart.length > 0 && (
+            {cartExpanded && cart.length > 0 && (
               <TouchableOpacity
                 onPress={() => setCart([])}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1185,7 +1255,10 @@ const SellScreen: React.FC = () => {
                         <Text style={styles.cartItemNameExpanded} numberOfLines={1}>
                           {item.productName}
                         </Text>
-                        <TouchableOpacity onPress={() => removeFromCart(item.lineKey)}>
+                        <TouchableOpacity
+                          onPress={() => removeFromCart(item.lineKey)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
                           <Feather name="trash-2" size={18} color={C.neutral} />
                         </TouchableOpacity>
                       </View>
@@ -1214,39 +1287,16 @@ const SellScreen: React.FC = () => {
                       </View>
                     </View>
                   ) : (
-                    // ── Collapsed view ──
-                    <View key={item.lineKey} style={styles.cartItem}>
-                      <View style={styles.cartItemInfo}>
-                        <Text style={styles.cartItemName} numberOfLines={1}>
-                          {item.productName}
-                        </Text>
-                        <Text style={styles.cartItemPrice}>
-                          {currency} {item.unitPrice.toFixed(2)} ea
-                        </Text>
-                      </View>
-                      <View style={styles.quantityControls}>
-                        <TouchableOpacity
-                          style={styles.quantityButton}
-                          onPress={() => updateQuantity(item.lineKey, item.quantity - 1)}
-                        >
-                          <Feather name="minus" size={16} color={C.textPrimary} />
-                        </TouchableOpacity>
-                        <Text style={styles.quantityText}>{item.quantity}</Text>
-                        <TouchableOpacity
-                          style={styles.quantityButton}
-                          onPress={() => updateQuantity(item.lineKey, item.quantity + 1)}
-                        >
-                          <Feather name="plus" size={16} color={C.textPrimary} />
-                        </TouchableOpacity>
-                      </View>
-                      <View style={styles.cartItemTotal}>
-                        <Text style={styles.cartItemTotalText}>
-                          {currency} {(item.unitPrice * item.quantity).toFixed(2)}
-                        </Text>
-                        <TouchableOpacity onPress={() => removeFromCart(item.lineKey)}>
-                          <Feather name="trash-2" size={16} color={C.neutral} />
-                        </TouchableOpacity>
-                      </View>
+                    // ── Collapsed view — names only; prices/qty/editing all
+                    // happen in the expanded review. Qty marker stays so a
+                    // ×3 line doesn't read as a single. ──
+                    <View key={item.lineKey} style={styles.cartItemCollapsed}>
+                      <Text style={styles.cartItemName} numberOfLines={1}>
+                        {item.productName}
+                        {item.quantity > 1 && (
+                          <Text style={styles.cartItemQtyMuted}> ×{item.quantity}</Text>
+                        )}
+                      </Text>
                     </View>
                   )
                 )
@@ -1264,77 +1314,49 @@ const SellScreen: React.FC = () => {
             </ScrollView>
           </Pressable>
 
-          {/* Cart footer — lifts above the keyboard while the discount field is
-              focused (the only main-screen input the keyboard would cover). */}
+          {/* Cart footer — base clearance = the floating tab bar's measured
+              visible height (zero on the native iOS 26 tab bar path). */}
           <Pressable
             style={[
               styles.cartFooter,
-              {
-                paddingBottom:
-                  insets.bottom + 84 + (focusedField === 'discount' && keyboardVisible ? keyboardHeight : 0),
-              },
+              { paddingBottom: barClearance + SPACING.md },
             ]}
             onPress={!cartExpanded && cart.length > 0 ? expandCart : undefined}
             disabled={cartExpanded || cart.length === 0}
           >
-            {/* Discount — only when expanded & has items */}
+            {/* Discount — tap to edit in a floating sheet (keeps the footer compact) */}
             {cartExpanded && cart.length > 0 && (
-              <View style={styles.discountSection}>
-                <View style={styles.discountHeader}>
-                  <Text style={styles.discountLabel}>Discount</Text>
-                  <View style={styles.discountTypeToggle}>
-                    <TouchableOpacity
-                      style={[
-                        styles.discountTypeButton,
-                        discountType === 'percentage' && styles.discountTypeActive,
-                      ]}
-                      onPress={() => setDiscountType('percentage')}
-                    >
-                      <Feather
-                        name="percent"
-                        size={14}
-                        color={discountType === 'percentage' ? C.onAccent : C.textSecondary}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.discountTypeButton,
-                        discountType === 'fixed' && styles.discountTypeActive,
-                      ]}
-                      onPress={() => setDiscountType('fixed')}
-                    >
-                      <Text
-                        style={{
-                          fontSize: TYPOGRAPHY.size.xs,
-                          fontWeight: TYPOGRAPHY.weight.bold,
-                          color: discountType === 'fixed' ? C.onAccent : C.textSecondary,
-                        }}
-                      >
-                        {currency}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+              <TouchableOpacity
+                style={styles.discountBtn}
+                onPress={openDiscount}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  discountAmount > 0
+                    ? `Edit discount, currently ${currency} ${discountAmount.toFixed(0)} off`
+                    : 'Add discount'
+                }
+              >
+                <View style={styles.discountBtnLeft}>
+                  <Feather name="percent" size={14} color={discountAmount > 0 ? C.bronze : C.textSecondary} />
+                  <Text style={[styles.discountBtnText, discountAmount > 0 && { color: C.bronze }]}>
+                    Discount
+                  </Text>
                 </View>
-                <TextInput
-                  style={[styles.discountInput, newstOutline(C, focusedField === 'discount')]}
-                  value={discountValue}
-                  onChangeText={setDiscountValue}
-                  onFocus={() => setFocusedField('discount')}
-                  onBlur={() => setFocusedField((f) => (f === 'discount' ? null : f))}
-                  placeholder={discountType === 'percentage' ? '0%' : '0.00'}
-                  placeholderTextColor={C.neutral}
-                  keyboardType="decimal-pad"
-                  returnKeyType="done"
-                  onSubmitEditing={Keyboard.dismiss}
-                  keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={withAlpha(C.accent, 0.25)}
-                />
-              </View>
+                {discountAmount > 0 ? (
+                  <Text style={styles.discountBtnValue}>
+                    -{currency} {discountAmount.toFixed(0)}
+                  </Text>
+                ) : (
+                  <Feather name="chevron-right" size={16} color={C.textSecondary} />
+                )}
+              </TouchableOpacity>
             )}
 
-            {/* Totals */}
+            {/* Totals — full breakdown when expanded; collapsed strip only
+                carries the final total, stacked so it fits the narrow width. */}
             <View style={styles.totalsBreakdown}>
-              {(cartExpanded || discountAmount > 0) && cart.length > 0 && (
+              {cartExpanded && cart.length > 0 && (
                 <View style={styles.totalRow}>
                   <Text style={styles.totalRowLabel}>Subtotal</Text>
                   <Text style={styles.totalRowValue}>
@@ -1342,7 +1364,7 @@ const SellScreen: React.FC = () => {
                   </Text>
                 </View>
               )}
-              {discountAmount > 0 && (
+              {cartExpanded && discountAmount > 0 && (
                 <View style={styles.totalRow}>
                   <Text style={[styles.totalRowLabel, { color: C.positive }]}>
                     Discount{discountType === 'percentage' ? ` (${discountValue}%)` : ''}
@@ -1352,23 +1374,33 @@ const SellScreen: React.FC = () => {
                   </Text>
                 </View>
               )}
-              <View
-                style={[
-                  styles.totalRow,
-                  (cartExpanded || discountAmount > 0) && cart.length > 0 && styles.totalRowFinal,
-                ]}
-              >
-                <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalAmount}>
-                  {currency} {totalAmount.toFixed(0)}
-                </Text>
-              </View>
+              {cartExpanded ? (
+                <View
+                  style={[
+                    styles.totalRow,
+                    cart.length > 0 && styles.totalRowFinal,
+                  ]}
+                >
+                  <Text style={styles.totalLabel}>Total</Text>
+                  <Text style={styles.totalAmount}>
+                    {currency} {totalAmount.toFixed(0)}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.totalCollapsed}>
+                  <Text style={styles.totalCollapsedLabel}>Total</Text>
+                  <Text style={styles.totalCollapsedAmount} numberOfLines={1} adjustsFontSizeToFit>
+                    {currency} {totalAmount.toFixed(0)}
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {/* Payment buttons — Cash / QR */}
-            <View style={styles.paymentRow}>
+            {/* Payment buttons — Cash / QR. Side-by-side when expanded;
+                stacked full-width in the collapsed strip. */}
+            <View style={[styles.paymentRow, !cartExpanded && styles.paymentRowCollapsed]}>
               <TouchableOpacity
-                style={[styles.cashButton, neu.raised]}
+                style={[styles.cashButton, neu.raised, !cartExpanded && styles.payButtonCollapsed]}
                 onPress={() => guardedCheckout('cash')}
                 activeOpacity={0.85}
                 disabled={cart.length === 0}
@@ -1376,21 +1408,21 @@ const SellScreen: React.FC = () => {
                 accessibilityRole="button"
               >
                 <Feather name="dollar-sign" size={18} color={cart.length > 0 ? C.textPrimary : C.neutral} />
-                <Text style={[styles.cashButtonText, cart.length === 0 && { color: C.neutral }]}>
+                <Text style={[styles.cashButtonText, !cartExpanded && styles.payTextCollapsed, cart.length === 0 && { color: C.neutral }]}>
                   Cash
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[neu.raisedSoft, styles.qrButton, cart.length === 0 && styles.qrButtonDisabled]}
+                style={[neu.raisedSoft, styles.qrButton, !cartExpanded && styles.payButtonCollapsed, cart.length === 0 && styles.qrButtonDisabled]}
                 onPress={guardedOpenQrCheckout}
                 activeOpacity={0.85}
                 disabled={cart.length === 0}
                 accessibilityLabel={`Pay QR, ${currency} ${totalAmount.toFixed(2)}`}
                 accessibilityRole="button"
               >
-                <Feather name="smartphone" size={18} color={cart.length > 0 ? C.onAccent : C.neutral} />
-                <Text style={[styles.qrButtonText, cart.length === 0 && { color: C.neutral }]}>
+                <Ionicons name="qr-code" size={18} color={cart.length > 0 ? C.onAccent : C.neutral} />
+                <Text style={[styles.qrButtonText, !cartExpanded && styles.payTextCollapsed, cart.length === 0 && { color: C.neutral }]}>
                   QR
                 </Text>
               </TouchableOpacity>
@@ -1399,7 +1431,7 @@ const SellScreen: React.FC = () => {
                   Offline: stays visible but muted; tapping explains why. */}
               {cardConfigured && (
                 <TouchableOpacity
-                  style={[styles.cashButton, neu.raised, cardOffline && { opacity: 0.5 }]}
+                  style={[styles.cashButton, neu.raised, !cartExpanded && styles.payButtonCollapsed, cardOffline && { opacity: 0.5 }]}
                   onPress={openCardCheckout}
                   activeOpacity={0.85}
                   disabled={cart.length === 0}
@@ -1407,7 +1439,7 @@ const SellScreen: React.FC = () => {
                   accessibilityRole="button"
                 >
                   <Feather name="wifi" size={18} color={cart.length > 0 ? C.textPrimary : C.neutral} />
-                  <Text style={[styles.cashButtonText, cart.length === 0 && { color: C.neutral }]}>
+                  <Text style={[styles.cashButtonText, !cartExpanded && styles.payTextCollapsed, cart.length === 0 && { color: C.neutral }]}>
                     {t.tapToPay.card}
                   </Text>
                 </TouchableOpacity>
@@ -1581,7 +1613,7 @@ const SellScreen: React.FC = () => {
                   style={[styles.customPayBtn, neu.raised, customMethod === 'qr' && styles.customPayActive]}
                   onPress={() => setCustomMethod('qr')}
                 >
-                  <Feather name="smartphone" size={15} color={customMethod === 'qr' ? C.onAccent : C.textSecondary} />
+                  <Ionicons name="qr-code" size={15} color={customMethod === 'qr' ? C.onAccent : C.textSecondary} />
                   <Text style={[styles.customPayText, customMethod === 'qr' && { color: C.onAccent }]}>{t.stall.qrPrefix}</Text>
                 </TouchableOpacity>
                 {cardConfigured && (
@@ -1738,6 +1770,93 @@ const SellScreen: React.FC = () => {
               )}
             </View>
           </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {/* ═══ Discount — floating editor opened from the footer button ═══ */}
+      <Modal
+        visible={discountVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => { Keyboard.dismiss(); setDiscountVisible(false); }}
+      >
+        <Pressable style={styles.centerOverlay} onPress={() => { Keyboard.dismiss(); setDiscountVisible(false); }}>
+          <View style={styles.centerKav} pointerEvents="box-none">
+            {/* Pressable card: a tap on any dead space dismisses the keyboard
+                WITHOUT closing the modal — child buttons/inputs keep their own
+                taps (deepest responder wins). */}
+            <AnimatedPressable
+              style={[styles.centerCard, discountDockStyle]}
+              onPress={Keyboard.dismiss}
+              onLayout={(e) => { discountCardH.value = e.nativeEvent.layout.height; }}
+            >
+              <Text style={styles.centerTitle}>Discount</Text>
+              <View style={[styles.discountTypeToggle, styles.discountModalToggle]}>
+                <TouchableOpacity
+                  style={[
+                    styles.discountTypeButton,
+                    styles.discountModalToggleBtn,
+                    discountDraftType === 'percentage' && styles.discountTypeActive,
+                  ]}
+                  onPress={() => setDiscountDraftType('percentage')}
+                >
+                  <Feather
+                    name="percent"
+                    size={14}
+                    color={discountDraftType === 'percentage' ? C.onAccent : C.textSecondary}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.discountTypeButton,
+                    styles.discountModalToggleBtn,
+                    discountDraftType === 'fixed' && styles.discountTypeActive,
+                  ]}
+                  onPress={() => setDiscountDraftType('fixed')}
+                >
+                  <Text
+                    style={{
+                      fontSize: TYPOGRAPHY.size.xs,
+                      fontWeight: TYPOGRAPHY.weight.bold,
+                      color: discountDraftType === 'fixed' ? C.onAccent : C.textSecondary,
+                    }}
+                  >
+                    {currency}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.customAmountRow, newstOutline(C, focusedField === 'discount')]}>
+                <Feather name="tag" size={18} color={C.textSecondary} />
+                <TextInput
+                  style={styles.customAmountInput}
+                  value={discountDraft}
+                  onChangeText={setDiscountDraft}
+                  onFocus={() => setFocusedField('discount')}
+                  onBlur={() => setFocusedField((f) => (f === 'discount' ? null : f))}
+                  placeholder={discountDraftType === 'percentage' ? '0' : '0.00'}
+                  placeholderTextColor={C.neutral}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={applyDiscount}
+                  selectionColor={withAlpha(C.accent, 0.25)}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                />
+                <Text style={styles.customCurrency}>
+                  {discountDraftType === 'percentage' ? '%' : currency}
+                </Text>
+              </View>
+              <View style={styles.centerBtns}>
+                <TouchableOpacity style={[styles.centerBtn, neu.raised, styles.centerCancelBtn]} onPress={clearDiscount}>
+                  <Text style={styles.centerCancelText}>Clear</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.centerBtn, neu.raisedSoft, styles.centerPrimaryBtn]} onPress={applyDiscount}>
+                  <Text style={styles.centerPrimaryText}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            </AnimatedPressable>
+          </View>
         </Pressable>
       </Modal>
 
@@ -2339,58 +2458,34 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexGrow: 1,
   },
 
-  // Collapsed cart items
-  cartItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // Collapsed cart items — one name per row in the narrow strip
+  cartItemCollapsed: {
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
-  },
-  cartItemInfo: {
-    flex: 1,
   },
   cartItemName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
-    marginBottom: 2,
   },
-  cartItemPrice: {
-    fontSize: TYPOGRAPHY.size.xs,
+  cartItemQtyMuted: {
+    fontWeight: TYPOGRAPHY.weight.regular,
     color: C.textSecondary,
   },
-  quantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginHorizontal: SPACING.md,
-  },
-  quantityButton: {
-    width: 28,
-    height: 28,
+  cartCountBadge: {
+    minWidth: 20,
+    height: 20,
     borderRadius: RADIUS.full,
-    backgroundColor: C.background,
+    backgroundColor: C.bronze,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
+    paddingHorizontal: 5,
   },
-  quantityText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    minWidth: SPACING['2xl'],
-    textAlign: 'center',
-  },
-  cartItemTotal: {
-    alignItems: 'flex-end',
-    gap: SPACING.sm,
-  },
-  cartItemTotalText: {
-    fontSize: TYPOGRAPHY.size.base,
+  cartCountBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
+    color: C.onAccent,
     fontVariant: ['tabular-nums'],
   },
 
@@ -2463,6 +2558,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     color: C.textSecondary,
     marginTop: SPACING.md,
+    textAlign: 'center',
   },
 
   // Cart footer
@@ -2473,22 +2569,32 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.md,
   },
 
-  // Discount
-  discountSection: {
-    paddingBottom: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  discountHeader: {
+  // Discount — footer button that opens the floating editor
+  discountBtn: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.sm,
+    minHeight: 44,
+    paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
   },
-  discountLabel: {
+  discountBtnLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  discountBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
+    color: C.textSecondary,
+  },
+  discountBtnValue: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.positive,
+    fontVariant: ['tabular-nums'],
   },
   discountTypeToggle: {
     flexDirection: 'row',
@@ -2508,15 +2614,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
   },
-  discountInput: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.md,
+  discountModalToggle: {
+    alignSelf: 'stretch',
+    marginBottom: SPACING.md,
+  },
+  discountModalToggleBtn: {
+    flex: 1,
+    minHeight: 40,
     paddingVertical: SPACING.sm,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    borderWidth: 1,
-    borderColor: C.border,
   },
 
   // Totals
@@ -2557,11 +2662,42 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
     letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
+  // Collapsed strip — label stacked over the amount so it fits the narrow width
+  totalCollapsed: {
+    gap: 2,
+  },
+  totalCollapsedLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  totalCollapsedAmount: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
+  },
 
   // Payment buttons
   paymentRow: {
     flexDirection: 'row',
     gap: SPACING.md,
+  },
+  // Collapsed strip — stack the pay buttons full-width
+  paymentRowCollapsed: {
+    flexDirection: 'column',
+    gap: SPACING.sm,
+  },
+  payButtonCollapsed: {
+    flex: 0,
+    alignSelf: 'stretch',
+    minHeight: 46,
+  },
+  payTextCollapsed: {
+    fontSize: TYPOGRAPHY.size.base,
   },
   cashButton: {
     flex: 1,

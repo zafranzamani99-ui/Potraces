@@ -90,20 +90,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>This app uses Bluetooth to connect to supported card readers.</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Bluetooth access is required in order to connect to supported bluetooth card readers.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Potraces needs the camera to scan receipts and your DuitNow QR standee.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>Potraces needs access to contacts for splitting expenses.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Potraces uses Face ID to unlock the app and keep your money data private.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>This app uses the local WiFi network to connect to supported card readers.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Location access is required to accept card payments.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Potraces uses the microphone so you can speak your expenses instead of typing.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

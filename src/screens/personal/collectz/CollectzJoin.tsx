@@ -54,7 +54,8 @@ import {
   qrImageUrl,
   joinTeam,
   renameTeam,
-  reportParticipant,
+  reportContent,
+  setParticipantBlock,
   joinErrorMessage,
 } from '../../../services/collectzService';
 import { presetClubIcon, presetClubColor } from '../../../constants/clubIcons';
@@ -97,7 +98,11 @@ const CollectzJoin: React.FC = () => {
   const [selfName, setSelfName] = useState('');
   // Moderation (Apple 1.2 UGC): tap a roster member → report/block menu.
   const [memberMenu, setMemberMenu] = useState<CollectzJoinView['participants'][number] | null>(null);
+  // 'menu' = the report/block actions; 'report' = pick a preset reason.
+  const [memberMenuMode, setMemberMenuMode] = useState<'menu' | 'report'>('menu');
   const blockedMap = useCollectzBlockStore((s) => s._blocked);
+  // Server-side (account-level) blocks ride the join view as participant ids.
+  const serverBlocked = useMemo(() => new Set(view?.blocked_participant_ids ?? []), [view]);
   // Teams sessions: joining requires picking a team up front (claim + add-self
   // both send it). null = not chosen yet — the join actions gate on this.
   const [joinTeamIdx, setJoinTeamIdx] = useState<number | null>(null);
@@ -280,10 +285,11 @@ const CollectzJoin: React.FC = () => {
 
   // One roster line — shared by the flat list and every team block. Tapping a
   // member (not yourself) opens the report/block menu; a blocked member's name
-  // is masked (Apple 1.2 UGC).
+  // is masked (Apple 1.2 UGC) — locally by the block store, and account-wide
+  // via the server blocks that ride the join view.
   const renderMember = (p: CollectzJoinView['participants'][number]) => {
     const isSelf = !!my && my.id === p.id;
-    const blocked = !!blockedMap[blockKey(blockScope, { name: p.name })];
+    const blocked = !!blockedMap[blockKey(blockScope, { name: p.name })] || serverBlocked.has(p.id);
     const inner = (
       <>
         <Text style={styles.rowName} numberOfLines={1}>{blocked ? t.collectz.blockedUser : p.name}</Text>
@@ -305,7 +311,7 @@ const CollectzJoin: React.FC = () => {
       <Pressable
         key={p.id}
         style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
-        onPress={() => { lightTap(); setMemberMenu(p); }}
+        onPress={() => { lightTap(); setMemberMenu(p); setMemberMenuMode('menu'); }}
         accessibilityRole="button"
         accessibilityLabel={blocked ? t.collectz.blockedUser : p.name}
       >
@@ -315,13 +321,25 @@ const CollectzJoin: React.FC = () => {
   };
 
   // ── Moderation actions (Apple 1.2 UGC) ──
-  const reportMember = async (p: CollectzJoinView['participants'][number]) => {
+  const closeMemberMenu = () => {
     setMemberMenu(null);
-    const ok = await reportParticipant({
-      sessionId: sessionId ?? '',
-      participantId: p.id,
-      reportedName: p.name,
-    });
+    setMemberMenuMode('menu');
+  };
+
+  // Preset report reasons — shown localized, SENT as stable tags so moderation
+  // reads one vocabulary regardless of the reporter's language.
+  const reportReasons: { tag: string; label: string }[] = [
+    { tag: 'offensive', label: t.collectz.reportReasonOffensive },
+    { tag: 'spam', label: t.collectz.reportReasonSpam },
+    { tag: 'harassment', label: t.collectz.reportReasonHarassment },
+    { tag: 'other', label: t.collectz.reportReasonOther },
+  ];
+
+  // Reports go to the public report-content edge function — this page is
+  // reachable signed OUT, and the function flood-caps per reporter server-side.
+  const submitReport = async (p: CollectzJoinView['participants'][number], reasonTag: string) => {
+    closeMemberMenu();
+    const ok = await reportContent({ context: 'collectz-member', targetId: p.id, reason: reasonTag });
     if (ok) { successNotification(); showToast(t.collectz.reportedToast, 'success'); }
     else { errorNotification(); showToast(t.collectz.reportFailedToast, 'error'); }
   };
@@ -329,15 +347,25 @@ const CollectzJoin: React.FC = () => {
   const toggleBlock = (p: CollectzJoinView['participants'][number]) => {
     const key = blockKey(blockScope, { name: p.name });
     const store = useCollectzBlockStore.getState();
-    if (store.isBlocked(key)) {
-      store.unblock(key);
-      showToast(t.collectz.unblockedToast, 'success');
-    } else {
+    const nowBlocked = !store.isBlocked(key);
+    if (nowBlocked) {
       mediumTap();
       store.block(key);
       showToast(t.collectz.blockedToast, 'success');
+    } else {
+      store.unblock(key);
+      showToast(t.collectz.unblockedToast, 'success');
     }
-    setMemberMenu(null);
+    closeMemberMenu();
+    // Server-side block too (signed-in only, account-backed entries only —
+    // both fail soft and the local mask above already applied). An account
+    // block also hides their pools on CollectzHome and masks them here on
+    // every session via blocked_participant_ids, so refresh the view.
+    if (code) {
+      setParticipantBlock(code, p.id, nowBlocked).then((res) => {
+        if (res === 'account') load();
+      });
+    }
   };
 
   const statusLabel = (status: CollectzParticipantStatus): string => {
@@ -1225,11 +1253,32 @@ const CollectzJoin: React.FC = () => {
       </FloatingModal>
 
       {/* Member report/block menu (Apple 1.2 UGC) */}
-      <FloatingModal visible={!!memberMenu} onClose={() => setMemberMenu(null)} entrance="fade" borderless>
+      <FloatingModal visible={!!memberMenu} onClose={closeMemberMenu} entrance="fade" borderless>
         {memberMenu && (() => {
           const m = memberMenu;
           if (!m) return null;
-          const blocked = !!blockedMap[blockKey(blockScope, { name: m.name })];
+          const blocked = !!blockedMap[blockKey(blockScope, { name: m.name })] || serverBlocked.has(m.id);
+          if (memberMenuMode === 'report') {
+            // Reason picker — one tap files the report (RN Alert caps Android
+            // at 3 buttons, so the preset reasons get their own sheet mode).
+            return (
+              <View style={styles.memberMenuWrap}>
+                <Text style={styles.memberMenuTitle} numberOfLines={1}>{t.collectz.reportTitle}</Text>
+                {reportReasons.map((r) => (
+                  <Pressable
+                    key={r.tag}
+                    style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.7 }]}
+                    onPress={() => submitReport(m, r.tag)}
+                    accessibilityRole="button"
+                    accessibilityLabel={r.label}
+                  >
+                    <Feather name="flag" size={18} color={C.gold} />
+                    <Text style={styles.menuRowText}>{r.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            );
+          }
           return (
             <View style={styles.memberMenuWrap}>
               <Text style={styles.memberMenuTitle} numberOfLines={1}>
@@ -1237,7 +1286,7 @@ const CollectzJoin: React.FC = () => {
               </Text>
               <Pressable
                 style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.7 }]}
-                onPress={() => reportMember(m)}
+                onPress={() => setMemberMenuMode('report')}
                 accessibilityRole="button"
                 accessibilityLabel={t.collectz.report}
               >

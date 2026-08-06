@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Linking, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import NeuGroup from '../common/NeuGroup';
@@ -64,6 +64,17 @@ const SubscriptionCard: React.FC<{ variant: 'personal' | 'business' }> = () => {
     } catch {
       showToast(t.settings.restoreFailed, 'error');
     }
+  };
+
+  // Manage / cancel — Apple wants cancellation to be easy and owned by the store, so this
+  // deep-links straight to the store's own subscription-management page for this account
+  // (the store, not the app, is where an IAP subscription can actually be cancelled).
+  const handleManageSubscription = () => {
+    const url =
+      Platform.OS === 'ios'
+        ? 'https://apps.apple.com/account/subscriptions'
+        : 'https://play.google.com/store/account/subscriptions';
+    Linking.openURL(url).catch(() => {});
   };
 
   return (
@@ -136,6 +147,28 @@ const SubscriptionCard: React.FC<{ variant: 'personal' | 'business' }> = () => {
               style={styles.upgradeBtn}
             />
           </View>
+        )}
+
+        {/* Manage / cancel subscription — deep link to the store's own subscription
+            page (Apple wants cancellation reachable from where the subscription lives).
+            Paid tiers only; row mirrors the usage-row style (icon + label, chevron-ish
+            affordance right). */}
+        {tier !== 'free' && (
+          <TouchableOpacity
+            style={styles.manageSubRow}
+            onPress={handleManageSubscription}
+            accessibilityRole="link"
+            accessibilityLabel={t.settings.manageSubscription}
+          >
+            <View style={styles.settingLabelRow}>
+              <Feather name="credit-card" size={16} color={C.textSecondary} />
+              <View style={styles.manageSubText}>
+                <Text style={styles.usageLabel}>{t.settings.manageSubscription}</Text>
+                <Text style={styles.manageSubDesc}>{t.settings.manageSubscriptionDesc}</Text>
+              </View>
+            </View>
+            <Feather name="external-link" size={15} color={C.textMuted} />
+          </TouchableOpacity>
         )}
 
         {/* "See my plan" — the full per-tier usage breakdown (wallets, budgets,
@@ -237,6 +270,25 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textSecondary,
     fontVariant: ['tabular-nums'],
+  },
+  manageSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(C.textPrimary, 0.08),
+  },
+  manageSubText: {
+    flex: 1,
+    gap: 2,
+  },
+  manageSubDesc: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    lineHeight: 17,
   },
   backupNotice: {
     flexDirection: 'row',

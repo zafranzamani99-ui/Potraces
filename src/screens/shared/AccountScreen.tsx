@@ -31,7 +31,7 @@ import { confirmReuse } from '../../services/reuseAccount';
 import { planDelete } from '../../services/deleteAccountFlow';
 import { resetBackoff } from '../../services/syncBackoff';
 import { runCloudBackupDrain, enqueueAllReceiptsForDriveBackup, enqueueAllReceiptsForIcloudBackup } from '../../services/cloudBackupRunner';
-import { pendingBackupJobCount, clearBackupQueue, retryFailedBackupJobs } from '../../services/cloudBackupQueue';
+import { pendingBackupJobCount, getFailedBackupJobs, clearBackupQueue, retryFailedBackupJobs } from '../../services/cloudBackupQueue';
 import { fullResyncTransactions } from '../../services/sheetsSync';
 import { isIcloudAvailable, restoreFromIcloud, IcloudRestoreMode } from '../../services/icloudBackup';
 import { useAuthStore } from '../../store/authStore';
@@ -116,13 +116,16 @@ export default function AccountScreen() {
   const [backupPaywallVisible, setBackupPaywallVisible] = useState(false);
   const [deleting, setDeleting] = useState(false);
   // Google Backup in-flight action (drives button spinners + disables rows).
-  const [googleBusy, setGoogleBusy] = useState<'connect' | 'disconnect' | 'drive' | 'sheets' | 'resync' | 'backup' | 'icloud' | 'restore' | null>(null);
+  const [googleBusy, setGoogleBusy] = useState<'connect' | 'disconnect' | 'drive' | 'sheets' | 'resync' | 'backup' | 'icloud' | 'restore' | 'retry' | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
   // Probed on focus (iOS only): is the device's iCloud account usable.
   const [icloudAvailable, setIcloudAvailable] = useState<boolean | null>(null);
   // Which backup provider's detail modal is open (keeps the page short —
   // the full controls live in a floating modal, not inline on the page).
   const [backupModal, setBackupModal] = useState<'google' | 'icloud' | null>(null);
+  // "Backup not working?" help block inside the provider modals.
+  const [backupHelpOpen, setBackupHelpOpen] = useState(false);
 
   // Phone form
   const [isLogin, setIsLogin] = useState(true);
@@ -334,7 +337,14 @@ export default function AccountScreen() {
   const refreshPending = useCallback(async () => {
     try {
       setPendingCount(await pendingBackupJobCount());
+      setFailedCount((await getFailedBackupJobs()).length);
     } catch {}
+  }, []);
+
+  // Closing the provider modal also collapses the help block inside it.
+  const closeBackupModal = useCallback(() => {
+    setBackupModal(null);
+    setBackupHelpOpen(false);
   }, []);
 
   // Queue depth: load on focus, then poll every 5s while THIS screen is
@@ -366,16 +376,35 @@ export default function AccountScreen() {
   const handleGoogleConnect = useCallback(async () => {
     if (googleBusy) return;
     lightTap();
-    setGoogleBusy('connect');
-    try {
-      if (!(await hasGoogleDriveAccess())) await connectGoogleDrive();
-      useSettingsStore.getState().setGoogleDriveEmail(await getConnectedGoogleEmail());
-    } catch (e: any) {
-      if (e?.code === statusCodes.SIGN_IN_CANCELLED) return; // user bailed — silent
-      showToast(e?.message || tr.auth.errSomethingWrong, 'error');
-    } finally {
-      setGoogleBusy(null);
+    const doConnect = async () => {
+      setGoogleBusy('connect');
+      try {
+        if (!(await hasGoogleDriveAccess())) await connectGoogleDrive();
+        useSettingsStore.getState().setGoogleDriveEmail(await getConnectedGoogleEmail());
+      } catch (e: any) {
+        if (e?.code === statusCodes.SIGN_IN_CANCELLED) return; // user bailed — silent
+        showToast(e?.message || tr.auth.errSomethingWrong, 'error');
+      } finally {
+        setGoogleBusy(null);
+      }
+    };
+    // One-time consent before the FIRST Google connect: what happens, where
+    // files go, how to stop (cloud-backup plan §5.1). Once acknowledged it
+    // never shows again — reconnects and re-pairs skip it.
+    if (useSettingsStore.getState().googleBackupConsentSeen) {
+      await doConnect();
+      return;
     }
+    Alert.alert(tr.settings.googleBackup.consentTitle, tr.settings.googleBackup.consentMsg, [
+      { text: tr.common.cancel, style: 'cancel' },
+      {
+        text: tr.settings.googleBackup.consentAgree,
+        onPress: () => {
+          useSettingsStore.getState().setGoogleBackupConsentSeen(true);
+          void doConnect();
+        },
+      },
+    ]);
   }, [googleBusy, showToast, tr]);
 
   const handleGoogleDisconnect = useCallback(() => {
@@ -601,6 +630,25 @@ export default function AccountScreen() {
       setGoogleBusy(null);
     }
   }, [googleBusy, showToast, tr, refreshPending]);
+
+  // "Backup not working?" action: re-arm permanently-failed jobs and drain
+  // right away. The drain re-parks anything still broken (→ telemetry).
+  const handleRetryFailed = useCallback(async () => {
+    if (googleBusy) return;
+    lightTap();
+    if (failedCount === 0) { showToast(tr.settings.backupHelp.retryNone, 'info'); return; }
+    setGoogleBusy('retry');
+    try {
+      await retryFailedBackupJobs();
+      await runCloudBackupDrain();
+      showToast(tr.settings.backupHelp.retryDone, 'success');
+    } catch (e: any) {
+      showToast(e?.message || tr.auth.errSomethingWrong, 'error');
+    } finally {
+      setGoogleBusy(null);
+      refreshPending();
+    }
+  }, [googleBusy, failedCount, showToast, tr, refreshPending]);
 
   const handleSignOut = useCallback(() => {
     lightTap();
@@ -1040,9 +1088,9 @@ export default function AccountScreen() {
                 visible={backupModal !== null}
                 transparent
                 animationType="fade"
-                onRequestClose={() => setBackupModal(null)}
+                onRequestClose={closeBackupModal}
               >
-                <Pressable style={styles.backupModalBackdrop} onPress={() => setBackupModal(null)}>
+                <Pressable style={styles.backupModalBackdrop} onPress={closeBackupModal}>
                   {/* Inner press swallows taps so only the backdrop dismisses. */}
                   <Pressable style={styles.backupModalCard} onPress={() => {}}>
                     <View style={styles.backupModalHeader}>
@@ -1050,7 +1098,7 @@ export default function AccountScreen() {
                         {backupModal === 'icloud' ? tr.settings.icloudBackup.sectionTitle : tr.settings.googleBackup.sectionTitle}
                       </Text>
                       <Pressable
-                        onPress={() => setBackupModal(null)}
+                        onPress={closeBackupModal}
                         accessibilityRole="button"
                         accessibilityLabel={tr.common.close}
                         hitSlop={8}
@@ -1129,6 +1177,48 @@ export default function AccountScreen() {
                               ? <ActivityIndicator color={C.accent} size="small" />
                               : <Feather name="chevron-right" size={18} color={C.textMuted} />}
                           </Pressable>
+
+                          <View style={styles.divider} />
+
+                          {/* "Backup not working?" — self-serve recovery steps (plan §5.6). */}
+                          <Pressable
+                            style={styles.settingRow}
+                            onPress={() => { lightTap(); setBackupHelpOpen((v) => !v); }}
+                            accessibilityRole="button"
+                            accessibilityLabel={tr.settings.backupHelp.title}
+                          >
+                            <View style={styles.settingLabelWrap}>
+                              <View style={styles.settingLabelRow}>
+                                <Feather name="help-circle" size={18} color={C.textSecondary} />
+                                <Text style={styles.settingLabel}>{tr.settings.backupHelp.title}</Text>
+                              </View>
+                            </View>
+                            <Feather name={backupHelpOpen ? 'chevron-up' : 'chevron-down'} size={18} color={C.textMuted} />
+                          </Pressable>
+                          {backupHelpOpen && (
+                            <View style={styles.backupHelpBody}>
+                              <Text style={styles.backupHelpStep}>{tr.settings.backupHelp.icloudStep}</Text>
+                              <Text style={styles.backupHelpStep}>{tr.settings.backupHelp.restoreStep}</Text>
+                              <Pressable
+                                style={[styles.settingRow, googleBusy !== null && { opacity: 0.6 }]}
+                                onPress={handleRetryFailed}
+                                disabled={googleBusy !== null}
+                                accessibilityRole="button"
+                                accessibilityLabel={tr.settings.backupHelp.retry}
+                              >
+                                <View style={styles.settingLabelWrap}>
+                                  <View style={styles.settingLabelRow}>
+                                    <Feather name="rotate-cw" size={18} color={C.textSecondary} />
+                                    <Text style={styles.settingLabel}>{tr.settings.backupHelp.retry}</Text>
+                                  </View>
+                                  <Text style={styles.settingDesc}>{tr.settings.backupHelp.retryDesc}</Text>
+                                </View>
+                                {googleBusy === 'retry'
+                                  ? <ActivityIndicator color={C.accent} size="small" />
+                                  : <Feather name="chevron-right" size={18} color={C.textMuted} />}
+                              </Pressable>
+                            </View>
+                          )}
                         </>
                       ) : (
                         <>
@@ -1317,6 +1407,48 @@ export default function AccountScreen() {
                               thumbColor={C.surface}
                             />
                           </View>
+
+                          <View style={styles.divider} />
+
+                          {/* "Backup not working?" — self-serve recovery steps (plan §5.6). */}
+                          <Pressable
+                            style={styles.settingRow}
+                            onPress={() => { lightTap(); setBackupHelpOpen((v) => !v); }}
+                            accessibilityRole="button"
+                            accessibilityLabel={tr.settings.backupHelp.title}
+                          >
+                            <View style={styles.settingLabelWrap}>
+                              <View style={styles.settingLabelRow}>
+                                <Feather name="help-circle" size={18} color={C.textSecondary} />
+                                <Text style={styles.settingLabel}>{tr.settings.backupHelp.title}</Text>
+                              </View>
+                            </View>
+                            <Feather name={backupHelpOpen ? 'chevron-up' : 'chevron-down'} size={18} color={C.textMuted} />
+                          </Pressable>
+                          {backupHelpOpen && (
+                            <View style={styles.backupHelpBody}>
+                              <Text style={styles.backupHelpStep}>{tr.settings.backupHelp.reconnectStep}</Text>
+                              <Text style={styles.backupHelpStep}>{tr.settings.backupHelp.resyncStep}</Text>
+                              <Pressable
+                                style={[styles.settingRow, googleBusy !== null && { opacity: 0.6 }]}
+                                onPress={handleRetryFailed}
+                                disabled={googleBusy !== null}
+                                accessibilityRole="button"
+                                accessibilityLabel={tr.settings.backupHelp.retry}
+                              >
+                                <View style={styles.settingLabelWrap}>
+                                  <View style={styles.settingLabelRow}>
+                                    <Feather name="rotate-cw" size={18} color={C.textSecondary} />
+                                    <Text style={styles.settingLabel}>{tr.settings.backupHelp.retry}</Text>
+                                  </View>
+                                  <Text style={styles.settingDesc}>{tr.settings.backupHelp.retryDesc}</Text>
+                                </View>
+                                {googleBusy === 'retry'
+                                  ? <ActivityIndicator color={C.accent} size="small" />
+                                  : <Feather name="chevron-right" size={18} color={C.textMuted} />}
+                              </Pressable>
+                            </View>
+                          )}
                         </>
                       )}
                     </ScrollView>
@@ -1778,6 +1910,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   backUpNowBtn: {
     alignSelf: 'stretch',
     marginVertical: SPACING.sm,
+  },
+  backupHelpBody: {
+    paddingBottom: SPACING.sm,
+  },
+  backupHelpStep: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    lineHeight: TYPOGRAPHY.size.sm * 1.45,
+    marginBottom: 4,
   },
   // ── Backup detail modal (floating card over a dimmed backdrop) ──────
   backupModalBackdrop: {

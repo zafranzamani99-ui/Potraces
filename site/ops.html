@@ -451,7 +451,7 @@ h1{font-size:clamp(1.45rem,2.6vw,1.8rem);font-weight:800;letter-spacing:-.025em}
         <div class="price-actions">
           <button type="button" id="priceReset" class="pillbtn">Reset defaults</button>
         </div>
-        <p class="price-hint">USD per 1M tokens, saved in this browser only. Cross-check real rates: ai.google.dev/pricing · anthropic.com/pricing. FX is USD→MYR for display.</p>
+        <p class="price-hint">USD per 1M tokens, saved in this browser only. Cross-check real rates: ai.google.dev/pricing. FX is USD→MYR for display.</p>
       </section>
     </div>
 
@@ -523,8 +523,6 @@ signoutBtn2.addEventListener('click', doSignOut);
 const DEFAULT_PRICE = {
   'gemini-3.1-flash-lite':     { i: 0.10, o: 0.40 },
   'gemini-3.5-flash':          { i: 0.30, o: 2.50 },
-  'claude-haiku-4-5-20251001': { i: 1.00, o: 5.00 },
-  'claude-sonnet-4-6':         { i: 3.00, o: 15.00 },
 };
 const DEFAULT_FALLBACK = { i: 0.30, o: 2.50 };
 const DEFAULT_FX = 4.70;

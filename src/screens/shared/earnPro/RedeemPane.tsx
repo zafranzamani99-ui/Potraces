@@ -1,21 +1,23 @@
-// ─── REDEEM CODE ─────────────────────────────────────────────────────────
+// ─── EARN PRO · REDEEM PANE ────────────────────────────────────────────────
 // Gift codes minted by the team (admin page) → redeem_code RPC. Success shows
 // the granted tier + days + until; every failure reason has friendly EN/BM copy
 // (see t.redeem.reason_*). Contract: docs/plans/premium-grants-and-rewards.md.
+// Lives inside the Earn Pro hub (EarnPro.tsx) — formerly the standalone
+// RedeemCode screen.
 
 import React from 'react';
 import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
-import PageScrollView from '../../components/common/PageScrollView';
+import PageScrollView from '../../../components/common/PageScrollView';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import NeuButton from '../../components/common/NeuButton';
-import { useNeu } from '../../components/common/neu';
-import { redeemCode, checkClipboardReferral } from '../../services/entitlements';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm, useIsDark } from '../../hooks/useCalm';
-import { useT } from '../../i18n';
+import NeuButton from '../../../components/common/NeuButton';
+import { useNeu } from '../../../components/common/neu';
+import { redeemCode, checkClipboardReferral } from '../../../services/entitlements';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 
-const RedeemCode: React.FC = () => {
+const RedeemPane: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const styles = React.useMemo(() => makeStyles(C), [C]);
@@ -26,7 +28,10 @@ const RedeemCode: React.FC = () => {
   const [busy, setBusy] = React.useState(false);
 
   // Clipboard invite token (POTRACES-REF:…) — read HERE, on a referral surface,
-  // never at app launch (iOS fires the paste-privacy prompt on every read).
+  // never at app launch (iOS fires the paste-privacy prompt on every read). In
+  // the Earn Pro hub this pane lazy-mounts on first visit to the Redeem tab, so
+  // the prompt fires only when the user actually opens this surface — exactly
+  // the standalone RedeemCode screen's behaviour.
   React.useEffect(() => { void checkClipboardReferral(); }, []);
 
   const handleRedeem = async () => {
@@ -131,4 +136,4 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 });
 
-export default RedeemCode;
+export default RedeemPane;

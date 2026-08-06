@@ -1,0 +1,16 @@
+{
+  "currency": "MYR",
+  "transactionCount": 9,
+  "totals": { "income": 3200.0, "expense": 982.75 },
+  "transactions": [
+    { "date": "2026-06-03", "amount": 3200.0, "type": "income", "is_transfer": false, "descTokens": ["gaji"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-04", "amount": 45.6, "type": "expense", "is_transfer": false, "descTokens": ["speedmart"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-08", "amount": 15.0, "type": "expense", "is_transfer": false, "descTokens": ["nasi kandar"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-11", "amount": 178.25, "type": "expense", "is_transfer": false, "descTokens": ["mydin"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-14", "amount": 100.0, "type": "expense", "is_transfer": true, "descTokens": ["tng", "ewallet"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-17", "amount": 45.0, "type": "expense", "is_transfer": false, "descTokens": ["air selangor"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-21", "amount": 28.9, "type": "expense", "is_transfer": false, "descTokens": ["mcdonalds"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-24", "amount": 500.0, "type": "expense", "is_transfer": true, "descTokens": ["hafiz", "maybank"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-28", "amount": 70.0, "type": "expense", "is_transfer": false, "descTokens": ["petron"], "originalAmount": null, "originalCurrency": null }
+  ]
+}

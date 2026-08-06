@@ -481,6 +481,10 @@ export const ms: Translations = {
       sheetSyncDone: 'Helaian disegerakkan',
       connectFirst: 'Sambung Google untuk guna ciri sandaran',
       notConnected: 'Belum disambung',
+      consentTitle: 'Sandarkan ke Google?',
+      consentMsg:
+        'Potraces menyimpan foto resit & PDF anda ke folder “Potraces” yang diwujudkan dalam Google Drive anda, dan (jika anda hidupkan penyegerakan Sheets) menambah transaksi baharu ke helaian “Potraces Transactions”.\n\nApl ini hanya boleh melihat fail yang diwujudkannya — semuanya kekal dalam akaun Google anda sendiri.\n\nAnda boleh matikan sandaran atau nyahsambung bila-bila masa di Akaun → Apl sandaran.',
+      consentAgree: 'Setuju & Sambung',
     },
 
     // iCloud backup (receipt files → the user's own iCloud Drive, iOS only)
@@ -506,6 +510,33 @@ export const ms: Translations = {
       pendingSuffix: 'menunggu',
       backupDone: 'Sandaran selesai',
     },
+
+    // "Sandaran tidak berjaya?" — langkah pemulihan layan diri dalam kedua-dua
+    // modal penyedia sandaran (pelan cloud-backup §5.6).
+    backupHelp: {
+      title: 'Sandaran tidak berjaya?',
+      reconnectStep: 'Akses Google tamat? Ketik Sambung semula Google di atas, kemudian Sandar sekarang.',
+      resyncStep: 'Baris helaian hilang? Jalankan Segerak semula penuh di atas untuk binanya semula.',
+      icloudStep: 'Pastikan peranti ini dilog masuk ke iCloud (Seting peranti → nama anda di atas).',
+      restoreStep: 'Fail resit hilang selepas pemasangan semula? Guna Pulih daripada iCloud di atas.',
+      retry: 'Cuba semula sandaran gagal',
+      retryDesc: 'Jalankan semula sandaran yang gagal sebelum ini.',
+      retryDone: 'Sandaran gagal dimasukkan semula ke giliran',
+      retryNone: 'Tiada sandaran gagal untuk dicuba semula',
+    },
+
+    // Ciri AI — suis opt-in utama (kebenaran PDPA). Mati = tiada apa-apa
+    // keluar dari peranti untuk pemprosesan AI.
+    aiFeatures: 'Ciri AI',
+    aiFeaturesDesc:
+      'Echo, imbasan resit dan import penyata menghantar teks atau foto yang anda serahkan — serta konteks kewangan terhad — kepada Google (Gemini) untuk pemprosesan AI. Mati = tiada apa-apa keluar dari peranti ini untuk AI.',
+    aiConsentTitle: 'Hidupkan ciri AI?',
+    aiConsentMsg:
+      'Ciri AI (Echo, imbasan resit, import penyata) menghantar teks atau foto yang anda serahkan — serta konteks kewangan terhad — kepada Google (Gemini) untuk diproses. Anda boleh mematikannya bila-bila masa di Seting → Ciri AI.',
+    aiConsentAllow: 'Hidupkan',
+    aiOff: 'Ciri AI dimatikan. Hidupkannya di Seting → Ciri AI untuk guna ini.',
+    manageSubscription: 'Urus / batal langganan',
+    manageSubscriptionDesc: 'Membuka akaun app store anda untuk batal atau tukar pelan.',
 
     // Payment methods & units
     paymentMethods: 'Kaedah Bayaran',
@@ -576,6 +607,9 @@ export const ms: Translations = {
     backupsRestore: 'Sandaran & Pulih',
     inviteFriends: 'Jemput Kawan',
     redeemCode: 'Tebus Kod',
+    // Baris digabung → hab Earn Pro (tab Jemput · Kongsi · Tebus).
+    earnPro: 'Earn Pro',
+    earnProDesc: 'jemput kawan, kongsi aplikasi, tebus kod',
     clearBusinessDataBtn: 'Padam Akaun',
     deleteAccount: 'Padam Data Peribadi',
 
@@ -5075,6 +5109,7 @@ export const ms: Translations = {
     markPaidConfirmBody: 'hanya jika anda sudah nampak bayaran dalam app bank anda.',
     qrExpired: 'QR tamat tempoh',
     refreshQr: 'QR baharu',
+    expiresIn: 'tamat dalam {time}',
     closeConfirmTitle: 'tutup tanpa bayaran?',
     closeConfirmBody: 'pembeli mungkin masih membayar — tutup juga?',
     keepWaiting: 'terus tunggu',
@@ -5377,6 +5412,11 @@ export const ms: Translations = {
     reportedToast: 'Dilaporkan. Terima kasih kerana memastikan Collectz selamat.',
     reportFailedToast: 'Tidak dapat menghantar laporan. Cuba lagi nanti.',
     alreadyReported: 'Sudah dilaporkan',
+    // Preset report reasons (Apple 1.2) — shown in the picker, sent as tags.
+    reportReasonOffensive: 'Nama atau kandungan menyinggung',
+    reportReasonSpam: 'Spam atau pautan penipuan',
+    reportReasonHarassment: 'Gangguan atau buli',
+    reportReasonOther: 'Lain-lain',
     warnNoRosterTitle: 'Tiada nama dalam senarai',
     warnNoRosterBody: 'Simpan juga? Peserta boleh tambah nama sendiri melalui pautan.',
     saveAnyway: 'Simpan juga',
@@ -5630,6 +5670,7 @@ export const ms: Translations = {
     earnedTitle: 'anda dapat {days} hari {tier}!',
     earnedBodyReferral: 'Kawan-kawan anda dah settle — {days} hari {tier} dah masuk. Hari mula kira dari tarikh lancar.',
     earnedBodyMilestone: '{days} hari {tier} — milestone Collectz sekali seumur anda. Teruskan kongsi koleksi!',
+    earnedBodyShare: 'Posting anda meletup — {days} hari {tier} dah masuk daripada Share & Earn. Hari mula kira dari tarikh lancar.',
     earnedBodyGeneric: '{days} hari {tier} dah ditambah ke akaun anda. Hari mula kira dari tarikh lancar.',
     earnedCta: 'syok!',
     introTitle: 'jemput kawan, dapat {tier}',
@@ -5655,6 +5696,51 @@ export const ms: Translations = {
     reason_campaign_already_used: 'Anda dah guna kod daripada kumpulan ni.',
     reason_rate_limited: 'Terlalu banyak cubaan — rehat sekejap, cuba lagi nanti.',
     reason_auth_required: 'Log masuk dahulu, kemudian tebus kod anda.',
+    reason_network: 'Tiada internet — cuba lagi sekejap.',
+  },
+
+  // Share & Earn Pro — label tab hab + pane Kongsi (hantar posting sosial
+  // untuk semakan manual). Reasons ikut kontrak edge function
+  // share-reward-submit. Peraturan: src/utils/shareRewardRules.ts.
+  shareEarn: {
+    tabInvite: 'Jemput',
+    tabShare: 'Kongsi',
+    tabRedeem: 'Tebus',
+    howTitle: 'posting pasal Potraces, dapat Pro',
+    howBody: 'Kongsi aplikasi ni dengan tangkapan skrin pada platform kegemaran anda. Bila posting anda meletup, kami tambah Pro anda — pasukan kami menyemak setiap posting secara manual.',
+    tierMonth: '30+ suka → Pro sebulan',
+    tierYear: '100+ suka → Pro setahun',
+    tierForever: 'viral → Pro selamanya',
+    platformLabel: 'anda posting di mana?',
+    platformInstagram: 'Instagram',
+    platformRed: '小红书 (RED)',
+    platformReddit: 'Reddit',
+    platformFacebook: 'Facebook',
+    platformX: 'X',
+    platformThreads: 'Threads',
+    urlLabel: 'pautan posting',
+    urlPlaceholder: 'https://…',
+    shotLabel: 'tangkapan skrin bukti (pilihan)',
+    shotHint: 'Tangkapan skrin posting membantu pasukan kami mengesahkannya dengan lebih cepat.',
+    shotAdd: 'lampirkan tangkapan skrin',
+    shotRemove: 'buang',
+    submit: 'hantar untuk semakan',
+    submittedTitle: 'dihantar!',
+    submittedBody: 'Terima kasih — pasukan kami akan menyemak posting anda dan mengkreditkan Pro anda selepas diluluskan. Biasanya mengambil masa beberapa hari.',
+    rulesNote: 'Satu ganjaran setiap posting · maksimum {cap} ganjaran kongsi setahun · akaun anda mestilah berumur {days}+ hari.',
+    mySubmissions: 'hantaran anda',
+    emptySubmissions: 'Belum ada — kongsilah dengan penuh kasih!',
+    statusPending: 'dalam semakan',
+    statusRejected: 'tidak diluluskan',
+    approvedLine: '+{days} hari Pro',
+    signInBody: 'Log masuk untuk menghantar posting dan menjejak ganjaran anda.',
+    failedTitle: 'tak dapat hantar',
+    reason_invalid_url: 'Pautan tu nampak tak betul — tampal pautan penuh posting anda.',
+    reason_wrong_platform: 'Pautan tu bukan daripada platform yang anda pilih — semak platform atau pautan tu.',
+    reason_already_submitted: 'Posting tu dah dihantar — satu ganjaran setiap posting.',
+    reason_account_too_new: 'Ganjaran kongsi dibuka bila akaun anda berumur {days}+ hari.',
+    reason_year_cap_reached: 'Anda dah capai had {cap} ganjaran kongsi untuk tahun ini — tahniah!',
+    reason_auth_required: 'Log masuk dahulu, kemudian hantar posting anda.',
     reason_network: 'Tiada internet — cuba lagi sekejap.',
   },
 };

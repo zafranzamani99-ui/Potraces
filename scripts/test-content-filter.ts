@@ -1,6 +1,7 @@
 // Unit test for the Collectz content filter (Apple 1.2 UGC name moderation).
 // Pure util, tsx-loadable. Run: npm run test:contentfilter
 import { checkContent, isCleanContent } from '../src/utils/contentFilter';
+import { checkContent as checkContentServer } from '../supabase/functions/collectz-join/contentFilter';
 
 let pass = 0;
 let fail = 0;
@@ -36,6 +37,20 @@ for (const url of ['http://spam.com', 'www.scam.net', 'join t.me/xyz', '@promo_a
 // Empty / whitespace is allowed (handled by required-field checks, not the filter).
 ok(isCleanContent(''), 'empty passes');
 ok(isCleanContent('   '), 'whitespace passes');
+
+// Server parity (Apple 1.2): the Deno port inside the collectz-join edge
+// function is the deploy-gated backstop for the same names — it must return the
+// SAME verdict as the client filter, or a name the app accepts gets rejected on
+// submit (and a bypassed client gets different rules).
+console.log('\nserver parity (collectz-join edge filter)');
+for (const c of [
+  'Ali', 'Siti Nurhaliza', 'Scunthorpe', 'Cassandra', 'Team Alpha', '班長',
+  'fuck you', 'babi', 'pukimak', 'f4ggot', 'f u c k', '5h1t',
+  'http://spam.com', 'www.scam.net', 'join t.me/xyz', '@promo_acct', 'bit.ly/x', 'buy.shop',
+  '', '   ',
+]) {
+  ok(JSON.stringify(checkContent(c)) === JSON.stringify(checkContentServer(c)), `parity: "${c}"`);
+}
 
 console.log(`\n${fail === 0 ? '✓' : '✗'} content-filter: ${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

@@ -53,6 +53,7 @@ import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import { sendChatMessageStream } from '../../services/moneyChat';
+import { requestAiAccess } from '../../services/aiConsent';
 import { parseCards } from '../../services/echoCards/parse';
 import { fillCards } from '../../services/echoCards/fillCards';
 import EchoCardView from '../../components/common/EchoCardView';
@@ -2209,18 +2210,29 @@ const MoneyChat: React.FC = () => {
     // [ACTION] block by echoing it back into the chat (B16 / contract #4).
     const sendText = sanitizeUserText(question);
     const sendImageUri = imageUri;
-    setInput('');
-    setImageUri(null);
-    setErrorNotice(null);
 
-    if (isLoading) {
-      // Echo is still answering — park it; the effect below fires it next.
-      setSendQueue((q) => [...q, { text: sendText, imageUri: sendImageUri }]);
+    const doSend = () => {
+      setInput('');
+      setImageUri(null);
+      setErrorNotice(null);
+
+      if (isLoading) {
+        // Echo is still answering — park it; the effect below fires it next.
+        setSendQueue((q) => [...q, { text: sendText, imageUri: sendImageUri }]);
+        return;
+      }
+
+      executeSend(sendText, sendImageUri);
+    };
+
+    // AI consent gate (PDPA) — first Echo use asks; declining keeps the draft
+    // intact (the toggle lives in Settings → AI features).
+    if (!useSettingsStore.getState().aiOptInEnabled) {
+      void requestAiAccess(t).then((ok) => { if (ok) doSend(); });
       return;
     }
-
-    executeSend(sendText, sendImageUri);
-  }, [input, imageUri, isLoading, executeSend]);
+    doSend();
+  }, [input, imageUri, isLoading, executeSend, t]);
 
   // Drain the queue: whenever Echo finishes (isLoading flips false) and a
   // parked message is waiting, send it. Chains until the queue is empty.

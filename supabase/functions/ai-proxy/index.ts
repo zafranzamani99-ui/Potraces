@@ -1,25 +1,28 @@
-// ai-proxy — single server-side gateway for ALL AI calls (Gemini + Anthropic).
+// ai-proxy — single server-side gateway for ALL AI calls (Gemini).
 //
-// WHY: the app used to embed EXPO_PUBLIC_GEMINI_API_KEY / EXPO_PUBLIC_ANTHROPIC_API_KEY
+// WHY: the app used to embed provider API keys (EXPO_PUBLIC_GEMINI_API_KEY)
 // in the client bundle and call the providers directly. Those keys are extractable
 // from any installed app → anyone could drain them on our bill, and per-user limits
 // were unenforceable. This proxy holds the keys as server secrets and meters every
 // call against a per-identity monthly token budget.
 //
 // CONTRACT (POST JSON):
-//   { provider: 'gemini' | 'anthropic',
+//   { provider: 'gemini',
 //     mode: 'generate' | 'stream',          // stream only valid for gemini
 //     model: string,                         // must be in ALLOWED_MODELS
 //     payload: <provider-native request body> }
 // Headers: Authorization: Bearer <user JWT | anon key>, x-device-id: <uuid>
 //
 // Returns the provider's response VERBATIM (so the client keeps its existing parsing):
-//   - generate / anthropic → provider JSON
-//   - gemini stream        → the provider SSE stream, piped straight through
-//   - over budget          → 403 { error: 'BUDGET_EXCEEDED' }  (client degrades to "AI unavailable")
+//   - generate               → provider JSON
+//   - gemini stream          → the provider SSE stream, piped straight through
+//   - over budget            → 403 { error: 'BUDGET_EXCEEDED' }  (client degrades to "AI unavailable")
 //
-// SECRETS required (supabase secrets set ...): GEMINI_API_KEY, ANTHROPIC_API_KEY.
+// SECRETS required (supabase secrets set ...): GEMINI_API_KEY.
 // SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are injected automatically.
+// (An 'anthropic' provider path still exists below but is unused — the app has
+// called Gemini only since the Anthropic key was retired; ANTHROPIC_API_KEY is
+// not set, and that path 503s if hit.)
 //
 // NOTE: this is layer 1 (key hidden + budget). A determined attacker can still call
 // the public proxy by rotating device ids; layer 2 (Play Integrity / App Attest

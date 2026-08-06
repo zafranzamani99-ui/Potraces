@@ -31,7 +31,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useSellerStore } from '../../store/sellerStore';
 import { signOut, supabaseBusiness } from '../../services/supabase';
 import { clearProfileCache, syncAll } from '../../services/sellerSync';
-import { tapToPayAvailable } from '../../services/tapToPay';
+import { tapToPayAvailable, TAP_TO_PAY_FLAG } from '../../services/tapToPay';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { RootStackParamList, SettingsSection } from '../../types';
 import { useToast } from '../../context/ToastContext';
@@ -66,6 +66,8 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
   const clearBusinessData = useSettingsStore((s) => s.clearBusinessData);
   const tapToPayEnabled = useSettingsStore((s) => s.tapToPayEnabled);
   const setTapToPayEnabled = useSettingsStore((s) => s.setTapToPayEnabled);
+  const aiOptInEnabled = useSettingsStore((s) => s.aiOptInEnabled);
+  const setAiOptInEnabled = useSettingsStore((s) => s.setAiOptInEnabled);
   const incomeType = useBusinessStore((s) => s.incomeType);
   const isAuthenticated = useAuthStore((s) => s.personal.isAuthenticated);
 
@@ -211,15 +213,24 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
               <SettingRow
                 icon="i/gift"
                 chipColor="#4F5104"
-                label={t.settings.inviteFriends}
-                onPress={() => { lightTap(); navigation.navigate('InviteFriends'); }}
+                label={t.settings.earnPro}
+                sublabel={t.settings.earnProDesc}
+                onPress={() => { lightTap(); navigation.navigate('EarnPro'); }}
+                last
               />
               <SettingRow
-                icon="i/ticket-outline"
-                chipColor="#9A6400"
-                label={t.settings.redeemCode}
-                onPress={() => { lightTap(); navigation.navigate('RedeemCode'); }}
-                last
+                icon="i/sparkles-outline"
+                chipColor="#4F5104"
+                label={t.settings.aiFeatures}
+                sublabel={t.settings.aiFeaturesDesc}
+                rightElement={
+                  <Switch
+                    value={aiOptInEnabled}
+                    onValueChange={(v) => { lightTap(); setAiOptInEnabled(v); }}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                }
               />
 
             {/* Hub nav — each its own card */}
@@ -348,7 +359,9 @@ const BusinessSettings: React.FC<{ section?: SettingsSection; scrollTo?: string 
                 <PaymentQrCard mode="business" />
               </NeuGroup>
 
-              {Platform.OS === 'ios' && (() => {
+              {/* Hidden until the Tap to Pay pilot flag is on (v1.2) — no dead
+                  switch at launch. Flip EXPO_PUBLIC_TAP_TO_PAY_ENABLED to reveal. */}
+              {Platform.OS === 'ios' && TAP_TO_PAY_FLAG && (() => {
                 const av = tapToPayAvailable();
                 const status = !tapToPayEnabled
                   ? t.tapToPay.settingsSubtitle

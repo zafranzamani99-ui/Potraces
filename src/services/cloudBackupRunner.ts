@@ -16,6 +16,9 @@
  *      don't burn retries. iCloud: container unreachable → stamp
  *      'ICLOUD_UNAVAILABLE'. A provider going down never blocks the other
  *      provider's jobs — the drain runs with only the servable kinds.
+ *   5. Failure telemetry — jobs this drain parked in the failed list
+ *      (permanent failures) are reported per kind via backupTelemetry;
+ *      silent backup death in the wild is otherwise invisible (plan §5.4).
  *
  * Queue semantics stay in cloudBackupQueue: per-job try/catch isolation,
  * retry caps + cooldown, failed-list parking. The processor here MUST NOT
@@ -43,6 +46,7 @@ import {
   writeIcloudManifest,
 } from './icloudBackup';
 import { hasGoogleDriveAccess } from './googleAuth';
+import { reportCloudBackupFailure } from './backupTelemetry';
 
 export type CloudBackupDrainResult = { done: number; failed: number };
 
@@ -109,7 +113,7 @@ export function runCloudBackupDrain(): Promise<CloudBackupDrainResult> {
     // do NOT wrap these in try/catch (that would hide failures from the
     // queue's retry bookkeeping).
     let icloudDone = 0;
-    const { done, failed } = await processBackupJobs((job) => {
+    const { done, failed, newlyFailed } = await processBackupJobs((job) => {
       if (job.kind === 'icloud-file') {
         return processIcloudFileJob(job).then(() => {
           icloudDone++;
@@ -117,6 +121,20 @@ export function runCloudBackupDrain(): Promise<CloudBackupDrainResult> {
       }
       return job.kind === 'drive-file' ? processDriveFileJob(job) : processSheetSyncJob();
     }, allowedKinds);
+
+    // Permanent failures (parked in the failed list by THIS drain) → one
+    // telemetry row per kind. Aggregated: a broken provider parks every
+    // pending receipt in one run — a row per job would flood the table.
+    if (newlyFailed.length > 0) {
+      const byKind = new Map<BackupJobKind, { n: number; lastError?: string }>();
+      for (const job of newlyFailed) {
+        const agg = byKind.get(job.kind) ?? { n: 0 };
+        agg.n++;
+        agg.lastError = job.lastError;
+        byKind.set(job.kind, agg);
+      }
+      for (const [kind, agg] of byKind) reportCloudBackupFailure(kind, agg.n, agg.lastError);
+    }
 
     if (done > 0) {
       const now = Date.now();

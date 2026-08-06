@@ -46,7 +46,7 @@ import {
   updateSession,
   updateParticipant,
   removeParticipant,
-  reportParticipant,
+  reportContent,
   confirmParticipant,
   rejectParticipant,
   resetParticipantToUnpaid,
@@ -121,6 +121,8 @@ const CollectzDetail: React.FC = () => {
   const [codeCopied, setCodeCopied] = useState<null | 'code' | 'link'>(null);
   // Participant action modal (tap a roster row)
   const [actionFor, setActionFor] = useState<CollectzParticipant | null>(null);
+  // Apple 1.2 report flow: the action modal swaps to a preset-reason picker.
+  const [reportMode, setReportMode] = useState(false);
   // Team rename: which team is being renamed, and the draft label.
   const [renameTeamIdx, setRenameTeamIdx] = useState<number | null>(null);
   const [renameFocused, setRenameFocused] = useState(false);
@@ -139,6 +141,7 @@ const CollectzDetail: React.FC = () => {
   useEffect(() => {
     setAmProofUrl(null);
     setAmProofLoading(false);
+    setReportMode(false);
     if (!actionFor?.proof_path) return;
     let alive = true;
     setAmProofLoading(true);
@@ -519,26 +522,23 @@ const CollectzDetail: React.FC = () => {
   const promote = (p: CollectzParticipant) =>
     run(() => updateParticipant(p.id, { slot: 'active' }), fill(t.collectz.promotedToast, { name: p.name }));
 
-  // Report a member for offensive/abusive content (Apple 1.2 UGC). Confirm →
-  // write to collectz_reports (fails soft if the migration isn't applied yet).
-  const reportMember = (p: CollectzParticipant) => {
-    setPConfirm({
-      title: t.collectz.reportTitle,
-      message: t.collectz.reportBody,
-      confirmLabel: t.collectz.report,
-      onConfirm: async () => {
-        setPConfirm(null);
-        setActionFor(null);
-        const ok = await reportParticipant({
-          sessionId,
-          participantId: p.id,
-          reportedUserId: p.user_id ?? null,
-          reportedName: p.name,
-        });
-        if (ok) { successNotification(); showToast(t.collectz.reportedToast, 'success'); }
-        else { errorNotification(); showToast(t.collectz.reportFailedToast, 'error'); }
-      },
-    });
+  // Report a member for offensive/abusive content (Apple 1.2 UGC): the action
+  // sheet swaps to a preset-reason picker (reportMode), and one tap files the
+  // report via the public report-content edge function (flood-capped
+  // server-side, works for any signed-in reporter).
+  const reportReasons: { tag: string; label: string }[] = [
+    { tag: 'offensive', label: t.collectz.reportReasonOffensive },
+    { tag: 'spam', label: t.collectz.reportReasonSpam },
+    { tag: 'harassment', label: t.collectz.reportReasonHarassment },
+    { tag: 'other', label: t.collectz.reportReasonOther },
+  ];
+
+  const submitReport = async (p: CollectzParticipant, reasonTag: string) => {
+    setReportMode(false);
+    setActionFor(null);
+    const ok = await reportContent({ context: 'collectz-member', targetId: p.id, reason: reasonTag });
+    if (ok) { successNotification(); showToast(t.collectz.reportedToast, 'success'); }
+    else { errorNotification(); showToast(t.collectz.reportFailedToast, 'error'); }
   };
 
   const remove = (p: CollectzParticipant) => {
@@ -1249,6 +1249,27 @@ const CollectzDetail: React.FC = () => {
       >
         {actionFor && session && (() => {
           const p = actionFor;
+          // Apple 1.2 report flow — the sheet becomes a preset-reason picker.
+          if (reportMode) {
+            return (
+              <View style={styles.amWrap}>
+                <Text style={styles.amName}>{t.collectz.reportTitle}</Text>
+                <Text style={styles.reportBody}>{t.collectz.reportBody}</Text>
+                {reportReasons.map((r) => (
+                  <Pressable
+                    key={r.tag}
+                    style={({ pressed }) => [styles.reportReasonRow, pressed && { opacity: 0.7 }]}
+                    onPress={() => submitReport(p, r.tag)}
+                    accessibilityRole="button"
+                    accessibilityLabel={r.label}
+                  >
+                    <Feather name="flag" size={16} color={C.gold} />
+                    <Text style={styles.reportReasonText}>{r.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            );
+          }
           const share = p.slot === 'reserve' ? null : shares.get(p.id) ?? null;
           const canNudge = (p.status === 'unpaid' || p.status === 'rejected') && isOpen;
           const proofIsPdf = p.proof_path?.toLowerCase().endsWith('.pdf') ?? false;
@@ -1314,7 +1335,7 @@ const CollectzDetail: React.FC = () => {
             // inside this sheet, so the sheet must stay open until confirmed.
             chips.push({ key: 'undo', icon: 'rotate-ccw', color: C.textSecondary, label: t.collectz.actionUndo, onPress: () => undoConfirm(p) });
           }
-          chips.push({ key: 'report', icon: 'flag', color: C.gold, label: t.collectz.report, onPress: () => reportMember(p) });
+          chips.push({ key: 'report', icon: 'flag', color: C.gold, label: t.collectz.report, onPress: () => setReportMode(true) });
           chips.push({ key: 'remove', icon: 'trash-2', color: C.overdue, label: t.collectz.actionRemove, onPress: () => remove(p) });
 
           return (
@@ -1812,6 +1833,16 @@ const makeStyles = (C: typeof CALM) =>
       backgroundColor: withAlpha(C.textPrimary, 0.06),
     },
     amProofLoader: { marginVertical: SPACING.lg },
+    // Apple 1.2 report reason picker (the action modal's reportMode).
+    reportBody: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted, lineHeight: 19 },
+    reportReasonRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.md,
+      paddingVertical: SPACING.sm + 2,
+      paddingHorizontal: SPACING.sm,
+    },
+    reportReasonText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.medium, color: C.textPrimary },
     teamBlock: { marginBottom: SPACING.md },
     teamHeader: {
       flexDirection: 'row',

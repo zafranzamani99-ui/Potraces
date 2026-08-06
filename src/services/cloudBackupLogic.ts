@@ -92,3 +92,11 @@ export function partitionDrained(
   }
   return { remaining, failed };
 }
+
+/** Jobs that became PERMANENT failures in this drain — parked in the failed
+ *  list but not already there (matched by job id, which survives attempts and
+ *  the failed→retry round-trip). This transition is the "silent backup death"
+ *  moment failure telemetry reports on. */
+export function newlyFailedJobs(failed: BackupJob[], prevFailed: BackupJob[]): BackupJob[] {
+  return failed.filter((f) => !prevFailed.some((p) => p.id === f.id));
+}

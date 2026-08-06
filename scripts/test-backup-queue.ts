@@ -14,7 +14,7 @@
 import {
   BackupJob,
   BACKUP_QUEUE_MAX_ATTEMPTS, BACKUP_QUEUE_COOLDOWN_MS,
-  shouldAttemptJob, recordAttempt, isJobExhausted, upsertJob, partitionDrained,
+  shouldAttemptJob, recordAttempt, isJobExhausted, upsertJob, partitionDrained, newlyFailedJobs,
 } from '../src/services/cloudBackupLogic';
 
 let failures = 0;
@@ -133,6 +133,27 @@ console.log('partitionDrained');
   const otherFail = job({ dedupeKey: 'unrelated-failure' });
   const third = partitionDrained([exhausted], [], [otherFail]);
   check('unrelated failed entries are preserved', third.failed.length === 2);
+}
+
+console.log('newlyFailedJobs');
+{
+  // Telemetry contract: only jobs parked in the failed list by THIS drain
+  // are "newly failed" — re-drains of an already-failed job must not
+  // re-report (matched by job id, which survives attempts + the retry
+  // round-trip).
+  const parked = job({ dedupeKey: 'a', attempts: BACKUP_QUEUE_MAX_ATTEMPTS, lastError: 'boom' });
+  const parkedToo = job({ dedupeKey: 'b', attempts: BACKUP_QUEUE_MAX_ATTEMPTS, lastError: 'boom' });
+
+  check('empty failed list → nothing newly failed', newlyFailedJobs([], []).length === 0);
+  check('newly parked job is newly failed', newlyFailedJobs([parked], []).length === 1);
+
+  const first = newlyFailedJobs([parked, parkedToo], [parked]);
+  check('job already on the failed list (same id) is NOT re-reported', first.length === 1 && first[0].id === parkedToo.id);
+
+  // retryFailedBackupJobs clears the failed list before re-queuing, so a
+  // re-park after a manual retry reports again — a fresh permanent failure.
+  const afterRetry = newlyFailedJobs([parked], []);
+  check('re-park after manual retry (failed list was cleared) reports again', afterRetry.length === 1);
 }
 
 console.log(`\n${failures === 0 ? '✅ all cloudBackupLogic tests passed' : `❌ ${failures} assertion(s) failed`}`);

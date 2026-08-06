@@ -1,0 +1,17 @@
+{
+  "currency": "MYR",
+  "transactionCount": 10,
+  "totals": { "income": 4500.0, "expense": 744.8 },
+  "transactions": [
+    { "date": "2026-06-02", "amount": 4500.0, "type": "income", "is_transfer": false, "descTokens": ["salary", "abc"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-03", "amount": 12.5, "type": "expense", "is_transfer": false, "descTokens": ["mamak"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-05", "amount": 145.9, "type": "expense", "is_transfer": false, "descTokens": ["giant"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-07", "amount": 60.0, "type": "expense", "is_transfer": false, "descTokens": ["petronas"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-10", "amount": 210.35, "type": "expense", "is_transfer": false, "descTokens": ["tnb"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-12", "amount": 100.0, "type": "expense", "is_transfer": true, "descTokens": ["tng", "ewallet"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-15", "amount": 50.0, "type": "expense", "is_transfer": false, "descTokens": ["siti"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-18", "amount": 58.15, "type": "expense", "is_transfer": false, "descTokens": ["amazon"], "originalAmount": 12.34, "originalCurrency": "USD" },
+    { "date": "2026-06-20", "amount": 89.9, "type": "expense", "is_transfer": false, "descTokens": ["shopee"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-25", "amount": 18.0, "type": "expense", "is_transfer": false, "descTokens": ["grab"], "originalAmount": null, "originalCurrency": null }
+  ]
+}

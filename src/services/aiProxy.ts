@@ -1,6 +1,6 @@
 // Client transport for the `ai-proxy` Edge Function.
 //
-// All AI calls (Gemini + Anthropic) go through the proxy so the provider API keys
+// All AI calls (Gemini) go through the proxy so the provider API keys
 // live ONLY on the server. Nothing here ever sees a provider key.
 //
 // Auth: send the user's access token if signed in (so the server meters by uid),

@@ -1,25 +1,27 @@
-// ─── INVITE FRIENDS ──────────────────────────────────────────────────────
+// ─── EARN PRO · INVITE PANE ────────────────────────────────────────────────
 // Referral hub: my code + share (referrals.ts), reward progress and the
 // Collectz milestone line (referral_progress RPC), and an "enter a friend's
 // code" box for eligible new accounts (server rejects the rest — the reason
 // copy is shown). Contract: docs/plans/premium-grants-and-rewards.md.
+// Lives inside the Earn Pro hub (EarnPro.tsx) — formerly the standalone
+// InviteFriends screen.
 
 import React from 'react';
 import { View, Text, TextInput, StyleSheet, Share, Alert, ActivityIndicator } from 'react-native';
-import PageScrollView from '../../components/common/PageScrollView';
+import PageScrollView from '../../../components/common/PageScrollView';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import NeuButton from '../../components/common/NeuButton';
-import { useNeu } from '../../components/common/neu';
-import { fetchReferralProgress, claimReferral, type ReferralProgress } from '../../services/entitlements';
-import { referralMessage } from '../../services/referrals';
-import { useToast } from '../../context/ToastContext';
-import { lightTap } from '../../services/haptics';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
-import { useCalm, useIsDark } from '../../hooks/useCalm';
-import { useT } from '../../i18n';
+import NeuButton from '../../../components/common/NeuButton';
+import { useNeu } from '../../../components/common/neu';
+import { fetchReferralProgress, claimReferral, type ReferralProgress } from '../../../services/entitlements';
+import { referralMessage } from '../../../services/referrals';
+import { useToast } from '../../../context/ToastContext';
+import { lightTap } from '../../../services/haptics';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 
-const InviteFriends: React.FC = () => {
+const InvitePane: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const styles = React.useMemo(() => makeStyles(C), [C]);
@@ -94,7 +96,7 @@ const InviteFriends: React.FC = () => {
   // Signed out / unreachable — same message the old share row alerted.
   if (loaded && !progress) {
     return (
-      <View style={[styles.container, styles.center, { backgroundColor: C.background }]}>
+      <View style={[styles.center, { backgroundColor: C.background }]}>
         <Feather name="user" size={28} color={C.textMuted} />
         <Text style={styles.signInTitle}>{t.settings.signInRequired}</Text>
         <Text style={styles.signInBody}>{t.settings.signInRequiredInvite}</Text>
@@ -202,7 +204,7 @@ const InviteFriends: React.FC = () => {
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: { flex: 1 },
-  center: { alignItems: 'center', justifyContent: 'center', padding: SPACING.xl, gap: SPACING.sm },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl, gap: SPACING.sm },
   signInTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary, marginTop: SPACING.sm },
   signInBody: { fontSize: TYPOGRAPHY.size.base, color: C.textSecondary, textAlign: 'center', lineHeight: 22 },
   content: { padding: SPACING.xl, gap: SPACING.lg },
@@ -253,4 +255,4 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 });
 
-export default InviteFriends;
+export default InvitePane;

@@ -1,0 +1,17 @@
+{
+  "currency": "MYR",
+  "transactionCount": 10,
+  "totals": { "income": 3800.0, "expense": 919.2 },
+  "transactions": [
+    { "date": "2026-06-01", "amount": 3800.0, "type": "income", "is_transfer": false, "descTokens": ["payroll"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-02", "amount": 200.0, "type": "expense", "is_transfer": true, "descTokens": ["touch", "ewallet"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-04", "amount": 8.5, "type": "expense", "is_transfer": false, "descTokens": ["kedai kopi"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-06", "amount": 132.4, "type": "expense", "is_transfer": false, "descTokens": ["aeon"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-09", "amount": 80.0, "type": "expense", "is_transfer": false, "descTokens": ["shell"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-13", "amount": 99.0, "type": "expense", "is_transfer": false, "descTokens": ["astro"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-16", "amount": 150.0, "type": "expense", "is_transfer": true, "descTokens": ["grabpay"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-19", "amount": 149.0, "type": "expense", "is_transfer": false, "descTokens": ["unifi"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-22", "amount": 67.8, "type": "expense", "is_transfer": false, "descTokens": ["watsons"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-27", "amount": 32.5, "type": "expense", "is_transfer": false, "descTokens": ["kfc"], "originalAmount": null, "originalCurrency": null }
+  ]
+}

@@ -118,7 +118,9 @@ export const RewardModal: React.FC<Props> = (props) => {
         ? t.rewards.earnedBodyReferral
         : primary?.source === 'collectz_milestone'
           ? t.rewards.earnedBodyMilestone
-          : t.rewards.earnedBodyGeneric;
+          : primary?.source === 'share_reward'
+            ? t.rewards.earnedBodyShare
+            : t.rewards.earnedBodyGeneric;
     title = fill(t.rewards.earnedTitle, { days, tier });
     sub = fill(body, { days, tier });
     ctaLabel = t.rewards.earnedCta;
@@ -129,7 +131,7 @@ export const RewardModal: React.FC<Props> = (props) => {
     ctaLabel = t.rewards.introCta;
     onCta = () => {
       if (navigationRef.isReady()) {
-        (navigationRef as any).navigate('InviteFriends');
+        (navigationRef as any).navigate('EarnPro', { tab: 'invite' });
       }
       onClose();
     };

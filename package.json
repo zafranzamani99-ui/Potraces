@@ -34,6 +34,7 @@
     "test:maplink": "tsx scripts/test-map-link.ts",
     "test:collectzfmt": "tsx scripts/test-collectz-format.ts",
     "test:contentfilter": "tsx scripts/test-content-filter.ts",
+    "test:sharereward": "tsx scripts/test-sharereward.ts",
     "test:tierlimits": "tsx scripts/test-tier-limits.ts",
     "test:tiermigration": "tsx scripts/test-tier-migration.ts",
     "test:billingmap": "tsx scripts/test-billing-map.ts",
@@ -72,7 +73,9 @@
     "test:savingssnapshot": "tsx scripts/test-savings-snapshot.ts",
     "test:insights": "tsx scripts/test-insights.ts",
     "test:pulsemath": "tsx scripts/test-pulse-math.ts",
-    "test:fiuusig": "tsx scripts/test-fiuu-signature.ts"
+    "test:fiuusig": "tsx scripts/test-fiuu-signature.ts",
+    "gen:statementfixtures": "tsx supabase/functions/parse-statement/fixtures/gen-fixtures.ts",
+    "test:statementparser": "tsx scripts/test-statement-parser.ts"
   },
   "dependencies": {
     "@bottom-tabs/react-navigation": "^1.3.1",

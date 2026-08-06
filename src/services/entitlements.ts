@@ -3,9 +3,12 @@
 // Contract: docs/plans/premium-grants-and-rewards.md + migration
 // 20260726000000_premium_grants_and_rewards.sql.
 //
-// FAIL-SOFT discipline: a transient failure (offline, signed out, 5xx) NEVER
-// downgrades the user — only a definitive server response reconciles the store
-// (including tier 'free' once the launch gate is on).
+// FAIL-SOFT / FAIL-OPEN discipline: a transient failure (offline, signed out,
+// 5xx, malformed payload) NEVER downgrades the user — only a definitive server
+// response reconciles the store (including tier 'free' once the launch gate is
+// on). Two server passes per refresh: the my_entitlement RPC (activity ping +
+// lazy qualify + surprise-reward pickup) and the get-entitlements edge function
+// (the AUTHORITATIVE server-wins snapshot; merge rules in entitlementPolicy.ts).
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
@@ -21,6 +24,7 @@ export type { NewReward };
 import { en } from '../i18n/en';
 import { ms } from '../i18n/ms';
 import type { PremiumTier } from '../types';
+import { parseServerEntitlement } from './entitlementPolicy';
 
 const TIERS: PremiumTier[] = ['free', 'basic', 'pro', 'premium'];
 const asTier = (v: unknown): PremiumTier =>
@@ -35,38 +39,90 @@ const client = () => clientForMode(useAppStore.getState().mode);
 // ── my_entitlement ─────────────────────────────────────────────────────────
 
 /** One call per launch / sign-in / foreground: activity ping + lazy qualify on
- *  the server, then reconcile the effective tier. Never throws; a transient
- *  failure leaves the current tier untouched. */
+ *  the server, reconcile the effective tier, then run the authoritative
+ *  edge-function pass. Never throws; a transient failure leaves the current
+ *  tier untouched (fail-open on the cached snapshot). */
 export async function refreshEntitlement(): Promise<void> {
   try {
     const supabase = client();
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return; // signed out — nothing to reconcile
+    if (!session) {
+      // Signed out: the server has no say. Drop any lingering snapshot so the
+      // local tier rules — mirrors SIGNED_OUT and closes the hole where the app
+      // was killed before the SIGNED_OUT event could clear it.
+      usePremiumStore.getState().resetServerEntitlement();
+      return;
+    }
     const deviceId = await getDeviceId();
     const { data, error } = await supabase.rpc('my_entitlement', { p_device_id: deviceId });
-    if (error || !data?.ok) return; // transient — keep the current state
-    usePremiumStore.getState().reconcileEntitlement({
-      tier: asTier(data.tier),
-      premiumUntil: data.premium_until ? new Date(data.premium_until) : null,
-      gateOn: data.gate_on === true,
-    });
-    // Surprise grants the user has never been shown (referrer payout, Collectz
-    // milestone, admin manual). The server marks them seen as it returns them,
-    // so this modal fires exactly once per grant.
-    const rawRewards: unknown[] = Array.isArray(data.new_rewards) ? data.new_rewards : [];
-    const rewards: NewReward[] = rawRewards
-      .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
-      .map((r) => ({
-        source: typeof r.source === 'string' ? r.source : '',
-        tier: typeof r.tier === 'string' ? r.tier : 'pro',
-        days: typeof r.days === 'number' && isFinite(r.days) ? r.days : 0,
-      }))
-      .filter((r) => r.source !== '' && r.days > 0);
-    if (rewards.length > 0) {
-      globalShowRewardModal({ kind: 'earned', rewards });
+    if (!error && data?.ok) {
+      const parsed = parseServerEntitlement(data, new Date());
+      if (parsed) {
+        usePremiumStore.getState().reconcileEntitlement({
+          tier: parsed.tier,
+          premiumUntil: parsed.expiresAt,
+          gateOn: parsed.gateOn,
+          source: parsed.source,
+          fetchedAt: parsed.fetchedAt,
+        });
+      }
+      // Surprise grants the user has never been shown (referrer payout, Collectz
+      // milestone, admin manual). The server marks them seen as it returns them,
+      // so this modal fires exactly once per grant.
+      const rawRewards: unknown[] = Array.isArray(data.new_rewards) ? data.new_rewards : [];
+      const rewards: NewReward[] = rawRewards
+        .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
+        .map((r) => ({
+          source: typeof r.source === 'string' ? r.source : '',
+          tier: typeof r.tier === 'string' ? r.tier : 'pro',
+          days: typeof r.days === 'number' && isFinite(r.days) ? r.days : 0,
+        }))
+        .filter((r) => r.source !== '' && r.days > 0);
+      if (rewards.length > 0) {
+        globalShowRewardModal({ kind: 'earned', rewards });
+      }
     }
+    // RPC failure is transient — but still run the authoritative pass below:
+    // the edge function is a different network path and may well succeed.
+    // Runs AFTER the RPC so a grant minted by the RPC's lazy-qualify is already
+    // visible to the edge function's read.
+    await enforceServerEntitlement();
   } catch {
     // fail-soft
+  }
+}
+
+// ── get-entitlements (authoritative server-wins pass) ─────────────────────
+
+/** Ask the get-entitlements edge function for the caller's SERVER-side
+ *  entitlement and reconcile it into the store — once the launch gate is on,
+ *  this answer overrides the local tier in both directions (a flipped local
+ *  flag can't beat a server 'free'). FAIL-OPEN by contract: any transient
+ *  failure (offline, 5xx, expired-token 401, malformed payload) leaves the
+ *  cached snapshot untouched, and resolveEffectiveTier keeps a live paid tier
+ *  alive on it (+ grace past expiry). Signed out → clears the snapshot so
+ *  signed-out behavior stays purely local. Never throws. */
+export async function enforceServerEntitlement(): Promise<void> {
+  try {
+    const supabase = client();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      usePremiumStore.getState().resetServerEntitlement();
+      return;
+    }
+    const { data, error } = await supabase.functions.invoke('get-entitlements', { body: {} });
+    if (error) return; // transient — keep the cached snapshot
+    const parsed = parseServerEntitlement(data, new Date());
+    if (!parsed) return; // malformed payload — treat as transient, keep the cache
+    usePremiumStore.getState().reconcileEntitlement({
+      tier: parsed.tier,
+      premiumUntil: parsed.expiresAt,
+      gateOn: parsed.gateOn,
+      source: parsed.source,
+      fetchedAt: parsed.fetchedAt,
+    });
+  } catch {
+    // fail-open
   }
 }
 

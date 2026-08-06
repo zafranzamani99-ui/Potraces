@@ -122,8 +122,13 @@ export function tierAtLeast(tier: PremiumTier, min: PremiumTier): boolean {
 }
 
 /**
- * The EFFECTIVE tier — the single value every gate reads (premiumStore.tier).
- * Contract: docs/plans/premium-grants-and-rewards.md ("App work").
+ * The EFFECTIVE tier — SUPERSEDED as the store's merge by
+ * src/services/entitlementPolicy.ts `resolveEffectiveTier` (server-wins lock:
+ * a definitive server answer overrides localTier in BOTH directions, with
+ * fail-open cache + grace). This highestRank(local, server) helper remains
+ * for reference/back-compat and is covered by
+ * scripts/test-entitlement-recompute.ts; premiumStore no longer calls it.
+ * Old contract: docs/plans/premium-grants-and-rewards.md ("App work").
  *  - gateOn=false (open beta) → the local tier, bit-for-bit the pre-grants behavior.
  *  - gateOn=true → the HIGHER rank of local vs server, where the server tier only
  *    counts while its grant is still live (premiumUntil in the future).

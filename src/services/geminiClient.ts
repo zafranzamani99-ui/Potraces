@@ -16,6 +16,7 @@
 // release builds.)
 import EventSource from 'react-native-sse';
 import { AI_PROXY_URL, aiProxyHeaders, aiProxyFetch, isAiProxyConfigured } from './aiProxy';
+import { isAiOptedIn } from './aiOptIn';
 
 // Model fallback chain — cheap current-gen model first, premium as escape hatch.
 // The provider API key lives ONLY on the server (ai-proxy Edge Function); the
@@ -29,6 +30,10 @@ let allModelsExhausted = false;
 const MAX_BLOCK_MS = 120_000; // Cap blocks at 2 minutes — free tier resets fast
 
 export function isGeminiAvailable(): boolean {
+  // AI opt-out (Settings → AI features): nothing may leave the device for AI.
+  // Callers already handle "AI unavailable", so this degrades every AI
+  // feature to its fallback without any new error UI.
+  if (!isAiOptedIn()) return false;
   if (!isAiProxyConfigured()) return false;
   const now = Date.now();
   // Auto-clear stale blocks (cap at MAX_BLOCK_MS)

@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import { supabasePersonal as supabase } from './supabase'; // personal client (statement import)
+import { isAiOptedIn } from './aiOptIn';
 
 export interface ParsedTransaction {
   date: string;              // YYYY-MM-DD
@@ -94,6 +95,12 @@ export async function parseStatement(
   filename: string,
   password?: string,
 ): Promise<StatementParseResult | StatementParseError> {
+  // AI opt-out backstop — statement pages must not leave the device. The
+  // screen gates with a consent prompt first; this catches every other path.
+  if (!isAiOptedIn()) {
+    return { error: 'ai_off', message: 'AI features are turned off.' };
+  }
+
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
     return { error: 'not_authenticated', message: 'Sign in to import statements.' };

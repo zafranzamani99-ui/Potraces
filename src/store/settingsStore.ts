@@ -34,6 +34,7 @@ import {
   supabaseBusiness,
 } from '../services/supabase';
 import { isSharedAccount } from '../services/accountLink';
+import { registerAiOptInChecker } from '../services/aiOptIn';
 import { purgeBackups, PERSONAL_BACKUP_KEYS } from '../services/storageBackup';
 import { clearProfileCache } from '../services/sellerSync';
 import { DEFAULT_PAYMENT_METHODS } from '../constants/taxCategories';
@@ -334,6 +335,9 @@ interface SettingsState {
   /** Google account the backup features are connected to. null = not connected. */
   googleDriveEmail: string | null;
   setGoogleDriveEmail: (value: string | null) => void;
+  /** One-time: the user has seen the Drive backup consent copy (shown before the first Google connect). */
+  googleBackupConsentSeen: boolean;
+  setGoogleBackupConsentSeen: (value: boolean) => void;
   /** When true, Drive backups only run on unmetered (Wi-Fi) connections. */
   backupWifiOnly: boolean;
   setBackupWifiOnly: (value: boolean) => void;
@@ -374,6 +378,10 @@ interface SettingsState {
   /** One-time: the user has acknowledged Echo will use the offline reader when out of AI credits. */
   notesOfflineNoticeSeen: boolean;
   setNotesOfflineNoticeSeen: (value: boolean) => void;
+  /** Master AI opt-in (PDPA consent): when false, no text/photos leave the device
+   *  for AI processing — every AI call degrades to its "AI unavailable" fallback. */
+  aiOptInEnabled: boolean;
+  setAiOptInEnabled: (value: boolean) => void;
   /** Opt-in: transcribe Malay voice via the cloud (works on any phone; no on-device model download). */
   malayCloudVoice: boolean;
   setMalayCloudVoice: (value: boolean) => void;
@@ -709,6 +717,7 @@ export const useSettingsStore = create<SettingsState>()(
       voiceCloudNoticeSeen: false,
       notesAiNoticeSeen: false,
       notesOfflineNoticeSeen: false,
+      aiOptInEnabled: false,
       malayCloudVoice: false,
       malayLiveStreaming: false,
 
@@ -722,6 +731,8 @@ export const useSettingsStore = create<SettingsState>()(
       setGoogleSheetsSyncEnabled: (googleSheetsSyncEnabled) => set({ googleSheetsSyncEnabled }),
       googleDriveEmail: null,
       setGoogleDriveEmail: (googleDriveEmail) => set({ googleDriveEmail }),
+      googleBackupConsentSeen: false,
+      setGoogleBackupConsentSeen: (googleBackupConsentSeen) => set({ googleBackupConsentSeen }),
       backupWifiOnly: false,
       setBackupWifiOnly: (backupWifiOnly) => set({ backupWifiOnly }),
       lastDriveBackupAt: null,
@@ -746,6 +757,7 @@ export const useSettingsStore = create<SettingsState>()(
       setVoiceCloudNoticeSeen: (voiceCloudNoticeSeen) => set({ voiceCloudNoticeSeen }),
       setNotesAiNoticeSeen: (notesAiNoticeSeen) => set({ notesAiNoticeSeen }),
       setNotesOfflineNoticeSeen: (notesOfflineNoticeSeen) => set({ notesOfflineNoticeSeen }),
+      setAiOptInEnabled: (aiOptInEnabled) => set({ aiOptInEnabled }),
       setMalayCloudVoice: (malayCloudVoice) => set({ malayCloudVoice }),
       setMalayLiveStreaming: (malayLiveStreaming) => set({ malayLiveStreaming }),
 
@@ -1176,3 +1188,8 @@ export const useSettingsStore = create<SettingsState>()(
     }
   )
 );
+
+// Register the real AI opt-in check — services that cannot import this store
+// (geminiClient is loaded by tsx tests, which react-native breaks) read the
+// flag through this checker. See services/aiOptIn.ts.
+registerAiOptInChecker(() => useSettingsStore.getState().aiOptInEnabled);

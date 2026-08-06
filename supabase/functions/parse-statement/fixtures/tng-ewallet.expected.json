@@ -1,0 +1,15 @@
+{
+  "currency": "MYR",
+  "transactionCount": 8,
+  "totals": { "income": 300.0, "expense": 83.4 },
+  "transactions": [
+    { "date": "2026-06-01", "amount": 9.5, "type": "expense", "is_transfer": false, "descTokens": ["ali mamak"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-03", "amount": 100.0, "type": "income", "is_transfer": true, "descTokens": ["reload", "duitnow"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-06", "amount": 22.3, "type": "expense", "is_transfer": false, "descTokens": ["kk super mart"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-10", "amount": 15.2, "type": "expense", "is_transfer": false, "descTokens": ["plus"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-12", "amount": 18.0, "type": "expense", "is_transfer": false, "descTokens": ["starbucks"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-15", "amount": 6.0, "type": "expense", "is_transfer": false, "descTokens": ["parking"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-20", "amount": 12.4, "type": "expense", "is_transfer": false, "descTokens": ["mynews"], "originalAmount": null, "originalCurrency": null },
+    { "date": "2026-06-25", "amount": 200.0, "type": "income", "is_transfer": true, "descTokens": ["reload", "fpx"], "originalAmount": null, "originalCurrency": null }
+  ]
+}

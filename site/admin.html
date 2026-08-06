@@ -344,6 +344,22 @@ main{flex:1;padding:32px 0 64px}
             <p class="lead">Mint gift codes, watch redemptions, flip the launch gate, and keep an eye on the referral funnel. Everything here is enforced server-side by is_admin().</p>
           </div>
 
+          <!-- share & earn pro — review queue -->
+          <div class="bcast">
+            <h2>Share &amp; Earn Pro — review queue</h2>
+            <p class="bcast-lead">Social posts submitted from the app's Earn Pro hub (Share tab). Open the post, eyeball the likes (and the proof screenshot), then approve a tier — 30+ likes → 1 month, 100+ → 1 year, clearly viral → Forever (3650d, the ledger max). Reject bought likes / edited screenshots. Approving grants through the same entitlement ledger as redeem codes and pops the app's reward modal on the user's next launch.</p>
+            <div class="toolbar">
+              <select id="srStatus" aria-label="Filter share submissions">
+                <option value="pending" selected>Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="">All</option>
+              </select>
+              <button type="button" id="srRefreshBtn" class="refresh">Refresh</button>
+            </div>
+            <div id="srList"></div>
+          </div>
+
           <!-- create codes -->
           <div class="bcast">
             <h2>Create codes</h2>
@@ -481,12 +497,14 @@ const rwSearch=$('rwSearch'), rwRefreshBtn=$('rwRefreshBtn'), rwCodesEl=$('rwCod
 const rwGateStats=$('rwGateStats'), rwGateStart=$('rwGateStart'), rwGateSaveBtn=$('rwGateSaveBtn'), rwGateToggleBtn=$('rwGateToggleBtn'), rwGateMsg=$('rwGateMsg');
 const rwFunnelStats=$('rwFunnelStats'), rwFunnelEl=$('rwFunnel');
 const rwModal=$('rwModal'), rwModalTitle=$('rwModalTitle'), rwModalBody=$('rwModalBody'), rwModalClose=$('rwModalClose');
+const srStatus=$('srStatus'), srRefreshBtn=$('srRefreshBtn'), srList=$('srList');
 
 let allReports = [];
 let allWaitlist = [], wlLoaded = false;
 let allBroadcasts = [], bcastLoaded = false;
 let allCodes = [], rwLoaded = false, rwMintedArr = [];
 let rwGate = { on:false, start:null };
+let srRows = [], srShotUrls = {}; // share & earn queue + signed proof URLs
 
 const STATUS = [['new','New'],['triaged','Looking into it'],['fixed','Fixed'],['wontfix','Noted'],['dup','Duplicate'],['done','Done']];
 const SEV = { idea:'Idea', minor:'Minor', major:'Annoying', blocker:'Blocks me' };
@@ -889,7 +907,108 @@ function toLocalInput(iso){
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
 }
 
-function loadRewards(){ rwLoaded = true; loadCodes(); loadGate(); loadFunnel(); }
+function loadRewards(){ rwLoaded = true; loadShareRewards(); loadCodes(); loadGate(); loadFunnel(); }
+
+/* ── share & earn pro — review queue (admin_review_share_reward grants via
+     the same entitlement ledger as codes; the app pops its reward modal on
+     the user's next launch) ── */
+const SR_BUCKET = 'share-reward-proofs';
+const SR_TIERS = [['month','1 month'],['year','1 year'],['forever','Forever']];
+
+async function loadShareRewards(){
+  srList.innerHTML = `<div class="loading"><div class="spinner" aria-hidden="true"></div><p>Loading submissions…</p></div>`;
+  const { data, error } = await sb.rpc('admin_list_share_rewards', { p_status: srStatus.value || null });
+  if (error){ srList.innerHTML = `<div class="empty">Could not load submissions.<br><small>${esc(error.message)}</small></div>`; srRows=[]; return; }
+  srRows = Array.isArray(data) ? data : [];
+  // Batch-sign proof screenshots so the thumbnails render inline (admin read policy).
+  const paths = srRows.map(r => r.screenshot_path).filter(Boolean);
+  srShotUrls = {};
+  if (paths.length){
+    const { data: signed, error: signErr } = await sb.storage.from(SR_BUCKET).createSignedUrls(paths, 3600);
+    if (Array.isArray(signed)) for (const s of signed){
+      if (s && s.path && s.signedUrl) srShotUrls[s.path] = s.signedUrl;
+    }
+    if (signErr) showFlash('Some proof screenshots could not load: '+signErr.message);
+  }
+  renderShareRewards();
+}
+
+function renderShareRewards(){
+  if (srRows.length === 0){
+    srList.innerHTML = `<div class="empty">${srStatus.value==='pending' ? 'Nothing waiting for review.' : 'No submissions found.'}</div>`;
+    return;
+  }
+  srList.innerHTML = srRows.map(r => {
+    const shot = r.screenshot_path && srShotUrls[r.screenshot_path]
+      ? `<img class="sr-shot" src="${escA(srShotUrls[r.screenshot_path])}" data-url="${escA(srShotUrls[r.screenshot_path])}" alt="proof screenshot" loading="lazy" style="width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--ink-12)">`
+      : (r.screenshot_path ? `<span class="ri-date">proof failed to load</span>` : '');
+    const head = r.status==='pending'
+      ? ''
+      : `<span class="ri-chip cst-${r.status==='approved'?'live':'disabled'}">${esc(r.status)}${r.awarded_days?` · ${r.awarded_days}d`:''}</span>`;
+    const actions = r.status==='pending'
+      ? `<label>Likes <input type="number" min="0" inputmode="numeric" class="sr-likes" data-id="${escA(r.id)}" placeholder="—" style="width:76px"></label>
+         ${SR_TIERS.map(([v,l]) => `<button type="button" class="afoot-btn sr-approve" data-id="${escA(r.id)}" data-tier="${v}">${l}</button>`).join('')}
+         <button type="button" class="afoot-btn sr-reject" data-id="${escA(r.id)}">Reject</button>`
+      : `<span class="ri-date">${esc(r.reviewed_by||'—')}${r.review_note?` · ${esc(r.review_note)}`:''}</span>`;
+    return `<article class="arow" data-id="${escA(r.id)}">
+      <div class="arow-head"><span class="ri-chip">${esc(r.platform)}</span><span class="arow-email">${esc(r.email||'—')}</span><span class="ri-date">${esc(fmtDate(r.created_at))}</span>${head}</div>
+      <div class="ri-body"><a href="${escA(r.post_url)}" target="_blank" rel="noopener noreferrer">${esc(r.post_url)}</a></div>
+      <div class="arow-foot" style="align-items:center">${shot}${actions}</div>
+    </article>`;
+  }).join('');
+}
+
+srList.addEventListener('click', async (e) => {
+  const shotImg = e.target.closest('.sr-shot');
+  if (shotImg){
+    const url = shotImg.getAttribute('data-url');
+    if (url){ shotBoxImg.src = url; shotBox.classList.remove('hide'); }
+    else showFlash('Could not open screenshot');
+    return;
+  }
+  const approveBtn = e.target.closest('.sr-approve');
+  if (approveBtn){
+    const id = approveBtn.getAttribute('data-id');
+    const tier = approveBtn.getAttribute('data-tier');
+    const row = srRows.find(x => x.id===id);
+    const likesInput = srList.querySelector(`.sr-likes[data-id="${CSS.escape(id)}"]`);
+    const likes = likesInput && likesInput.value !== '' ? parseInt(likesInput.value, 10) : null;
+    const tierLabel = (SR_TIERS.find(([v]) => v===tier) || [,'?'])[1];
+    if (!confirm(`Approve ${tierLabel} of Pro for ${row ? (row.email||'this user') : 'this user'}?\nPost: ${row ? row.post_url : ''}`)) return;
+    approveBtn.disabled = true;
+    const { data, error } = await sb.rpc('admin_review_share_reward', {
+      p_id: id, p_action: 'approve', p_tier: tier,
+      p_likes: Number.isFinite(likes) ? likes : null, p_note: null,
+    });
+    approveBtn.disabled = false;
+    if (error){ showFlash('Could not approve: '+error.message); return; }
+    if (data && data.ok === false){
+      showFlash('Not approved: ' + ({ year_cap_reached:'user hit the yearly share cap', already_reviewed:'already reviewed', not_found:'submission not found' }[data.reason] || data.reason || 'unknown'));
+      return;
+    }
+    showFlash(`Approved — ${data && data.days ? data.days : ''}d of ${data && data.tier ? data.tier : 'pro'} granted`);
+    loadShareRewards();
+    return;
+  }
+  const rejectBtn = e.target.closest('.sr-reject');
+  if (rejectBtn){
+    const id = rejectBtn.getAttribute('data-id');
+    const note = prompt('Reject reason (e.g. bought likes, edited screenshot). Leave empty for none.\nCancel keeps the submission pending.');
+    if (note === null) return; // cancelled — stay pending
+    rejectBtn.disabled = true;
+    const { data, error } = await sb.rpc('admin_review_share_reward', {
+      p_id: id, p_action: 'reject', p_tier: null, p_likes: null, p_note: note || null,
+    });
+    rejectBtn.disabled = false;
+    if (error){ showFlash('Could not reject: '+error.message); return; }
+    if (data && data.ok === false){ showFlash('Not rejected: ' + (data.reason || 'unknown')); return; }
+    showFlash('Submission rejected');
+    loadShareRewards();
+  }
+});
+
+srStatus.addEventListener('change', loadShareRewards);
+srRefreshBtn.addEventListener('click', loadShareRewards);
 
 /* create codes */
 async function createCodes(){

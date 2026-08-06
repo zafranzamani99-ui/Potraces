@@ -480,6 +480,10 @@ export const en = {
       sheetSyncDone: 'Sheet synced',
       connectFirst: 'Connect Google to use backup features',
       notConnected: 'Not connected',
+      consentTitle: 'Back up to Google?',
+      consentMsg:
+        'Potraces saves your receipt photos & PDFs to a “Potraces” folder it creates in your Google Drive, and (if you enable Sheets sync) adds new transactions to a “Potraces Transactions” spreadsheet.\n\nThe app can only see files it creates — everything stays in your own Google account.\n\nYou can turn backup off or disconnect anytime in Account → Backup apps.',
+      consentAgree: 'Agree & Connect',
     },
 
     // iCloud backup (receipt files → the user's own iCloud Drive, iOS only)
@@ -505,6 +509,34 @@ export const en = {
       pendingSuffix: 'pending',
       backupDone: 'Backup complete',
     },
+
+    // "Backup not working?" — self-serve recovery steps shown in both backup
+    // provider modals (cloud-backup plan §5.6).
+    backupHelp: {
+      title: 'Backup not working?',
+      reconnectStep: 'Google access expired? Tap Reconnect Google above, then Back up now.',
+      resyncStep: 'Sheet missing rows? Run Full re-sync above to rebuild it.',
+      icloudStep: 'Make sure this device is signed in to iCloud (device Settings → your name at the top).',
+      restoreStep: 'Missing receipt files after a reinstall? Use Restore from iCloud above.',
+      retry: 'Retry failed backups',
+      retryDesc: 'Re-runs backups that failed earlier.',
+      retryDone: 'Failed backups re-queued',
+      retryNone: 'No failed backups to retry',
+    },
+
+    // AI features — master opt-in (PDPA consent). Off = nothing leaves the
+    // device for AI processing. Copy names Google (Gemini) only — the
+    // Anthropic path was retired.
+    aiFeatures: 'AI features',
+    aiFeaturesDesc:
+      'Echo, receipt scanning and statement import send the text or photo you submit — plus limited financial context — to Google (Gemini) for AI processing. Off = nothing leaves this device for AI.',
+    aiConsentTitle: 'Turn on AI features?',
+    aiConsentMsg:
+      'AI features (Echo, receipt scanning, statement import) send the text or photo you submit — plus limited financial context — to Google (Gemini) for processing. You can turn this off anytime in Settings → AI features.',
+    aiConsentAllow: 'Turn on',
+    aiOff: 'AI features are off. Turn them on in Settings → AI features to use this.',
+    manageSubscription: 'Manage / cancel subscription',
+    manageSubscriptionDesc: 'Opens your app store account to cancel or change your plan.',
 
     // Payment methods & units
     paymentMethods: 'Payment Methods',
@@ -575,6 +607,9 @@ export const en = {
     backupsRestore: 'Backups & Restore',
     inviteFriends: 'Invite Friends',
     redeemCode: 'Redeem Code',
+    // Merged row → the Earn Pro hub (Invite · Share · Redeem tabs).
+    earnPro: 'Earn Pro',
+    earnProDesc: 'invite friends, share the app, redeem codes',
     clearBusinessDataBtn: 'Delete Account',
     deleteAccount: 'Delete Personal Data',
 
@@ -5100,6 +5135,7 @@ export const en = {
     markPaidConfirmBody: "only if you've already seen the payment in your bank app.",
     qrExpired: 'QR expired',
     refreshQr: 'refresh QR',
+    expiresIn: 'expires in {time}',
     closeConfirmTitle: 'close without payment?',
     closeConfirmBody: 'the buyer may still be paying — close anyway?',
     keepWaiting: 'keep waiting',
@@ -5401,6 +5437,11 @@ export const en = {
     reportedToast: 'Reported. Thanks for keeping Collectz safe.',
     reportFailedToast: "Couldn't send the report. Try again later.",
     alreadyReported: 'Already reported',
+    // Preset report reasons (Apple 1.2) — shown in the picker, sent as tags.
+    reportReasonOffensive: 'Offensive name or content',
+    reportReasonSpam: 'Spam or scam link',
+    reportReasonHarassment: 'Harassment or bullying',
+    reportReasonOther: 'Something else',
     warnNoRosterTitle: 'No names in the roster',
     warnNoRosterBody: 'Save anyway? Participants can add themselves from the link.',
     saveAnyway: 'Save anyway',
@@ -5655,6 +5696,7 @@ export const en = {
     earnedTitle: 'you earned {days} days of {tier}!',
     earnedBodyReferral: 'Your friends settled in — {days} days of {tier} just landed. Days start counting from launch day.',
     earnedBodyMilestone: '{days} days of {tier} — your one-time Collectz milestone. Keep sharing those collections!',
+    earnedBodyShare: 'Your post took off — {days} days of {tier} just landed from Share & Earn. Days start counting from launch day.',
     earnedBodyGeneric: '{days} days of {tier} were added to your account. Days start counting from launch day.',
     earnedCta: 'nice!',
     introTitle: 'invite friends, earn {tier}',
@@ -5680,6 +5722,51 @@ export const en = {
     reason_campaign_already_used: 'You already used a code from this batch.',
     reason_rate_limited: 'Too many tries — take a breather and try again later.',
     reason_auth_required: 'Sign in first, then redeem your code.',
+    reason_network: 'No connection — try again in a moment.',
+  },
+
+  // Share & Earn Pro — the hub's tab labels + the Share pane (submit a social
+  // post for manual review). Backend reasons map the share-reward-submit edge
+  // function contract. Rules: src/utils/shareRewardRules.ts.
+  shareEarn: {
+    tabInvite: 'Invite',
+    tabShare: 'Share',
+    tabRedeem: 'Redeem',
+    howTitle: 'post about Potraces, earn Pro',
+    howBody: 'Share the app with a screenshot on your favourite platform. When your post takes off, we top up your Pro — our team reviews every post by hand.',
+    tierMonth: '30+ likes → 1 month of Pro',
+    tierYear: '100+ likes → 1 year of Pro',
+    tierForever: 'goes viral → Pro forever',
+    platformLabel: 'where did you post?',
+    platformInstagram: 'Instagram',
+    platformRed: '小红书 (RED)',
+    platformReddit: 'Reddit',
+    platformFacebook: 'Facebook',
+    platformX: 'X',
+    platformThreads: 'Threads',
+    urlLabel: 'post link',
+    urlPlaceholder: 'https://…',
+    shotLabel: 'proof screenshot (optional)',
+    shotHint: 'A screenshot of the post helps our team verify it faster.',
+    shotAdd: 'attach screenshot',
+    shotRemove: 'remove',
+    submit: 'submit for review',
+    submittedTitle: 'submitted!',
+    submittedBody: 'Thanks — our team will review your post and credit your Pro once approved. This usually takes a few days.',
+    rulesNote: 'One reward per post · up to {cap} share rewards a year · your account must be {days}+ days old.',
+    mySubmissions: 'your submissions',
+    emptySubmissions: 'Nothing yet — share the love!',
+    statusPending: 'in review',
+    statusRejected: 'not approved',
+    approvedLine: '+{days} days of Pro',
+    signInBody: 'Sign in to submit a post and track your rewards.',
+    failedTitle: "couldn't submit",
+    reason_invalid_url: "That link doesn't look right — paste the full link to your post.",
+    reason_wrong_platform: "That link isn't from the platform you picked — check the platform or the link.",
+    reason_already_submitted: 'That post was already submitted — one reward per post.',
+    reason_account_too_new: 'Share rewards unlock once your account is {days}+ days old.',
+    reason_year_cap_reached: "You've hit the {cap} share-reward limit for this year — nice work!",
+    reason_auth_required: 'Sign in first, then submit your post.',
     reason_network: 'No connection — try again in a moment.',
   },
 };

@@ -700,10 +700,11 @@ export type RootStackParamList = {
   ManageCategories: { mode: 'personal' | 'business' } | undefined;
   /** Per-tier usage + upgrade screen (opened from the Settings subscription card). */
   MyPlan: undefined;
-  /** Invite friends hub (referral code, share, progress) — from the Settings gift row. */
-  InviteFriends: undefined;
-  /** Redeem an admin-minted gift code — from the Settings ticket row. */
-  RedeemCode: undefined;
+  /** Earn Pro hub — Invite / Share / Redeem panes (one screen, segmented tabs). */
+  EarnPro: { tab?: 'invite' | 'share' | 'redeem' } | undefined;
+  /** Legacy route names — redirect into the Earn Pro hub on the matching tab. */
+  InviteFriends: { tab?: 'invite' | 'share' | 'redeem' } | undefined;
+  RedeemCode: { tab?: 'invite' | 'share' | 'redeem' } | undefined;
   /** Echo's Notebook — every rule Echo learned about you, editable (Settings row). */
   EchoNotebook: undefined;
   SellerSettings: undefined;
@@ -1571,6 +1572,9 @@ export interface SavingsState {
 
 // Wallet Types
 export type PremiumTier = 'free' | 'basic' | 'pro' | 'premium';
+/** Where the server-side entitlement came from. 'purchase' is the RevenueCat
+ *  seam (receipt verification) — merged identically to 'grant' client-side. */
+export type EntitlementSource = 'grant' | 'purchase' | 'none';
 export type WalletType = 'bank' | 'ewallet' | 'credit' | 'cash';
 
 export interface Wallet {
@@ -1635,17 +1639,24 @@ export interface WalletState {
 }
 
 export interface PremiumState {
-  /** EFFECTIVE tier — every gate reads this. Derived from localTier/serverTier
-   *  by recompute() in the store; never set directly. */
+  /** EFFECTIVE tier — every gate reads this. Derived from localTier + the
+   *  server snapshot by recompute() in the store; never set directly.
+   *  Merge rules: src/services/entitlementPolicy.ts (server WINS for
+   *  signed-in users once the gate is on; fail-open on the cache offline). */
   tier: PremiumTier;
   /** What the local unlock / future RevenueCat says (setTier writes this). */
   localTier: PremiumTier;
-  /** Server grant ledger's tier (my_entitlement); counts only while premiumUntil is live. */
+  /** Server entitlement tier (my_entitlement / get-entitlements); counts only
+   *  while premiumUntil is live (+ grace). */
   serverTier: PremiumTier;
+  /** Where the server entitlement came from (grant ledger / future purchase). */
+  serverSource: EntitlementSource;
   /** Server grant expiry — the server tier drops out of the effective tier past this. */
   premiumUntil: Date | null;
   /** Server launch gate. false = open beta: effective tier === localTier, as before. */
   gateOn: boolean;
+  /** When the server last definitively answered; null = never verified → fail-open. */
+  serverFetchedAt: Date | null;
   subscribedAt: Date | null;
   scanCount: number;
   scanResetDate: Date;
@@ -1655,9 +1666,15 @@ export interface PremiumState {
   subscribe: () => void;
   /** Set the LOCAL tier directly (basic/pro/premium/free). The paywall's wiring seam. */
   setTier: (tier: PremiumTier) => void;
-  /** Server told us the entitlement (my_entitlement) — store it + recompute the effective tier. */
-  reconcileEntitlement: (server: { tier: PremiumTier; premiumUntil: Date | null; gateOn: boolean }) => void;
-  /** Signed out: drop the server fields (the local unlock is untouched). */
+  /** Server told us the entitlement — store the snapshot + recompute the effective tier. */
+  reconcileEntitlement: (server: {
+    tier: PremiumTier;
+    premiumUntil: Date | null;
+    gateOn: boolean;
+    source?: EntitlementSource;
+    fetchedAt?: Date;
+  }) => void;
+  /** Signed out: drop the server snapshot (the local unlock is untouched). */
   resetServerEntitlement: () => void;
   unsubscribe: () => void;
   incrementScanCount: () => void;

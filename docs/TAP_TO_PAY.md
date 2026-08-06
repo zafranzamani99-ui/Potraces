@@ -1,5 +1,33 @@
 # Tap to Pay on iPhone — operator runbook
 
+> ## DECISION (2026-08-06) — READ FIRST
+> **Tap to Pay ships in v1.2, NOT the v1.0 launch (~9 Aug).** Reason: accepting
+> card taps on iPhone ALWAYS needs Apple's "Tap to Pay on iPhone" entitlement,
+> which takes **weeks** to approve — it can't make the launch. v1.0 ships with
+> **Fiuu DuitNow QR only**; the Card button stays flag-off (its default), so no
+> code change is needed to keep it hidden for launch.
+>
+> **Provider decision: use FIUU for Tap to Pay (not Stripe).** The code currently
+> in this repo is **Stripe-based** (see Architecture below) — treat it as the
+> existing/fallback impl; it will be replaced or left dormant for the Fiuu path.
+>
+> **OPEN QUESTION — resolve with Fiuu BEFORE building.** Fiuu's Tap to Pay on
+> iPhone today ships as their own **Fiuu Virtual Terminal (VT) iOS app**
+> (fiuu.com/virtual-terminal, launched MY Apr 2026). Two possible paths:
+> 1. **Fiuu VT app** — sellers accept card taps inside Fiuu's separate app.
+>    Zero build, **no Apple entitlement on our app**, live "in minutes" — BUT
+>    it's NOT inside Potraces, so the card sale won't auto-log to our ledger
+>    (would need share-to-log or manual entry).
+> 2. **Embed Fiuu's SDK in Potraces** (integrated, like the QR — sale auto-logs).
+>    Needs (a) Fiuu to provide an **embeddable Tap-to-Pay SDK for third-party
+>    apps** — ASK them; many SoftPOS providers only offer the VT-app path — and
+>    (b) **our own Apple entitlement** (weeks), with **Fiuu** listed as the PSP.
+>
+> **Next action:** ask Fiuu "SDK we can embed, or VT app only?" Their answer
+> decides the v1.2 plan. If only the VT app → decide: accept the non-integrated
+> flow, or keep Stripe for an integrated experience. Everything below documents
+> the existing Stripe path (kept for reference / fallback).
+
 Accept a real contactless card or wallet on the seller's **iPhone** via Stripe
 Terminal's Tap to Pay reader. **iOS only. Malaysia (MYR) only. Pilot, behind a
 flag.** When the flag is off (the default), nothing Stripe-related initializes —
@@ -13,6 +41,15 @@ are wired in `app.json`.
 ## Turn it on (operator checklist)
 
 Do these IN ORDER. Until all are done, leave `EXPO_PUBLIC_TAP_TO_PAY_ENABLED=false`.
+
+> **⚠️ CRASH-RISK / v1.0 change (2026-08-06):** the 4 card-reader `Info.plist`
+> permission strings were **REMOVED for the v1.0 App Store build** to avoid a
+> rejection over unused Location/Bluetooth (nothing else in the app uses them).
+> **Before flipping the flag on for v1.2 you MUST restore them**, or the app
+> crashes the instant Stripe Terminal requests a permission with no usage string:
+> `NSBluetoothAlwaysUsageDescription`, `NSBluetoothPeripheralUsageDescription`,
+> `NSLocalNetworkUsageDescription`, `NSLocationWhenInUseUsageDescription`.
+> (If you switch to the Fiuu provider, use Fiuu's required usage strings instead.)
 
 1. **Apple entitlement.** Request the **Tap to Pay on iPhone** entitlement
    (`com.apple.developer.proximity-reader.payment.acceptance`) from Apple. This

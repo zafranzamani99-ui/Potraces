@@ -18,6 +18,89 @@ separately (`audit/ECHO_UNFINISHED.md`).
 
 ---
 
+## 🎯 Pulled into launch scope (owner, 2026-08-06) — from v1.2
+_Owner wants these before the Apple submit. Scoped to what's realistically doable in 1–2 days; the rest
+stays in v1.2 (see the bottom of this block). NOTE: adding a new capture feature this close to launch is
+extra risk on a money app — keep it minimal, make it pass the 5 rules, and real-phone test before submit._
+
+**📏 Final pre-submit check — the 5 Trust rules (do these LAST, right before you hit Submit):**
+- [ ] 🟡 **Fast** — logging a payment is ≤2s, no typing, no choosing.
+- [ ] 🟡 **Never wrong-but-sure** — auto-log only when sure; if unsure, ASK.
+- [ ] 🟡 **Always tell you** — every auto-log shows a card/notification + one-tap undo.
+- [ ] 🟡 **Never double** — the same payment is logged once, even if caught two ways.
+- [ ] 🟡 **Prove it's right** — statement reconcile shows a "verified ✓" for the month.
+  _(These are check-before-submit rules, not new builds. If a capture path can't meet all 5, hide it for v1.0.)_
+
+**💰 Pricing (numbers only — the streak is NOT in launch, see below):**
+- [x] 🟡 Set tiers to **Basic RM3.99 · Pro RM9.99 · Premium RM20** (Premium = seller/business). ✅ 2026-08-06 — `PaywallModal.TIERS` updated (+MONETIZATION doc, docx data.json, paywall test fixture). Yearly (owner call, keep legacy discounts): **Pro RM86/yr (RM7.17/mo, −28%) · Premium RM160/yr (RM13.33/mo, −33%)**; Basic stays monthly-only; every struck "was" = real 12× monthly. **Store consoles (App Store Connect / Play / RevenueCat) must list matching prices when billing is wired.**
+- [x] 🚨 **Docx-sync (LOCKED):** ✅ regenerated `Potraces_Subscription_and_Echo_Guide.docx` (repo root) from `scripts/subscription_docx/data.json` in the same change — verified zero old-price strings inside + the new Earn Pro entry included. (Stale duplicate remains at `DOCS 22 JULY/` — Jul 23 snapshot, left as archive.)
+
+**📸 Capture — ONLY the screenshot sweep is realistic in 1–2 days (reuses the reader you already have + rides the rebuild):**
+- [ ] 🔴 **Screenshot sweep (minimal):** add `expo-media-library` (rides the launch rebuild) → on app-open, scan NEW screenshots since last check → feed each to the existing `recognizeRows` → `parsePaymentScreenshot` → show a "caught N payments — confirm?" card → `logQuickExpense`. Reuses `src/services/shareToLog.ts` (`logTextFromShare`) + `localReceiptOcr.ts`. Opt-in photo permission (`NSPhotoLibraryUsageDescription` already present), handle iOS limited-access, only NEW screenshots, small batches. Must pass the 5 rules above. Real-phone test before submit.
+
+**🚫 NOT in launch (can't make today/tomorrow — stays in `v1.2.md`):**
+- **Android notification reading** — Android-only (not for the Apple submit) + ~2 weeks (new native service + battery-killer handling).
+- **WhatsApp number** — needs Meta Business API approval (external, weeks).
+- **Merge-by-tap dedup** — the "spot the same payment twice" logic is the hardest part; do it properly post-launch.
+- **The streak system** (14-day "close your day" + freeze + entitlements) — real engineering; launch the new prices WITHOUT it.
+
+---
+
+## 🧹 Reconciliation adds (2026-08-06) — found stranded in old docs, not tracked here
+_From a sweep of every planning `.md` against AUGUST/WAVE/v1.2. These 4 are real, launch-relevant,
+and were written **nowhere** in the 3 canonical docs. All belong to the feedback + voice features
+already built — if the other session already did any, just tick it._
+- [ ] 🟡 **Replace the Discord placeholder** with the real invite — `DISCORD_URL` (`src/constants/index.ts:168`)
+      is still `https://discord.gg/potraces` (`TODO(zafran)`); the "Join our Discord" row dead-ends until
+      fixed (or hide the row). → `docs/COMMUNITY_FEEDBACK_PLAN.md`
+- [ ] 🟡 **Apply the pending feedback migrations to prod** — `supabase db push` picks up
+      `20260804000000_beta_feedback_ratelimit.sql` + `20260805000000_beta_feedback_screenshots_multi.sql`
+      (spam-protection + multi-screenshot on a public-writable table). Confirm applied on prod. → `docs/COMMUNITY_FEEDBACK_PLAN.md`
+- [ ] 🟡 **Real-phone test the in-app feedback form** — draft survives a Google sign-in that backgrounds the
+      app · screenshot pick+upload works · a submitted report shows on `site/admin.html` and can be marked
+      Done. (Simulator can't prove the OAuth-kill/draft path.) → `docs/COMMUNITY_FEEDBACK_PLAN.md`
+- [ ] 🟡 **Real-phone test voice / mic** — tap the mic on Echo / a note / LogIncome → listens, transcribes,
+      cancels, **no crash on first tap** (iOS mic-permission string actually lands). Native module wired live
+      into 3 shipping screens, code-complete but never runtime-verified. (If voice is hidden for v1.0, skip.)
+      → `audit/ECHO_VOICE_V1_PLAN.md` (its backend was since rewritten to `expo-speech-recognition`)
+
+_Not added: quick-log Back-Tap deploy / shortcut-publish — that's the **other session's** shortcut work
+(the app already points to a live `https://jejakbaki.my/shortcut`); confirm there, don't duplicate._
+
+---
+
+## ✅ Settled so far (updated 2026-08-06)
+
+- **🚀 Launch bigger-builds wave (2026-08-06, 4 parallel builds — all code done, deploys pending):**
+  new pricing (Basic RM3.99 · Pro RM9.99 · Premium RM20; yearly RM86/RM160) + docx
+  regenerated · Collectz Report/Block + server name filter + EULA clause (Apple 1.2) ·
+  "Earn Pro" hub + Share-&-Earn engine with admin review queue · server-side
+  entitlement lock (server wins, gated on `premium_gate_on`) · cancel-subscription
+  store deep link. Full `npm test` green. Deploy queue: 3 migrations + 4 edge
+  functions (see each 🔴 item's DEPLOY PENDING note).
+- **☁️ Cloud backup 🟢 trio (2026-08-05):** Google-connect consent popup · backup
+  failure telemetry (`backup_telemetry`) · "Backup not working?" FAQ in both
+  backup modals. Code green (tsc / lint:i18n / tests).
+- **🤖 AI opt-in toggle (2026-08-06):** master switch in Personal + Business
+  Settings, default OFF, consent prompt on first AI use (Echo / receipt scan /
+  statement import). With AI off, nothing leaves the device for AI.
+- **🔏 Anthropic purged + DPA question resolved (2026-08-06):** app is
+  Gemini-only; wording cleaned from ops site, privacy draft, breach runbook,
+  ai-proxy. No DPA signature exists for the Gemini API — paid-tier terms apply
+  automatically; **billing CONFIRMED linked** (Potraces project, "Paid 1").
+  Record: `docs/legal/ai-data-terms.md`.
+- **🧾 Statement parser smoke detector (2026-08-05):** synthetic fixtures for
+  all 5 banks + golden test (`GEMINI_API_KEY=... npm run test:statementparser`).
+  Real anonymized statements from you swap in later (deferred — see §7 below).
+- Earlier sessions: money-logic audit fixes (4/4 verified), redeem/referral
+  rewards live, ad-tracking removed, statement-import phases 0–3 + parser v2
+  deployed, backup-restore engine ALL PHASES complete.
+
+All session work verified green (tsc · lint:i18n · full `npm test`) and left
+**uncommitted** in the working tree for review.
+
+---
+
 ## 🎚️ Launch-day switch — DON'T FORGET
 - [ ] In the admin Rewards tab, flip `premium_gate_on = true` **and** move
       `premium_gate_start` to **13 Aug** in the *same* action. It's currently seeded to
@@ -47,12 +130,25 @@ pulse now unpinned (See-All only).
       multi-account PDF, password-protected PDF, reconcile offer.
 - [ ] **Watch: e-wallet top-up over-flagging** — parser v2's TnG/GrabPay top-up →
       transfer detection is unverified against real statements.
-- [ ] **§6 compliance** — Gemini paid-tier data terms confirmed in writing (record
-      in `docs/legal/`) + privacy policy: statements uploaded for server-side AI
-      processing, not stored, password never persisted, processor named.
-- [ ] **§7 parser fixtures** — 1–2 anonymized statements per bank (Maybank, CIMB,
-      Bank Islam, Hong Leong + TnG) + golden parse test. Gemini churn broke this
-      pipeline twice; fixtures are the only ground truth.
+- [~] **§6 compliance** — Gemini paid-tier data terms ✅ CONFIRMED in writing
+      2026-08-06: `docs/legal/ai-data-terms.md` (owner verified billing linked on
+      the Potraces project, "Paid 1" — no-training paid-services terms cover ALL
+      Gemini usage incl. free quota). **Remaining:** privacy policy line —
+      statements uploaded for server-side AI processing, not stored, password
+      never persisted, processor named.
+- [~] **§7 parser fixtures** — golden parse test BUILT 2026-08-05:
+      `supabase/functions/parse-statement/fixtures/` (synthetic statements for
+      Maybank 2-page + USD FX / CIMB / Bank Islam own-name transfer / HLB + SGD FX /
+      TnG reloads, each with a hand-written oracle), `parserConfig.ts` shares the
+      exact prompt/model/normalization between the edge function and
+      `scripts/test-statement-parser.ts` (hard checks: count/totals/rows/is_transfer/
+      FX; warns on description/category; `--write-expected` to accept reviewed
+      output). Run `GEMINI_API_KEY=... npm run test:statementparser` before any
+      model/prompt change (not in `npm test` — needs the key). **Still needs you
+      (deferred — do whenever convenient):** 1–2 REAL anonymized statements per
+      bank (Maybank, CIMB, Bank Islam, Hong Leong + TnG) to replace the
+      synthetics — same filenames, then run the test once with `--write-expected`
+      and eyeball the diff.
 - [ ] Full §11 production-readiness checklist before flag → 100%.
 
 **Decisions pending:**
@@ -71,6 +167,72 @@ pulse now unpinned (See-All only).
 - Leftover from backup plan: Account-screen sync-status rows; incremental-sync
   flag rollout (`EXPO_PUBLIC_SYNC_INCREMENTAL`, stages 3–5 built); cloud-backup
   flag unlock at launch.
+
+---
+
+## ☁️ Cloud backup (Google Drive/Sheets + iCloud) — 2026-08-05
+
+Plan: `docs/plans/cloud-backup-sync-plan.md` (Phases 1–3 code now complete).
+Code committed in `0c1af41` (bundled with the other session's feedback/shortcut work).
+
+**✅ Code done (verified tsc + lint:i18n + tests green):**
+- [x] Phase 1+2 (earlier sessions): durable backup queue, Google Drive receipt
+      backup, Sheets sync, AccountScreen UI, unit tests.
+- [x] Phase 3 iCloud — `react-native-cloud-storage` v3 + config plugin
+      (`iCloud.com.potraces.app`), `icloudBackup.ts` (+ logic + `npm run test:icloud`),
+      `icloud-file` drain in `cloudBackupRunner` with per-provider preflights (dead
+      Google session no longer blocks iCloud jobs, and vice versa), settings keys,
+      manifest (`Potraces/manifest.json`), restore (merge = missing files only /
+      replace = re-download all; **not paywall-gated**).
+- [x] Account page de-cluttered — Google/iCloud collapsed into compact rows under
+      "Backup apps"; full controls open in a floating modal (no inline dropdowns).
+
+**🟡 Needs you (consoles / clicks):**
+- [ ] **Google Cloud Console — publish OAuth consent screen Testing → Production.**
+      #1 blocker: Testing status kills refresh tokens after 7 days + caps 100 users.
+      Keep scope = `drive.file` ONLY (adding `spreadsheets` triggers weeks of review).
+- [ ] **Apple Developer portal** — iCloud capability + container
+      `iCloud.com.potraces.app` (must exist before the EAS build).
+- [ ] **Privacy policy update** (site/) — disclose Google user-data handling (app
+      touches only files it creates; how to revoke) + iCloud clause (files go to the
+      user's own iCloud, we never see them). Google requires this for consent approval.
+- [ ] **Confirm pricing gate** — plan default: backup features = premium
+      (`hasCloudBackup()`). Restore stays free (recovery must not be paywalled).
+- [ ] **Store declarations at launch** — App Store privacy label + Play data-safety:
+      declare User Content transmitted with consent. iCloud-only adds nothing.
+
+**🟢 Claude can do (code — say go):**
+- [x] In-app consent copy before first Google connect (what happens, where files go,
+      how to stop). ✅ 2026-08-05 — one-time Alert before the first connect in
+      `AccountScreen.handleGoogleConnect`, persisted via `googleBackupConsentSeen`
+      (settingsStore); EN+BM (`t.settings.googleBackup.consent*`).
+- [x] Failure telemetry — one Supabase row per PERMANENT backup failure (silent
+      failures in the wild are invisible without this; plan §5.4, reuse beta_feedback
+      pattern). ✅ 2026-08-05 — `newlyFailedJobs` (cloudBackupLogic) detects jobs the
+      drain just parked in the failed list; runner aggregates per kind →
+      `reportCloudBackupFailure` (`backupTelemetry.ts`, kinds `drive/sheets/icloud-
+      backup-failed`, once per kind per launch, no session = silent no-op). Existing
+      `backup_telemetry` table reused (no migration; `kind` is unconstrained text).
+- [x] FAQ/help entry — "backup not working?" recovery steps (Reconnect Google, retry
+      failed, Full re-sync, Restore). ✅ 2026-08-05 — expandable "Backup not working?"
+      block at the bottom of both provider modals: step copy + a working "Retry
+      failed backups" row (`handleRetryFailed` → retryFailedBackupJobs + drain;
+      failedCount polled with pendingCount). EN+BM (`t.settings.backupHelp.*`).
+
+**🧪 Test plan (in order):**
+1. **Now (current dev build):** modal UI · Google connect → Drive toggle → scan
+   receipt → file in Drive "Potraces/Receipts" · Sheets toggle → transaction row
+   appears, no dupes · airplane-mode queue → drain on reconnect.
+2. **EAS build (last step):** `eas build --profile development --platform ios`
+   (needs the Apple iCloud container above + `EXPO_PUBLIC_CLOUD_BACKUP=1` in build env).
+3. **After install:** iCloud toggle → receipt lands in Files app "Potraces" folder →
+   delete app → reinstall → sign in → Restore (Merge) → photos reappear.
+4. Pre-launch full checklist: plan §5.7 (token after 7+ days, folder-delete
+   re-provision, revoke→reconnect, paywall gate, telemetry rows).
+
+**⏸️ Deferred (documented, not this build):** true OS-background sync (foreground-first
+by design), resumable uploads >5 MB, per-year sheet tabs, legacy Android Google
+Sign-In SDK migration (watch item before Google EOLs it).
 
 ---
 
@@ -142,7 +304,16 @@ Grouped by who does it: **🟢 Claude can do · 🟡 needs you · 🔴 bigger bu
 - [ ] Sentry crash reporting — actually **needs your Sentry DSN key** (🟡, not green).
 - [x] 5 hardcoded-string i18n fixes — already clean, lint passes. ✅ · `console.log` cleanup deferred (53 hits, mostly test/dev files — harmless in RN).
 - [x] `eas.json` production submit profile added. ✅
-- [ ] "Make AI opt-in" toggle (the DPAs are yours).
+- [x] "Make AI opt-in" toggle (the DPAs are yours). ✅ 2026-08-05 — master
+      `aiOptInEnabled` flag (default OFF; decision: ask on first AI use). Transport
+      gate in `geminiClient.isGeminiAvailable()` (via `services/aiOptIn.ts` checker
+      — tsx-safe) degrades ALL AI to existing fallbacks; `parseStatement` returns
+      `ai_off`. Consent dialog (`services/aiConsent.requestAiAccess`) wired at Echo
+      send, receipt scan, statement import; toggle rows in Personal + Business
+      Settings (`t.settings.aiFeatures*`). Google-only copy (Anthropic retired —
+      wording purged from ops site, privacy draft, breach runbook, proxy headers).
+      DPA/terms record + billing checklist: `docs/legal/ai-data-terms.md` (needs
+      your one click: confirm billing on the Gemini API project).
 - [x] Shop-takeover fix verified LIVE — anon denied on `seller_orders`/`seller_profiles` (customer PII safe). ✅
 
 ### 🟡 Needs you (accounts / uploads / decisions)
@@ -154,47 +325,47 @@ Grouped by who does it: **🟢 Claude can do · 🟡 needs you · 🔴 bigger bu
 - [ ] Splash logo art → send it, I wire it (+ fix the clipped Android adaptive icon).
 - [ ] Generic bank/e-wallet icon → send it, I swap the 21 logo PNGs (IP risk).
 - [ ] **Cloud backup:** decide — turn it on (confirm sync works) OR hide the toggle + "automatic backup" pitch.
-- [ ] AI zero-retention DPAs (Anthropic / Google).
+- [x] ~~AI zero-retention DPAs~~ **RESOLVED 2026-08-06 (Google-only):** the
+      Anthropic path was retired — no user data goes anywhere but Gemini. And for
+      the Gemini API there is no separate DPA to sign: the paid-tier terms +
+      Google's Data Processing Addendum apply automatically once billing is
+      active. Billing CONFIRMED linked on the Potraces project ("Paid 1") —
+      record in `docs/legal/ai-data-terms.md`. Anthropic wording purged from the
+      ops site, privacy-notice draft, breach runbook, and ai-proxy comments.
 - [ ] **Tap-to-Pay:** finish it + declare location in Play Data-Safety + fix the privacy page (says "no location", card readers need it).
 - [ ] On-device run-through: paywall + every limit gate (wallet/budget/goal/scan); confirm cold-open loaders don't stick + seller receipts show.
 - [ ] Set `BETA_IOS_URL` / `BETA_ANDROID_URL` (or download links show "coming soon").
 
 ### 🔴 Bigger builds (Claude can do, but real features)
-- [ ] **Collectz Report + Block** for users (Apple 1.2) + server-side profanity/URL filter on free-text names + EULA / objectionable-content tick at sign-up.
-- [ ] "Cancel subscription" → deep-link to Apple's manage-subscriptions page. *(pairs with RevenueCat)*
-- [ ] Server-side entitlement check so a paid tier can't be flipped on-device. *(pairs with RevenueCat)*
-- [ ] **"Earn Pro" hub + Share & Earn Pro reward (NEW — decided 2026-07-29; launch-blocking, full build).**
-      Two parts, one feature:
-      - **(a) Merge into one "Earn Pro" hub — segmented Neu Pills `Invite · Share · Redeem`.**
-        Collapses today's TWO separate settings rows + TWO stack screens into one screen.
-        **Invite** pane = current `src/screens/shared/InviteFriends.tsx` (code / copy / share /
-        progress / friend-code box). **Redeem** pane = current `src/screens/shared/RedeemCode.tsx`
-        (gift-code entry + the clipboard-token read). **Share** pane = NEW (below). Collapse the
-        two `SettingRow`s in `PersonalSettings.tsx` (~L378–390) **and** `BusinessSettings.tsx` into
-        one "Earn Pro" row; register one hub screen in `RootNavigator.tsx` (keep or redirect the
-        old `InviteFriends`/`RedeemCode` route names). Onyx/Neu-compliant, `PageScrollView` per
-        pane. **This half is cheap — a pure UI merge of screens that already exist.**
-      - **(b) Share & Earn Pro — the reward engine (the real work).** Post about the app **with a
-        screenshot** on **Instagram · 小红书 (RED) · Reddit · Facebook · X · Threads**; the reward
-        scales with the post's likes:
-        - **30+ likes → 1 month Pro**
-        - **100+ likes → 1 year Pro**
-        - **viral → Pro forever**
-        Build needs: **(1)** submit flow — user picks a platform, pastes their post URL (+ optional
-        screenshot upload); **(2)** a `share_reward_submissions` table + edge function to record it;
-        **(3) verification** — MVP = team reviews the like count and approves a tier in the admin
-        Rewards tab (same place redeem/referral codes are managed); **(4) grant** — reuse the
-        existing premium-grant path (`docs/plans/premium-grants-and-rewards.md`, `entitlements.ts`)
-        so share-earned Pro is a **server-granted** entitlement exactly like redeem/referral (rides
-        the same server-side entitlement check above, plays with RevenueCat); **(5) abuse controls**
-        — dedupe by post URL, one grant per post, per-user/year cap (mirror the referral cap),
-        account-age gate, reject bought-likes / edited screenshots on review; **(6)** EN+BM copy
-        (new `t.shareEarn.*`) + push on approval (reuse `RewardModal.tsx`).
-      - **Open calls to settle before/while building:** manual review vs honour-system vs a
-        platform API for like counts; is "forever" a true permanent grant or a long-dated one;
-        how the share year-cap interacts with the referral year-cap.
-      - **Doc-sync:** this adds a new way to earn Pro → when built you MUST update
-        `Potraces_Subscription_and_Echo_Guide.docx` (CLAUDE.md rule).
+- [x] **Collectz Report + Block** for users (Apple 1.2) + server-side profanity/URL filter on free-text names + EULA / objectionable-content tick at sign-up. ✅ CODE 2026-08-06 — `content_reports` + `user_blocks` (migration `20260806100000`), public `report-content` edge function (flood-capped), server-side name filter in `collectz-join` (`name_blocked`), reason-picker report UI (join/detail/web join page), one-way block enforcement, EULA tick in AuthScreen sign-up (prior session) + terms.html new Cl. 10 "Objectionable content & conduct" (EN+BM). 44/44 filter tests incl. client/server parity. **DEPLOY PENDING: `supabase db push` + `supabase functions deploy report-content collectz-join`.** Notes: `collectz_reports` (20260802) now orphaned (all reports → `content_reports`); organizer create path still client-filter-only (needs edge/trigger later).
+- [x] "Cancel subscription" → deep-link to Apple's manage-subscriptions page. ✅ 2026-08-06 — "Manage / cancel subscription" row in `SubscriptionCard` (paid tiers only): iOS → apps.apple.com/account/subscriptions, Android → play.google.com/store/account/subscriptions (`t.settings.manageSubscription*`). **TODO at RevenueCat time: retire/repoint the old local "Cancel" (`premiumStore.unsubscribe()`) — kept for now as the dev-unlock kill switch; once real billing exists it must not silently clear local state while the store keeps billing.**
+- [x] Server-side entitlement check so a paid tier can't be flipped on-device. ✅ CODE 2026-08-06 — `get-entitlements` edge function + `entitlement_state(p_uid)` RPC (migration `20260806120000`), `entitlementPolicy.ts` merge (server wins BOTH directions for signed-in users once `premium_gate_on`; fail-open cache + 7d grace offline; signed-out + gate-off unchanged; dev unlock intact), 34-check `test-entitlement-merge`. **DEPLOY PENDING: `supabase db push` + `supabase functions deploy get-entitlements` (404 pre-deploy = safe fail-open). ⚠️ Do NOT flip `premium_gate_on` with billing live until the RevenueCat seam (`fetchPurchaseCandidate`) returns `source='purchase'` — else server-wins hides real purchases.**
+- [x] **"Earn Pro" hub + Share & Earn Pro reward (NEW — decided 2026-07-29; launch-blocking, full build).**
+      ✅ CODE 2026-08-06 (both halves, spec below fully built):
+      - **(a) Hub:** `src/screens/shared/EarnPro.tsx` with segmented Neu pills `Invite · Share ·
+        Redeem` (panes lazy-mounted, kept alive); Invite/Redeem panes carry the old screens' exact
+        content (clipboard read fires only on the Redeem tab); old stack screens deleted, legacy
+        route names redirect via `initialParams`. One "Earn Pro" row in Personal + Business
+        Settings replaces the two old rows (`t.settings.earnPro*`).
+      - **(b) Engine:** Share pane (6 platforms, URL + optional proof screenshot → private
+        `share-reward-proofs` bucket) → `share-reward-submit` edge function (JWT, age ≥7d,
+        year-cap early-out, DB-unique normalized URL = one grant per post globally) → admin
+        Rewards tab review queue (`site/admin.html`: pending list, proof lightbox, approve
+        1 month / 1 year / Forever, reject) → `admin_review_share_reward` grants via the SAME
+        ledger (`grant_premium`, `source='share_reward'`) so RewardModal pops next launch.
+        Rules in `src/utils/shareRewardRules.ts` (48-check `test:sharereward`).
+      - **Open calls settled:** manual review (reviewer picks tier; likes recorded for audit) ·
+        "forever" = 3650d (ledger max; `days<=3700` CHECK kept global) · share year-cap 12/365d
+        INDEPENDENT of the referral cap · account-age 7d.
+      - **Doc-sync ✅** — subscription docx regenerated with the Earn Pro entry (done in the
+        pricing change above).
+      - **DEPLOY PENDING: `supabase db push` (migration `20260806110000`) + `supabase functions
+        deploy share-reward-submit`; admin.html rides Vercel.** Post-deploy smoke: submit from
+        a test account → approve month in admin → grant row → RewardModal next launch.
+      - Notes for owner: someone must actually review the queue; privacy page may want one line
+        re: stored post URL + proof screenshot; "forever" approval reads "3650 days" in the
+        reward modal (plain but honest); pull-to-refresh on-hold item is moot (standalone
+        InviteFriends screen no longer exists).
 
 ### ✅ Cleared this session
 Redeem/rewards/invite + clipboard auto-attribution · `redeem_code` message fix · ad-tracking removed (`AD_ID` + ATT string) · `SYSTEM_ALERT_WINDOW` + `WRITE_CONTACTS` + `expo-audio` removed · Google Docs sync line + Playbook tab hidden · dev free-unlock seatbelt · `receipt-images` confirmed private · seller receipt images fixed · contacts search bug · docs synced.
