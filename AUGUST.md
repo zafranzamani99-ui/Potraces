@@ -77,7 +77,7 @@ _Not added: quick-log Back-Tap deploy / shortcut-publish — that's the **other 
   "Earn Pro" hub + Share-&-Earn engine with admin review queue · server-side
   entitlement lock (server wins, gated on `premium_gate_on`) · cancel-subscription
   store deep link. Full `npm test` green. Deploy queue: 3 migrations + 4 edge
-  functions (see each 🔴 item's DEPLOY PENDING note).
+  functions (see each 🔴 item's DEPLOYED note).
 - **☁️ Cloud backup 🟢 trio (2026-08-05):** Google-connect consent popup · backup
   failure telemetry (`backup_telemetry`) · "Backup not working?" FAQ in both
   backup modals. Code green (tsc / lint:i18n / tests).
@@ -337,9 +337,9 @@ Grouped by who does it: **🟢 Claude can do · 🟡 needs you · 🔴 bigger bu
 - [ ] Set `BETA_IOS_URL` / `BETA_ANDROID_URL` (or download links show "coming soon").
 
 ### 🔴 Bigger builds (Claude can do, but real features)
-- [x] **Collectz Report + Block** for users (Apple 1.2) + server-side profanity/URL filter on free-text names + EULA / objectionable-content tick at sign-up. ✅ CODE 2026-08-06 — `content_reports` + `user_blocks` (migration `20260806100000`), public `report-content` edge function (flood-capped), server-side name filter in `collectz-join` (`name_blocked`), reason-picker report UI (join/detail/web join page), one-way block enforcement, EULA tick in AuthScreen sign-up (prior session) + terms.html new Cl. 10 "Objectionable content & conduct" (EN+BM). 44/44 filter tests incl. client/server parity. **DEPLOY PENDING: `supabase db push` + `supabase functions deploy report-content collectz-join`.** Notes: `collectz_reports` (20260802) now orphaned (all reports → `content_reports`); organizer create path still client-filter-only (needs edge/trigger later).
+- [x] **Collectz Report + Block** for users (Apple 1.2) + server-side profanity/URL filter on free-text names + EULA / objectionable-content tick at sign-up. ✅ CODE 2026-08-06 — `content_reports` + `user_blocks` (migration `20260806100000`), public `report-content` edge function (flood-capped), server-side name filter in `collectz-join` (`name_blocked`), reason-picker report UI (join/detail/web join page), one-way block enforcement, EULA tick in AuthScreen sign-up (prior session) + terms.html new Cl. 10 "Objectionable content & conduct" (EN+BM). 44/44 filter tests incl. client/server parity. **DEPLOYED 2026-08-06 (`db push` + functions `report-content`, `collectz-join`).** Notes: `collectz_reports` (20260802) now orphaned (all reports → `content_reports`); organizer create path still client-filter-only (needs edge/trigger later).
 - [x] "Cancel subscription" → deep-link to Apple's manage-subscriptions page. ✅ 2026-08-06 — "Manage / cancel subscription" row in `SubscriptionCard` (paid tiers only): iOS → apps.apple.com/account/subscriptions, Android → play.google.com/store/account/subscriptions (`t.settings.manageSubscription*`). **TODO at RevenueCat time: retire/repoint the old local "Cancel" (`premiumStore.unsubscribe()`) — kept for now as the dev-unlock kill switch; once real billing exists it must not silently clear local state while the store keeps billing.**
-- [x] Server-side entitlement check so a paid tier can't be flipped on-device. ✅ CODE 2026-08-06 — `get-entitlements` edge function + `entitlement_state(p_uid)` RPC (migration `20260806120000`), `entitlementPolicy.ts` merge (server wins BOTH directions for signed-in users once `premium_gate_on`; fail-open cache + 7d grace offline; signed-out + gate-off unchanged; dev unlock intact), 34-check `test-entitlement-merge`. **DEPLOY PENDING: `supabase db push` + `supabase functions deploy get-entitlements` (404 pre-deploy = safe fail-open). ⚠️ Do NOT flip `premium_gate_on` with billing live until the RevenueCat seam (`fetchPurchaseCandidate`) returns `source='purchase'` — else server-wins hides real purchases.**
+- [x] Server-side entitlement check so a paid tier can't be flipped on-device. ✅ CODE 2026-08-06 — `get-entitlements` edge function + `entitlement_state(p_uid)` RPC (migration `20260806120000`), `entitlementPolicy.ts` merge (server wins BOTH directions for signed-in users once `premium_gate_on`; fail-open cache + 7d grace offline; signed-out + gate-off unchanged; dev unlock intact), 34-check `test-entitlement-merge`. **DEPLOYED 2026-08-06 (`db push` + function `get-entitlements`). ⚠️ Do NOT flip `premium_gate_on` with billing live until the RevenueCat seam (`fetchPurchaseCandidate`) returns `source='purchase'` — else server-wins hides real purchases.**
 - [x] **"Earn Pro" hub + Share & Earn Pro reward (NEW — decided 2026-07-29; launch-blocking, full build).**
       ✅ CODE 2026-08-06 (both halves, spec below fully built):
       - **(a) Hub:** `src/screens/shared/EarnPro.tsx` with segmented Neu pills `Invite · Share ·
@@ -359,9 +359,9 @@ Grouped by who does it: **🟢 Claude can do · 🟡 needs you · 🔴 bigger bu
         INDEPENDENT of the referral cap · account-age 7d.
       - **Doc-sync ✅** — subscription docx regenerated with the Earn Pro entry (done in the
         pricing change above).
-      - **DEPLOY PENDING: `supabase db push` (migration `20260806110000`) + `supabase functions
-        deploy share-reward-submit`; admin.html rides Vercel.** Post-deploy smoke: submit from
-        a test account → approve month in admin → grant row → RewardModal next launch.
+      - **DEPLOYED 2026-08-06 (`db push` migration `20260806110000` + function
+        `share-reward-submit`; admin.html rides Vercel on merge).** Post-deploy smoke: submit
+        from a test account → approve month in admin → grant row → RewardModal next launch.
       - Notes for owner: someone must actually review the queue; privacy page may want one line
         re: stored post URL + proof screenshot; "forever" approval reads "3650 days" in the
         reward modal (plain but honest); pull-to-refresh on-hold item is moot (standalone
